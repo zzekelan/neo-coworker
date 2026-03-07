@@ -15,7 +15,7 @@ export function createShellTool({
 }): ToolDefinition {
   return {
     name: "shell",
-    description: "Run a shell command inside the workspace",
+    description: "Run a shell command with the workspace as the current directory",
     inputSchema: ShellArgsSchema,
     async execute(input) {
       const { command } = ShellArgsSchema.parse(input.args)

@@ -43,12 +43,22 @@ export function createEditTool({
 
       const file = await resolveWorkspaceFile(input.workspaceRoot, path)
       const original = await Bun.file(file).text()
+      const firstMatch = original.indexOf(oldText)
 
-      if (!original.includes(oldText)) {
+      if (firstMatch === -1) {
         throw new Error("Target text not found")
       }
 
-      await Bun.write(file, original.replace(oldText, newText))
+      const secondMatch = original.indexOf(oldText, firstMatch + Math.max(oldText.length, 1))
+
+      if (secondMatch !== -1) {
+        throw new Error("Target text must appear exactly once")
+      }
+
+      await Bun.write(
+        file,
+        `${original.slice(0, firstMatch)}${newText}${original.slice(firstMatch + oldText.length)}`,
+      )
 
       return { output: `Edited ${path}` }
     },
