@@ -3,6 +3,9 @@ import type { RunHandle } from "./run-handle"
 import { createEventQueue } from "./event-queue"
 import type { RuntimeEvent } from "./events"
 import { runAgentLoop } from "./loop"
+import { createReadTool } from "./tools/read"
+import { createToolRegistry } from "./tools/registry"
+import { createSearchTool } from "./tools/search"
 
 type RuntimeInput = {
   provider: Provider
@@ -15,18 +18,21 @@ type RunInput = {
 }
 
 export function createRuntime(input: RuntimeInput) {
+  const tools = createToolRegistry([createReadTool(), createSearchTool()])
+
   return {
     async run(runInput: RunInput): Promise<RunHandle> {
       const controller = new AbortController()
       const queue = createEventQueue<RuntimeEvent>()
 
-      // Background loop failures are not surfaced yet by the minimal runtime.
       void runAgentLoop({
         prompt: runInput.prompt,
         provider: input.provider,
         queue,
         signal: controller.signal,
-      }).catch(() => {})
+        tools,
+        workspaceRoot: runInput.workspaceRoot,
+      })
 
       return {
         events: queue.stream(),

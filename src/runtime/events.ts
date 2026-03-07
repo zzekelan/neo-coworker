@@ -15,8 +15,18 @@ export type RuntimeEvent =
       type: "tool.call.completed"
       callId: string
       name: string
+      output: string
     }
   | {
       type: "run.completed"
+      runId: string
+    }
+  | {
+      type: "run.failed"
+      runId: string
+      error: string
+    }
+  | {
+      type: "run.cancelled"
       runId: string
     }

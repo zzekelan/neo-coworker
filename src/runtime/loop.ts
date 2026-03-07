@@ -1,12 +1,23 @@
 import type { Provider } from "../providers/types"
 import type { RuntimeEvent } from "./events"
 import type { createEventQueue } from "./event-queue"
+import type { ToolRegistry } from "./tools/types"
 
 type AgentLoopInput = {
   prompt: string
   provider: Provider
   queue: ReturnType<typeof createEventQueue<RuntimeEvent>>
   signal: AbortSignal
+  tools: ToolRegistry
+  workspaceRoot: string
+}
+
+function isAbortError(error: unknown, signal: AbortSignal) {
+  return signal.aborted || (error instanceof Error && error.name === "AbortError")
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 export async function runAgentLoop(input: AgentLoopInput) {
@@ -24,7 +35,7 @@ export async function runAgentLoop(input: AgentLoopInput) {
           parts: [{ type: "text", text: input.prompt }],
         },
       ],
-      tools: [],
+      tools: input.tools.list(),
       signal: input.signal,
     })) {
       if (item.type === "text.delta") {
@@ -32,15 +43,36 @@ export async function runAgentLoop(input: AgentLoopInput) {
       }
 
       if (item.type === "tool.call") {
+        const result = await input.tools.execute({
+          toolName: item.name,
+          args: JSON.parse(item.inputText),
+          workspaceRoot: input.workspaceRoot,
+        })
+
         input.queue.push({
           type: "tool.call.completed",
           callId: item.callId,
           name: item.name,
+          output: result.output,
         })
       }
     }
 
-    input.queue.push({ type: "run.completed", runId })
+    if (input.signal.aborted) {
+      input.queue.push({ type: "run.cancelled", runId })
+    } else {
+      input.queue.push({ type: "run.completed", runId })
+    }
+  } catch (error) {
+    if (isAbortError(error, input.signal)) {
+      input.queue.push({ type: "run.cancelled", runId })
+    } else {
+      input.queue.push({
+        type: "run.failed",
+        runId,
+        error: getErrorMessage(error),
+      })
+    }
   } finally {
     input.queue.close()
   }
