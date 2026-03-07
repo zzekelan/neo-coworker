@@ -12,6 +12,14 @@ export type PermissionResponse = {
   decision: PermissionDecision
 }
 
+export type PendingPermissionRequest = PermissionRequest & {
+  requestId: string
+}
+
+export type PermissionCoordinatorOptions = {
+  onRequest?(request: PendingPermissionRequest): void
+}
+
 export type PermissionCoordinator = {
   request(input: PermissionRequest): Promise<PermissionResponse>
   resolve(input: PermissionResponse): void
@@ -19,6 +27,7 @@ export type PermissionCoordinator = {
 
 export function createPermissionCoordinator(
   policy: Record<string, PermissionMode>,
+  options: PermissionCoordinatorOptions = {},
 ): PermissionCoordinator {
   const pending = new Map<
     string,
@@ -26,6 +35,7 @@ export function createPermissionCoordinator(
       resolve: (value: PermissionResponse) => void
     }
   >()
+  let nextRequestId = 1
 
   return {
     async request(input: PermissionRequest) {
@@ -39,14 +49,31 @@ export function createPermissionCoordinator(
         return { requestId: "permission_auto", decision: "deny" as const }
       }
 
-      const requestId = `permission_${pending.size + 1}`
+      const requestId = `permission_${nextRequestId}`
+      nextRequestId += 1
 
-      return await new Promise<PermissionResponse>((resolve) => {
+      const pendingRequest = {
+        requestId,
+        toolName: input.toolName,
+        reason: input.reason,
+      }
+
+      const response = new Promise<PermissionResponse>((resolve) => {
         pending.set(requestId, { resolve })
       })
+
+      options.onRequest?.(pendingRequest)
+
+      return await response
     },
     resolve(input: PermissionResponse) {
-      pending.get(input.requestId)?.resolve(input)
+      const entry = pending.get(input.requestId)
+
+      if (!entry) {
+        throw new Error(`Unknown permission request: ${input.requestId}`)
+      }
+
+      entry.resolve(input)
       pending.delete(input.requestId)
     },
   }
