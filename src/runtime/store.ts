@@ -41,11 +41,16 @@ export function createStore() {
       return run
     },
     appendMessage(message: Message) {
-      messages.get(message.sessionId)?.push(message)
+      const transcript = messages.get(message.sessionId)
+      if (!transcript) {
+        throw new Error(`Unknown session: ${message.sessionId}`)
+      }
+
+      transcript.push(message)
       return message
     },
     listMessages(sessionId: string) {
-      return messages.get(sessionId) ?? []
+      return [...(messages.get(sessionId) ?? [])]
     },
   }
 }
