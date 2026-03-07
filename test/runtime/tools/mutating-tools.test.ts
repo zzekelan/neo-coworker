@@ -80,6 +80,26 @@ describe("mutating tools", () => {
     expect(await Bun.file(repeatedFile).text()).toBe("demo demo\n")
   })
 
+  test("rejects edit when target text has overlapping duplicate matches", async () => {
+    const workspaceRoot = await createWorkspaceCopy()
+    const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })
+    const registry = createToolRegistry([createEditTool({ permissions })])
+    const overlappingFile = join(workspaceRoot, "src", "overlap.txt")
+
+    await writeFile(overlappingFile, "ababa\n")
+
+    const pending = registry.execute({
+      toolName: "edit",
+      args: { path: "src/overlap.txt", oldText: "aba", newText: "xyz" },
+      workspaceRoot,
+    })
+
+    permissions.resolve({ requestId: "permission_1", decision: "allow" })
+
+    await expect(pending).rejects.toThrow("Target text must appear exactly once")
+    expect(await Bun.file(overlappingFile).text()).toBe("ababa\n")
+  })
+
   test("runs shell in the workspace after permission is granted", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })

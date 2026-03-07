@@ -49,7 +49,7 @@ export function createEditTool({
         throw new Error("Target text not found")
       }
 
-      const secondMatch = original.indexOf(oldText, firstMatch + Math.max(oldText.length, 1))
+      const secondMatch = original.indexOf(oldText, firstMatch + 1)
 
       if (secondMatch !== -1) {
         throw new Error("Target text must appear exactly once")
