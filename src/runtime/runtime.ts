@@ -20,12 +20,13 @@ export function createRuntime(input: RuntimeInput) {
       const controller = new AbortController()
       const queue = createEventQueue<RuntimeEvent>()
 
-      await runAgentLoop({
+      // Background loop failures are not surfaced yet by the minimal runtime.
+      void runAgentLoop({
         prompt: runInput.prompt,
         provider: input.provider,
         queue,
         signal: controller.signal,
-      })
+      }).catch(() => {})
 
       return {
         events: queue.stream(),
