@@ -3,7 +3,7 @@ import type OpenAI from "openai"
 import { createOpenAIProvider } from "../../src/providers/openai"
 
 describe("openai provider", () => {
-  test("normalizes streamed text and tool calls", async () => {
+  test("emits one complete tool call after multi-chunk arguments finish", async () => {
     const signal = new AbortController().signal
     let receivedBody: unknown
     let receivedOptions: unknown
@@ -25,14 +25,28 @@ describe("openai provider", () => {
         item_id: "fc_1",
         output_index: 0,
         sequence_number: 1,
-        delta: "{\"path\":\"README.md\"}",
+        delta: "{\"path\":",
+      },
+      {
+        type: "response.function_call_arguments.delta",
+        item_id: "fc_1",
+        output_index: 0,
+        sequence_number: 2,
+        delta: "\"README.md\"}",
+      },
+      {
+        type: "response.function_call_arguments.done",
+        item_id: "fc_1",
+        output_index: 0,
+        sequence_number: 3,
+        arguments: "{\"path\":\"README.md\"}",
       },
       {
         type: "response.output_text.delta",
         item_id: "msg_1",
         output_index: 1,
         content_index: 0,
-        sequence_number: 2,
+        sequence_number: 4,
         delta: "Hello",
       },
     ] satisfies OpenAI.Responses.ResponseStreamEvent[]
@@ -70,12 +84,20 @@ describe("openai provider", () => {
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal })
-    expect(events).toContainEqual({ type: "text.delta", text: "Hello" })
+    expect(events.filter((event) => event.type === "tool.call")).toEqual([
+      {
+        type: "tool.call",
+        callId: "call_1",
+        name: "read",
+        inputText: "{\"path\":\"README.md\"}",
+      },
+    ])
     expect(events).toContainEqual({
       type: "tool.call",
       callId: "call_1",
       name: "read",
       inputText: "{\"path\":\"README.md\"}",
     })
+    expect(events).toContainEqual({ type: "text.delta", text: "Hello" })
   })
 })

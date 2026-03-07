@@ -44,10 +44,10 @@ export function createOpenAIProvider(input: {
     ): AsyncGenerator<ProviderEvent, void, void> {
       const stream = input.client.responses.stream(
         {
-        model: input.model,
-        input: request.messages as OpenAIResponseInput,
-        instructions: request.system,
-        tools: request.tools as OpenAITools,
+          model: input.model,
+          input: request.messages as OpenAIResponseInput,
+          instructions: request.system,
+          tools: request.tools as OpenAITools,
         },
         { signal: request.signal },
       )
@@ -65,7 +65,7 @@ export function createOpenAIProvider(input: {
           yield { type: "text.delta", text: event.delta }
         }
 
-        if (event.type === "response.function_call_arguments.delta") {
+        if (event.type === "response.function_call_arguments.done") {
           const functionCall = functionCalls.get(event.item_id)
           if (functionCall == null) {
             continue
@@ -75,7 +75,7 @@ export function createOpenAIProvider(input: {
             type: "tool.call",
             callId: functionCall.callId,
             name: functionCall.name,
-            inputText: event.delta,
+            inputText: event.arguments,
           }
         }
       }

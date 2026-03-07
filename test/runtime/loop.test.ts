@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createFakeProvider } from "../../src/providers/fake"
+import { createOpenAIProvider } from "../../src/providers/openai"
 import type { ProviderTurnRequest } from "../../src/providers/types"
 import { createRuntime } from "../../src/runtime/runtime"
 
@@ -183,5 +184,72 @@ describe("agent loop", () => {
     }
 
     expect(eventTypes.at(-1)).toBe("run.cancelled")
+  })
+
+  test("executes one tool call when openai streams arguments across multiple chunks", async () => {
+    const provider = createOpenAIProvider({
+      model: "gpt-5",
+      client: {
+        responses: {
+          stream: async function* () {
+            yield {
+              type: "response.output_item.added",
+              item: {
+                type: "function_call",
+                id: "fc_1",
+                call_id: "call_1",
+                name: "read",
+                arguments: "",
+              },
+              output_index: 0,
+              sequence_number: 0,
+            }
+            yield {
+              type: "response.function_call_arguments.delta",
+              item_id: "fc_1",
+              output_index: 0,
+              sequence_number: 1,
+              delta: "{\"path\":",
+            }
+            yield {
+              type: "response.function_call_arguments.delta",
+              item_id: "fc_1",
+              output_index: 0,
+              sequence_number: 2,
+              delta: "\"README.md\"}",
+            }
+            yield {
+              type: "response.function_call_arguments.done",
+              item_id: "fc_1",
+              output_index: 0,
+              sequence_number: 3,
+              arguments: "{\"path\":\"README.md\"}",
+            }
+          },
+        },
+      },
+    })
+
+    const runtime = createRuntime({ provider })
+    const handle = await runtime.run({
+      prompt: "Inspect README.md",
+      cwd: "test/fixtures/workspaces/read-search",
+      workspaceRoot: "test/fixtures/workspaces/read-search",
+    })
+
+    const events = []
+    for await (const event of handle.events) {
+      events.push(event)
+    }
+
+    expect(events.filter((event) => event.type === "tool.call.completed")).toEqual([
+      {
+        type: "tool.call.completed",
+        callId: "call_1",
+        name: "read",
+        output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+      },
+    ])
+    expect(events.at(-1)).toMatchObject({ type: "run.completed" })
   })
 })
