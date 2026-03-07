@@ -1,0 +1,16 @@
+{
+  "name": "neo-coworker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/main.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "openai": "^4.91.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}
