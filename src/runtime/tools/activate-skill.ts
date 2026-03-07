@@ -1,5 +1,11 @@
 import { z } from "zod"
-import { resolveSkillFile, type ActiveSkill } from "../skills/catalog"
+import { discoverSkills } from "../skills/discover"
+import {
+  getSkillCatalogPath,
+  resolveSkillCatalogPath,
+  resolveSkillFile,
+  type ActiveSkill,
+} from "../skills/catalog"
 import type { ToolDefinition } from "./types"
 
 const ActivateSkillArgsSchema = z.object({
@@ -15,12 +21,19 @@ export function createActivateSkillTool(input: {
     inputSchema: ActivateSkillArgsSchema,
     async execute(toolInput) {
       const { name } = ActivateSkillArgsSchema.parse(toolInput.args)
-      const file = await resolveSkillFile(toolInput.workspaceRoot, name)
+      const catalog = await discoverSkills(toolInput.workspaceRoot)
+      const discoveredSkill =
+        catalog.find((skill) => skill.name === name) ??
+        catalog.find((skill) => skill.path === getSkillCatalogPath(name))
+      const file = discoveredSkill
+        ? await resolveSkillCatalogPath(toolInput.workspaceRoot, discoveredSkill.path)
+        : await resolveSkillFile(toolInput.workspaceRoot, name)
+      const activeName = discoveredSkill?.name ?? name
       const instructions = await Bun.file(file).text()
 
-      input.activeSkills.push({ name, instructions })
+      input.activeSkills.push({ name: activeName, instructions })
 
-      return { output: `Activated skill ${name}` }
+      return { output: `Activated skill ${activeName}` }
     },
   }
 }

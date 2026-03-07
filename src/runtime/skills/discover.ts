@@ -1,9 +1,8 @@
 import { readdir } from "node:fs/promises"
-import { join } from "node:path"
 import {
   getSkillCatalogPath,
   getSkillsDirectory,
-  parseSkillMetadata,
+  readSkillMetadata,
   type SkillCatalogEntry,
 } from "./catalog"
 
@@ -24,17 +23,16 @@ export async function discoverSkills(workspaceRoot: string): Promise<SkillCatalo
   const catalog: SkillCatalogEntry[] = []
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) {
       continue
     }
 
-    const skillFile = join(skillsDirectory, entry.name, "SKILL.md")
-    const text = await Bun.file(skillFile).text()
-    const metadata = parseSkillMetadata(text, entry.name)
+    const skillPath = getSkillCatalogPath(entry.name)
+    const metadata = await readSkillMetadata(workspaceRoot, skillPath, entry.name)
 
     catalog.push({
       ...metadata,
-      path: getSkillCatalogPath(entry.name),
+      path: skillPath,
     })
   }
 
