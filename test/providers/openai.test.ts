@@ -1,21 +1,53 @@
 import { describe, expect, test } from "bun:test"
+import type OpenAI from "openai"
 import { createOpenAIProvider } from "../../src/providers/openai"
 
 describe("openai provider", () => {
   test("normalizes streamed text and tool calls", async () => {
+    const signal = new AbortController().signal
+    let receivedBody: unknown
+    let receivedOptions: unknown
+    const streamEvents = [
+      {
+        type: "response.output_item.added",
+        item: {
+          type: "function_call",
+          id: "fc_1",
+          call_id: "call_1",
+          name: "read",
+          arguments: "",
+        },
+        output_index: 0,
+        sequence_number: 0,
+      },
+      {
+        type: "response.function_call_arguments.delta",
+        item_id: "fc_1",
+        output_index: 0,
+        sequence_number: 1,
+        delta: "{\"path\":\"README.md\"}",
+      },
+      {
+        type: "response.output_text.delta",
+        item_id: "msg_1",
+        output_index: 1,
+        content_index: 0,
+        sequence_number: 2,
+        delta: "Hello",
+      },
+    ] satisfies OpenAI.Responses.ResponseStreamEvent[]
+
     const provider = createOpenAIProvider({
       model: "gpt-5",
       client: {
         responses: {
-          stream: async function* () {
-            yield { type: "response.output_text.delta", delta: "Hello" }
-            yield {
-              type: "response.function_call_arguments.delta",
-              item_id: "call_1",
-              name: "read",
-              delta: "{\"path\":\"README.md\"}",
+          stream: async function* (body, options) {
+            receivedBody = body
+            receivedOptions = options
+
+            for (const event of streamEvents) {
+              yield event
             }
-            yield { type: "response.completed" }
           },
         },
       },
@@ -26,11 +58,18 @@ describe("openai provider", () => {
       system: "system",
       messages: [],
       tools: [],
-      signal: new AbortController().signal,
+      signal,
     })) {
       events.push(event)
     }
 
+    expect(receivedBody).toEqual({
+      model: "gpt-5",
+      input: [],
+      instructions: "system",
+      tools: [],
+    })
+    expect(receivedOptions).toEqual({ signal })
     expect(events).toContainEqual({ type: "text.delta", text: "Hello" })
     expect(events).toContainEqual({
       type: "tool.call",
