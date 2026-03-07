@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { RuntimeEvent } from "../../src/runtime/events"
 import { RunSchema } from "../../src/runtime/types"
 import { createEventQueue } from "../../src/runtime/event-queue"
 
@@ -14,19 +15,32 @@ describe("runtime entities", () => {
     expect(run.status).toBe("queued")
   })
 
-  test("streams events in insertion order", async () => {
-    const queue = createEventQueue<{
-      type: string
-      runId: string
-    }>()
+  test("streams events pushed after consumption starts in insertion order", async () => {
+    const queue = createEventQueue<RuntimeEvent>()
+    const events: RuntimeEvent["type"][] = []
+
+    const consume = (async () => {
+      for await (const event of queue.stream()) events.push(event.type)
+    })()
+
+    await Promise.resolve()
 
     queue.push({ type: "run.started", runId: "run_1" })
     queue.push({ type: "run.completed", runId: "run_1" })
     queue.close()
 
-    const events: string[] = []
-    for await (const event of queue.stream()) events.push(event.type)
+    await consume
 
     expect(events).toEqual(["run.started", "run.completed"])
+  })
+
+  test("throws when pushing after close", () => {
+    const queue = createEventQueue<RuntimeEvent>()
+
+    queue.close()
+
+    expect(() =>
+      queue.push({ type: "run.started", runId: "run_1" }),
+    ).toThrow("closed")
   })
 })
