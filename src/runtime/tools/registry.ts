@@ -1,7 +1,15 @@
 import type { ToolDefinition, ToolRegistry } from "./types"
 
 export function createToolRegistry(tools: ToolDefinition[]): ToolRegistry {
-  const byName = new Map(tools.map((tool) => [tool.name, tool]))
+  const byName = new Map<string, ToolDefinition>()
+
+  for (const tool of tools) {
+    if (byName.has(tool.name)) {
+      throw new Error(`Duplicate tool: ${tool.name}`)
+    }
+
+    byName.set(tool.name, tool)
+  }
 
   return {
     list() {

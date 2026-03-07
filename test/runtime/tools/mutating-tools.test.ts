@@ -32,6 +32,13 @@ describe("mutating tools", () => {
       workspaceRoot,
     })
 
+    const stateBeforePermission = await Promise.race([
+      pending.then(() => "settled", () => "settled"),
+      new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 0)),
+    ])
+
+    expect(stateBeforePermission).toBe("pending")
+
     permissions.resolve({ requestId: "permission_1", decision: "allow" })
     const result = await pending
 
@@ -68,5 +75,18 @@ describe("mutating tools", () => {
     const result = await pending
 
     expect(result.output).toContain("workspace")
+  })
+
+  test("rejects duplicate tool names in the registry", () => {
+    expect(() =>
+      createToolRegistry([
+        createWriteTool({
+          permissions: createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" }),
+        }),
+        createWriteTool({
+          permissions: createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" }),
+        }),
+      ]),
+    ).toThrow("Duplicate tool: write")
   })
 })
