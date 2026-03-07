@@ -4,17 +4,24 @@ import { z } from "zod"
 import type { ToolDefinition } from "./types"
 
 const SearchArgsSchema = z.object({
-  query: z.string(),
+  query: z.string().trim().min(1, "Query must not be empty"),
 })
+
+const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", ".worktrees"])
+const MAX_MATCHES = 20
 
 async function collectFiles(workspaceRoot: string, directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true })
   const files: string[] = []
 
-  for (const entry of entries) {
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     const entryPath = join(directory, entry.name)
 
     if (entry.isDirectory()) {
+      if (SKIPPED_DIRECTORIES.has(entry.name)) {
+        continue
+      }
+
       files.push(...(await collectFiles(workspaceRoot, entryPath)))
       continue
     }
@@ -44,6 +51,12 @@ export function createSearchTool(): ToolDefinition {
 
         for (const [index, line] of lines.entries()) {
           if (line.includes(query)) {
+            if (matches.length === MAX_MATCHES) {
+              return {
+                output: [...matches, `... truncated after ${MAX_MATCHES} matches`].join("\n"),
+              }
+            }
+
             matches.push(`${relativePath}:${index + 1}: ${line.trim()}`)
           }
         }
