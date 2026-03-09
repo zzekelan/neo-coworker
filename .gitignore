@@ -1,3 +1,4 @@
 docs/
 .worktrees/
 node_modules/
+.env
