@@ -1,14 +1,19 @@
+import { isTerminalRunStatus } from "../run"
 import type { Provider } from "../providers/types"
-import type { RuntimeEvent } from "../runtime/events"
 import type { PermissionDecision } from "../runtime/permissions"
-import type { RunHandle } from "../runtime/run-handle"
-import { createCliRuntime } from "../runtime/runtime"
+import type { ServerEvent } from "../server/events"
 import type { CliIO } from "./io"
-import { renderEvent } from "./render"
+import { createCliRenderState, renderServerEvent } from "./render"
+import {
+  createLocalCliServerClient,
+  type AgentServerClient,
+  type CliServerClientHandle,
+} from "./server-client"
 
 export type RunCommand = {
   command: "run"
   prompt: string
+  sessionId?: string
 }
 
 export function parseRunCommand(argv: string[]): RunCommand {
@@ -18,14 +23,53 @@ export function parseRunCommand(argv: string[]): RunCommand {
     throw new Error("Only `run` is supported in MVP")
   }
 
+  let sessionId: string | undefined
+  const promptParts: string[] = []
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const argument = rest[index]
+
+    if (!argument) {
+      continue
+    }
+
+    if (argument === "--session") {
+      const value = rest[index + 1]
+      if (!value) {
+        throw new Error("--session requires a value")
+      }
+
+      sessionId = value
+      index += 1
+      continue
+    }
+
+    if (argument.startsWith("--session=")) {
+      const value = argument.slice("--session=".length)
+      if (!value) {
+        throw new Error("--session requires a value")
+      }
+
+      sessionId = value
+      continue
+    }
+
+    if (argument.startsWith("--")) {
+      throw new Error(`Unknown option: ${argument}`)
+    }
+
+    promptParts.push(argument)
+  }
+
+  if (promptParts.length === 0) {
+    throw new Error("A prompt is required")
+  }
+
   return {
     command,
-    prompt: rest.join(" "),
+    prompt: promptParts.join(" "),
+    sessionId,
   }
-}
-
-type RuntimeLike = {
-  run(input: { prompt: string; cwd: string; workspaceRoot: string }): Promise<RunHandle>
 }
 
 export type RunCliInput = {
@@ -33,7 +77,7 @@ export type RunCliInput = {
   io: CliIO
   cwd?: string
   workspaceRoot?: string
-  runtime?: RuntimeLike
+  client?: AgentServerClient
   provider?: Provider
 }
 
@@ -43,55 +87,166 @@ function getPermissionDecision(answer: string): PermissionDecision {
 }
 
 async function handlePermissionEvent(
-  event: Extract<RuntimeEvent, { type: "permission.requested" }>,
-  handle: RunHandle,
+  event: Extract<ServerEvent, { type: "permission.requested" }>,
+  client: AgentServerClient,
   io: CliIO,
 ) {
-  const answer = await io.prompt(`Allow ${event.reason}? [y/N] `)
+  const answer = await io.prompt(`Allow ${event.permissionRequest.reason}? [y/N] `)
 
-  await handle.respondPermission({
-    requestId: event.requestId,
+  await client.replyPermission({
+    requestId: event.permissionRequest.id,
     decision: getPermissionDecision(answer),
   })
 }
 
-function resolveRuntime(input: RunCliInput): RuntimeLike {
-  if (input.runtime) {
-    return input.runtime
+async function resolveClient(input: RunCliInput, workspaceRoot: string): Promise<CliServerClientHandle> {
+  if (input.client) {
+    return {
+      client: input.client,
+      async close() {},
+    }
   }
 
   if (input.provider) {
-    return createCliRuntime({ provider: input.provider })
+    return createLocalCliServerClient({
+      provider: input.provider,
+      workspaceRoot,
+    })
   }
 
-  throw new Error("runCli requires either a runtime or provider")
+  throw new Error("runCli requires either a server client or provider")
 }
 
 export async function runCli(input: RunCliInput) {
   const command = parseRunCommand(input.argv)
   const cwd = input.cwd ?? process.cwd()
   const workspaceRoot = input.workspaceRoot ?? cwd
-  const runtime = resolveRuntime(input)
-  const handle = await runtime.run({
-    prompt: command.prompt,
-    cwd,
-    workspaceRoot,
-  })
+  const clientHandle = await resolveClient(input, workspaceRoot)
+  const renderState = createCliRenderState()
+  let activeRunId: string | null = null
+  let cancelRequested = false
+
   const cleanupSigint =
     input.io.onSigint?.(() => {
-      void handle.cancel()
+      if (!activeRunId) {
+        cancelRequested = true
+        return
+      }
+
+      void clientHandle.client.cancelRun(activeRunId)
     }) ?? undefined
 
   try {
-    for await (const event of handle.events) {
-      input.io.write(renderEvent(event))
+    const sessionId =
+      command.sessionId ??
+      (await clientHandle.client.createSession({
+        directory: cwd,
+        workspaceRoot,
+      })).id
 
-      if (event.type === "permission.requested") {
-        await handlePermissionEvent(event, handle, input.io)
+    if (!command.sessionId) {
+      input.io.write(`session.created ${sessionId}\n`)
+    }
+
+    const subscription = await clientHandle.client.subscribe()
+
+    try {
+      const started = await clientHandle.client.startRun({
+        sessionId,
+        prompt: command.prompt,
+        trigger: "cli",
+      })
+      activeRunId = started.run.id
+
+      if (command.sessionId) {
+        input.io.write(`session.selected ${sessionId}\n`)
       }
+
+      if (cancelRequested) {
+        cancelRequested = false
+        await clientHandle.client.cancelRun(activeRunId)
+      }
+
+      let terminalStatus: ReturnType<typeof extractTerminalRunStatus>["status"] = null
+      let terminalError: string | null = null
+
+      for await (const event of subscription.events) {
+        if (!isActiveRunEvent(event, activeRunId)) {
+          continue
+        }
+
+        const rendered = renderServerEvent(renderState, event)
+        if (rendered) {
+          input.io.write(rendered)
+        }
+
+        if (event.type === "permission.requested") {
+          await handlePermissionEvent(event, clientHandle.client, input.io)
+        }
+
+        const terminal = extractTerminalRunStatus(event)
+        if (terminal.status) {
+          terminalStatus = terminal.status
+          terminalError = terminal.error
+          break
+        }
+      }
+
+      if (terminalStatus == null) {
+        const currentRun = await clientHandle.client.getRun(activeRunId)
+
+        if (!isTerminalRunStatus(currentRun.run.status)) {
+          throw new Error(`Run ${activeRunId} ended without reaching a terminal state`)
+        }
+
+        terminalStatus = currentRun.run.status
+        terminalError = currentRun.run.errorText
+      }
+
+      if (terminalStatus === "failed") {
+        throw new Error(terminalError ?? `Run ${activeRunId} failed`)
+      }
+    } finally {
+      await subscription.close()
     }
   } finally {
     cleanupSigint?.()
+    await clientHandle.close()
     input.io.close?.()
   }
+}
+
+function isActiveRunEvent(event: ServerEvent, runId: string) {
+  switch (event.type) {
+    case "heartbeat":
+    case "session.created":
+    case "session.updated":
+      return false
+    case "run.created":
+    case "run.updated":
+      return event.run.id === runId
+    case "message.created":
+      return event.message.runId === runId
+    case "message.part.updated":
+      return event.part.runId === runId
+    case "permission.requested":
+    case "permission.updated":
+      return event.permissionRequest.runId === runId
+    case "runtime.error":
+      return event.runId === runId
+  }
+}
+
+function extractTerminalRunStatus(event: ServerEvent) {
+  if (event.type !== "run.updated" || !isTerminalRunStatus(event.run.status)) {
+    return {
+      status: null,
+      error: null,
+    } as const
+  }
+
+  return {
+    status: event.run.status,
+    error: event.run.errorText,
+  } as const
 }

@@ -10,6 +10,15 @@ describe("bootstrap", () => {
     })
   })
 
+  test("parses an existing session target for the run command", () => {
+    const cli = buildCli()
+    expect(cli.parse(["run", "--session", "session_123", "hello again"])).toEqual({
+      command: "run",
+      prompt: "hello again",
+      sessionId: "session_123",
+    })
+  })
+
   test("validates argv before requiring default provider configuration", async () => {
     const cli = buildCli()
 

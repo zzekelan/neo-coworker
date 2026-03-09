@@ -1,22 +1,126 @@
-import type { RuntimeEvent } from "../runtime/events"
+import type { ServerEvent } from "../server/events"
+import type { StoredRun } from "../storage"
 
-export function renderEvent(event: RuntimeEvent) {
-  switch (event.type) {
-    case "run.started":
-      return `run.started ${event.runId}\n`
-    case "message.started":
-      return `message.started ${event.role}\n`
-    case "message.delta":
-      return event.text
-    case "permission.requested":
-      return `permission.requested ${event.toolName} ${event.reason}\n`
-    case "tool.call.completed":
-      return `tool.call.completed ${event.name}: ${event.output}\n`
-    case "run.completed":
-      return `run.completed ${event.runId}\n`
-    case "run.failed":
-      return `run.failed ${event.error}\n`
-    case "run.cancelled":
-      return `run.cancelled ${event.runId}\n`
+type StoredMessageRole = "user" | "assistant" | "tool"
+
+export type CliRenderState = {
+  lastRunStatus: StoredRun["status"] | null
+  messageRoles: Map<string, StoredMessageRole>
+  printedTextByPartId: Map<string, string>
+  renderedPartIds: Set<string>
+}
+
+export function createCliRenderState(): CliRenderState {
+  return {
+    lastRunStatus: null,
+    messageRoles: new Map<string, StoredMessageRole>(),
+    printedTextByPartId: new Map<string, string>(),
+    renderedPartIds: new Set<string>(),
   }
+}
+
+export function renderServerEvent(state: CliRenderState, event: ServerEvent) {
+  switch (event.type) {
+    case "heartbeat":
+    case "session.created":
+    case "session.updated":
+    case "permission.updated":
+    case "runtime.error":
+    case "run.created":
+      return ""
+    case "run.updated":
+      return renderRunStatus(state, event.run)
+    case "message.created":
+      state.messageRoles.set(event.message.id, event.message.role)
+      return event.message.role === "assistant" ? "message.started assistant\n" : ""
+    case "message.part.updated":
+      return renderAssistantPart(state, event)
+    case "permission.requested":
+      return `permission.requested ${event.permissionRequest.toolName} ${event.permissionRequest.reason}\n`
+  }
+}
+
+function renderRunStatus(state: CliRenderState, run: StoredRun) {
+  if (state.lastRunStatus === run.status) {
+    return ""
+  }
+
+  state.lastRunStatus = run.status
+
+  switch (run.status) {
+    case "queued":
+      return ""
+    case "running":
+      return `run.started ${run.id}\n`
+    case "completed":
+      return `run.completed ${run.id}\n`
+    case "failed":
+      return `run.failed ${run.errorText ?? `run ${run.id} failed`}\n`
+    case "cancelled":
+      return `run.cancelled ${run.id}\n`
+    case "waiting_permission":
+      return ""
+  }
+}
+
+function renderAssistantPart(
+  state: CliRenderState,
+  event: Extract<ServerEvent, { type: "message.part.updated" }>,
+) {
+  if (state.messageRoles.get(event.part.messageId) !== "assistant") {
+    return ""
+  }
+
+  if (event.part.kind === "text") {
+    return renderTextPart(state, event.part.id, event.part.text)
+  }
+
+  if (state.renderedPartIds.has(event.part.id)) {
+    return ""
+  }
+
+  state.renderedPartIds.add(event.part.id)
+
+  switch (event.part.kind) {
+    case "tool_call": {
+      const toolName = getObjectStringValue(event.part.data, "toolName") ?? "unknown"
+      const inputText = getObjectStringValue(event.part.data, "inputText") ?? ""
+      return `tool.call ${toolName}: ${inputText}\n`
+    }
+    case "tool_result": {
+      const toolName = getObjectStringValue(event.part.data, "toolName") ?? "unknown"
+      return `tool.call.completed ${toolName}: ${event.part.text ?? ""}\n`
+    }
+    case "error":
+      return `error ${event.part.text ?? "unknown error"}\n`
+    case "reasoning":
+    case "step_start":
+    case "step_finish":
+    case "patch":
+      return event.part.text ? `${event.part.kind} ${event.part.text}\n` : ""
+  }
+}
+
+function renderTextPart(state: CliRenderState, partId: string, text: string | null) {
+  if (!text) {
+    return ""
+  }
+
+  const previousText = state.printedTextByPartId.get(partId) ?? ""
+  state.printedTextByPartId.set(partId, text)
+
+  if (text.startsWith(previousText)) {
+    return text.slice(previousText.length)
+  }
+
+  return text
+}
+
+function getObjectStringValue(value: unknown, key: string) {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const candidate = (value as Record<string, unknown>)[key]
+  return typeof candidate === "string" ? candidate : null
 }
