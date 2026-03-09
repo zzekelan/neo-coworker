@@ -12,6 +12,9 @@ export type PartKind = (typeof PART_KINDS)[number]
 export type PermissionStatus = (typeof PERMISSION_STATUSES)[number]
 export type RunTrigger = "cli"
 
+const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_permission"] as const
+const activeRunStatusCheck = ACTIVE_RUN_STATUSES.map((status) => `'${status}'`).join(", ")
+
 type EntityType = "session" | "run" | "message" | "part" | "permission_request"
 type IdPrefix = "session" | "run" | "message" | "part" | "permission"
 
@@ -252,6 +255,13 @@ export class StorageOwnershipError extends StorageRepositoryError {
   }
 }
 
+export class StorageConflictError extends StorageRepositoryError {
+  constructor(message: string) {
+    super(message)
+    this.name = "StorageConflictError"
+  }
+}
+
 export type StorageRepository = ReturnType<typeof createStorageRepository>
 
 export function createStorageRepository(input: {
@@ -280,6 +290,47 @@ export function createStorageRepository(input: {
         "SELECT id, session_id, trigger, status, created_at, started_at, finished_at, error_text FROM run WHERE id = ?",
       )
       .get(runId) as RunRow | null
+  }
+
+  function listRunRowsBySession(sessionId: string) {
+    return database
+      .query(
+        `
+          SELECT id, session_id, trigger, status, created_at, started_at, finished_at, error_text
+          FROM run
+          WHERE session_id = ?
+          ORDER BY created_at ASC, id ASC
+        `,
+      )
+      .all(sessionId) as RunRow[]
+  }
+
+  function getLatestRunRowBySession(sessionId: string) {
+    return database
+      .query(
+        `
+          SELECT id, session_id, trigger, status, created_at, started_at, finished_at, error_text
+          FROM run
+          WHERE session_id = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+        `,
+      )
+      .get(sessionId) as RunRow | null
+  }
+
+  function getActiveRunRowBySession(sessionId: string) {
+    return database
+      .query(
+        `
+          SELECT id, session_id, trigger, status, created_at, started_at, finished_at, error_text
+          FROM run
+          WHERE session_id = ? AND status IN (${activeRunStatusCheck})
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+        `,
+      )
+      .get(sessionId) as RunRow | null
   }
 
   function getMessageRow(messageId: string) {
@@ -434,6 +485,20 @@ export function createStorageRepository(input: {
     },
     get(runId: string) {
       return requireRun(runId)
+    },
+    listBySession(sessionId: string) {
+      requireSession(sessionId)
+      return listRunRowsBySession(sessionId).map(mapRunRow)
+    },
+    getLatestBySession(sessionId: string) {
+      requireSession(sessionId)
+      const row = getLatestRunRowBySession(sessionId)
+      return row ? mapRunRow(row) : null
+    },
+    getActiveBySession(sessionId: string) {
+      requireSession(sessionId)
+      const row = getActiveRunRowBySession(sessionId)
+      return row ? mapRunRow(row) : null
     },
     updateStatus(update: UpdateRunStatusInput) {
       const current = requireRun(update.runId)
@@ -719,6 +784,39 @@ export function createStorageRepository(input: {
     },
   )
 
+  const createQueuedRunWithInitiatingMessageTransaction = database.transaction(
+    (value: CreateRunWithInitiatingMessageInput) => {
+      const nextStatus = value.run.status ?? "queued"
+      if (nextStatus !== "queued") {
+        throw new StorageRepositoryError(
+          "createQueuedRunWithInitiatingMessage requires queued run status",
+        )
+      }
+
+      const activeRun = getActiveRunRowBySession(value.run.sessionId)
+      if (activeRun) {
+        throw new StorageConflictError(
+          `Session ${value.run.sessionId} already has active run ${activeRun.id}`,
+        )
+      }
+
+      const run = runs.create({
+        ...value.run,
+        status: "queued",
+      })
+      const message = messages.create({
+        id: value.message.id,
+        sessionId: run.sessionId,
+        runId: run.id,
+        role: "user",
+        sequence: value.message.sequence ?? 0,
+        createdAt: value.message.createdAt,
+      })
+
+      return { run, message }
+    },
+  )
+
   const createAssistantMessageWithFirstPartTransaction = database.transaction(
     (value: CreateAssistantMessageWithFirstPartInput) => {
       const message = messages.create({
@@ -767,6 +865,9 @@ export function createStorageRepository(input: {
     permissionRequests,
     createRunWithInitiatingMessage(input: CreateRunWithInitiatingMessageInput) {
       return createRunWithInitiatingMessageTransaction(input)
+    },
+    createQueuedRunWithInitiatingMessage(input: CreateRunWithInitiatingMessageInput) {
+      return createQueuedRunWithInitiatingMessageTransaction(input)
     },
     createAssistantMessageWithFirstPart(input: CreateAssistantMessageWithFirstPartInput) {
       return createAssistantMessageWithFirstPartTransaction(input)

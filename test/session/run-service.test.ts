@@ -1,0 +1,341 @@
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
+import { InvalidRunStatusTransitionError } from "../../src/run"
+import { SessionBusyError, createSessionRunService } from "../../src/session"
+import { createStorageRepository, openStorageDatabase } from "../../src/storage"
+
+const tempDirectories: string[] = []
+const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
+
+afterEach(() => {
+  while (openDatabases.length > 0) {
+    openDatabases.pop()?.close(false)
+  }
+
+  while (tempDirectories.length > 0) {
+    rmSync(tempDirectories.pop()!, { force: true, recursive: true })
+  }
+})
+
+describe("session run service", () => {
+  test("supports the valid run lifecycle and derives session busy or idle state", () => {
+    const { repository, service } = createTestSubject("valid-lifecycle", [11, 22, 33])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    const created = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    expect(created.run).toMatchObject({
+      id: "run_1",
+      sessionId: session.id,
+      status: "queued",
+      startedAt: null,
+      finishedAt: null,
+    })
+    expect(created.message).toMatchObject({
+      id: "message_1",
+      sessionId: session.id,
+      runId: "run_1",
+      role: "user",
+      sequence: 0,
+    })
+    expect(service.getSessionState(session.id)).toMatchObject({
+      status: "busy",
+      latestRun: { id: "run_1", status: "queued" },
+      activeRun: { id: "run_1", status: "queued" },
+    })
+
+    const running = service.transitionRunToRunning("run_1")
+    expect(running).toMatchObject({
+      id: "run_1",
+      status: "running",
+      startedAt: 11,
+      finishedAt: null,
+    })
+
+    const paused = service.requestPermission({
+      runId: "run_1",
+      permissionRequest: {
+        id: "permission_1",
+        toolName: "shell",
+        reason: "Need to inspect the worktree",
+        createdAt: 4,
+      },
+    })
+    expect(paused.run.status).toBe("waiting_permission")
+    expect(paused.permissionRequest).toMatchObject({
+      id: "permission_1",
+      status: "pending",
+      resolvedAt: null,
+    })
+
+    const resumed = service.resumeRun("run_1")
+    expect(resumed.status).toBe("running")
+    expect(resumed.startedAt).toBe(11)
+
+    const completed = service.completeRun("run_1")
+    expect(completed).toMatchObject({
+      id: "run_1",
+      status: "completed",
+      startedAt: 11,
+      finishedAt: 22,
+      errorText: null,
+    })
+    expect(service.getSessionState(session.id)).toMatchObject({
+      status: "idle",
+      latestRun: { id: "run_1", status: "completed" },
+      activeRun: null,
+    })
+  })
+
+  test("rejects illegal run status transitions with explicit errors", () => {
+    const { repository, service } = createTestSubject("illegal-transitions", [11])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    expect(() => service.completeRun("run_1")).toThrow(InvalidRunStatusTransitionError)
+
+    try {
+      service.completeRun("run_1")
+      throw new Error("expected transition to fail")
+    } catch (error) {
+      expect(error).toBeInstanceOf(InvalidRunStatusTransitionError)
+      expect(error).toMatchObject({
+        runId: "run_1",
+        fromStatus: "queued",
+        toStatus: "completed",
+      })
+    }
+  })
+
+  test("rejects a second active run in the same session and creates a new run after completion", () => {
+    const { repository, service } = createTestSubject("active-run-guard", [11, 22])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    const first = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    expect(() =>
+      service.startRun({
+        sessionId: session.id,
+        runId: "run_2",
+        messageId: "message_2",
+        createdAt: 4,
+        messageCreatedAt: 5,
+      }),
+    ).toThrow(SessionBusyError)
+
+    service.transitionRunToRunning(first.run.id)
+    service.completeRun(first.run.id)
+
+    const second = service.startRun({
+      sessionId: session.id,
+      runId: "run_2",
+      messageId: "message_2",
+      createdAt: 6,
+      messageCreatedAt: 7,
+    })
+
+    expect(second.run.id).toBe("run_2")
+    expect(second.run.id).not.toBe(first.run.id)
+    expect(repository.messages.listSessionTranscript(session.id).map((message) => message.runId)).toEqual([
+      "run_1",
+      "run_2",
+    ])
+    expect(service.getSessionState(session.id)).toMatchObject({
+      status: "busy",
+      latestRun: { id: "run_2" },
+      activeRun: { id: "run_2" },
+    })
+  })
+
+  test("retry creates a new run and keeps the original initiating context addressable", () => {
+    const { repository, service } = createTestSubject("retry", [11, 22, 33])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    const first = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    service.transitionRunToRunning(first.run.id)
+    service.failRun({
+      runId: first.run.id,
+      errorText: "provider exploded",
+    })
+
+    const retry = service.retryRun({
+      sessionId: session.id,
+      sourceRunId: first.run.id,
+      runId: "run_2",
+      messageId: "message_2",
+      createdAt: 4,
+      messageCreatedAt: 5,
+    })
+
+    expect(retry.run).toMatchObject({
+      id: "run_2",
+      sessionId: session.id,
+      status: "queued",
+    })
+    expect(retry.message).toMatchObject({
+      id: "message_2",
+      runId: "run_2",
+      role: "user",
+    })
+    expect(retry.sourceRun).toMatchObject({
+      id: "run_1",
+      sessionId: session.id,
+      status: "failed",
+      errorText: "provider exploded",
+    })
+    expect(retry.sourceInitiatingMessage).toMatchObject({
+      id: "message_1",
+      runId: "run_1",
+      role: "user",
+      sequence: 0,
+    })
+    expect(repository.runs.get("run_1")).toMatchObject({
+      id: "run_1",
+      status: "failed",
+      errorText: "provider exploded",
+    })
+    expect(service.getSessionState(session.id)).toMatchObject({
+      status: "busy",
+      latestRun: { id: "run_2", status: "queued" },
+      activeRun: { id: "run_2", status: "queued" },
+    })
+  })
+
+  test("cancelled runs remain terminal and the session can be reused", () => {
+    const { repository, service } = createTestSubject("cancelled-terminal", [11, 22, 33])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    const first = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    service.transitionRunToRunning(first.run.id)
+    service.requestPermission({
+      runId: first.run.id,
+      permissionRequest: {
+        id: "permission_1",
+        toolName: "shell",
+        reason: "Need approval",
+        createdAt: 4,
+      },
+    })
+
+    const cancelled = service.cancelRun(first.run.id)
+    expect(cancelled).toMatchObject({
+      id: "run_1",
+      status: "cancelled",
+      finishedAt: 22,
+    })
+
+    expect(() => service.resumeRun(first.run.id)).toThrow(InvalidRunStatusTransitionError)
+    expect(() => service.completeRun(first.run.id)).toThrow(InvalidRunStatusTransitionError)
+
+    const next = service.startRun({
+      sessionId: session.id,
+      runId: "run_2",
+      messageId: "message_2",
+      createdAt: 5,
+      messageCreatedAt: 6,
+    })
+
+    expect(next.run).toMatchObject({
+      id: "run_2",
+      status: "queued",
+    })
+  })
+})
+
+function createTestSubject(prefix: string, nowValues: number[]) {
+  const database = openStorageDatabase(createDatabasePath(prefix))
+  trackDatabase(database)
+
+  const repository = createStorageRepository({
+    database,
+    now: () => {
+      const value = nowValues.shift()
+      if (value === undefined) {
+        throw new Error("No timestamp left for repository.now()")
+      }
+      return value
+    },
+  })
+
+  return {
+    repository,
+    service: createSessionRunService({
+      repository,
+      now: () => {
+        const value = nowValues.shift()
+        if (value === undefined) {
+          throw new Error("No timestamp left for service.now()")
+        }
+        return value
+      },
+    }),
+  }
+}
+
+function createDatabasePath(prefix: string) {
+  const directory = mkdtempSync(join(tmpdir(), `neo-coworker-${prefix}-`))
+  tempDirectories.push(directory)
+  return join(directory, "agent.sqlite")
+}
+
+function trackDatabase<T extends { close: (throwOnError: boolean) => void }>(database: T) {
+  openDatabases.push(database)
+  return database
+}

@@ -3,6 +3,7 @@ export {
   type StorageDatabase,
 } from "./db"
 export {
+  StorageConflictError,
   StorageNotFoundError,
   StorageOwnershipError,
   StorageRepositoryError,
