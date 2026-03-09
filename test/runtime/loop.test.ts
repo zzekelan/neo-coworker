@@ -185,6 +185,107 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
+  test("reconstructs mixed text and multiple tool calls from one provider turn before the next turn", async () => {
+    const harness = await createHarness("mixed-turn", true)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_mixed_turn",
+      messageId: "message_mixed_turn_user",
+      prompt: "Inspect README.md and search for fixture references",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Open README first." }
+          yield {
+            type: "tool.call",
+            callId: "call_read",
+            name: "read",
+            inputText: '{"path":"README.md"}',
+          }
+          yield { type: "text.delta", text: "Search for fixture next." }
+          yield {
+            type: "tool.call",
+            callId: "call_search",
+            name: "search",
+            inputText: '{"query":"fixture"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Mixed turn complete." }
+        },
+      ]),
+      repository: harness.repository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(requests).toHaveLength(2)
+    expect(requests[1]?.messages.slice(-3)[0]).toEqual({
+      role: "assistant",
+      parts: [
+        { type: "text", text: "Open README first." },
+        {
+          type: "tool_call",
+          callId: "call_read",
+          toolName: "read",
+          inputText: '{"path":"README.md"}',
+        },
+        { type: "text", text: "Search for fixture next." },
+        {
+          type: "tool_call",
+          callId: "call_search",
+          toolName: "search",
+          inputText: '{"query":"fixture"}',
+        },
+      ],
+    })
+    expect(requests[1]?.messages.slice(-3)[1]).toEqual({
+      role: "tool",
+      parts: [
+        {
+          type: "tool_result",
+          callId: "call_read",
+          toolName: "read",
+          output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+        },
+      ],
+    })
+    expect(requests[1]?.messages.slice(-3)[2]).toMatchObject({
+      role: "tool",
+      parts: [
+        {
+          type: "tool_result",
+          callId: "call_search",
+          toolName: "search",
+          output: expect.stringContaining(
+            "README.md:3: This fixture exists for the read-only tool tests.",
+          ),
+        },
+      ],
+    })
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
+      "text",
+      "tool_call",
+      "tool_result",
+      "text",
+      "tool_call",
+      "tool_result",
+    ])
+    expect(events.filter((event) => event.type === "tool.call.completed")).toHaveLength(2)
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
   test("persists malformed tool arguments as an error outcome and continues the run", async () => {
     const harness = await createHarness("tool-error", false)
     const started = startPromptRun({
@@ -253,6 +354,110 @@ describe("agent loop", () => {
       kind: "error",
       text: expect.stringContaining("Malformed tool arguments for read"),
     })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
+  test("continues after permission denial and roundtrips the tool error into the next turn", async () => {
+    const harness = await createHarness("permission-denied", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_permission_denied",
+      messageId: "message_permission_denied_user",
+      prompt: "Try to write notes.txt and recover",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Trying to write notes.txt." }
+          yield {
+            type: "tool.call",
+            callId: "call_write",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Permission denial handled." }
+        },
+      ]),
+      repository: harness.repository,
+      now: harness.now,
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = []
+    for await (const event of handle.events) {
+      events.push(event)
+
+      if (event.type === "permission.requested") {
+        await handle.respondPermission({
+          requestId: event.requestId,
+          decision: "deny",
+        })
+      }
+    }
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const permissionRequests = harness.repository.permissionRequests.listByRun(started.run.id)
+
+    expect(requests).toHaveLength(2)
+    expect(requests[1]?.messages.slice(-2)).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Trying to write notes.txt." },
+          {
+            type: "tool_call",
+            callId: "call_write",
+            toolName: "write",
+            inputText: '{"path":"notes.txt","content":"hello"}',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_write",
+            toolName: "write",
+            output: "Error: Tool write failed: Permission denied",
+            isError: true,
+          },
+        ],
+      },
+    ])
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "error"])
+    expect(activeRunMessages[1]?.parts[2]).toMatchObject({
+      kind: "error",
+      text: "Tool write failed: Permission denied",
+      data: {
+        source: "tool",
+        callId: "call_write",
+        toolName: "write",
+      },
+    })
+    expect(activeRunMessages[2]?.parts).toMatchObject([
+      { kind: "text", text: "Permission denial handled." },
+    ])
+    expect(permissionRequests).toMatchObject([
+      {
+        toolName: "write",
+        status: "denied",
+      },
+    ])
+    expect(events.map((event) => event.type)).toContain("permission.requested")
+    expect(events.map((event) => event.type)).not.toContain("tool.call.completed")
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
