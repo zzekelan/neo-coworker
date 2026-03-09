@@ -1,10 +1,10 @@
 import type { ServerEvent } from "../server/events"
-import type { StoredRun } from "../storage"
+import type { StoredMessage, StoredRun } from "../storage"
 
-type StoredMessageRole = "user" | "assistant" | "tool"
+type StoredMessageRole = StoredMessage["role"]
 
 export type CliRenderState = {
-  lastRunStatus: StoredRun["status"] | null
+  renderedRunStatuses: Map<string, Set<StoredRun["status"]>>
   messageRoles: Map<string, StoredMessageRole>
   printedTextByPartId: Map<string, string>
   renderedPartIds: Set<string>
@@ -12,7 +12,7 @@ export type CliRenderState = {
 
 export function createCliRenderState(): CliRenderState {
   return {
-    lastRunStatus: null,
+    renderedRunStatuses: new Map<string, Set<StoredRun["status"]>>(),
     messageRoles: new Map<string, StoredMessageRole>(),
     printedTextByPartId: new Map<string, string>(),
     renderedPartIds: new Set<string>(),
@@ -41,11 +41,17 @@ export function renderServerEvent(state: CliRenderState, event: ServerEvent) {
 }
 
 function renderRunStatus(state: CliRenderState, run: StoredRun) {
-  if (state.lastRunStatus === run.status) {
+  let renderedStatuses = state.renderedRunStatuses.get(run.id)
+  if (!renderedStatuses) {
+    renderedStatuses = new Set<StoredRun["status"]>()
+    state.renderedRunStatuses.set(run.id, renderedStatuses)
+  }
+
+  if (renderedStatuses.has(run.status)) {
     return ""
   }
 
-  state.lastRunStatus = run.status
+  renderedStatuses.add(run.status)
 
   switch (run.status) {
     case "queued":

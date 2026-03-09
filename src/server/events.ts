@@ -33,7 +33,11 @@ export type ServerEventPayload =
       part: StoredPart
     }
   | {
-      type: "permission.requested" | "permission.updated"
+      type: "permission.requested"
+      permissionRequest: StoredPermissionRequest
+    }
+  | {
+      type: "permission.updated"
       permissionRequest: StoredPermissionRequest
     }
   | {

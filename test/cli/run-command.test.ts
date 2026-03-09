@@ -152,6 +152,7 @@ describe("run command", () => {
     expect(output.join("")).toContain("tool.call write:")
     expect(output.join("")).toContain("tool.call.completed write: Wrote notes.txt")
     expect(output.join("")).toContain("Write finished.")
+    expect(countOccurrences(output.join(""), "run.started")).toBe(1)
   })
 
   test("cancels the active run through the server and exits after cancellation", async () => {
@@ -196,6 +197,58 @@ describe("run command", () => {
     expect(run.status).toBe("cancelled")
     expect(output.join("")).toContain("Still working...")
     expect(output.join("")).toContain(`run.cancelled ${run.id}`)
+  })
+
+  test("does not leave an unhandled rejection when SIGINT is received more than once", async () => {
+    const harness = await createHarness("cli-run-double-cancel", createTurnProvider([
+      async function* (request) {
+        yield { type: "text.delta", text: "Still working..." }
+        await waitForAbort(request.signal)
+      },
+    ]))
+    const output: string[] = []
+    const unhandledRejections: string[] = []
+    const handleUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason instanceof Error ? reason.message : String(reason))
+    }
+    let sigintHandler: (() => void) | undefined
+    let releaseStarted!: () => void
+    const runStarted = new Promise<void>((resolve) => {
+      releaseStarted = resolve
+    })
+
+    process.on("unhandledRejection", handleUnhandledRejection)
+
+    try {
+      const runPromise = runCli({
+        argv: ["run", "Keep going"],
+        cwd: harness.workspaceRoot,
+        workspaceRoot: harness.workspaceRoot,
+        client: harness.client,
+        io: createIo(output, [], {
+          onWrite(text) {
+            if (text.includes("run.started")) {
+              releaseStarted()
+            }
+          },
+          onSigint(listener) {
+            sigintHandler = listener
+          },
+        }),
+      })
+
+      await runStarted
+      sigintHandler?.()
+      sigintHandler?.()
+      await runPromise
+      await Bun.sleep(0)
+    } finally {
+      process.off("unhandledRejection", handleUnhandledRejection)
+    }
+
+    expect(unhandledRejections).toEqual([])
+    expect(output.join("")).toContain("Still working...")
+    expect(countOccurrences(output.join(""), "run.cancelled")).toBe(1)
   })
 
   test("exits cleanly once the run reaches a terminal state", async () => {
@@ -311,4 +364,8 @@ async function waitForAbort(signal: AbortSignal) {
   await new Promise<void>((resolve) => {
     signal.addEventListener("abort", () => resolve(), { once: true })
   })
+}
+
+function countOccurrences(text: string, token: string) {
+  return text.split(token).length - 1
 }

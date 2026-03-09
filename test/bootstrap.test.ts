@@ -19,6 +19,22 @@ describe("bootstrap", () => {
     })
   })
 
+  test("allows prompt tokens that start with -- after prompt text begins", () => {
+    const cli = buildCli()
+    expect(cli.parse(["run", "Explain", "--help", "output"])).toEqual({
+      command: "run",
+      prompt: "Explain --help output",
+    })
+  })
+
+  test("supports -- as the option terminator for prompt text", () => {
+    const cli = buildCli()
+    expect(cli.parse(["run", "--", "--help", "output"])).toEqual({
+      command: "run",
+      prompt: "--help output",
+    })
+  })
+
   test("validates argv before requiring default provider configuration", async () => {
     const cli = buildCli()
 

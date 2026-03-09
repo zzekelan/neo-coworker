@@ -5,6 +5,7 @@ import type { ServerEvent } from "../server/events"
 import type { CliIO } from "./io"
 import { createCliRenderState, renderServerEvent } from "./render"
 import {
+  AgentServerClientError,
   createLocalCliServerClient,
   type AgentServerClient,
   type CliServerClientHandle,
@@ -25,6 +26,7 @@ export function parseRunCommand(argv: string[]): RunCommand {
 
   let sessionId: string | undefined
   const promptParts: string[] = []
+  let parsingOptions = true
 
   for (let index = 0; index < rest.length; index += 1) {
     const argument = rest[index]
@@ -33,7 +35,12 @@ export function parseRunCommand(argv: string[]): RunCommand {
       continue
     }
 
-    if (argument === "--session") {
+    if (parsingOptions && argument === "--") {
+      parsingOptions = false
+      continue
+    }
+
+    if (parsingOptions && argument === "--session") {
       const value = rest[index + 1]
       if (!value) {
         throw new Error("--session requires a value")
@@ -44,7 +51,7 @@ export function parseRunCommand(argv: string[]): RunCommand {
       continue
     }
 
-    if (argument.startsWith("--session=")) {
+    if (parsingOptions && argument.startsWith("--session=")) {
       const value = argument.slice("--session=".length)
       if (!value) {
         throw new Error("--session requires a value")
@@ -54,10 +61,7 @@ export function parseRunCommand(argv: string[]): RunCommand {
       continue
     }
 
-    if (argument.startsWith("--")) {
-      throw new Error(`Unknown option: ${argument}`)
-    }
-
+    parsingOptions = false
     promptParts.push(argument)
   }
 
@@ -86,8 +90,18 @@ function getPermissionDecision(answer: string): PermissionDecision {
   return normalized === "y" || normalized === "yes" ? "allow" : "deny"
 }
 
+type PermissionRequestedServerEvent = {
+  id: string
+  time: number
+  type: "permission.requested"
+  permissionRequest: {
+    id: string
+    reason: string
+  }
+}
+
 async function handlePermissionEvent(
-  event: Extract<ServerEvent, { type: "permission.requested" }>,
+  event: PermissionRequestedServerEvent,
   client: AgentServerClient,
   io: CliIO,
 ) {
@@ -125,6 +139,26 @@ export async function runCli(input: RunCliInput) {
   const renderState = createCliRenderState()
   let activeRunId: string | null = null
   let cancelRequested = false
+  let cancelDispatched = false
+  let cancelError: unknown = null
+
+  async function requestCancel(runId: string) {
+    if (cancelDispatched) {
+      return
+    }
+
+    cancelDispatched = true
+
+    try {
+      await clientHandle.client.cancelRun(runId)
+    } catch (error) {
+      if (isIgnorableCancelError(error)) {
+        return
+      }
+
+      cancelError = error
+    }
+  }
 
   const cleanupSigint =
     input.io.onSigint?.(() => {
@@ -133,7 +167,7 @@ export async function runCli(input: RunCliInput) {
         return
       }
 
-      void clientHandle.client.cancelRun(activeRunId)
+      void requestCancel(activeRunId)
     }) ?? undefined
 
   try {
@@ -157,6 +191,8 @@ export async function runCli(input: RunCliInput) {
         trigger: "cli",
       })
       activeRunId = started.run.id
+      cancelDispatched = false
+      cancelError = null
 
       if (command.sessionId) {
         input.io.write(`session.selected ${sessionId}\n`)
@@ -164,7 +200,7 @@ export async function runCli(input: RunCliInput) {
 
       if (cancelRequested) {
         cancelRequested = false
-        await clientHandle.client.cancelRun(activeRunId)
+        await requestCancel(activeRunId)
       }
 
       let terminalStatus: ReturnType<typeof extractTerminalRunStatus>["status"] = null
@@ -206,6 +242,10 @@ export async function runCli(input: RunCliInput) {
       if (terminalStatus === "failed") {
         throw new Error(terminalError ?? `Run ${activeRunId} failed`)
       }
+
+      if (cancelError) {
+        throw cancelError
+      }
     } finally {
       await subscription.close()
     }
@@ -214,6 +254,10 @@ export async function runCli(input: RunCliInput) {
     await clientHandle.close()
     input.io.close?.()
   }
+}
+
+function isIgnorableCancelError(error: unknown) {
+  return error instanceof AgentServerClientError && error.code === "invalid_state"
 }
 
 function isActiveRunEvent(event: ServerEvent, runId: string) {
