@@ -1,4 +1,5 @@
 import OpenAI from "openai"
+import { createAgentServerClient } from "./cli/server-client"
 import { createStdioCliIo } from "./cli/io"
 import { parseRunCommand, runCli } from "./cli/run-command"
 import { createOpenAIProvider } from "./providers/openai"
@@ -31,6 +32,7 @@ type BuildCliInput = {
   createClient?: (config: OpenAIClientConfig) => OpenAI
   createOpenAIProviderImpl?: typeof createOpenAIProvider
   createOpenAICompatibleProviderImpl?: OpenAICompatibleProviderFactory
+  createAgentServerClientImpl?: typeof createAgentServerClient
   createIo?: typeof createStdioCliIo
   runCliImpl?: typeof runCli
 }
@@ -71,6 +73,28 @@ function parseTimeout(value: string | undefined) {
   }
 
   return Number.parseInt(value, 10)
+}
+
+export function resolveAgentServerOrigin(
+  env: Record<string, string | undefined> = process.env,
+) {
+  const value = readEnvValue(env, "AGENT_SERVER_URL")
+  if (!value) {
+    return undefined
+  }
+
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error("AGENT_SERVER_URL must be a valid absolute URL")
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("AGENT_SERVER_URL must use http or https")
+  }
+
+  return url.origin
 }
 
 export function resolveDefaultProviderConfig(
@@ -147,6 +171,20 @@ export function buildCli(input: BuildCliInput = {}) {
     },
     async run(argv: string[]) {
       parseRunCommand(argv)
+      const runCliImpl = input.runCliImpl ?? runCli
+      const serverOrigin = resolveAgentServerOrigin(input.env)
+
+      if (serverOrigin) {
+        await runCliImpl({
+          argv,
+          io: input.createIo?.() ?? createStdioCliIo(),
+          client: (input.createAgentServerClientImpl ?? createAgentServerClient)({
+            origin: serverOrigin,
+          }),
+        })
+        return
+      }
+
       const provider =
         input.provider ??
         (await createDefaultProvider({
@@ -155,7 +193,6 @@ export function buildCli(input: BuildCliInput = {}) {
           createOpenAIProviderImpl: input.createOpenAIProviderImpl,
           createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
         }))
-      const runCliImpl = input.runCliImpl ?? runCli
 
       await runCliImpl({
         argv,

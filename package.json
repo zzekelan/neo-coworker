@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/main.ts",
+    "server": "bun run src/server-main.ts",
     "test": "bun test"
   },
   "dependencies": {
