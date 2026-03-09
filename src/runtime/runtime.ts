@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import { isTerminalRunStatus } from "../run"
-import { createSessionRunService } from "../session"
+import { PermissionRequestNotPendingError, createSessionRunService } from "../session"
 import {
   createStorageRepository,
   openStorageDatabase,
@@ -59,6 +59,20 @@ type ActiveRunState = {
 
 const sharedActiveRuns = new Map<string, ActiveRunState>()
 
+export class PermissionRequestNotAwaitingActiveRuntimeError extends Error {
+  readonly requestId: string
+  readonly runId: string
+  readonly sessionId: string
+
+  constructor(input: { requestId: string; runId: string; sessionId: string }) {
+    super(`Permission request ${input.requestId} is not awaiting a reply in the active runtime`)
+    this.name = "PermissionRequestNotAwaitingActiveRuntimeError"
+    this.requestId = input.requestId
+    this.runId = input.runId
+    this.sessionId = input.sessionId
+  }
+}
+
 function getActiveRunKey(input: { storageIdentity: string; sessionId: string; runId: string }) {
   return `${input.storageIdentity}:${input.sessionId}:${input.runId}`
 }
@@ -94,14 +108,17 @@ export function createRuntime(input: RuntimeInput) {
 
     if (!activeRun || !activeRun.pendingPermissionIds.has(response.requestId)) {
       if (permissionRequest.status !== "pending") {
-        throw new Error(
-          `Permission request ${response.requestId} is not pending (status: ${permissionRequest.status})`,
-        )
+        throw new PermissionRequestNotPendingError({
+          requestId: permissionRequest.id,
+          status: permissionRequest.status,
+        })
       }
 
-      throw new Error(
-        `Permission request ${response.requestId} is not awaiting a reply in the active runtime`,
-      )
+      throw new PermissionRequestNotAwaitingActiveRuntimeError({
+        requestId: permissionRequest.id,
+        runId: permissionRequest.runId,
+        sessionId: permissionRequest.sessionId,
+      })
     }
 
     sessionRuns.respondPermission({

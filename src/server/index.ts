@@ -5,8 +5,10 @@ import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
   SessionBusyError,
-} from "../session/service"
+  StartRunIdentityConflictError,
+} from "../session"
 import type { PermissionMode } from "../runtime/permissions"
+import { PermissionRequestNotAwaitingActiveRuntimeError } from "../runtime/runtime"
 import {
   RUN_TRIGGERS,
   StorageConflictError,
@@ -364,8 +366,10 @@ function mapHttpError(error: unknown) {
   if (
     error instanceof InvalidRunStatusTransitionError ||
     error instanceof SessionBusyError ||
+    error instanceof StartRunIdentityConflictError ||
     error instanceof PermissionRequestNotPendingError ||
     error instanceof PermissionRequestRunStateError ||
+    error instanceof PermissionRequestNotAwaitingActiveRuntimeError ||
     error instanceof StorageConflictError
   ) {
     return {

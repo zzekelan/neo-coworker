@@ -1,5 +1,6 @@
 import {
   StorageConflictError,
+  StorageNotFoundError,
   type RequestPermissionAndPauseRunInput,
   type RunTrigger,
   type StorageRepository,
@@ -51,6 +52,22 @@ export class SessionBusyError extends SessionRunServiceError {
     this.name = "SessionBusyError"
     this.sessionId = input.sessionId
     this.activeRunId = input.activeRunId
+  }
+}
+
+export class StartRunIdentityConflictError extends SessionRunServiceError {
+  readonly field: "runId" | "messageId"
+  readonly value: string
+
+  constructor(input: { field: "runId" | "messageId"; value: string }) {
+    super(
+      input.field === "runId"
+        ? `Run id ${input.value} already exists`
+        : `Initiating message id ${input.value} already exists`,
+    )
+    this.name = "StartRunIdentityConflictError"
+    this.field = input.field
+    this.value = input.value
   }
 }
 
@@ -137,6 +154,8 @@ export function createSessionRunService(input: {
       })
     }
 
+    assertStartRunIdentityAvailable(repository, run)
+
     try {
       return repository.createQueuedRunWithInitiatingMessage({
         run: {
@@ -152,7 +171,16 @@ export function createSessionRunService(input: {
         },
       })
     } catch (error) {
+      const identityConflict = getStartRunIdentityConflict(repository, run)
+      if (identityConflict && isUniqueConstraintError(error)) {
+        throw identityConflict
+      }
+
       if (error instanceof StorageConflictError) {
+        if (identityConflict) {
+          throw identityConflict
+        }
+
         const latestActiveRun = repository.runs.getActiveBySession(run.sessionId)
         throw new SessionBusyError({
           sessionId: run.sessionId,
@@ -271,4 +299,52 @@ function getInitiatingMessage(repository: StorageRepository, run: StoredRun): Tr
   }
 
   return initiatingMessage
+}
+
+function assertStartRunIdentityAvailable(
+  repository: StorageRepository,
+  run: Pick<StartRunInput, "runId" | "messageId">,
+) {
+  const conflict = getStartRunIdentityConflict(repository, run)
+  if (conflict) {
+    throw conflict
+  }
+}
+
+function getStartRunIdentityConflict(
+  repository: StorageRepository,
+  run: Pick<StartRunInput, "runId" | "messageId">,
+) {
+  if (run.runId && entityExists(() => repository.runs.get(run.runId!))) {
+    return new StartRunIdentityConflictError({
+      field: "runId",
+      value: run.runId,
+    })
+  }
+
+  if (run.messageId && entityExists(() => repository.messages.get(run.messageId!))) {
+    return new StartRunIdentityConflictError({
+      field: "messageId",
+      value: run.messageId,
+    })
+  }
+
+  return null
+}
+
+function entityExists(read: () => unknown) {
+  try {
+    read()
+    return true
+  } catch (error) {
+    if (error instanceof StorageNotFoundError) {
+      return false
+    }
+
+    throw error
+  }
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Error && /unique|constraint/i.test(error.message)
 }

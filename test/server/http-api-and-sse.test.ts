@@ -235,6 +235,22 @@ describe("server HTTP API and SSE", () => {
       },
     })
 
+    const duplicatePermissionReply = await requestJson(
+      harness.server,
+      "POST",
+      `/permissions/${waitingRun.permissionRequests[0].id}/reply`,
+      {
+        decision: "allow",
+      },
+    )
+    expect(duplicatePermissionReply.status).toBe(409)
+    expect(duplicatePermissionReply.body).toMatchObject({
+      error: {
+        code: "invalid_state",
+        message: expect.stringContaining("not pending"),
+      },
+    })
+
     const completedRun = await waitForRunStatus(harness.server, runId, "completed")
     expect(completedRun.permissionRequests).toMatchObject([
       {
@@ -245,6 +261,58 @@ describe("server HTTP API and SSE", () => {
     expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe(
       "hello from server",
     )
+  })
+
+  test("permission reply returns invalid_state when the request is pending but no active runtime is waiting", async () => {
+    const harness = await createHarness("server-permission-stale", createTurnProvider([]))
+    const session = harness.repository.sessions.create({
+      id: "session_stale_permission",
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: harness.now(),
+    })
+    const run = harness.repository.runs.create({
+      id: "run_stale_permission",
+      sessionId: session.id,
+      trigger: "prompt",
+      status: "waiting_permission",
+      createdAt: harness.now(),
+      startedAt: harness.now(),
+    })
+    const permissionRequest = harness.repository.permissionRequests.create({
+      id: "permission_stale",
+      sessionId: session.id,
+      runId: run.id,
+      toolName: "write",
+      reason: "write notes.txt",
+      status: "pending",
+      createdAt: harness.now(),
+    })
+
+    const response = await requestJson(
+      harness.server,
+      "POST",
+      `/permissions/${permissionRequest.id}/reply`,
+      {
+        decision: "allow",
+      },
+    )
+
+    expect(response.status).toBe(409)
+    expect(response.body).toMatchObject({
+      error: {
+        code: "invalid_state",
+        message: expect.stringContaining("not awaiting a reply in the active runtime"),
+      },
+    })
+    expect(harness.repository.permissionRequests.get(permissionRequest.id)).toMatchObject({
+      id: permissionRequest.id,
+      status: "pending",
+    })
+    expect(harness.repository.runs.get(run.id)).toMatchObject({
+      id: run.id,
+      status: "waiting_permission",
+    })
   })
 
   test("returns explicit HTTP errors for invalid-state cancel and unknown permission reply", async () => {
@@ -292,6 +360,37 @@ describe("server HTTP API and SSE", () => {
       error: {
         code: "not_found",
         message: expect.stringContaining("Unknown permission_request"),
+      },
+    })
+  })
+
+  test("returns invalid_state for duplicate client-specified runId", async () => {
+    const harness = await createHarness("server-duplicate-run-id", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "done" }
+      },
+    ]))
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const first = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "First run",
+      runId: "run_duplicate",
+    })
+    expect(first.status).toBe(201)
+    await waitForRunStatus(harness.server, "run_duplicate", "completed")
+
+    const second = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "Second run",
+      runId: "run_duplicate",
+    })
+    expect(second.status).toBe(409)
+    expect(second.body).toMatchObject({
+      error: {
+        code: "invalid_state",
+        message: "Run id run_duplicate already exists",
       },
     })
   })
@@ -396,6 +495,8 @@ async function createHarness(
   return {
     workspaceRoot,
     server,
+    repository,
+    now,
   }
 }
 

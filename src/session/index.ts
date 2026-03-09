@@ -1,6 +1,9 @@
 export {
+  PermissionRequestNotPendingError,
+  PermissionRequestRunStateError,
   RetrySourceRunError,
   RunInitiatingMessageNotFoundError,
+  StartRunIdentityConflictError,
   SessionBusyError,
   SessionRunServiceError,
   createSessionRunService,
