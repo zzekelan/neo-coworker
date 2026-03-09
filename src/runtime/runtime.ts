@@ -1,4 +1,5 @@
 import { join } from "node:path"
+import { isTerminalRunStatus } from "../run"
 import { createSessionRunService } from "../session"
 import {
   createStorageRepository,
@@ -9,7 +10,11 @@ import type { Provider } from "../providers/types"
 import type { RunHandle } from "./run-handle"
 import { createEventQueue } from "./event-queue"
 import type { RuntimeEvent } from "./events"
-import { createPermissionCoordinator, type PermissionMode } from "./permissions"
+import {
+  createPermissionCoordinator,
+  type PermissionMode,
+  type PermissionResponse,
+} from "./permissions"
 import { runAgentLoop } from "./loop"
 import { createEditTool } from "./tools/edit"
 import { createReadTool } from "./tools/read"
@@ -43,6 +48,13 @@ type CliRunInput = {
   workspaceRoot: string
 }
 
+type ActiveRunState = {
+  runId: string
+  controller: AbortController
+  permissions: ReturnType<typeof createPermissionCoordinator>
+  pendingPermissionIds: Set<string>
+}
+
 export function createRuntime(input: RuntimeInput) {
   const repository = input.repository
   const now = input.now ?? Date.now
@@ -50,13 +62,65 @@ export function createRuntime(input: RuntimeInput) {
     repository,
     now,
   })
+  const activeRuns = new Map<string, ActiveRunState>()
+
+  function clearActiveRun(activeRun: ActiveRunState) {
+    activeRun.pendingPermissionIds.clear()
+    activeRuns.delete(activeRun.runId)
+  }
+
+  function respondPermission(response: PermissionResponse) {
+    const permissionRequest = repository.permissionRequests.get(response.requestId)
+    const activeRun = activeRuns.get(permissionRequest.runId)
+
+    if (!activeRun || !activeRun.pendingPermissionIds.has(response.requestId)) {
+      if (permissionRequest.status !== "pending") {
+        throw new Error(
+          `Permission request ${response.requestId} is not pending (status: ${permissionRequest.status})`,
+        )
+      }
+
+      throw new Error(
+        `Permission request ${response.requestId} is not awaiting a reply in the active runtime`,
+      )
+    }
+
+    sessionRuns.respondPermission({
+      requestId: response.requestId,
+      decision: response.decision,
+      resolvedAt: now(),
+    })
+    activeRun.pendingPermissionIds.delete(response.requestId)
+    activeRun.permissions.resolve(response)
+  }
+
+  function cancelRun(runId: string) {
+    const activeRun = activeRuns.get(runId)
+    const run = repository.runs.get(runId)
+
+    if (run.status === "cancelled" || isTerminalRunStatus(run.status)) {
+      return
+    }
+
+    if (!activeRun) {
+      sessionRuns.cancelRun(runId)
+      return
+    }
+
+    sessionRuns.cancelRun(runId)
+    activeRun.controller.abort()
+    activeRun.permissions.cancelAll()
+  }
 
   return {
     async run(runInput: RunInput): Promise<RunHandle> {
+      if (activeRuns.has(runInput.runId)) {
+        throw new Error(`Run ${runInput.runId} is already active`)
+      }
+
       const session = repository.sessions.get(runInput.sessionId)
       const controller = new AbortController()
       const queue = createEventQueue<RuntimeEvent>()
-      const pendingPermissions = new Set<string>()
       const permissions = createPermissionCoordinator(
         {
           write: "ask",
@@ -73,9 +137,9 @@ export function createRuntime(input: RuntimeInput) {
                 toolName: request.toolName,
                 reason: request.reason,
                 createdAt: now(),
-              },
-            })
-            pendingPermissions.add(request.requestId)
+                },
+              })
+            activeRun.pendingPermissionIds.add(request.requestId)
             queue.push({
               type: "permission.requested",
               requestId: request.requestId,
@@ -85,6 +149,13 @@ export function createRuntime(input: RuntimeInput) {
           },
         },
       )
+      const activeRun: ActiveRunState = {
+        runId: runInput.runId,
+        controller,
+        permissions,
+        pendingPermissionIds: new Set<string>(),
+      }
+      activeRuns.set(activeRun.runId, activeRun)
       const tools = createToolRegistry([
         createReadTool(),
         createSearchTool(),
@@ -106,31 +177,21 @@ export function createRuntime(input: RuntimeInput) {
         systemPrompt: input.systemPrompt ?? "You are the agent runtime.",
         now,
       }).finally(() => {
-        pendingPermissions.clear()
+        clearActiveRun(activeRun)
       })
 
       return {
         events: queue.stream(),
         cancel() {
-          controller.abort()
-          permissions.cancelAll()
+          cancelRun(runInput.runId)
         },
         respondPermission(response) {
-          if (!pendingPermissions.has(response.requestId)) {
-            throw new Error(`Unknown permission request: ${response.requestId}`)
-          }
-
-          repository.permissionRequests.updateStatus({
-            requestId: response.requestId,
-            status: response.decision === "allow" ? "approved" : "denied",
-            resolvedAt: now(),
-          })
-          sessionRuns.resumeRun(runInput.runId)
-          pendingPermissions.delete(response.requestId)
-          permissions.resolve(response)
+          respondPermission(response)
         },
       }
     },
+    respondPermission,
+    cancelRun,
   }
 }
 

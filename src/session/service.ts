@@ -3,6 +3,7 @@ import {
   type RequestPermissionAndPauseRunInput,
   type RunTrigger,
   type StorageRepository,
+  type StoredPermissionRequest,
   type TranscriptMessage,
   type StoredRun,
 } from "../storage"
@@ -72,6 +73,34 @@ export class RunInitiatingMessageNotFoundError extends SessionRunServiceError {
     super(`Run ${runId} is missing its initiating user message`)
     this.name = "RunInitiatingMessageNotFoundError"
     this.runId = runId
+  }
+}
+
+export class PermissionRequestNotPendingError extends SessionRunServiceError {
+  readonly requestId: string
+  readonly status: StoredPermissionRequest["status"]
+
+  constructor(input: { requestId: string; status: StoredPermissionRequest["status"] }) {
+    super(`Permission request ${input.requestId} is not pending (status: ${input.status})`)
+    this.name = "PermissionRequestNotPendingError"
+    this.requestId = input.requestId
+    this.status = input.status
+  }
+}
+
+export class PermissionRequestRunStateError extends SessionRunServiceError {
+  readonly requestId: string
+  readonly runId: string
+  readonly runStatus: StoredRun["status"]
+
+  constructor(input: { requestId: string; runId: string; runStatus: StoredRun["status"] }) {
+    super(
+      `Permission request ${input.requestId} cannot be replied while run ${input.runId} is ${input.runStatus}`,
+    )
+    this.name = "PermissionRequestRunStateError"
+    this.requestId = input.requestId
+    this.runId = input.runId
+    this.runStatus = input.runStatus
   }
 }
 
@@ -167,6 +196,40 @@ export function createSessionRunService(input: {
     return repository.requestPermissionAndPauseRun(input)
   }
 
+  function respondPermission(input: {
+    requestId: string
+    decision: "allow" | "deny"
+    resolvedAt?: number
+  }) {
+    const permissionRequest = repository.permissionRequests.get(input.requestId)
+    if (permissionRequest.status !== "pending") {
+      throw new PermissionRequestNotPendingError({
+        requestId: permissionRequest.id,
+        status: permissionRequest.status,
+      })
+    }
+
+    const run = repository.runs.get(permissionRequest.runId)
+    if (run.status !== "waiting_permission") {
+      throw new PermissionRequestRunStateError({
+        requestId: permissionRequest.id,
+        runId: run.id,
+        runStatus: run.status,
+      })
+    }
+
+    const resolvedPermissionRequest = repository.permissionRequests.updateStatus({
+      requestId: permissionRequest.id,
+      status: input.decision === "allow" ? "approved" : "denied",
+      resolvedAt: input.resolvedAt ?? now(),
+    })
+
+    return {
+      run: runStateMachine.transitionRunStatus(run.id, "running"),
+      permissionRequest: resolvedPermissionRequest,
+    }
+  }
+
   return {
     getSessionState,
     startRun,
@@ -193,6 +256,7 @@ export function createSessionRunService(input: {
       }).run
     },
     requestPermission,
+    respondPermission,
   }
 }
 
