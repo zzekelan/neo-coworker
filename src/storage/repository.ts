@@ -3,6 +3,7 @@ import {
   MESSAGE_ROLES,
   PART_KINDS,
   PERMISSION_STATUSES,
+  RUN_TRIGGERS,
   RUN_STATUSES,
 } from "./schema"
 
@@ -10,7 +11,7 @@ export type RunStatus = (typeof RUN_STATUSES)[number]
 export type MessageRole = (typeof MESSAGE_ROLES)[number]
 export type PartKind = (typeof PART_KINDS)[number]
 export type PermissionStatus = (typeof PERMISSION_STATUSES)[number]
-export type RunTrigger = "cli"
+export type RunTrigger = (typeof RUN_TRIGGERS)[number]
 
 const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_permission"] as const
 const activeRunStatusCheck = ACTIVE_RUN_STATUSES.map((status) => `'${status}'`).join(", ")
@@ -229,6 +230,12 @@ export type RequestPermissionAndPauseRunInput = {
   permissionRequest: Pick<CreatePermissionRequestInput, "id" | "toolName" | "reason" | "createdAt">
 }
 
+type CancelRunAndPendingPermissionsInput = {
+  runId: string
+  finishedAt?: number
+  resolvedAt?: number
+}
+
 export class StorageRepositoryError extends Error {
   constructor(message: string) {
     super(message)
@@ -355,6 +362,19 @@ export function createStorageRepository(input: {
         "SELECT id, session_id, run_id, tool_name, reason, status, created_at, resolved_at FROM permission_request WHERE id = ?",
       )
       .get(requestId) as PermissionRequestRow | null
+  }
+
+  function listPermissionRequestRowsByRun(runId: string) {
+    return database
+      .query(
+        `
+          SELECT id, session_id, run_id, tool_name, reason, status, created_at, resolved_at
+          FROM permission_request
+          WHERE run_id = ?
+          ORDER BY created_at ASC, id ASC
+        `,
+      )
+      .all(runId) as PermissionRequestRow[]
   }
 
   function requireSession(sessionId: string) {
@@ -752,6 +772,10 @@ export function createStorageRepository(input: {
     get(requestId: string) {
       return requirePermissionRequest(requestId)
     },
+    listByRun(runId: string) {
+      requireRun(runId)
+      return listPermissionRequestRowsByRun(runId).map(mapPermissionRequestRow)
+    },
     updateStatus(update: UpdatePermissionRequestStatusInput) {
       const current = requirePermissionRequest(update.requestId)
       const record: StoredPermissionRequest = {
@@ -857,6 +881,32 @@ export function createStorageRepository(input: {
     },
   )
 
+  const cancelRunAndPendingPermissionsTransaction = database.transaction(
+    (value: CancelRunAndPendingPermissionsInput) => {
+      const currentRun = runs.get(value.runId)
+      const run = runs.updateStatus({
+        runId: currentRun.id,
+        status: "cancelled",
+        finishedAt: value.finishedAt ?? now(),
+        errorText: null,
+      })
+      const resolvedAt = value.resolvedAt ?? run.finishedAt ?? now()
+      const permissionRequests = listPermissionRequestRowsByRun(currentRun.id)
+        .filter((request) => request.status === "pending")
+        .map((request) =>
+          permissionRequestsApi.updateStatus({
+            requestId: request.id,
+            status: "cancelled",
+            resolvedAt,
+          }),
+        )
+
+      return { run, permissionRequests }
+    },
+  )
+
+  const permissionRequestsApi = permissionRequests
+
   return {
     sessions,
     runs,
@@ -874,6 +924,9 @@ export function createStorageRepository(input: {
     },
     requestPermissionAndPauseRun(input: RequestPermissionAndPauseRunInput) {
       return requestPermissionAndPauseRunTransaction(input)
+    },
+    cancelRunAndPendingPermissions(input: CancelRunAndPendingPermissionsInput) {
+      return cancelRunAndPendingPermissionsTransaction(input)
     },
   }
 }

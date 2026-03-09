@@ -41,6 +41,7 @@ describe("session run service", () => {
     expect(created.run).toMatchObject({
       id: "run_1",
       sessionId: session.id,
+      trigger: "prompt",
       status: "queued",
       startedAt: null,
       finishedAt: null,
@@ -216,6 +217,7 @@ describe("session run service", () => {
     expect(retry.run).toMatchObject({
       id: "run_2",
       sessionId: session.id,
+      trigger: "retry",
       status: "queued",
     })
     expect(retry.message).toMatchObject({
@@ -226,6 +228,7 @@ describe("session run service", () => {
     expect(retry.sourceRun).toMatchObject({
       id: "run_1",
       sessionId: session.id,
+      trigger: "prompt",
       status: "failed",
       errorText: "provider exploded",
     })
@@ -279,6 +282,11 @@ describe("session run service", () => {
       id: "run_1",
       status: "cancelled",
       finishedAt: 22,
+    })
+    expect(repository.permissionRequests.get("permission_1")).toMatchObject({
+      id: "permission_1",
+      status: "cancelled",
+      resolvedAt: 22,
     })
 
     expect(() => service.resumeRun(first.run.id)).toThrow(InvalidRunStatusTransitionError)

@@ -1,7 +1,7 @@
 import {
   StorageConflictError,
-  type CreateRunWithInitiatingMessageInput,
   type RequestPermissionAndPauseRunInput,
+  type RunTrigger,
   type StorageRepository,
   type TranscriptMessage,
   type StoredRun,
@@ -19,7 +19,7 @@ export type SessionRunState = {
 
 export type StartRunInput = {
   sessionId: string
-  trigger?: CreateRunWithInitiatingMessageInput["run"]["trigger"]
+  trigger?: RunTrigger
   runId?: string
   messageId?: string
   createdAt?: number
@@ -80,9 +80,10 @@ export function createSessionRunService(input: {
   now?: () => number
 }) {
   const repository = input.repository
+  const now = input.now ?? Date.now
   const runStateMachine = createRunStateMachine({
     repository,
-    now: input.now,
+    now,
   })
 
   function getSessionState(sessionId: string): SessionRunState {
@@ -112,7 +113,7 @@ export function createSessionRunService(input: {
         run: {
           id: run.runId,
           sessionId: run.sessionId,
-          trigger: run.trigger ?? "cli",
+          trigger: run.trigger ?? "prompt",
           status: "queued",
           createdAt: run.createdAt,
         },
@@ -145,7 +146,10 @@ export function createSessionRunService(input: {
     }
 
     const sourceInitiatingMessage = getInitiatingMessage(repository, sourceRun)
-    const nextRun = startRun(run)
+    const nextRun = startRun({
+      ...run,
+      trigger: "retry",
+    })
 
     return {
       ...nextRun,
@@ -181,7 +185,13 @@ export function createSessionRunService(input: {
       })
     },
     cancelRun(runId: string) {
-      return runStateMachine.transitionRunStatus(runId, "cancelled")
+      const run = repository.runs.get(runId)
+      assertRunStatusTransition(run, "cancelled")
+
+      return repository.cancelRunAndPendingPermissions({
+        runId,
+        finishedAt: now(),
+      }).run
     },
     requestPermission,
   }

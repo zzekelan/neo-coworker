@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -5,6 +6,7 @@ import { join } from "node:path"
 
 import {
   CURRENT_STORAGE_SCHEMA_VERSION,
+  STORAGE_MIGRATIONS,
   STORAGE_TABLES,
   openStorageDatabase,
 } from "../../src/storage"
@@ -284,6 +286,37 @@ describe("storage schema", () => {
     ).toThrow(/CHECK|constraint/i)
   })
 
+  test("migrates legacy run trigger constraints and preserves existing rows", () => {
+    const databasePath = createDatabasePath("trigger-migration")
+    const legacy = seedLegacyVersionOneDatabase(databasePath)
+
+    legacy.exec(`
+      INSERT INTO session (id, directory, workspace_root, created_at)
+      VALUES ('session_1', '/workspace', '/workspace', 1);
+
+      INSERT INTO run (id, session_id, trigger, status, created_at)
+      VALUES ('run_cli', 'session_1', 'cli', 'completed', 2);
+    `)
+    legacy.close(false)
+
+    const database = trackDatabase(openStorageDatabase(databasePath))
+    const version = database.query("PRAGMA user_version").get() as { user_version: number }
+
+    database
+      .query("INSERT INTO run (id, session_id, trigger, status, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run("run_retry", "session_1", "retry", "queued", 3)
+
+    const runs = database
+      .query("SELECT id, trigger, status FROM run ORDER BY created_at ASC, id ASC")
+      .all() as Array<{ id: string; trigger: string; status: string }>
+
+    expect(version.user_version).toBe(CURRENT_STORAGE_SCHEMA_VERSION)
+    expect(runs).toEqual([
+      { id: "run_cli", trigger: "cli", status: "completed" },
+      { id: "run_retry", trigger: "retry", status: "queued" },
+    ])
+  })
+
   test("schema initialization failures surface as explicit setup errors", () => {
     const databasePath = createDatabasePath("future-version")
     const seeded = trackDatabase(openStorageDatabase(databasePath))
@@ -312,4 +345,22 @@ function trackDatabase<T extends { close: (throwOnError: boolean) => void }>(dat
 function countRows(database: { query: (sql: string) => { get: () => unknown } }, table: string) {
   const row = database.query(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }
   return row.count
+}
+
+function seedLegacyVersionOneDatabase(databasePath: string) {
+  const database = new Database(databasePath, { create: true, strict: true })
+  database.exec("PRAGMA foreign_keys = ON")
+  database.exec("PRAGMA journal_mode = WAL")
+
+  const versionOne = STORAGE_MIGRATIONS.find((migration) => migration.version === 1)
+  if (!versionOne) {
+    throw new Error("Missing storage schema version 1 migration")
+  }
+
+  for (const statement of versionOne.statements) {
+    database.exec(statement)
+  }
+  database.exec("PRAGMA user_version = 1")
+
+  return database
 }
