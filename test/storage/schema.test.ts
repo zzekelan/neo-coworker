@@ -144,6 +144,77 @@ describe("storage schema", () => {
     expect(parts.map((row) => row.id)).toEqual(["part_0", "part_1", "part_2"])
   })
 
+  test("one session can keep messages from separate runs distinct", () => {
+    const database = trackDatabase(openStorageDatabase(createDatabasePath("separate-runs")))
+
+    database.exec(`
+      INSERT INTO session (id, directory, workspace_root, created_at)
+      VALUES ('session_1', '/workspace', '/workspace', 1);
+
+      INSERT INTO run (id, session_id, trigger, status, created_at)
+      VALUES ('run_1', 'session_1', 'cli', 'completed', 2);
+
+      INSERT INTO run (id, session_id, trigger, status, created_at)
+      VALUES ('run_2', 'session_1', 'cli', 'running', 3);
+
+      INSERT INTO message (id, session_id, run_id, role, sequence, created_at)
+      VALUES ('message_run_1', 'session_1', 'run_1', 'user', 0, 4);
+
+      INSERT INTO message (id, session_id, run_id, role, sequence, created_at)
+      VALUES ('message_run_2', 'session_1', 'run_2', 'user', 0, 5);
+    `)
+
+    const runOneMessages = database
+      .query("SELECT id FROM message WHERE run_id = 'run_1' ORDER BY sequence")
+      .all() as Array<{ id: string }>
+    const runTwoMessages = database
+      .query("SELECT id FROM message WHERE run_id = 'run_2' ORDER BY sequence")
+      .all() as Array<{ id: string }>
+
+    expect(runOneMessages.map((row) => row.id)).toEqual(["message_run_1"])
+    expect(runTwoMessages.map((row) => row.id)).toEqual(["message_run_2"])
+  })
+
+  test("one run can store an initiating user message and an assistant message with multiple parts", () => {
+    const database = trackDatabase(openStorageDatabase(createDatabasePath("message-shape")))
+
+    database.exec(`
+      INSERT INTO session (id, directory, workspace_root, created_at)
+      VALUES ('session_1', '/workspace', '/workspace', 1);
+
+      INSERT INTO run (id, session_id, trigger, status, created_at)
+      VALUES ('run_1', 'session_1', 'cli', 'running', 2);
+
+      INSERT INTO message (id, session_id, run_id, role, sequence, created_at)
+      VALUES ('message_user', 'session_1', 'run_1', 'user', 0, 3);
+
+      INSERT INTO message (id, session_id, run_id, role, sequence, created_at)
+      VALUES ('message_assistant', 'session_1', 'run_1', 'assistant', 1, 4);
+
+      INSERT INTO part (id, session_id, run_id, message_id, kind, sequence, created_at, text_value)
+      VALUES ('part_step', 'session_1', 'run_1', 'message_assistant', 'step_start', 0, 5, 'start');
+
+      INSERT INTO part (id, session_id, run_id, message_id, kind, sequence, created_at, text_value)
+      VALUES ('part_text', 'session_1', 'run_1', 'message_assistant', 'text', 1, 6, 'done');
+    `)
+
+    const messages = database
+      .query("SELECT id, role FROM message WHERE run_id = 'run_1' ORDER BY sequence")
+      .all() as Array<{ id: string; role: string }>
+    const assistantParts = database
+      .query("SELECT id, kind FROM part WHERE message_id = 'message_assistant' ORDER BY sequence")
+      .all() as Array<{ id: string; kind: string }>
+
+    expect(messages).toEqual([
+      { id: "message_user", role: "user" },
+      { id: "message_assistant", role: "assistant" },
+    ])
+    expect(assistantParts).toEqual([
+      { id: "part_step", kind: "step_start" },
+      { id: "part_text", kind: "text" },
+    ])
+  })
+
   test("pending permission request can be stored for an existing run", () => {
     const database = trackDatabase(openStorageDatabase(createDatabasePath("permission")))
 
