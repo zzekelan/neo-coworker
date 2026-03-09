@@ -223,7 +223,7 @@ export type CreateAssistantMessageWithFirstPartInput = {
 
 export type RequestPermissionAndPauseRunInput = {
   runId: string
-  permissionRequest: Omit<CreatePermissionRequestInput, "sessionId" | "runId">
+  permissionRequest: Pick<CreatePermissionRequestInput, "id" | "toolName" | "reason" | "createdAt">
 }
 
 export class StorageRepositoryError extends Error {
@@ -738,15 +738,21 @@ export function createStorageRepository(input: {
 
   const requestPermissionAndPauseRunTransaction = database.transaction(
     (value: RequestPermissionAndPauseRunInput) => {
+      assertPendingPermissionRequestInput(value.permissionRequest)
       const currentRun = runs.get(value.runId)
       const run = runs.updateStatus({
         runId: currentRun.id,
         status: "waiting_permission",
       })
       const permissionRequest = permissionRequests.create({
-        ...value.permissionRequest,
+        id: value.permissionRequest.id,
         sessionId: currentRun.sessionId,
         runId: currentRun.id,
+        toolName: value.permissionRequest.toolName,
+        reason: value.permissionRequest.reason,
+        createdAt: value.permissionRequest.createdAt,
+        status: "pending",
+        resolvedAt: null,
       })
 
       return { run, permissionRequest }
@@ -843,4 +849,16 @@ function parseJson(value: string | null) {
     return null
   }
   return JSON.parse(value)
+}
+
+function assertPendingPermissionRequestInput(
+  input: RequestPermissionAndPauseRunInput["permissionRequest"],
+) {
+  const permissionRequest = input as Record<string, unknown>
+
+  if ("status" in permissionRequest || "resolvedAt" in permissionRequest) {
+    throw new StorageRepositoryError(
+      "requestPermissionAndPauseRun only creates pending unresolved permission requests",
+    )
+  }
 }

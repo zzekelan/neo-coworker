@@ -6,8 +6,10 @@ import { join } from "node:path"
 import {
   StorageNotFoundError,
   StorageOwnershipError,
+  StorageRepositoryError,
   createStorageRepository,
   openStorageDatabase,
+  type RequestPermissionAndPauseRunInput,
 } from "../../src/storage"
 
 const tempDirectories: string[] = []
@@ -247,10 +249,61 @@ describe("storage repository", () => {
     expect(countRows(database, "permission_request")).toBe(1)
   })
 
+  test("requestPermissionAndPauseRun always creates a pending unresolved request", () => {
+    const { repository } = createTestRepository("permission-invariants")
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "running",
+      createdAt: 2,
+    })
+
+    const result = repository.requestPermissionAndPauseRun({
+      runId: "run_1",
+      permissionRequest: {
+        id: "permission_1",
+        toolName: "shell",
+        reason: "Need to run git status",
+        createdAt: 3,
+      },
+    })
+
+    expect(result.run.status).toBe("waiting_permission")
+    expect(result.permissionRequest).toMatchObject({
+      id: "permission_1",
+      status: "pending",
+      resolvedAt: null,
+    })
+
+    expect(() =>
+      repository.requestPermissionAndPauseRun({
+        runId: "run_1",
+        permissionRequest: {
+          id: "permission_2",
+          toolName: "shell",
+          reason: "Need another command",
+          createdAt: 4,
+          status: "approved",
+          resolvedAt: 99,
+        } as RequestPermissionAndPauseRunInput["permissionRequest"],
+      }),
+    ).toThrow(StorageRepositoryError)
+  })
+
   test("surfaces explicit not-found errors for reads and updates", () => {
     const { repository } = createTestRepository("not-found")
 
     expect(() => repository.sessions.get("session_missing")).toThrow(StorageNotFoundError)
+    expect(() => repository.messages.get("message_missing")).toThrow(StorageNotFoundError)
+    expect(() => repository.permissionRequests.get("permission_missing")).toThrow(StorageNotFoundError)
     expect(() =>
       repository.runs.updateStatus({
         runId: "run_missing",
@@ -263,6 +316,71 @@ describe("storage repository", () => {
         text: "hello",
       }),
     ).toThrow(StorageNotFoundError)
+    expect(() =>
+      repository.permissionRequests.updateStatus({
+        requestId: "permission_missing",
+        status: "approved",
+      }),
+    ).toThrow(StorageNotFoundError)
+  })
+
+  test("rolls back createAssistantMessageWithFirstPart when the part insert fails", () => {
+    const { database, repository } = createTestRepository("assistant-message-rollback")
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "running",
+      createdAt: 2,
+    })
+    repository.messages.create({
+      id: "message_existing",
+      sessionId: "session_1",
+      runId: "run_1",
+      role: "assistant",
+      sequence: 0,
+      createdAt: 3,
+    })
+    repository.parts.create({
+      id: "part_duplicate",
+      sessionId: "session_1",
+      runId: "run_1",
+      messageId: "message_existing",
+      kind: "text",
+      sequence: 0,
+      text: "existing",
+      createdAt: 4,
+    })
+
+    expect(() =>
+      repository.createAssistantMessageWithFirstPart({
+        message: {
+          id: "message_pending",
+          sessionId: "session_1",
+          runId: "run_1",
+          sequence: 1,
+          createdAt: 5,
+        },
+        part: {
+          id: "part_duplicate",
+          kind: "text",
+          sequence: 0,
+          text: "new",
+          createdAt: 6,
+        },
+      }),
+    ).toThrow(/UNIQUE|constraint/i)
+
+    expect(() => repository.messages.get("message_pending")).toThrow(StorageNotFoundError)
+    expect(countRows(database, "message")).toBe(1)
+    expect(countRows(database, "part")).toBe(1)
   })
 
   test("updates part content incrementally without rewriting other transcript rows", () => {
