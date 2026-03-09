@@ -211,8 +211,8 @@ export type UpdatePermissionRequestStatusInput = {
   resolvedAt?: number | null
 }
 
-export type CreateRunWithInitiatingMessageInput = {
-  run: CreateRunInput
+export type CreateQueuedRunWithInitiatingMessageInput = {
+  run: Omit<CreateRunInput, "status">
   message: {
     id?: string
     sequence?: number
@@ -792,31 +792,8 @@ export function createStorageRepository(input: {
     },
   }
 
-  const createRunWithInitiatingMessageTransaction = database.transaction(
-    (value: CreateRunWithInitiatingMessageInput) => {
-      const run = runs.create(value.run)
-      const message = messages.create({
-        id: value.message.id,
-        sessionId: run.sessionId,
-        runId: run.id,
-        role: "user",
-        sequence: value.message.sequence ?? 0,
-        createdAt: value.message.createdAt,
-      })
-
-      return { run, message }
-    },
-  )
-
   const createQueuedRunWithInitiatingMessageTransaction = database.transaction(
-    (value: CreateRunWithInitiatingMessageInput) => {
-      const nextStatus = value.run.status ?? "queued"
-      if (nextStatus !== "queued") {
-        throw new StorageRepositoryError(
-          "createQueuedRunWithInitiatingMessage requires queued run status",
-        )
-      }
-
+    (value: CreateQueuedRunWithInitiatingMessageInput) => {
       const activeRun = getActiveRunRowBySession(value.run.sessionId)
       if (activeRun) {
         throw new StorageConflictError(
@@ -913,10 +890,7 @@ export function createStorageRepository(input: {
     messages,
     parts,
     permissionRequests,
-    createRunWithInitiatingMessage(input: CreateRunWithInitiatingMessageInput) {
-      return createRunWithInitiatingMessageTransaction(input)
-    },
-    createQueuedRunWithInitiatingMessage(input: CreateRunWithInitiatingMessageInput) {
+    createQueuedRunWithInitiatingMessage(input: CreateQueuedRunWithInitiatingMessageInput) {
       return createQueuedRunWithInitiatingMessageTransaction(input)
     },
     createAssistantMessageWithFirstPart(input: CreateAssistantMessageWithFirstPartInput) {

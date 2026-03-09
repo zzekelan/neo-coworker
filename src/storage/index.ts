@@ -13,7 +13,7 @@ export {
   type CreatePartInput,
   type CreatePermissionRequestInput,
   type CreateRunInput,
-  type CreateRunWithInitiatingMessageInput,
+  type CreateQueuedRunWithInitiatingMessageInput,
   type CreateSessionInput,
   type RequestPermissionAndPauseRunInput,
   type RunTrigger,

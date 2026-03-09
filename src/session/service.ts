@@ -114,7 +114,6 @@ export function createSessionRunService(input: {
           id: run.runId,
           sessionId: run.sessionId,
           trigger: run.trigger ?? "prompt",
-          status: "queued",
           createdAt: run.createdAt,
         },
         message: {

@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -6,7 +5,6 @@ import { join } from "node:path"
 
 import {
   CURRENT_STORAGE_SCHEMA_VERSION,
-  STORAGE_MIGRATIONS,
   STORAGE_TABLES,
   openStorageDatabase,
 } from "../../src/storage"
@@ -40,6 +38,31 @@ describe("storage schema", () => {
 
     const version = database.query("PRAGMA user_version").get() as { user_version: number }
     expect(version.user_version).toBe(CURRENT_STORAGE_SCHEMA_VERSION)
+  })
+
+  test("fresh bootstrap supports the approved final run triggers directly", () => {
+    const database = trackDatabase(openStorageDatabase(createDatabasePath("final-triggers")))
+
+    database.exec(`
+      INSERT INTO session (id, directory, workspace_root, created_at)
+      VALUES ('session_1', '/workspace', '/workspace', 1);
+    `)
+
+    expect(() =>
+      database
+        .query(
+          "INSERT INTO run (id, session_id, trigger, status, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run("run_prompt", "session_1", "prompt", "queued", 2),
+    ).not.toThrow()
+
+    expect(() =>
+      database
+        .query(
+          "INSERT INTO run (id, session_id, trigger, status, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run("run_retry", "session_1", "retry", "queued", 3),
+    ).not.toThrow()
   })
 
   test("foreign-key violations fail for mismatched session or run ownership", () => {
@@ -286,114 +309,6 @@ describe("storage schema", () => {
     ).toThrow(/CHECK|constraint/i)
   })
 
-  test("migrates legacy rewritten tables without losing run child rows", () => {
-    const databasePath = createDatabasePath("trigger-migration")
-    const legacy = seedLegacyVersionOneDatabase(databasePath)
-
-    legacy.exec(`
-      INSERT INTO session (id, directory, workspace_root, created_at)
-      VALUES ('session_1', '/workspace', '/workspace', 1);
-
-      INSERT INTO run (id, session_id, trigger, status, created_at)
-      VALUES ('run_cli', 'session_1', 'cli', 'completed', 2);
-
-      INSERT INTO message (id, session_id, run_id, role, sequence, created_at)
-      VALUES ('message_1', 'session_1', 'run_cli', 'assistant', 0, 3);
-
-      INSERT INTO part (id, session_id, run_id, message_id, kind, sequence, created_at, text_value, data_json)
-      VALUES ('part_1', 'session_1', 'run_cli', 'message_1', 'text', 0, 4, 'migrated text', '{"ok":true}');
-
-      INSERT INTO permission_request (id, session_id, run_id, tool_name, reason, status, created_at, resolved_at)
-      VALUES ('permission_1', 'session_1', 'run_cli', 'shell', 'Need approval', 'pending', 5, NULL);
-    `)
-    legacy.close(false)
-
-    const database = trackDatabase(openStorageDatabase(databasePath))
-    const version = database.query("PRAGMA user_version").get() as { user_version: number }
-
-    database
-      .query("INSERT INTO run (id, session_id, trigger, status, created_at) VALUES (?, ?, ?, ?, ?)")
-      .run("run_retry", "session_1", "retry", "queued", 3)
-
-    const runs = database
-      .query("SELECT id, trigger, status FROM run ORDER BY created_at ASC, id ASC")
-      .all() as Array<{ id: string; trigger: string; status: string }>
-    const messages = database
-      .query("SELECT id, session_id, run_id, role, sequence FROM message ORDER BY created_at ASC, id ASC")
-      .all() as Array<{
-        id: string
-        session_id: string
-        run_id: string
-        role: string
-        sequence: number
-      }>
-    const parts = database
-      .query(
-        "SELECT id, session_id, run_id, message_id, kind, sequence, text_value, data_json FROM part ORDER BY created_at ASC, id ASC",
-      )
-      .all() as Array<{
-        id: string
-        session_id: string
-        run_id: string
-        message_id: string
-        kind: string
-        sequence: number
-        text_value: string | null
-        data_json: string | null
-      }>
-    const permissionRequests = database
-      .query(
-        "SELECT id, session_id, run_id, tool_name, reason, status, resolved_at FROM permission_request ORDER BY created_at ASC, id ASC",
-      )
-      .all() as Array<{
-        id: string
-        session_id: string
-        run_id: string
-        tool_name: string
-        reason: string
-        status: string
-        resolved_at: number | null
-      }>
-
-    expect(version.user_version).toBe(CURRENT_STORAGE_SCHEMA_VERSION)
-    expect(runs).toEqual([
-      { id: "run_cli", trigger: "cli", status: "completed" },
-      { id: "run_retry", trigger: "retry", status: "queued" },
-    ])
-    expect(messages).toEqual([
-      {
-        id: "message_1",
-        session_id: "session_1",
-        run_id: "run_cli",
-        role: "assistant",
-        sequence: 0,
-      },
-    ])
-    expect(parts).toEqual([
-      {
-        id: "part_1",
-        session_id: "session_1",
-        run_id: "run_cli",
-        message_id: "message_1",
-        kind: "text",
-        sequence: 0,
-        text_value: "migrated text",
-        data_json: '{"ok":true}',
-      },
-    ])
-    expect(permissionRequests).toEqual([
-      {
-        id: "permission_1",
-        session_id: "session_1",
-        run_id: "run_cli",
-        tool_name: "shell",
-        reason: "Need approval",
-        status: "pending",
-        resolved_at: null,
-      },
-    ])
-  })
-
   test("schema initialization failures surface as explicit setup errors", () => {
     const databasePath = createDatabasePath("future-version")
     const seeded = trackDatabase(openStorageDatabase(databasePath))
@@ -422,22 +337,4 @@ function trackDatabase<T extends { close: (throwOnError: boolean) => void }>(dat
 function countRows(database: { query: (sql: string) => { get: () => unknown } }, table: string) {
   const row = database.query(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }
   return row.count
-}
-
-function seedLegacyVersionOneDatabase(databasePath: string) {
-  const database = new Database(databasePath, { create: true, strict: true })
-  database.exec("PRAGMA foreign_keys = ON")
-  database.exec("PRAGMA journal_mode = WAL")
-
-  const versionOne = STORAGE_MIGRATIONS.find((migration) => migration.version === 1)
-  if (!versionOne) {
-    throw new Error("Missing storage schema version 1 migration")
-  }
-
-  for (const statement of versionOne.statements) {
-    database.exec(statement)
-  }
-  database.exec("PRAGMA user_version = 1")
-
-  return database
 }

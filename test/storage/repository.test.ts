@@ -26,7 +26,7 @@ afterEach(() => {
 })
 
 describe("storage repository", () => {
-  test("rolls back createRunWithInitiatingMessage when the message insert fails", () => {
+  test("rolls back createQueuedRunWithInitiatingMessage when the message insert fails", () => {
     const { database, repository } = createTestRepository("run-message-rollback")
 
     const session = repository.sessions.create({
@@ -52,12 +52,11 @@ describe("storage repository", () => {
     })
 
     expect(() =>
-      repository.createRunWithInitiatingMessage({
+      repository.createQueuedRunWithInitiatingMessage({
         run: {
           id: "run_pending",
           sessionId: session.id,
           trigger: "cli",
-          status: "queued",
           createdAt: 4,
         },
         message: {
