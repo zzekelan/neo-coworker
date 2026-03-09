@@ -1,5 +1,10 @@
+import { join } from "node:path"
 import { createSessionRunService } from "../session"
-import type { StorageRepository } from "../storage"
+import {
+  createStorageRepository,
+  openStorageDatabase,
+  type StorageRepository,
+} from "../storage"
 import type { Provider } from "../providers/types"
 import type { RunHandle } from "./run-handle"
 import { createEventQueue } from "./event-queue"
@@ -24,6 +29,18 @@ type RuntimeInput = {
 type RunInput = {
   sessionId: string
   runId: string
+}
+
+type CliRuntimeInput = RuntimeInput & {
+  createStorageRepositoryImpl?: typeof createStorageRepository
+  openStorageDatabaseImpl?: typeof openStorageDatabase
+  repository?: StorageRepository
+}
+
+type CliRunInput = {
+  prompt: string
+  cwd: string
+  workspaceRoot: string
 }
 
 export function createRuntime(input: RuntimeInput) {
@@ -113,6 +130,105 @@ export function createRuntime(input: RuntimeInput) {
           permissions.resolve(response)
         },
       }
+    },
+  }
+}
+
+export function getDefaultCliStoragePath(workspaceRoot: string) {
+  return join(workspaceRoot, ".agents", "agent.sqlite")
+}
+
+export function createCliRuntime(input: CliRuntimeInput) {
+  const now = input.now ?? Date.now
+
+  return {
+    async run(runInput: CliRunInput): Promise<RunHandle> {
+      const database =
+        input.repository == null
+          ? (input.openStorageDatabaseImpl ?? openStorageDatabase)(
+              getDefaultCliStoragePath(runInput.workspaceRoot),
+            )
+          : null
+      const repository =
+        input.repository ??
+        (input.createStorageRepositoryImpl ?? createStorageRepository)({
+          database: database!,
+          now,
+        })
+      const sessionRuns = createSessionRunService({
+        repository,
+        now,
+      })
+      const runtime = createRuntime({
+        ...input,
+        repository,
+        now,
+      })
+
+      try {
+        const session = repository.sessions.create({
+          directory: runInput.cwd,
+          workspaceRoot: runInput.workspaceRoot,
+          createdAt: now(),
+        })
+        const started = sessionRuns.startRun({
+          sessionId: session.id,
+          trigger: "cli",
+          createdAt: now(),
+          messageCreatedAt: now(),
+        })
+
+        repository.parts.create({
+          sessionId: session.id,
+          runId: started.run.id,
+          messageId: started.message.id,
+          kind: "text",
+          sequence: 0,
+          text: runInput.prompt,
+          createdAt: now(),
+        })
+
+        const handle = await runtime.run({
+          sessionId: session.id,
+          runId: started.run.id,
+        })
+
+        return database ? withDatabaseCleanup(handle, () => database.close(false)) : handle
+      } catch (error) {
+        database?.close(false)
+        throw error
+      }
+    },
+  }
+}
+
+function withDatabaseCleanup(handle: RunHandle, cleanup: () => void): RunHandle {
+  let cleaned = false
+
+  function close() {
+    if (cleaned) {
+      return
+    }
+
+    cleaned = true
+    cleanup()
+  }
+
+  return {
+    events: (async function* () {
+      try {
+        for await (const event of handle.events) {
+          yield event
+        }
+      } finally {
+        close()
+      }
+    })(),
+    cancel() {
+      handle.cancel()
+    },
+    respondPermission(response) {
+      handle.respondPermission(response)
     },
   }
 }

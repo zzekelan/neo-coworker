@@ -64,14 +64,37 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const requestContents = requests.map(readRequestContents)
+    const requestTexts = requests.map(readRequestText)
     const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
 
-    expect(requestContents[0]?.join("\n")).toContain("Earlier assistant context.")
-    expect(requestContents[0]?.join("\n")).toContain("Inspect README.md")
-    expect(requestContents[1]?.join("\n")).toContain("Tool result read (call_1)")
-    expect(requestContents[1]?.join("\n")).toContain("# demo workspace")
+    expect(requestTexts[0]?.join("\n")).toContain("Earlier assistant context.")
+    expect(requestTexts[0]?.join("\n")).toContain("Inspect README.md")
+    expect(requests[1]?.messages.slice(-2)).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Looking at the file." },
+          {
+            type: "tool_call",
+            callId: "call_1",
+            toolName: "read",
+            inputText: '{"path":"README.md"}',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_1",
+            toolName: "read",
+            output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+          },
+        ],
+      },
+    ])
     expect(activeRunMessages).toHaveLength(3)
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
       "text",
@@ -140,8 +163,21 @@ describe("agent loop", () => {
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
 
     expect(requests).toHaveLength(3)
-    expect(readRequestContents(requests[1]!).join("\n")).toContain("Tool result read (call_read)")
-    expect(readRequestContents(requests[2]!).join("\n")).toContain("Tool result search (call_search)")
+    expect(requests[1]?.messages.at(-1)).toEqual({
+      role: "tool",
+      parts: [
+        {
+          type: "tool_result",
+          callId: "call_read",
+          toolName: "read",
+          output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+        },
+      ],
+    })
+    expect(readRequestText(requests[2]!).join("\n")).toContain("README.md")
+    expect(readRequestText(requests[2]!).join("\n")).toContain(
+      "This fixture exists for the read-only tool tests.",
+    )
     expect(activeRunMessages).toHaveLength(4)
     expect(
       activeRunMessages.flatMap((message) => message.parts.filter((part) => part.kind === "tool_result")),
@@ -187,7 +223,31 @@ describe("agent loop", () => {
     const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
 
-    expect(readRequestContents(requests[1]!).join("\n")).toContain("Malformed tool arguments for read")
+    expect(requests[1]?.messages.slice(-2)).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool_call",
+            callId: "call_bad",
+            toolName: "read",
+            inputText: '{"path":',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_bad",
+            toolName: "read",
+            output: expect.stringContaining("Malformed tool arguments for read"),
+            isError: true,
+          },
+        ],
+      },
+    ])
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "error"])
     expect(activeRunMessages[1]?.parts[1]).toMatchObject({
       kind: "error",
@@ -340,7 +400,7 @@ describe("agent loop", () => {
       if (next.value.type === "message.delta") {
         const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
         const reconstructed = buildTranscriptMessages(transcript)
-        expect(reconstructed.map((message) => message.content)).toContain("Already persisted.")
+        expect(readMessageTexts(reconstructed)).toContain("Already persisted.")
         expect(harness.repository.runs.get(started.run.id).status).toBe("running")
         handle.cancel()
         releaseStream()
@@ -504,8 +564,33 @@ async function collectEvents(events: AsyncIterable<unknown>) {
 }
 
 function readRequestContents(request: ProviderTurnRequest) {
-  return ((request.messages as Array<{ content?: string }> | undefined) ?? []).map(
-    (message) => message.content ?? "",
+  return readRequestText(request)
+}
+
+function readRequestText(request: ProviderTurnRequest) {
+  return ((request.messages as Array<{ parts?: Array<Record<string, unknown>> }> | undefined) ?? []).flatMap(
+    (message) =>
+      (message.parts ?? []).flatMap((part) => {
+        if (part.type === "text" && typeof part.text === "string") {
+          return [part.text]
+        }
+
+        if (part.type === "tool_result" && typeof part.output === "string") {
+          return [part.output]
+        }
+
+        return []
+      }),
+  )
+}
+
+function readMessageTexts(
+  messages: Array<{ parts?: Array<Record<string, unknown>> }>,
+) {
+  return messages.flatMap((message) =>
+    (message.parts ?? []).flatMap((part) =>
+      part.type === "text" && typeof part.text === "string" ? [part.text] : [],
+    ),
   )
 }
 

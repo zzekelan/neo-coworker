@@ -2,7 +2,7 @@ import type { Provider } from "../providers/types"
 import type { RuntimeEvent } from "../runtime/events"
 import type { PermissionDecision } from "../runtime/permissions"
 import type { RunHandle } from "../runtime/run-handle"
-import { createRuntime } from "../runtime/runtime"
+import { createCliRuntime } from "../runtime/runtime"
 import type { CliIO } from "./io"
 import { renderEvent } from "./render"
 
@@ -61,7 +61,7 @@ function resolveRuntime(input: RunCliInput): RuntimeLike {
   }
 
   if (input.provider) {
-    return createRuntime({ provider: input.provider })
+    return createCliRuntime({ provider: input.provider })
   }
 
   throw new Error("runCli requires either a runtime or provider")

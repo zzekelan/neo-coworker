@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { cp, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runCli } from "../../src/cli/run-command"
-import { createRuntime } from "../../src/runtime/runtime"
-import { createSessionRunService } from "../../src/session"
+import { getDefaultCliStoragePath } from "../../src/runtime/runtime"
 import { createStorageRepository, openStorageDatabase } from "../../src/storage"
 import type { ProviderTurnRequest } from "../../src/providers/types"
 
@@ -22,16 +21,19 @@ afterEach(async () => {
 })
 
 describe("agent run e2e", () => {
-  test("completes a read-only request against a fixture workspace", async () => {
+  test("completes a read-only request through the default provider CLI path", async () => {
     const output: string[] = []
     const directory = await mkdtemp(join(tmpdir(), "agent-run-e2e-"))
     tempDirectories.push(directory)
+    const workspaceRoot = join(directory, "workspace")
+    await cp("test/fixtures/workspaces/e2e", workspaceRoot, { recursive: true })
 
-    const database = trackDatabase(openStorageDatabase(join(directory, "agent.sqlite")))
-    const repository = createStorageRepository({ database })
-    const service = createSessionRunService({ repository })
     let turn = 0
-    const runtime = createRuntime({
+
+    await runCli({
+      argv: ["run", "Read README.md and summarize it"],
+      cwd: workspaceRoot,
+      workspaceRoot,
       provider: {
         async *streamTurn(_request: ProviderTurnRequest) {
           turn += 1
@@ -55,45 +57,6 @@ describe("agent run e2e", () => {
           throw new Error(`Unexpected provider turn ${turn}`)
         },
       },
-      repository,
-    })
-    const session = repository.sessions.create({
-      id: "session_e2e",
-      directory: "test/fixtures/workspaces/e2e",
-      workspaceRoot: "test/fixtures/workspaces/e2e",
-      createdAt: 1,
-    })
-
-    await runCli({
-      argv: ["run", "Read README.md and summarize it"],
-      cwd: session.directory,
-      workspaceRoot: session.workspaceRoot,
-      runtime: {
-        async run(input) {
-          const started = service.startRun({
-            sessionId: session.id,
-            runId: "run_e2e",
-            messageId: "message_e2e_user",
-            createdAt: 2,
-            messageCreatedAt: 3,
-          })
-          repository.parts.create({
-            id: "part_e2e_user",
-            sessionId: session.id,
-            runId: started.run.id,
-            messageId: started.message.id,
-            kind: "text",
-            sequence: 0,
-            text: input.prompt,
-            createdAt: 4,
-          })
-
-          return runtime.run({
-            sessionId: session.id,
-            runId: started.run.id,
-          })
-        },
-      },
       io: {
         write(text: string) {
           output.push(text)
@@ -112,6 +75,20 @@ describe("agent run e2e", () => {
     expect(rendered).toContain("# e2e fixture")
     expect(rendered).toContain("Summary: concise fixture summary.")
     expect(rendered).toContain("run.completed")
+
+    const database = trackDatabase(openStorageDatabase(getDefaultCliStoragePath(workspaceRoot)))
+    const repository = createStorageRepository({ database })
+    const sessionRow = database.query("SELECT id FROM session LIMIT 1").get() as { id: string } | null
+    const runRow = database.query("SELECT id FROM run LIMIT 1").get() as { id: string } | null
+    const transcript = repository.messages.listSessionTranscript(sessionRow!.id)
+
+    expect(runRow).not.toBeNull()
+    expect(repository.runs.get(runRow!.id).status).toBe("completed")
+    expect(transcript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(transcript[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "tool_result"])
+    expect(transcript[2]?.parts).toMatchObject([
+      { kind: "text", text: "Summary: concise fixture summary.\n" },
+    ])
   })
 })
 

@@ -1,6 +1,36 @@
+export type ProviderTextPart = {
+  type: "text"
+  text: string
+}
+
+export type ProviderToolCallPart = {
+  type: "tool_call"
+  callId: string
+  toolName: string
+  inputText: string
+}
+
+export type ProviderToolResultPart = {
+  type: "tool_result"
+  callId: string
+  toolName: string
+  output: string
+  isError?: boolean
+}
+
+export type ProviderMessagePart =
+  | ProviderTextPart
+  | ProviderToolCallPart
+  | ProviderToolResultPart
+
+export type ProviderMessage = {
+  role: "user" | "assistant" | "tool"
+  parts: ProviderMessagePart[]
+}
+
 export type ProviderTurnRequest = {
   system: string
-  messages: unknown[]
+  messages: ProviderMessage[]
   tools: unknown[]
   signal: AbortSignal
 }

@@ -1,6 +1,14 @@
 import type OpenAI from "openai"
 import type { ZodTypeAny } from "zod"
-import type { Provider, ProviderEvent, ProviderTurnRequest } from "./types"
+import type {
+  Provider,
+  ProviderEvent,
+  ProviderMessage,
+  ProviderMessagePart,
+  ProviderToolCallPart,
+  ProviderToolResultPart,
+  ProviderTurnRequest,
+} from "./types"
 
 type OpenAICompatibleChunk = OpenAI.Chat.ChatCompletionChunk
 type OpenAICompatibleMessage = OpenAI.Chat.ChatCompletionMessageParam
@@ -16,15 +24,6 @@ type OpenAICompatibleClient = {
       ): AsyncIterable<OpenAICompatibleChunk> | Promise<AsyncIterable<OpenAICompatibleChunk>>
     }
   }
-}
-
-type RuntimeMessage = {
-  role: string
-  parts?: Array<{
-    type: string
-    text?: string
-  }>
-  content?: string
 }
 
 type RuntimeTool = {
@@ -47,22 +46,74 @@ function unsupportedSchema(schema: ZodTypeAny): never {
 }
 
 function readMessageText(message: RuntimeMessage) {
-  if (typeof message.content === "string") {
-    return message.content
-  }
-
-  const text = (message.parts ?? [])
-    .filter((part) => part.type === "text" && typeof part.text === "string")
+  return message.parts
+    .filter((part) => part.type === "text")
     .map((part) => part.text)
-    .join("")
-
-  return text
+    .join("\n\n")
 }
 
-function toChatCompletionMessage(message: RuntimeMessage): OpenAICompatibleMessage {
+type RuntimeMessage = ProviderMessage
+
+function toChatCompletionMessages(messages: RuntimeMessage[]): OpenAICompatibleMessage[] {
+  const serialized: OpenAICompatibleMessage[] = []
+
+  for (const message of messages) {
+    if (message.role === "tool") {
+      for (const part of message.parts) {
+        if (part.type !== "tool_result") {
+          continue
+        }
+
+        serialized.push({
+          role: "tool",
+          tool_call_id: part.callId,
+          content: part.output,
+        })
+      }
+      continue
+    }
+
+    const content = readMessageText(message)
+    if (message.role === "assistant") {
+      const toolCalls = message.parts
+        .filter((part): part is ProviderToolCallPart => part.type === "tool_call")
+        .map(toChatCompletionToolCall)
+
+      if (!content && toolCalls.length === 0) {
+        continue
+      }
+
+      serialized.push({
+        role: "assistant",
+        content: content || null,
+        tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+      })
+      continue
+    }
+
+    if (!content) {
+      continue
+    }
+
+    serialized.push({
+      role: message.role,
+      content,
+    })
+  }
+
+  return serialized
+}
+
+function toChatCompletionToolCall(
+  part: ProviderToolCallPart,
+): OpenAI.Chat.ChatCompletionMessageToolCall {
   return {
-    role: message.role as OpenAICompatibleMessage["role"],
-    content: readMessageText(message),
+    id: part.callId,
+    type: "function",
+    function: {
+      name: part.toolName,
+      arguments: part.inputText,
+    },
   }
 }
 
@@ -173,7 +224,7 @@ export function createOpenAICompatibleProvider(input: {
           model: input.model,
           messages: [
             { role: "system", content: request.system },
-            ...(request.messages as RuntimeMessage[]).map(toChatCompletionMessage),
+            ...toChatCompletionMessages(request.messages as RuntimeMessage[]),
           ],
           stream: true,
           tools: (request.tools as RuntimeTool[]).map(toChatCompletionTool),

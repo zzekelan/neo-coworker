@@ -100,4 +100,88 @@ describe("openai provider", () => {
     })
     expect(events).toContainEqual({ type: "text.delta", text: "Hello" })
   })
+
+  test("serializes structured tool transcript into responses input items", async () => {
+    let receivedBody: unknown
+
+    const provider = createOpenAIProvider({
+      model: "gpt-5",
+      client: {
+        responses: {
+          stream(body) {
+            receivedBody = body
+            return (async function* () {})()
+          },
+        },
+      },
+    })
+
+    const events = []
+    for await (const event of provider.streamTurn({
+      system: "system",
+      messages: [
+        {
+          role: "user",
+          parts: [{ type: "text", text: "inspect README.md" }],
+        },
+        {
+          role: "assistant",
+          parts: [
+            { type: "text", text: "Opening README.md" },
+            {
+              type: "tool_call",
+              callId: "call_1",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          ],
+        },
+        {
+          role: "tool",
+          parts: [
+            {
+              type: "tool_result",
+              callId: "call_1",
+              toolName: "read",
+              output: "file contents",
+            },
+          ],
+        },
+      ],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([])
+    expect(receivedBody).toEqual({
+      model: "gpt-5",
+      input: [
+        {
+          role: "user",
+          content: "inspect README.md",
+          type: "message",
+        },
+        {
+          role: "assistant",
+          content: "Opening README.md",
+          type: "message",
+        },
+        {
+          type: "function_call",
+          call_id: "call_1",
+          name: "read",
+          arguments: '{"path":"README.md"}',
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: "file contents",
+        },
+      ],
+      instructions: "system",
+      tools: [],
+    })
+  })
 })

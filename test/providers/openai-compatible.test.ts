@@ -284,6 +284,92 @@ describe("openai-compatible provider", () => {
     ])
   })
 
+  test("serializes structured tool transcript for follow-up turns", async () => {
+    let receivedBody: unknown
+
+    const provider = createOpenAICompatibleProvider({
+      model: "kimi-k2.5",
+      client: {
+        chat: {
+          completions: {
+            async create(body) {
+              receivedBody = body
+              return (async function* () {})()
+            },
+          },
+        },
+      },
+    })
+
+    const events = []
+    for await (const event of provider.streamTurn({
+      system: "system",
+      messages: [
+        {
+          role: "user",
+          parts: [{ type: "text", text: "inspect README.md" }],
+        },
+        {
+          role: "assistant",
+          parts: [
+            { type: "text", text: "Opening README.md" },
+            {
+              type: "tool_call",
+              callId: "call_1",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          ],
+        },
+        {
+          role: "tool",
+          parts: [
+            {
+              type: "tool_result",
+              callId: "call_1",
+              toolName: "read",
+              output: "file contents",
+            },
+          ],
+        },
+      ],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([])
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.5",
+      messages: [
+        { role: "system", content: "system" },
+        { role: "user", content: "inspect README.md" },
+        {
+          role: "assistant",
+          content: "Opening README.md",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "read",
+                arguments: '{"path":"README.md"}',
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_1",
+          content: "file contents",
+        },
+      ],
+      stream: true,
+      tools: [],
+    })
+  })
+
   test("fails fast when a tool schema cannot be converted to chat-completions JSON schema", async () => {
     const provider = createOpenAICompatibleProvider({
       model: "kimi-k2.5",

@@ -55,16 +55,26 @@ describe("context builder", () => {
             },
             createdAt: 3,
           },
+        ],
+      },
+      {
+        id: "message_2",
+        sessionId: "session_1",
+        runId: "run_1",
+        role: "assistant",
+        sequence: 2,
+        createdAt: 4,
+        parts: [
           {
             id: "part_3",
             sessionId: "session_1",
             runId: "run_1",
-            messageId: "message_1",
+            messageId: "message_2",
             kind: "error",
             sequence: 2,
             text: "tool failed",
             data: null,
-            createdAt: 4,
+            createdAt: 5,
           },
         ],
       },
@@ -73,9 +83,29 @@ describe("context builder", () => {
     expect(messages).toEqual([
       {
         role: "assistant",
-        content:
-          'Tool call read (call_1): {"path":"README.md"}\n\nTool result read (call_1): file contents\n\nError: tool failed',
-        parts: [],
+        parts: [
+          {
+            type: "tool_call",
+            callId: "call_1",
+            toolName: "read",
+            inputText: '{"path":"README.md"}',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_1",
+            toolName: "read",
+            output: "file contents",
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "Error: tool failed" }],
       },
     ])
   })
