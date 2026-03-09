@@ -12,6 +12,12 @@ export type RuntimeEvent =
       text: string
     }
   | {
+      type: "permission.requested"
+      requestId: string
+      toolName: string
+      reason: string
+    }
+  | {
       type: "tool.call.completed"
       callId: string
       name: string

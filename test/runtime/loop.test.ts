@@ -1,8 +1,21 @@
+import { cp, mkdtemp } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { createFakeProvider } from "../../src/providers/fake"
+import { createOpenAICompatibleProvider } from "../../src/providers/openai-compatible"
 import { createOpenAIProvider } from "../../src/providers/openai"
 import type { ProviderTurnRequest } from "../../src/providers/types"
 import { createRuntime } from "../../src/runtime/runtime"
+
+async function createWorkspaceCopy() {
+  const tempRoot = await mkdtemp(join(tmpdir(), "runtime-loop-"))
+  const workspaceRoot = join(tempRoot, "workspace")
+
+  await cp("test/fixtures/workspaces/read-search", workspaceRoot, { recursive: true })
+
+  return workspaceRoot
+}
 
 describe("agent loop", () => {
   test("streams assistant text, executes tools, and completes the run", async () => {
@@ -36,10 +49,10 @@ describe("agent loop", () => {
       events.push(event)
     }
 
-    expect(providerRequest?.tools).toMatchObject([
-      { name: "read" },
-      { name: "search" },
-    ])
+    const toolNames = providerRequest?.tools.map((tool) => (tool as { name: string }).name) ?? []
+
+    expect(toolNames).toContain("read")
+    expect(toolNames).toContain("search")
 
     const eventTypes = events.map((event) => event.type)
     expect(eventTypes).toContain("run.started")
@@ -186,6 +199,110 @@ describe("agent loop", () => {
     expect(eventTypes.at(-1)).toBe("run.cancelled")
   })
 
+  test("emits permission requests and resumes tool execution after a response", async () => {
+    const workspaceRoot = await createWorkspaceCopy()
+    const runtime = createRuntime({
+      provider: createFakeProvider({
+        events: [
+          {
+            type: "tool.call",
+            callId: "call_1",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello"}',
+          },
+        ],
+      }),
+    })
+
+    const handle = await runtime.run({
+      prompt: "Write notes.txt with hello",
+      cwd: workspaceRoot,
+      workspaceRoot,
+    })
+
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const observedTypes: string[] = []
+
+    while (true) {
+      const next = await iterator.next()
+      if (next.done) {
+        break
+      }
+
+      observedTypes.push(next.value.type)
+
+      if (next.value.type === "permission.requested") {
+        expect(next.value).toMatchObject({
+          type: "permission.requested",
+          toolName: "write",
+          reason: "write notes.txt",
+        })
+
+        handle.respondPermission({
+          requestId: next.value.requestId,
+          decision: "allow",
+        })
+      }
+    }
+
+    expect(observedTypes).toContain("permission.requested")
+    expect(observedTypes).toContain("tool.call.completed")
+    expect(observedTypes.at(-1)).toBe("run.completed")
+    expect(await Bun.file(join(workspaceRoot, "notes.txt")).text()).toBe("hello")
+  })
+
+  test("emits run.cancelled when cancelled while waiting for permission", async () => {
+    const workspaceRoot = await createWorkspaceCopy()
+    const runtime = createRuntime({
+      provider: createFakeProvider({
+        events: [
+          {
+            type: "tool.call",
+            callId: "call_1",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello"}',
+          },
+        ],
+      }),
+    })
+
+    const handle = await runtime.run({
+      prompt: "Write notes.txt with hello",
+      cwd: workspaceRoot,
+      workspaceRoot,
+    })
+
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const eventTypes: string[] = []
+
+    while (true) {
+      const next = await Promise.race([
+        iterator.next(),
+        new Promise<symbol>((resolve) => {
+          setTimeout(() => resolve(Symbol.for("timeout")), 25)
+        }),
+      ])
+
+      if (typeof next === "symbol") {
+        throw new Error("Expected runtime cancellation to finish the permission-gated run")
+      }
+
+      if (next.done) {
+        break
+      }
+
+      eventTypes.push(next.value.type)
+
+      if (next.value.type === "permission.requested") {
+        handle.cancel()
+      }
+    }
+
+    expect(eventTypes).toContain("permission.requested")
+    expect(eventTypes.at(-1)).toBe("run.cancelled")
+    expect(await Bun.file(join(workspaceRoot, "notes.txt")).exists()).toBe(false)
+  })
+
   test("executes one tool call when openai streams arguments across multiple chunks", async () => {
     const provider = createOpenAIProvider({
       model: "gpt-5",
@@ -242,6 +359,100 @@ describe("agent loop", () => {
       events.push(event)
     }
 
+    expect(events.filter((event) => event.type === "tool.call.completed")).toEqual([
+      {
+        type: "tool.call.completed",
+        callId: "call_1",
+        name: "read",
+        output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+      },
+    ])
+    expect(events.at(-1)).toMatchObject({ type: "run.completed" })
+  })
+
+  test("executes one tool call when openai-compatible streams tool calls across multiple chunks", async () => {
+    let receivedBody: unknown
+    let receivedOptions: unknown
+    const provider = createOpenAICompatibleProvider({
+      model: "kimi-k2.5",
+      client: {
+        chat: {
+          completions: {
+            create: async function* (body, options) {
+              receivedBody = body
+              receivedOptions = options
+
+              yield {
+                id: "chatcmpl_1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "kimi-k2.5",
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: "call_1",
+                          type: "function",
+                          function: {
+                            name: "read",
+                            arguments: "{\"path\":",
+                          },
+                        },
+                      ],
+                    },
+                    finish_reason: null,
+                  },
+                ],
+              }
+              yield {
+                id: "chatcmpl_1",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "kimi-k2.5",
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          function: {
+                            arguments: "\"README.md\"}",
+                          },
+                        },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+              }
+            },
+          },
+        },
+      },
+    })
+
+    const runtime = createRuntime({ provider })
+    const handle = await runtime.run({
+      prompt: "Inspect README.md",
+      cwd: "test/fixtures/workspaces/read-search",
+      workspaceRoot: "test/fixtures/workspaces/read-search",
+    })
+
+    const events = []
+    for await (const event of handle.events) {
+      events.push(event)
+    }
+
+    expect(receivedBody).toMatchObject({
+      model: "kimi-k2.5",
+      tools: expect.any(Array),
+      stream: true,
+    })
+    expect(receivedOptions).toMatchObject({ signal: expect.any(AbortSignal) })
     expect(events.filter((event) => event.type === "tool.call.completed")).toEqual([
       {
         type: "tool.call.completed",

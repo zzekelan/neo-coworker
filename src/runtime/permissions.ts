@@ -23,6 +23,13 @@ export type PermissionCoordinatorOptions = {
 export type PermissionCoordinator = {
   request(input: PermissionRequest): Promise<PermissionResponse>
   resolve(input: PermissionResponse): void
+  cancelAll(error?: Error): void
+}
+
+function createPermissionAbortError() {
+  const error = new Error("Permission request cancelled")
+  error.name = "AbortError"
+  return error
 }
 
 export function createPermissionCoordinator(
@@ -33,6 +40,7 @@ export function createPermissionCoordinator(
     string,
     {
       resolve: (value: PermissionResponse) => void
+      reject: (error: Error) => void
     }
   >()
   let nextRequestId = 1
@@ -58,8 +66,11 @@ export function createPermissionCoordinator(
         reason: input.reason,
       }
 
-      const response = new Promise<PermissionResponse>((resolve) => {
-        pending.set(requestId, { resolve })
+      const response = new Promise<PermissionResponse>((resolve, reject) => {
+        pending.set(requestId, {
+          resolve,
+          reject,
+        })
       })
 
       options.onRequest?.(pendingRequest)
@@ -75,6 +86,12 @@ export function createPermissionCoordinator(
 
       entry.resolve(input)
       pending.delete(input.requestId)
+    },
+    cancelAll(error = createPermissionAbortError()) {
+      for (const [requestId, entry] of pending) {
+        entry.reject(error)
+        pending.delete(requestId)
+      }
     },
   }
 }
