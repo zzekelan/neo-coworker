@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildModelInput } from "../../src/runtime/context"
+import { buildModelInput, buildTranscriptMessages } from "../../src/runtime/context"
 
 describe("context builder", () => {
   test("injects system prompt, active skills, tool names, and transcript", () => {
@@ -14,5 +14,69 @@ describe("context builder", () => {
     expect(input.system).toContain("Always explain the diff.")
     expect(input.system).toContain("read")
     expect(input.messages).toHaveLength(1)
+  })
+
+  test("renders persisted tool calls, tool results, and errors back into model messages", () => {
+    const messages = buildTranscriptMessages([
+      {
+        id: "message_1",
+        sessionId: "session_1",
+        runId: "run_1",
+        role: "assistant",
+        sequence: 1,
+        createdAt: 1,
+        parts: [
+          {
+            id: "part_1",
+            sessionId: "session_1",
+            runId: "run_1",
+            messageId: "message_1",
+            kind: "tool_call",
+            sequence: 0,
+            text: null,
+            data: {
+              callId: "call_1",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+            createdAt: 2,
+          },
+          {
+            id: "part_2",
+            sessionId: "session_1",
+            runId: "run_1",
+            messageId: "message_1",
+            kind: "tool_result",
+            sequence: 1,
+            text: "file contents",
+            data: {
+              callId: "call_1",
+              toolName: "read",
+            },
+            createdAt: 3,
+          },
+          {
+            id: "part_3",
+            sessionId: "session_1",
+            runId: "run_1",
+            messageId: "message_1",
+            kind: "error",
+            sequence: 2,
+            text: "tool failed",
+            data: null,
+            createdAt: 4,
+          },
+        ],
+      },
+    ])
+
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        content:
+          'Tool call read (call_1): {"path":"README.md"}\n\nTool result read (call_1): file contents\n\nError: tool failed',
+        parts: [],
+      },
+    ])
   })
 })

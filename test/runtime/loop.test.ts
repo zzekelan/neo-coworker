@@ -1,166 +1,261 @@
-import { cp, mkdtemp } from "node:fs/promises"
+import { afterEach, describe, expect, test } from "bun:test"
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, expect, test } from "bun:test"
-import { createFakeProvider } from "../../src/providers/fake"
-import { createOpenAICompatibleProvider } from "../../src/providers/openai-compatible"
-import { createOpenAIProvider } from "../../src/providers/openai"
-import type { ProviderTurnRequest } from "../../src/providers/types"
+import { createSessionRunService } from "../../src/session"
+import { createStorageRepository, openStorageDatabase, type StorageRepository } from "../../src/storage"
+import { buildTranscriptMessages } from "../../src/runtime/context"
 import { createRuntime } from "../../src/runtime/runtime"
+import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 
-async function createWorkspaceCopy() {
-  const tempRoot = await mkdtemp(join(tmpdir(), "runtime-loop-"))
-  const workspaceRoot = join(tempRoot, "workspace")
+const tempDirectories: string[] = []
+const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
 
-  await cp("test/fixtures/workspaces/read-search", workspaceRoot, { recursive: true })
+afterEach(async () => {
+  while (openDatabases.length > 0) {
+    openDatabases.pop()?.close(false)
+  }
 
-  return workspaceRoot
-}
+  while (tempDirectories.length > 0) {
+    await rm(tempDirectories.pop()!, { force: true, recursive: true })
+  }
+})
 
 describe("agent loop", () => {
-  test("streams assistant text, executes tools, and completes the run", async () => {
-    let providerRequest: ProviderTurnRequest | undefined
+  test("reads prior transcript, roundtrips tool results, and completes the same run", async () => {
+    const harness = await createHarness("single-roundtrip", true)
+    seedCompletedRun({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_history",
+      userText: "What happened before?",
+      assistantText: "Earlier assistant context.",
+    })
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_active",
+      messageId: "message_active_user",
+      prompt: "Inspect README.md",
+    })
+    const requests: ProviderTurnRequest[] = []
     const runtime = createRuntime({
-      provider: createFakeProvider({
-        onRequest(request) {
-          providerRequest = request
-        },
-        events: [
-          { type: "text.delta", text: "Looking at the file." },
-          {
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Looking at the file." }
+          yield {
             type: "tool.call",
             callId: "call_1",
             name: "read",
             inputText: '{"path":"README.md"}',
-          },
-          { type: "text.delta", text: "Done." },
-        ],
-      }),
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Summary complete." }
+        },
+      ]),
+      repository: harness.repository,
+      now: harness.now,
     })
 
     const handle = await runtime.run({
-      prompt: "Inspect README.md",
-      cwd: "test/fixtures/workspaces/read-search",
-      workspaceRoot: "test/fixtures/workspaces/read-search",
+      sessionId: harness.session.id,
+      runId: started.run.id,
     })
+    const events = await collectEvents(handle.events)
+    const requestContents = requests.map(readRequestContents)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
 
-    const events = []
-    for await (const event of handle.events) {
-      events.push(event)
-    }
-
-    const toolNames = providerRequest?.tools.map((tool) => (tool as { name: string }).name) ?? []
-
-    expect(toolNames).toContain("read")
-    expect(toolNames).toContain("search")
-
-    const eventTypes = events.map((event) => event.type)
-    expect(eventTypes).toContain("run.started")
-    expect(eventTypes).toContain("tool.call.completed")
-    expect(eventTypes.at(-1)).toBe("run.completed")
-
-    expect(events.find((event) => event.type === "tool.call.completed")).toMatchObject({
-      type: "tool.call.completed",
-      callId: "call_1",
-      name: "read",
-      output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
-    })
-  })
-
-  test("returns the handle before the provider stream completes", async () => {
-    let releaseStream!: () => void
-    const streamBlocked = new Promise<void>((resolve) => {
-      releaseStream = resolve
-    })
-
-    const runtime = createRuntime({
-      provider: {
-        async *streamTurn() {
-          yield { type: "text.delta", text: "Partial response" }
-          await streamBlocked
-        },
+    expect(requestContents[0]?.join("\n")).toContain("Earlier assistant context.")
+    expect(requestContents[0]?.join("\n")).toContain("Inspect README.md")
+    expect(requestContents[1]?.join("\n")).toContain("Tool result read (call_1)")
+    expect(requestContents[1]?.join("\n")).toContain("# demo workspace")
+    expect(activeRunMessages).toHaveLength(3)
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
+      "text",
+      "tool_call",
+      "tool_result",
+    ])
+    expect(activeRunMessages[1]?.parts[2]).toMatchObject({
+      kind: "tool_result",
+      text: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+      data: {
+        callId: "call_1",
+        toolName: "read",
+        output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
       },
     })
-
-    const timeout = Symbol("timeout")
-    const handleOrTimeout = await Promise.race([
-      runtime.run({
-        prompt: "Inspect README.md",
-        cwd: "test/fixtures/workspaces/read-search",
-        workspaceRoot: "test/fixtures/workspaces/read-search",
-      }),
-      new Promise<typeof timeout>((resolve) => {
-        setTimeout(() => resolve(timeout), 25)
-      }),
-    ])
-
-    expect(handleOrTimeout).not.toBe(timeout)
-
-    if (handleOrTimeout === timeout) {
-      throw new Error("run() did not return before the provider stream completed")
-    }
-
-    const iterator = handleOrTimeout.events[Symbol.asyncIterator]()
-    const firstEventOrTimeout = await Promise.race([
-      iterator.next(),
-      new Promise<typeof timeout>((resolve) => {
-        setTimeout(() => resolve(timeout), 25)
-      }),
-    ])
-
-    expect(firstEventOrTimeout).not.toBe(timeout)
-
-    if (firstEventOrTimeout === timeout || firstEventOrTimeout.done) {
-      throw new Error("Expected a live event before the provider stream finished")
-    }
-
-    expect(firstEventOrTimeout.value.type).toBe("run.started")
-
-    releaseStream()
-
-    const eventTypes = [firstEventOrTimeout.value.type]
-    while (true) {
-      const next = await iterator.next()
-      if (next.done) break
-      eventTypes.push(next.value.type)
-    }
-
-    expect(eventTypes.at(-1)).toBe("run.completed")
+    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Summary complete." }])
+    expect(events.map((event) => event.type)).toContain("tool.call.completed")
+    expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
-  test("emits run.failed when the provider turn throws", async () => {
+  test("supports multiple model and tool cycles inside one durable run", async () => {
+    const harness = await createHarness("multi-cycle", true)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_multi",
+      messageId: "message_multi_user",
+      prompt: "Inspect the fixture twice",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_read",
+            name: "read",
+            inputText: '{"path":"README.md"}',
+          }
+        },
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_search",
+            name: "search",
+            inputText: '{"query":"fixture"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Two checks complete." }
+        },
+      ]),
+      repository: harness.repository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(requests).toHaveLength(3)
+    expect(readRequestContents(requests[1]!).join("\n")).toContain("Tool result read (call_read)")
+    expect(readRequestContents(requests[2]!).join("\n")).toContain("Tool result search (call_search)")
+    expect(activeRunMessages).toHaveLength(4)
+    expect(
+      activeRunMessages.flatMap((message) => message.parts.filter((part) => part.kind === "tool_result")),
+    ).toHaveLength(2)
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
+  test("persists malformed tool arguments as an error outcome and continues the run", async () => {
+    const harness = await createHarness("tool-error", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_tool_error",
+      messageId: "message_tool_error_user",
+      prompt: "Try a bad tool call",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_bad",
+            name: "read",
+            inputText: '{"path":',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Recovered after bad args." }
+        },
+      ]),
+      repository: harness.repository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(readRequestContents(requests[1]!).join("\n")).toContain("Malformed tool arguments for read")
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "error"])
+    expect(activeRunMessages[1]?.parts[1]).toMatchObject({
+      kind: "error",
+      text: expect.stringContaining("Malformed tool arguments for read"),
+    })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
+  test("persists provider failures and marks the run failed", async () => {
+    const harness = await createHarness("provider-failure", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_provider_failure",
+      messageId: "message_provider_failure_user",
+      prompt: "Trigger a provider error",
+    })
     const runtime = createRuntime({
       provider: {
         async *streamTurn() {
-          yield { type: "text.delta", text: "Starting" as const }
+          yield { type: "text.delta", text: "Starting." }
           throw new Error("provider exploded")
         },
       },
+      repository: harness.repository,
+      now: harness.now,
     })
 
     const handle = await runtime.run({
-      prompt: "Inspect README.md",
-      cwd: "test/fixtures/workspaces/read-search",
-      workspaceRoot: "test/fixtures/workspaces/read-search",
+      sessionId: harness.session.id,
+      runId: started.run.id,
     })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
 
-    const events = []
-    for await (const event of handle.events) {
-      events.push(event)
-    }
-
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "error"])
+    expect(activeRunMessages[1]?.parts[1]).toMatchObject({
+      kind: "error",
+      text: "provider exploded",
+      data: { source: "provider" },
+    })
     expect(events.at(-1)).toMatchObject({
       type: "run.failed",
+      runId: started.run.id,
       error: "provider exploded",
+    })
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      status: "failed",
+      errorText: "provider exploded",
     })
   })
 
-  test("emits run.cancelled when cancelled during the provider turn", async () => {
+  test("cancellation keeps persisted output intact and marks the run cancelled", async () => {
+    const harness = await createHarness("cancelled", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_cancelled",
+      messageId: "message_cancelled_user",
+      prompt: "Start and then cancel",
+    })
     const runtime = createRuntime({
       provider: {
         async *streamTurn(request: ProviderTurnRequest) {
-          yield { type: "text.delta", text: "Starting" }
-
+          yield { type: "text.delta", text: "Partial output." }
           await new Promise<void>((_, reject) => {
             request.signal.addEventListener(
               "abort",
@@ -174,52 +269,14 @@ describe("agent loop", () => {
           })
         },
       },
+      repository: harness.repository,
+      now: harness.now,
     })
 
     const handle = await runtime.run({
-      prompt: "Inspect README.md",
-      cwd: "test/fixtures/workspaces/read-search",
-      workspaceRoot: "test/fixtures/workspaces/read-search",
+      sessionId: harness.session.id,
+      runId: started.run.id,
     })
-
-    const iterator = handle.events[Symbol.asyncIterator]()
-    const firstEvent = await iterator.next()
-    expect(firstEvent.done).toBe(false)
-    expect(firstEvent.value.type).toBe("run.started")
-
-    handle.cancel()
-
-    const eventTypes = [firstEvent.value.type]
-    while (true) {
-      const next = await iterator.next()
-      if (next.done) break
-      eventTypes.push(next.value.type)
-    }
-
-    expect(eventTypes.at(-1)).toBe("run.cancelled")
-  })
-
-  test("emits permission requests and resumes tool execution after a response", async () => {
-    const workspaceRoot = await createWorkspaceCopy()
-    const runtime = createRuntime({
-      provider: createFakeProvider({
-        events: [
-          {
-            type: "tool.call",
-            callId: "call_1",
-            name: "write",
-            inputText: '{"path":"notes.txt","content":"hello"}',
-          },
-        ],
-      }),
-    })
-
-    const handle = await runtime.run({
-      prompt: "Write notes.txt with hello",
-      cwd: workspaceRoot,
-      workspaceRoot,
-    })
-
     const iterator = handle.events[Symbol.asyncIterator]()
     const observedTypes: string[] = []
 
@@ -230,237 +287,238 @@ describe("agent loop", () => {
       }
 
       observedTypes.push(next.value.type)
-
-      if (next.value.type === "permission.requested") {
-        expect(next.value).toMatchObject({
-          type: "permission.requested",
-          toolName: "write",
-          reason: "write notes.txt",
-        })
-
-        handle.respondPermission({
-          requestId: next.value.requestId,
-          decision: "allow",
-        })
-      }
-    }
-
-    expect(observedTypes).toContain("permission.requested")
-    expect(observedTypes).toContain("tool.call.completed")
-    expect(observedTypes.at(-1)).toBe("run.completed")
-    expect(await Bun.file(join(workspaceRoot, "notes.txt")).text()).toBe("hello")
-  })
-
-  test("emits run.cancelled when cancelled while waiting for permission", async () => {
-    const workspaceRoot = await createWorkspaceCopy()
-    const runtime = createRuntime({
-      provider: createFakeProvider({
-        events: [
-          {
-            type: "tool.call",
-            callId: "call_1",
-            name: "write",
-            inputText: '{"path":"notes.txt","content":"hello"}',
-          },
-        ],
-      }),
-    })
-
-    const handle = await runtime.run({
-      prompt: "Write notes.txt with hello",
-      cwd: workspaceRoot,
-      workspaceRoot,
-    })
-
-    const iterator = handle.events[Symbol.asyncIterator]()
-    const eventTypes: string[] = []
-
-    while (true) {
-      const next = await Promise.race([
-        iterator.next(),
-        new Promise<symbol>((resolve) => {
-          setTimeout(() => resolve(Symbol.for("timeout")), 25)
-        }),
-      ])
-
-      if (typeof next === "symbol") {
-        throw new Error("Expected runtime cancellation to finish the permission-gated run")
-      }
-
-      if (next.done) {
-        break
-      }
-
-      eventTypes.push(next.value.type)
-
-      if (next.value.type === "permission.requested") {
+      if (next.value.type === "message.delta") {
         handle.cancel()
       }
     }
 
-    expect(eventTypes).toContain("permission.requested")
-    expect(eventTypes.at(-1)).toBe("run.cancelled")
-    expect(await Bun.file(join(workspaceRoot, "notes.txt")).exists()).toBe(false)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(observedTypes.at(-1)).toBe("run.cancelled")
+    expect(activeRunMessages[1]?.parts).toMatchObject([{ kind: "text", text: "Partial output." }])
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
   })
 
-  test("executes one tool call when openai streams arguments across multiple chunks", async () => {
-    const provider = createOpenAIProvider({
-      model: "gpt-5",
-      client: {
-        responses: {
-          stream: async function* () {
-            yield {
-              type: "response.output_item.added",
-              item: {
-                type: "function_call",
-                id: "fc_1",
-                call_id: "call_1",
-                name: "read",
-                arguments: "",
-              },
-              output_index: 0,
-              sequence_number: 0,
-            }
-            yield {
-              type: "response.function_call_arguments.delta",
-              item_id: "fc_1",
-              output_index: 0,
-              sequence_number: 1,
-              delta: "{\"path\":",
-            }
-            yield {
-              type: "response.function_call_arguments.delta",
-              item_id: "fc_1",
-              output_index: 0,
-              sequence_number: 2,
-              delta: "\"README.md\"}",
-            }
-            yield {
-              type: "response.function_call_arguments.done",
-              item_id: "fc_1",
-              output_index: 0,
-              sequence_number: 3,
-              arguments: "{\"path\":\"README.md\"}",
-            }
-          },
+  test("reloads already persisted assistant output from storage while the run is still active", async () => {
+    const harness = await createHarness("reload", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_reload",
+      messageId: "message_reload_user",
+      prompt: "Write partial output",
+    })
+    let releaseStream!: () => void
+    const streamBlocked = new Promise<void>((resolve) => {
+      releaseStream = resolve
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          yield { type: "text.delta", text: "Already persisted." }
+          await streamBlocked
         },
       },
+      repository: harness.repository,
+      now: harness.now,
     })
 
-    const runtime = createRuntime({ provider })
     const handle = await runtime.run({
-      prompt: "Inspect README.md",
-      cwd: "test/fixtures/workspaces/read-search",
-      workspaceRoot: "test/fixtures/workspaces/read-search",
+      sessionId: harness.session.id,
+      runId: started.run.id,
     })
+    const iterator = handle.events[Symbol.asyncIterator]()
 
-    const events = []
-    for await (const event of handle.events) {
-      events.push(event)
+    while (true) {
+      const next = await iterator.next()
+      if (next.done) {
+        throw new Error("expected partial output before the stream closed")
+      }
+
+      if (next.value.type === "message.delta") {
+        const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+        const reconstructed = buildTranscriptMessages(transcript)
+        expect(reconstructed.map((message) => message.content)).toContain("Already persisted.")
+        expect(harness.repository.runs.get(started.run.id).status).toBe("running")
+        handle.cancel()
+        releaseStream()
+        break
+      }
     }
 
-    expect(events.filter((event) => event.type === "tool.call.completed")).toEqual([
-      {
-        type: "tool.call.completed",
-        callId: "call_1",
-        name: "read",
-        output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
-      },
-    ])
-    expect(events.at(-1)).toMatchObject({ type: "run.completed" })
-  })
-
-  test("executes one tool call when openai-compatible streams tool calls across multiple chunks", async () => {
-    let receivedBody: unknown
-    let receivedOptions: unknown
-    const provider = createOpenAICompatibleProvider({
-      model: "kimi-k2.5",
-      client: {
-        chat: {
-          completions: {
-            create: async function* (body, options) {
-              receivedBody = body
-              receivedOptions = options
-
-              yield {
-                id: "chatcmpl_1",
-                object: "chat.completion.chunk",
-                created: 1,
-                model: "kimi-k2.5",
-                choices: [
-                  {
-                    index: 0,
-                    delta: {
-                      tool_calls: [
-                        {
-                          index: 0,
-                          id: "call_1",
-                          type: "function",
-                          function: {
-                            name: "read",
-                            arguments: "{\"path\":",
-                          },
-                        },
-                      ],
-                    },
-                    finish_reason: null,
-                  },
-                ],
-              }
-              yield {
-                id: "chatcmpl_1",
-                object: "chat.completion.chunk",
-                created: 1,
-                model: "kimi-k2.5",
-                choices: [
-                  {
-                    index: 0,
-                    delta: {
-                      tool_calls: [
-                        {
-                          index: 0,
-                          function: {
-                            arguments: "\"README.md\"}",
-                          },
-                        },
-                      ],
-                    },
-                    finish_reason: "tool_calls",
-                  },
-                ],
-              }
-            },
-          },
-        },
-      },
-    })
-
-    const runtime = createRuntime({ provider })
-    const handle = await runtime.run({
-      prompt: "Inspect README.md",
-      cwd: "test/fixtures/workspaces/read-search",
-      workspaceRoot: "test/fixtures/workspaces/read-search",
-    })
-
-    const events = []
-    for await (const event of handle.events) {
-      events.push(event)
+    const remainingTypes: string[] = []
+    while (true) {
+      const next = await iterator.next()
+      if (next.done) {
+        break
+      }
+      remainingTypes.push(next.value.type)
     }
 
-    expect(receivedBody).toMatchObject({
-      model: "kimi-k2.5",
-      tools: expect.any(Array),
-      stream: true,
-    })
-    expect(receivedOptions).toMatchObject({ signal: expect.any(AbortSignal) })
-    expect(events.filter((event) => event.type === "tool.call.completed")).toEqual([
-      {
-        type: "tool.call.completed",
-        callId: "call_1",
-        name: "read",
-        output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
-      },
-    ])
-    expect(events.at(-1)).toMatchObject({ type: "run.completed" })
+    expect(remainingTypes.at(-1)).toBe("run.cancelled")
   })
 })
+
+async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
+  const directory = await mkdtemp(join(tmpdir(), `${prefix}-`))
+  tempDirectories.push(directory)
+
+  const workspaceRoot = join(directory, "workspace")
+  if (withFixtureWorkspace) {
+    await cp("test/fixtures/workspaces/read-search", workspaceRoot, { recursive: true })
+  } else {
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+  }
+
+  const now = createMonotonicClock()
+  const database = trackDatabase(openStorageDatabase(join(directory, "agent.sqlite")))
+  const repository = createStorageRepository({
+    database,
+    now,
+  })
+  const service = createSessionRunService({
+    repository,
+    now,
+  })
+  const session = repository.sessions.create({
+    id: `${prefix}_session`,
+    directory: workspaceRoot,
+    workspaceRoot,
+    createdAt: now(),
+  })
+
+  return {
+    repository,
+    service,
+    session,
+    workspaceRoot,
+    now,
+  }
+}
+
+function startPromptRun(input: {
+  repository: StorageRepository
+  service: ReturnType<typeof createSessionRunService>
+  sessionId: string
+  runId: string
+  messageId: string
+  prompt: string
+}) {
+  const started = input.service.startRun({
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: input.messageId,
+  })
+
+  input.repository.parts.create({
+    sessionId: input.sessionId,
+    runId: started.run.id,
+    messageId: started.message.id,
+    kind: "text",
+    sequence: 0,
+    text: input.prompt,
+  })
+
+  return started
+}
+
+function seedCompletedRun(input: {
+  repository: StorageRepository
+  sessionId: string
+  runId: string
+  userText: string
+  assistantText: string
+}) {
+  input.repository.runs.create({
+    id: input.runId,
+    sessionId: input.sessionId,
+    trigger: "prompt",
+    status: "completed",
+  })
+  const userMessage = input.repository.messages.create({
+    id: `${input.runId}_user`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "user",
+    sequence: 0,
+  })
+  input.repository.parts.create({
+    id: `${input.runId}_user_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: userMessage.id,
+    kind: "text",
+    sequence: 0,
+    text: input.userText,
+  })
+  const assistantMessage = input.repository.messages.create({
+    id: `${input.runId}_assistant`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "assistant",
+    sequence: 1,
+  })
+  input.repository.parts.create({
+    id: `${input.runId}_assistant_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: assistantMessage.id,
+    kind: "text",
+    sequence: 0,
+    text: input.assistantText,
+  })
+}
+
+function createTurnProvider(
+  requests: ProviderTurnRequest[],
+  turns: Array<(request: ProviderTurnRequest) => AsyncIterable<ProviderEvent>>,
+): Provider {
+  let index = 0
+
+  return {
+    async *streamTurn(request: ProviderTurnRequest) {
+      requests.push(request)
+      const turn = turns[index]
+      index += 1
+
+      if (!turn) {
+        throw new Error(`Unexpected provider turn ${index}`)
+      }
+
+      for await (const event of turn(request)) {
+        yield event
+      }
+    },
+  }
+}
+
+async function collectEvents(events: AsyncIterable<unknown>) {
+  const collected = []
+  for await (const event of events) {
+    collected.push(event)
+  }
+  return collected
+}
+
+function readRequestContents(request: ProviderTurnRequest) {
+  return ((request.messages as Array<{ content?: string }> | undefined) ?? []).map(
+    (message) => message.content ?? "",
+  )
+}
+
+function createMonotonicClock(start = 1) {
+  let current = start
+  return () => {
+    const value = current
+    current += 1
+    return value
+  }
+}
+
+function trackDatabase<T extends { close: (throwOnError: boolean) => void }>(database: T) {
+  openDatabases.push(database)
+  return database
+}

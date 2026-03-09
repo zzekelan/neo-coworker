@@ -1,3 +1,5 @@
+import { createSessionRunService } from "../session"
+import type { StorageRepository } from "../storage"
 import type { Provider } from "../providers/types"
 import type { RunHandle } from "./run-handle"
 import { createEventQueue } from "./event-queue"
@@ -13,20 +15,31 @@ import { createWriteTool } from "./tools/write"
 
 type RuntimeInput = {
   provider: Provider
+  repository: StorageRepository
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
+  systemPrompt?: string
+  now?: () => number
 }
 
 type RunInput = {
-  prompt: string
-  cwd: string
-  workspaceRoot: string
+  sessionId: string
+  runId: string
 }
 
 export function createRuntime(input: RuntimeInput) {
+  const repository = input.repository
+  const now = input.now ?? Date.now
+  const sessionRuns = createSessionRunService({
+    repository,
+    now,
+  })
+
   return {
     async run(runInput: RunInput): Promise<RunHandle> {
+      const session = repository.sessions.get(runInput.sessionId)
       const controller = new AbortController()
       const queue = createEventQueue<RuntimeEvent>()
+      const pendingPermissions = new Set<string>()
       const permissions = createPermissionCoordinator(
         {
           write: "ask",
@@ -36,6 +49,16 @@ export function createRuntime(input: RuntimeInput) {
         },
         {
           onRequest(request) {
+            sessionRuns.requestPermission({
+              runId: runInput.runId,
+              permissionRequest: {
+                id: request.requestId,
+                toolName: request.toolName,
+                reason: request.reason,
+                createdAt: now(),
+              },
+            })
+            pendingPermissions.add(request.requestId)
             queue.push({
               type: "permission.requested",
               requestId: request.requestId,
@@ -54,12 +77,19 @@ export function createRuntime(input: RuntimeInput) {
       ])
 
       void runAgentLoop({
-        prompt: runInput.prompt,
+        sessionId: session.id,
+        runId: runInput.runId,
+        repository,
+        sessionRuns,
         provider: input.provider,
         queue,
         signal: controller.signal,
         tools,
-        workspaceRoot: runInput.workspaceRoot,
+        workspaceRoot: session.workspaceRoot,
+        systemPrompt: input.systemPrompt ?? "You are the agent runtime.",
+        now,
+      }).finally(() => {
+        pendingPermissions.clear()
       })
 
       return {
@@ -69,6 +99,17 @@ export function createRuntime(input: RuntimeInput) {
           permissions.cancelAll()
         },
         respondPermission(response) {
+          if (!pendingPermissions.has(response.requestId)) {
+            throw new Error(`Unknown permission request: ${response.requestId}`)
+          }
+
+          repository.permissionRequests.updateStatus({
+            requestId: response.requestId,
+            status: response.decision === "allow" ? "approved" : "denied",
+            resolvedAt: now(),
+          })
+          sessionRuns.resumeRun(runInput.runId)
+          pendingPermissions.delete(response.requestId)
           permissions.resolve(response)
         },
       }
