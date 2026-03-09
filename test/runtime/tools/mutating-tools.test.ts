@@ -20,10 +20,10 @@ async function createWorkspaceCopy() {
 describe("mutating tools", () => {
   test("blocks write until permission is granted", async () => {
     const workspaceRoot = await createWorkspaceCopy()
-    const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })
+    const permissionState = createPermissionState()
     const registry = createToolRegistry([
-      createWriteTool({ permissions }),
-      createEditTool({ permissions }),
+      createWriteTool({ permissions: permissionState.permissions }),
+      createEditTool({ permissions: permissionState.permissions }),
     ])
 
     const pending = registry.execute({
@@ -39,7 +39,7 @@ describe("mutating tools", () => {
 
     expect(stateBeforePermission).toBe("pending")
 
-    permissions.resolve({ requestId: "permission_1", decision: "allow" })
+    permissionState.resolve("allow")
     const result = await pending
 
     expect(result.output).toContain("notes.txt")
@@ -47,8 +47,8 @@ describe("mutating tools", () => {
 
   test("rejects edit when permission is denied", async () => {
     const workspaceRoot = await createWorkspaceCopy()
-    const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })
-    const registry = createToolRegistry([createEditTool({ permissions })])
+    const permissionState = createPermissionState()
+    const registry = createToolRegistry([createEditTool({ permissions: permissionState.permissions })])
 
     const pending = registry.execute({
       toolName: "edit",
@@ -56,14 +56,14 @@ describe("mutating tools", () => {
       workspaceRoot,
     })
 
-    permissions.resolve({ requestId: "permission_1", decision: "deny" })
+    permissionState.resolve("deny")
     await expect(pending).rejects.toThrow("Permission denied")
   })
 
   test("rejects edit when target text appears multiple times", async () => {
     const workspaceRoot = await createWorkspaceCopy()
-    const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })
-    const registry = createToolRegistry([createEditTool({ permissions })])
+    const permissionState = createPermissionState()
+    const registry = createToolRegistry([createEditTool({ permissions: permissionState.permissions })])
     const repeatedFile = join(workspaceRoot, "src", "repeat.txt")
 
     await writeFile(repeatedFile, "demo demo\n")
@@ -74,7 +74,7 @@ describe("mutating tools", () => {
       workspaceRoot,
     })
 
-    permissions.resolve({ requestId: "permission_1", decision: "allow" })
+    permissionState.resolve("allow")
 
     await expect(pending).rejects.toThrow("Target text must appear exactly once")
     expect(await Bun.file(repeatedFile).text()).toBe("demo demo\n")
@@ -82,8 +82,8 @@ describe("mutating tools", () => {
 
   test("rejects edit when target text has overlapping duplicate matches", async () => {
     const workspaceRoot = await createWorkspaceCopy()
-    const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })
-    const registry = createToolRegistry([createEditTool({ permissions })])
+    const permissionState = createPermissionState()
+    const registry = createToolRegistry([createEditTool({ permissions: permissionState.permissions })])
     const overlappingFile = join(workspaceRoot, "src", "overlap.txt")
 
     await writeFile(overlappingFile, "ababa\n")
@@ -94,7 +94,7 @@ describe("mutating tools", () => {
       workspaceRoot,
     })
 
-    permissions.resolve({ requestId: "permission_1", decision: "allow" })
+    permissionState.resolve("allow")
 
     await expect(pending).rejects.toThrow("Target text must appear exactly once")
     expect(await Bun.file(overlappingFile).text()).toBe("ababa\n")
@@ -102,8 +102,8 @@ describe("mutating tools", () => {
 
   test("runs shell in the workspace after permission is granted", async () => {
     const workspaceRoot = await createWorkspaceCopy()
-    const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })
-    const registry = createToolRegistry([createShellTool({ permissions })])
+    const permissionState = createPermissionState()
+    const registry = createToolRegistry([createShellTool({ permissions: permissionState.permissions })])
 
     const pending = registry.execute({
       toolName: "shell",
@@ -111,7 +111,7 @@ describe("mutating tools", () => {
       workspaceRoot,
     })
 
-    permissions.resolve({ requestId: "permission_1", decision: "allow" })
+    permissionState.resolve("allow")
     const result = await pending
 
     expect(result.output).toContain("workspace")
@@ -127,8 +127,8 @@ describe("mutating tools", () => {
 
   test("rejects shell when permission is denied", async () => {
     const workspaceRoot = await createWorkspaceCopy()
-    const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })
-    const registry = createToolRegistry([createShellTool({ permissions })])
+    const permissionState = createPermissionState()
+    const registry = createToolRegistry([createShellTool({ permissions: permissionState.permissions })])
 
     const pending = registry.execute({
       toolName: "shell",
@@ -136,15 +136,15 @@ describe("mutating tools", () => {
       workspaceRoot,
     })
 
-    permissions.resolve({ requestId: "permission_1", decision: "deny" })
+    permissionState.resolve("deny")
 
     await expect(pending).rejects.toThrow("Permission denied")
   })
 
   test("surfaces shell non-zero exits after permission is granted", async () => {
     const workspaceRoot = await createWorkspaceCopy()
-    const permissions = createPermissionCoordinator({ write: "ask", edit: "ask", shell: "ask" })
-    const registry = createToolRegistry([createShellTool({ permissions })])
+    const permissionState = createPermissionState()
+    const registry = createToolRegistry([createShellTool({ permissions: permissionState.permissions })])
 
     const pending = registry.execute({
       toolName: "shell",
@@ -152,7 +152,7 @@ describe("mutating tools", () => {
       workspaceRoot,
     })
 
-    permissions.resolve({ requestId: "permission_1", decision: "allow" })
+    permissionState.resolve("allow")
 
     await expect(pending).rejects.toThrow("Shell command failed with exit code 7")
   })
@@ -170,3 +170,30 @@ describe("mutating tools", () => {
     ).toThrow("Duplicate tool: write")
   })
 })
+
+function createPermissionState() {
+  let lastRequestId: string | null = null
+
+  const permissions = createPermissionCoordinator(
+    { write: "ask", edit: "ask", shell: "ask" },
+    {
+      onRequest(request) {
+        lastRequestId = request.requestId
+      },
+    },
+  )
+
+  return {
+    permissions,
+    resolve(decision: "allow" | "deny") {
+      if (!lastRequestId) {
+        throw new Error("Expected a pending permission request")
+      }
+
+      permissions.resolve({
+        requestId: lastRequestId,
+        decision,
+      })
+    },
+  }
+}
