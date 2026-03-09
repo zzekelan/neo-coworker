@@ -49,6 +49,7 @@ type CliRunInput = {
 }
 
 type ActiveRunState = {
+  storageIdentity: string
   sessionId: string
   runId: string
   controller: AbortController
@@ -58,8 +59,8 @@ type ActiveRunState = {
 
 const sharedActiveRuns = new Map<string, ActiveRunState>()
 
-function getActiveRunKey(input: { sessionId: string; runId: string }) {
-  return `${input.sessionId}:${input.runId}`
+function getActiveRunKey(input: { storageIdentity: string; sessionId: string; runId: string }) {
+  return `${input.storageIdentity}:${input.sessionId}:${input.runId}`
 }
 
 export function createRuntime(input: RuntimeInput) {
@@ -74,6 +75,7 @@ export function createRuntime(input: RuntimeInput) {
     activeRun.pendingPermissionIds.clear()
     sharedActiveRuns.delete(
       getActiveRunKey({
+        storageIdentity: activeRun.storageIdentity,
         sessionId: activeRun.sessionId,
         runId: activeRun.runId,
       }),
@@ -84,6 +86,7 @@ export function createRuntime(input: RuntimeInput) {
     const permissionRequest = repository.permissionRequests.get(response.requestId)
     const activeRun = sharedActiveRuns.get(
       getActiveRunKey({
+        storageIdentity: repository.storageIdentity,
         sessionId: permissionRequest.sessionId,
         runId: permissionRequest.runId,
       }),
@@ -114,6 +117,7 @@ export function createRuntime(input: RuntimeInput) {
     const run = repository.runs.get(runId)
     const activeRun = sharedActiveRuns.get(
       getActiveRunKey({
+        storageIdentity: repository.storageIdentity,
         sessionId: run.sessionId,
         runId,
       }),
@@ -136,6 +140,7 @@ export function createRuntime(input: RuntimeInput) {
   return {
     async run(runInput: RunInput): Promise<RunHandle> {
       const activeRunKey = getActiveRunKey({
+        storageIdentity: repository.storageIdentity,
         sessionId: runInput.sessionId,
         runId: runInput.runId,
       })
@@ -163,8 +168,8 @@ export function createRuntime(input: RuntimeInput) {
                 toolName: request.toolName,
                 reason: request.reason,
                 createdAt: now(),
-                },
-              })
+              },
+            })
             activeRun.pendingPermissionIds.add(request.requestId)
             queue.push({
               type: "permission.requested",
@@ -176,6 +181,7 @@ export function createRuntime(input: RuntimeInput) {
         },
       )
       const activeRun: ActiveRunState = {
+        storageIdentity: repository.storageIdentity,
         sessionId: session.id,
         runId: runInput.runId,
         controller,

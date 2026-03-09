@@ -1,4 +1,5 @@
 export {
+  getStorageDatabaseIdentity,
   openStorageDatabase,
   type StorageDatabase,
 } from "./db"

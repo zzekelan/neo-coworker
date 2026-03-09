@@ -1,10 +1,24 @@
 import { Database } from "bun:sqlite"
-import { existsSync, mkdirSync } from "node:fs"
-import { dirname } from "node:path"
+import { existsSync, mkdirSync, realpathSync } from "node:fs"
+import { dirname, resolve } from "node:path"
 
 import { CURRENT_STORAGE_SCHEMA_VERSION, STORAGE_MIGRATIONS } from "./schema"
 
 export type StorageDatabase = Database
+
+export function getStorageDatabaseIdentity(database: StorageDatabase) {
+  const filename = database.filename
+
+  if (!filename || filename === ":memory:") {
+    return `memory:${String(database.handle)}`
+  }
+
+  try {
+    return realpathSync.native(filename)
+  } catch {
+    return resolve(filename)
+  }
+}
 
 export function openStorageDatabase(filePath: string) {
   ensureParentDirectory(filePath)

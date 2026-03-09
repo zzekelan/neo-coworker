@@ -440,6 +440,115 @@ describe("runtime permission flow", () => {
     })
   })
 
+  test("active permission runs stay isolated across different sqlite databases", async () => {
+    const harnessA = await createHarness("permission-db-a", false, {
+      sessionId: "session_same",
+    })
+    const harnessB = await createHarness("permission-db-b", false, {
+      sessionId: "session_same",
+    })
+    const runtimeA = createPermissionRuntime({
+      provider: createTurnProvider([], [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write_a",
+            name: "write",
+            inputText: '{"path":"a.txt","content":"from-a"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "A done." }
+        },
+      ]),
+      harness: harnessA,
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+    const runtimeB = createPermissionRuntime({
+      provider: createTurnProvider([], [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write_b",
+            name: "write",
+            inputText: '{"path":"b.txt","content":"from-b"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "B done." }
+        },
+      ]),
+      harness: harnessB,
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+
+    const startedA = startPromptRun({
+      repository: harnessA.repository,
+      service: harnessA.service,
+      sessionId: harnessA.session.id,
+      runId: "run_same",
+      messageId: "message_a_user",
+      prompt: "Write a.txt",
+    })
+    const handleA = await runtimeA.run({
+      sessionId: harnessA.session.id,
+      runId: startedA.run.id,
+    })
+    const iteratorA = handleA.events[Symbol.asyncIterator]()
+    const permissionA = await waitForPermissionRequest(iteratorA)
+
+    const startedB = startPromptRun({
+      repository: harnessB.repository,
+      service: harnessB.service,
+      sessionId: harnessB.session.id,
+      runId: "run_same",
+      messageId: "message_b_user",
+      prompt: "Write b.txt",
+    })
+    const handleB = await runtimeB.run({
+      sessionId: harnessB.session.id,
+      runId: startedB.run.id,
+    })
+    const iteratorB = handleB.events[Symbol.asyncIterator]()
+    const permissionB = await waitForPermissionRequest(iteratorB)
+
+    runtimeB.cancelRun(startedB.run.id)
+    const remainingEventsB = await collectEvents(iteratorB)
+
+    expect(remainingEventsB.at(-1)).toMatchObject({
+      type: "run.cancelled",
+      runId: startedB.run.id,
+    })
+    expect(harnessB.repository.runs.get(startedB.run.id).status).toBe("cancelled")
+    expect(harnessB.repository.permissionRequests.get(permissionB.requestId)).toMatchObject({
+      id: permissionB.requestId,
+      status: "cancelled",
+    })
+
+    expect(harnessA.repository.runs.get(startedA.run.id).status).toBe("waiting_permission")
+    expect(harnessA.repository.permissionRequests.get(permissionA.requestId)).toMatchObject({
+      id: permissionA.requestId,
+      status: "pending",
+    })
+
+    runtimeA.respondPermission({
+      requestId: permissionA.requestId,
+      decision: "allow",
+    })
+    const remainingEventsA = await collectEvents(iteratorA)
+
+    expect(remainingEventsA.at(-1)).toMatchObject({
+      type: "run.completed",
+      runId: startedA.run.id,
+    })
+    expect(await readFile(join(harnessA.workspaceRoot, "a.txt"), "utf8")).toBe("from-a")
+    expect(await fileExists(join(harnessB.workspaceRoot, "b.txt"))).toBe(false)
+  })
+
   test("replying to an unknown permission request fails explicitly", async () => {
     const harness = await createHarness("permission-missing", false)
     const runtime = createPermissionRuntime({
@@ -456,7 +565,13 @@ describe("runtime permission flow", () => {
   })
 })
 
-async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
+async function createHarness(
+  prefix: string,
+  withFixtureWorkspace: boolean,
+  options: {
+    sessionId?: string
+  } = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), `${prefix}-`))
   tempDirectories.push(directory)
 
@@ -479,7 +594,7 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
     now,
   })
   const session = repository.sessions.create({
-    id: `${prefix}_session`,
+    id: options.sessionId ?? `${prefix}_session`,
     directory: workspaceRoot,
     workspaceRoot,
     createdAt: now(),

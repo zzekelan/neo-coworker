@@ -1,4 +1,4 @@
-import type { StorageDatabase } from "./db"
+import { getStorageDatabaseIdentity, type StorageDatabase } from "./db"
 import {
   MESSAGE_ROLES,
   PART_KINDS,
@@ -277,6 +277,7 @@ export function createStorageRepository(input: {
   createId?: (prefix: IdPrefix) => string
 }) {
   const database = input.database
+  const storageIdentity = getStorageDatabaseIdentity(database)
   const now = input.now ?? Date.now
   const createId =
     input.createId ?? ((prefix: IdPrefix) => `${prefix}_${crypto.randomUUID()}`)
@@ -885,6 +886,7 @@ export function createStorageRepository(input: {
   const permissionRequestsApi = permissionRequests
 
   return {
+    storageIdentity,
     sessions,
     runs,
     messages,
