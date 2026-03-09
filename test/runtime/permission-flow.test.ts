@@ -286,6 +286,160 @@ describe("runtime permission flow", () => {
     ).toThrow(/not pending|cancelled/i)
   })
 
+  test("permission request ids stay unique across approval-gated runs", async () => {
+    const harness = await createHarness("permission-unique", false)
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider([], [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write_1",
+            name: "write",
+            inputText: '{"path":"first.txt","content":"first"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "First done." }
+        },
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write_2",
+            name: "write",
+            inputText: '{"path":"second.txt","content":"second"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Second done." }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+
+    const firstRun = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_permission_unique_1",
+      messageId: "message_permission_unique_1_user",
+      prompt: "Write first.txt",
+    })
+    const firstHandle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: firstRun.run.id,
+    })
+    const firstIterator = firstHandle.events[Symbol.asyncIterator]()
+    const firstPermission = await waitForPermissionRequest(firstIterator)
+
+    runtime.respondPermission({
+      requestId: firstPermission.requestId,
+      decision: "allow",
+    })
+    await collectEvents(firstIterator)
+
+    const secondRun = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_permission_unique_2",
+      messageId: "message_permission_unique_2_user",
+      prompt: "Write second.txt",
+    })
+    const secondHandle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: secondRun.run.id,
+    })
+    const secondIterator = secondHandle.events[Symbol.asyncIterator]()
+    const secondPermission = await waitForPermissionRequest(secondIterator)
+
+    expect(secondPermission.requestId).not.toBe(firstPermission.requestId)
+
+    runtime.respondPermission({
+      requestId: secondPermission.requestId,
+      decision: "allow",
+    })
+    await collectEvents(secondIterator)
+
+    expect(harness.repository.permissionRequests.listByRun(firstRun.run.id)).toMatchObject([
+      { id: firstPermission.requestId, status: "approved" },
+    ])
+    expect(harness.repository.permissionRequests.listByRun(secondRun.run.id)).toMatchObject([
+      { id: secondPermission.requestId, status: "approved" },
+    ])
+  })
+
+  test("a fresh runtime instance can reply to a pending request from the same sqlite state", async () => {
+    const harness = await createHarness("permission-reopen-reply", false)
+    const firstRuntime = createPermissionRuntime({
+      provider: createTurnProvider([], [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Write finished." }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_permission_reopen_reply",
+      messageId: "message_permission_reopen_reply_user",
+      prompt: "Write notes.txt",
+    })
+
+    const handle = await firstRuntime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const permissionEvent = await waitForPermissionRequest(iterator)
+
+    const reopenedDatabase = trackDatabase(openStorageDatabase(harness.databasePath))
+    const reopenedRepository = createStorageRepository({
+      database: reopenedDatabase,
+      now: harness.now,
+    })
+    const secondRuntime = createRuntime({
+      provider: createTurnProvider([], []),
+      repository: reopenedRepository,
+      now: harness.now,
+      permissionPolicy: {
+        write: "ask",
+      },
+    }) as RuntimeController
+
+    secondRuntime.respondPermission({
+      requestId: permissionEvent.requestId,
+      decision: "allow",
+    })
+
+    const remainingEvents = await collectEvents(iterator)
+
+    expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe("hello")
+    expect(remainingEvents.at(-1)).toMatchObject({
+      type: "run.completed",
+      runId: started.run.id,
+    })
+    expect(reopenedRepository.permissionRequests.get(permissionEvent.requestId)).toMatchObject({
+      id: permissionEvent.requestId,
+      status: "approved",
+    })
+  })
+
   test("replying to an unknown permission request fails explicitly", async () => {
     const harness = await createHarness("permission-missing", false)
     const runtime = createPermissionRuntime({
@@ -336,6 +490,7 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
     service,
     session,
     workspaceRoot,
+    databasePath: join(directory, "agent.sqlite"),
     now,
   }
 }

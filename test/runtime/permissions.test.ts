@@ -13,6 +13,7 @@ describe("permission coordinator", () => {
         write: "ask",
       },
       {
+        createRequestId: createMonotonicRequestIdGenerator(),
         onRequest(request) {
           observed.push(request)
         },
@@ -47,6 +48,8 @@ describe("permission coordinator", () => {
     const permissions = createPermissionCoordinator({
       read: "allow",
       write: "ask",
+    }, {
+      createRequestId: createMonotonicRequestIdGenerator(),
     })
 
     const pending = permissions.request({
@@ -72,6 +75,7 @@ describe("permission coordinator", () => {
         write: "ask",
       },
       {
+        createRequestId: createMonotonicRequestIdGenerator(),
         onRequest(request) {
           observed.push(request.requestId)
         },
@@ -135,3 +139,12 @@ describe("permission coordinator", () => {
     ).toThrow("Unknown permission request")
   })
 })
+
+function createMonotonicRequestIdGenerator() {
+  let nextRequestId = 1
+  return () => {
+    const requestId = `permission_${nextRequestId}`
+    nextRequestId += 1
+    return requestId
+  }
+}

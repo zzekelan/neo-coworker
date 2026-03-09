@@ -49,10 +49,17 @@ type CliRunInput = {
 }
 
 type ActiveRunState = {
+  sessionId: string
   runId: string
   controller: AbortController
   permissions: ReturnType<typeof createPermissionCoordinator>
   pendingPermissionIds: Set<string>
+}
+
+const sharedActiveRuns = new Map<string, ActiveRunState>()
+
+function getActiveRunKey(input: { sessionId: string; runId: string }) {
+  return `${input.sessionId}:${input.runId}`
 }
 
 export function createRuntime(input: RuntimeInput) {
@@ -62,16 +69,25 @@ export function createRuntime(input: RuntimeInput) {
     repository,
     now,
   })
-  const activeRuns = new Map<string, ActiveRunState>()
 
   function clearActiveRun(activeRun: ActiveRunState) {
     activeRun.pendingPermissionIds.clear()
-    activeRuns.delete(activeRun.runId)
+    sharedActiveRuns.delete(
+      getActiveRunKey({
+        sessionId: activeRun.sessionId,
+        runId: activeRun.runId,
+      }),
+    )
   }
 
   function respondPermission(response: PermissionResponse) {
     const permissionRequest = repository.permissionRequests.get(response.requestId)
-    const activeRun = activeRuns.get(permissionRequest.runId)
+    const activeRun = sharedActiveRuns.get(
+      getActiveRunKey({
+        sessionId: permissionRequest.sessionId,
+        runId: permissionRequest.runId,
+      }),
+    )
 
     if (!activeRun || !activeRun.pendingPermissionIds.has(response.requestId)) {
       if (permissionRequest.status !== "pending") {
@@ -95,8 +111,13 @@ export function createRuntime(input: RuntimeInput) {
   }
 
   function cancelRun(runId: string) {
-    const activeRun = activeRuns.get(runId)
     const run = repository.runs.get(runId)
+    const activeRun = sharedActiveRuns.get(
+      getActiveRunKey({
+        sessionId: run.sessionId,
+        runId,
+      }),
+    )
 
     if (run.status === "cancelled" || isTerminalRunStatus(run.status)) {
       return
@@ -114,7 +135,12 @@ export function createRuntime(input: RuntimeInput) {
 
   return {
     async run(runInput: RunInput): Promise<RunHandle> {
-      if (activeRuns.has(runInput.runId)) {
+      const activeRunKey = getActiveRunKey({
+        sessionId: runInput.sessionId,
+        runId: runInput.runId,
+      })
+
+      if (sharedActiveRuns.has(activeRunKey)) {
         throw new Error(`Run ${runInput.runId} is already active`)
       }
 
@@ -150,12 +176,13 @@ export function createRuntime(input: RuntimeInput) {
         },
       )
       const activeRun: ActiveRunState = {
+        sessionId: session.id,
         runId: runInput.runId,
         controller,
         permissions,
         pendingPermissionIds: new Set<string>(),
       }
-      activeRuns.set(activeRun.runId, activeRun)
+      sharedActiveRuns.set(activeRunKey, activeRun)
       const tools = createToolRegistry([
         createReadTool(),
         createSearchTool(),

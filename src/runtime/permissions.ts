@@ -18,6 +18,7 @@ export type PendingPermissionRequest = PermissionRequest & {
 
 export type PermissionCoordinatorOptions = {
   onRequest?(request: PendingPermissionRequest): void
+  createRequestId?(): string
 }
 
 export type PermissionCoordinator = {
@@ -43,7 +44,8 @@ export function createPermissionCoordinator(
       reject: (error: Error) => void
     }
   >()
-  let nextRequestId = 1
+  const createRequestId =
+    options.createRequestId ?? (() => `permission_${crypto.randomUUID()}`)
 
   return {
     async request(input: PermissionRequest) {
@@ -57,8 +59,7 @@ export function createPermissionCoordinator(
         return { requestId: "permission_auto", decision: "deny" as const }
       }
 
-      const requestId = `permission_${nextRequestId}`
-      nextRequestId += 1
+      const requestId = createRequestId()
 
       const pendingRequest = {
         requestId,
