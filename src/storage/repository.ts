@@ -292,6 +292,18 @@ export function createStorageRepository(input: {
       .get(sessionId) as SessionRow | null
   }
 
+  function listSessionRows() {
+    return database
+      .query(
+        `
+          SELECT id, directory, workspace_root, created_at
+          FROM session
+          ORDER BY created_at ASC, id ASC
+        `,
+      )
+      .all() as SessionRow[]
+  }
+
   function getRunRow(runId: string) {
     return database
       .query(
@@ -455,6 +467,9 @@ export function createStorageRepository(input: {
         .run(record.id, record.directory, record.workspaceRoot, record.createdAt)
 
       return record
+    },
+    list() {
+      return listSessionRows().map(mapSessionRow)
     },
     get(sessionId: string) {
       return requireSession(sessionId)
