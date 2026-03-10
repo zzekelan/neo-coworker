@@ -2,7 +2,7 @@ import { createInterface } from "node:readline/promises"
 
 export type CliIO = {
   write(text: string): void
-  prompt(message: string): Promise<string>
+  prompt(message: string, options?: { signal?: AbortSignal }): Promise<string>
   onSigint?(listener: () => void): void | (() => void)
   close?(): void
 }
@@ -17,8 +17,10 @@ export function createStdioCliIo(): CliIO {
     write(text) {
       process.stdout.write(text)
     },
-    prompt(message) {
-      return readline.question(message)
+    prompt(message, options) {
+      return readline.question(message, {
+        signal: options?.signal,
+      })
     },
     onSigint(listener) {
       process.on("SIGINT", listener)

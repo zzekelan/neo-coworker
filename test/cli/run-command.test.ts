@@ -155,6 +155,70 @@ describe("run command", () => {
     expect(countOccurrences(output.join(""), "run.started")).toBe(1)
   })
 
+  test("cancels and exits while a permission prompt is still waiting for input", async () => {
+    const harness = await createHarness(
+      "cli-run-permission-cancel",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello from cli"}',
+          }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          write: "ask",
+        },
+      },
+    )
+    const output: string[] = []
+    let sigintHandler: (() => void) | undefined
+    let releasePermissionRequested!: () => void
+    const permissionRequested = new Promise<void>((resolve) => {
+      releasePermissionRequested = resolve
+    })
+
+    const runPromise = runCli({
+      argv: ["run", "Write notes.txt"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, [], {
+        onWrite(text) {
+          if (text.includes("permission.requested")) {
+            releasePermissionRequested()
+          }
+        },
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        prompt() {
+          return new Promise<string>(() => {})
+        },
+      }),
+    })
+
+    await permissionRequested
+    expect(sigintHandler).toBeDefined()
+    sigintHandler?.()
+
+    const result = await Promise.race([
+      runPromise.then(() => "completed"),
+      Bun.sleep(500).then(() => "timed_out"),
+    ])
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const run = harness.repository.runs.listBySession(sessionId)[0]!
+
+    expect(result).toBe("completed")
+    expect(run.status).toBe("cancelled")
+    expect(output.join("")).toContain("permission.requested write write notes.txt")
+    expect(output.join("")).toContain(`run.cancelled ${run.id}`)
+  })
+
   test("cancels the active run through the server and exits after cancellation", async () => {
     const harness = await createHarness("cli-run-cancel", createTurnProvider([
       async function* (request) {
@@ -319,6 +383,7 @@ function createIo(
   hooks: {
     onWrite?(text: string): void
     onSigint?(listener: () => void): void
+    prompt?(message: string, options?: { signal?: AbortSignal }): Promise<string>
   } = {},
 ) {
   return {
@@ -326,7 +391,11 @@ function createIo(
       output.push(text)
       hooks.onWrite?.(text)
     },
-    async prompt() {
+    async prompt(message: string, options?: { signal?: AbortSignal }) {
+      if (hooks.prompt) {
+        return hooks.prompt(message, options)
+      }
+
       return promptAnswers.shift() ?? "y"
     },
     onSigint(listener: () => void) {

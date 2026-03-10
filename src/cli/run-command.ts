@@ -90,27 +90,56 @@ function getPermissionDecision(answer: string): PermissionDecision {
   return normalized === "y" || normalized === "yes" ? "allow" : "deny"
 }
 
-type PermissionRequestedServerEvent = {
-  id: string
-  time: number
-  type: "permission.requested"
-  permissionRequest: {
-    id: string
-    reason: string
-  }
+type PermissionRequestedServerEvent = Extract<ServerEvent, { type: "permission.requested" }>
+type PendingPermissionReply = {
+  requestId: string
+  controller: AbortController
+  completion: Promise<{
+    requestId: string
+    error: unknown | null
+  }>
 }
 
 async function handlePermissionEvent(
   event: PermissionRequestedServerEvent,
   client: AgentServerClient,
   io: CliIO,
+  signal?: AbortSignal,
 ) {
-  const answer = await io.prompt(`Allow ${event.permissionRequest.reason}? [y/N] `)
+  const answer = await io.prompt(`Allow ${event.permissionRequest.reason}? [y/N] `, {
+    signal,
+  })
+
+  if (signal?.aborted) {
+    return
+  }
 
   await client.replyPermission({
     requestId: event.permissionRequest.id,
     decision: getPermissionDecision(answer),
   })
+}
+
+function startPendingPermissionReply(
+  event: PermissionRequestedServerEvent,
+  client: AgentServerClient,
+  io: CliIO,
+): PendingPermissionReply {
+  const controller = new AbortController()
+
+  return {
+    requestId: event.permissionRequest.id,
+    controller,
+    completion: handlePermissionEvent(event, client, io, controller.signal)
+      .then(() => ({
+        requestId: event.permissionRequest.id,
+        error: null,
+      }))
+      .catch((error) => ({
+        requestId: event.permissionRequest.id,
+        error: isAbortError(error) ? null : error,
+      })),
+  }
 }
 
 async function resolveClient(input: RunCliInput, workspaceRoot: string): Promise<CliServerClientHandle> {
@@ -205,8 +234,46 @@ export async function runCli(input: RunCliInput) {
 
       let terminalStatus: ReturnType<typeof extractTerminalRunStatus>["status"] = null
       let terminalError: string | null = null
+      const eventIterator = subscription.events[Symbol.asyncIterator]()
+      let nextEventPromise: Promise<IteratorResult<ServerEvent>> | null = null
+      let pendingPermission: PendingPermissionReply | null = null
 
-      for await (const event of subscription.events) {
+      function readNextEvent() {
+        if (!nextEventPromise) {
+          nextEventPromise = eventIterator.next().finally(() => {
+            nextEventPromise = null
+          })
+        }
+
+        return nextEventPromise
+      }
+
+      while (true) {
+        const next =
+          pendingPermission == null
+            ? ({ type: "event", result: await readNextEvent() } as const)
+            : await Promise.race([
+                readNextEvent().then((result) => ({ type: "event", result } as const)),
+                pendingPermission.completion.then((result) => ({ type: "permission", result } as const)),
+              ])
+
+        if (next.type === "permission") {
+          if (pendingPermission?.requestId === next.result.requestId) {
+            pendingPermission = null
+          }
+
+          if (next.result.error) {
+            throw next.result.error
+          }
+
+          continue
+        }
+
+        if (next.result.done) {
+          break
+        }
+
+        const event = next.result.value
         if (!isActiveRunEvent(event, activeRunId)) {
           continue
         }
@@ -217,16 +284,24 @@ export async function runCli(input: RunCliInput) {
         }
 
         if (event.type === "permission.requested") {
-          await handlePermissionEvent(event, clientHandle.client, input.io)
+          if (pendingPermission) {
+            throw new Error(`Run ${activeRunId} received overlapping permission requests`)
+          }
+
+          pendingPermission = startPendingPermissionReply(event, clientHandle.client, input.io)
         }
 
         const terminal = extractTerminalRunStatus(event)
         if (terminal.status) {
           terminalStatus = terminal.status
           terminalError = terminal.error
+          pendingPermission?.controller.abort()
+          pendingPermission = null
           break
         }
       }
+
+      pendingPermission?.controller.abort()
 
       if (terminalStatus == null) {
         const currentRun = await clientHandle.client.getRun(activeRunId)
@@ -258,6 +333,10 @@ export async function runCli(input: RunCliInput) {
 
 function isIgnorableCancelError(error: unknown) {
   return error instanceof AgentServerClientError && error.code === "invalid_state"
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError"
 }
 
 function isActiveRunEvent(event: ServerEvent, runId: string) {
