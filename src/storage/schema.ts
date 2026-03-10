@@ -1,4 +1,4 @@
-export const CURRENT_STORAGE_SCHEMA_VERSION = 1
+export const CURRENT_STORAGE_SCHEMA_VERSION = 2
 
 export const RUN_TRIGGERS = [
   "cli",
@@ -124,6 +124,55 @@ export const STORAGE_MIGRATIONS = [
           FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
           FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE
         )
+      `,
+    ],
+  },
+  {
+    version: 2,
+    statements: [
+      `
+        ALTER TABLE run
+        ADD COLUMN session_sequence INTEGER NOT NULL DEFAULT -1
+      `,
+      `
+        WITH ordered_runs AS (
+          SELECT
+            id,
+            ROW_NUMBER() OVER (
+              PARTITION BY session_id
+              ORDER BY created_at ASC, rowid ASC
+            ) - 1 AS session_sequence
+          FROM run
+        )
+        UPDATE run
+        SET session_sequence = (
+          SELECT ordered_runs.session_sequence
+          FROM ordered_runs
+          WHERE ordered_runs.id = run.id
+        )
+        WHERE session_sequence < 0
+      `,
+      `
+        CREATE UNIQUE INDEX run_session_sequence_idx
+        ON run (session_id, session_sequence)
+        WHERE session_sequence >= 0
+      `,
+      `
+        CREATE TRIGGER run_assign_session_sequence_after_insert
+        AFTER INSERT ON run
+        FOR EACH ROW
+        WHEN NEW.session_sequence < 0
+        BEGIN
+          UPDATE run
+          SET session_sequence = (
+            SELECT COALESCE(MAX(session_sequence), -1) + 1
+            FROM run
+            WHERE session_id = NEW.session_id
+              AND id <> NEW.id
+              AND session_sequence >= 0
+          )
+          WHERE id = NEW.id;
+        END
       `,
     ],
   },

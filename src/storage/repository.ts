@@ -32,6 +32,7 @@ type RunRow = {
   trigger: RunTrigger
   status: RunStatus
   created_at: number
+  session_sequence: number
   started_at: number | null
   finished_at: number | null
   error_text: string | null
@@ -307,7 +308,7 @@ export function createStorageRepository(input: {
   function getRunRow(runId: string) {
     return database
       .query(
-        "SELECT id, session_id, trigger, status, created_at, started_at, finished_at, error_text FROM run WHERE id = ?",
+        "SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text FROM run WHERE id = ?",
       )
       .get(runId) as RunRow | null
   }
@@ -316,10 +317,10 @@ export function createStorageRepository(input: {
     return database
       .query(
         `
-          SELECT id, session_id, trigger, status, created_at, started_at, finished_at, error_text
+          SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
           FROM run
           WHERE session_id = ?
-          ORDER BY created_at ASC, id ASC
+          ORDER BY created_at ASC, session_sequence ASC
         `,
       )
       .all(sessionId) as RunRow[]
@@ -329,10 +330,10 @@ export function createStorageRepository(input: {
     return database
       .query(
         `
-          SELECT id, session_id, trigger, status, created_at, started_at, finished_at, error_text
+          SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
           FROM run
           WHERE session_id = ?
-          ORDER BY created_at DESC, id DESC
+          ORDER BY created_at DESC, session_sequence DESC
           LIMIT 1
         `,
       )
@@ -343,10 +344,10 @@ export function createStorageRepository(input: {
     return database
       .query(
         `
-          SELECT id, session_id, trigger, status, created_at, started_at, finished_at, error_text
+          SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
           FROM run
           WHERE session_id = ? AND status IN (${activeRunStatusCheck})
-          ORDER BY created_at DESC, id DESC
+          ORDER BY created_at DESC, session_sequence DESC
           LIMIT 1
         `,
       )
@@ -622,7 +623,7 @@ export function createStorageRepository(input: {
             WHERE message.session_id = ?
             ORDER BY
               run.created_at ASC,
-              run.id ASC,
+              run.session_sequence ASC,
               message.sequence ASC,
               message.id ASC,
               part.sequence ASC,

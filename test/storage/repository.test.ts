@@ -159,6 +159,81 @@ describe("storage repository", () => {
     expect(transcript[1]?.parts.map((part) => part.id)).toEqual(["part_0", "part_1", "part_2"])
   })
 
+  test("preserves insertion order for runs that share the same createdAt millisecond", () => {
+    const { repository } = createTestRepository("same-created-at-ordering")
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    repository.runs.create({
+      id: "run_b",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "completed",
+      createdAt: 10,
+    })
+    repository.messages.create({
+      id: "message_b",
+      sessionId: "session_1",
+      runId: "run_b",
+      role: "user",
+      sequence: 0,
+      createdAt: 10,
+    })
+    repository.parts.create({
+      id: "part_b",
+      sessionId: "session_1",
+      runId: "run_b",
+      messageId: "message_b",
+      kind: "text",
+      sequence: 0,
+      text: "first inserted",
+      createdAt: 10,
+    })
+
+    repository.runs.create({
+      id: "run_a",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "completed",
+      createdAt: 10,
+    })
+    repository.messages.create({
+      id: "message_a",
+      sessionId: "session_1",
+      runId: "run_a",
+      role: "user",
+      sequence: 0,
+      createdAt: 10,
+    })
+    repository.parts.create({
+      id: "part_a",
+      sessionId: "session_1",
+      runId: "run_a",
+      messageId: "message_a",
+      kind: "text",
+      sequence: 0,
+      text: "second inserted",
+      createdAt: 10,
+    })
+
+    expect(repository.runs.listBySession("session_1").map((run) => run.id)).toEqual([
+      "run_b",
+      "run_a",
+    ])
+    expect(repository.runs.getLatestBySession("session_1")?.id).toBe("run_a")
+    expect(
+      repository
+        .messages
+        .listSessionTranscript("session_1")
+        .map((message) => `${message.runId}:${message.parts[0]?.text}`),
+    ).toEqual(["run_b:first inserted", "run_a:second inserted"])
+  })
+
   test("rejects mismatched parent ownership", () => {
     const { repository } = createTestRepository("ownership-mismatch")
 
