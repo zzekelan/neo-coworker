@@ -7,6 +7,13 @@ import type { RunTrigger, StorageRepository } from "../storage"
 import { buildSessionSnapshot, createServerEventBus } from "./events"
 import { createObservedRepository } from "./repository-events"
 
+export class ServerShuttingDownError extends Error {
+  constructor() {
+    super("Server is shutting down")
+    this.name = "ServerShuttingDownError"
+  }
+}
+
 export function createServerApp(input: {
   provider: Provider
   repository: StorageRepository
@@ -50,7 +57,7 @@ export function createServerApp(input: {
     messageId?: string
   }) {
     if (closing) {
-      throw new Error("Server is shutting down")
+      throw new ServerShuttingDownError()
     }
 
     const createdAt = now()

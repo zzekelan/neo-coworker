@@ -5,7 +5,7 @@ import type { StorageRepository, StoredMessage, StoredPart } from "../storage"
 import { buildModelInput, buildTranscriptMessages } from "./context"
 import type { RuntimeEvent } from "./events"
 import type { createEventQueue } from "./event-queue"
-import type { ToolRegistry } from "./tools/types"
+import { createAbortError, type ToolRegistry } from "./tools/types"
 
 type SessionRunService = Pick<
   ReturnType<typeof createSessionRunService>,
@@ -174,7 +174,11 @@ async function executeToolCall(input: {
       toolName: input.item.name,
       args,
       workspaceRoot: input.workspaceRoot,
+      signal: input.signal,
     })
+    if (input.signal.aborted) {
+      throw createAbortError()
+    }
 
     input.assistantTurn.appendToolResult({
       callId: input.item.callId,

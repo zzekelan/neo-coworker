@@ -265,6 +265,105 @@ describe("server recovery and operator errors", () => {
     }
   })
 
+  test("stop interrupts a running shell tool instead of waiting for command completion", async () => {
+    const unhandledRejections: string[] = []
+    const handleUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason instanceof Error ? reason.message : String(reason))
+    }
+
+    process.on("unhandledRejection", handleUnhandledRejection)
+
+    try {
+      const harness = await createHarness(
+        "server-stop-shell-tool",
+        createTurnProvider([
+          async function* () {
+            yield {
+              type: "tool.call",
+              callId: "call_shell",
+              name: "shell",
+              inputText: '{"command":"sleep 2"}',
+            }
+          },
+        ]),
+        {
+          permissionPolicy: {
+            shell: "allow",
+          },
+        },
+      )
+
+      const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+        directory: harness.workspaceRoot,
+      })
+      const sessionId = createdSession.body.data.session.id as string
+
+      const startedRun = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+        prompt: "Run sleep 2",
+      })
+      const runId = startedRun.body.data.run.id as string
+
+      await waitForAssistantToolCall(harness.repository, sessionId, runId)
+
+      const startedAt = Date.now()
+      await harness.server.stop()
+      const elapsed = Date.now() - startedAt
+
+      expect(elapsed).toBeLessThan(1_000)
+      expect(harness.repository.runs.get(runId).status).toBe("cancelled")
+
+      activeServers.pop()
+      const database = openDatabases.pop()
+      expect(database).toBe(harness.database)
+      database?.close(false)
+
+      await Bun.sleep(150)
+      expect(unhandledRejections).toEqual([])
+    } finally {
+      process.off("unhandledRejection", handleUnhandledRejection)
+    }
+  })
+
+  test("returns service_unavailable when a new run is requested during shutdown", async () => {
+    const harness = await createHarness(
+      "server-shutdown-new-run",
+      createTurnProvider([
+        async function* (request) {
+          yield { type: "text.delta", text: "Still running." }
+          await waitForAbort(request.signal)
+        },
+      ]),
+    )
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "Keep running during shutdown",
+    })
+    const runId = startedRun.body.data.run.id as string
+    await waitForRunStatus(harness.server, runId, "running")
+
+    const stopPromise = harness.server.stop()
+    const duringShutdown = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "Reject this new run",
+    })
+
+    expect(duringShutdown.status).toBe(503)
+    expect(duringShutdown.body).toMatchObject({
+      error: {
+        code: "service_unavailable",
+        message: "Server is shutting down",
+      },
+    })
+
+    await stopPromise
+    expect(harness.repository.runs.get(runId).status).toBe("cancelled")
+    activeServers.pop()
+  })
+
   test("returns clear operator-facing errors for missing records and active-run conflicts", async () => {
     const harness = await createHarness(
       "server-operator-errors",
@@ -337,7 +436,13 @@ describe("server recovery and operator errors", () => {
   })
 })
 
-async function createHarness(prefix: string, provider: Provider) {
+async function createHarness(
+  prefix: string,
+  provider: Provider,
+  options: {
+    permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
+  } = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), `${prefix}-`))
   tempDirectories.push(directory)
 
@@ -358,6 +463,7 @@ async function createHarness(prefix: string, provider: Provider) {
     provider,
     repository,
     now,
+    permissionPolicy: options.permissionPolicy,
   })
   activeServers.push(server)
 
@@ -465,6 +571,25 @@ async function waitForAssistantToolResult(
   runId: string,
   timeoutMs = 2_000,
 ) {
+  return waitForAssistantPart(repository, sessionId, runId, "tool_result", timeoutMs)
+}
+
+async function waitForAssistantToolCall(
+  repository: ReturnType<typeof createStorageRepository>,
+  sessionId: string,
+  runId: string,
+  timeoutMs = 2_000,
+) {
+  return waitForAssistantPart(repository, sessionId, runId, "tool_call", timeoutMs)
+}
+
+async function waitForAssistantPart(
+  repository: ReturnType<typeof createStorageRepository>,
+  sessionId: string,
+  runId: string,
+  partKind: "tool_call" | "tool_result",
+  timeoutMs = 2_000,
+) {
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -473,7 +598,7 @@ async function waitForAssistantToolResult(
       (message) =>
         message.runId === runId &&
         message.role === "assistant" &&
-        message.parts.some((part) => part.kind === "tool_result"),
+        message.parts.some((part) => part.kind === partKind),
     )
 
     if (assistantMessage) {
@@ -483,7 +608,7 @@ async function waitForAssistantToolResult(
     await Bun.sleep(20)
   }
 
-  throw new Error(`Timed out waiting for run ${runId} to persist a tool result`)
+  throw new Error(`Timed out waiting for run ${runId} to persist ${partKind}`)
 }
 
 async function waitForAbort(signal: AbortSignal) {

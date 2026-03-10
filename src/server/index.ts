@@ -18,7 +18,7 @@ import {
 import type { Provider } from "../providers/types"
 import type { ServerEvent } from "./events"
 import { serializeSseEvent } from "./events"
-import { createServerApp } from "./app"
+import { createServerApp, ServerShuttingDownError } from "./app"
 
 const createSessionBodySchema = z.object({
   directory: z.string().min(1),
@@ -372,6 +372,14 @@ function mapHttpError(error: unknown) {
     return {
       status: 409,
       code: "invalid_state",
+      message: error.message,
+    }
+  }
+
+  if (error instanceof ServerShuttingDownError) {
+    return {
+      status: 503,
+      code: "service_unavailable",
       message: error.message,
     }
   }

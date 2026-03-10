@@ -2,7 +2,7 @@ import { realpath } from "node:fs/promises"
 import { dirname, resolve, sep } from "node:path"
 import { z } from "zod"
 import type { PermissionCoordinator } from "../permissions"
-import type { ToolDefinition } from "./types"
+import { throwIfAborted, type ToolDefinition } from "./types"
 
 const WriteArgsSchema = z.object({
   path: z.string().trim().min(1, "Path must not be empty"),
@@ -44,6 +44,7 @@ export function createWriteTool({
     description: "Write a UTF-8 file inside the workspace",
     inputSchema: WriteArgsSchema,
     async execute(input) {
+      throwIfAborted(input.signal)
       const { path, content } = WriteArgsSchema.parse(input.args)
       const decision = await permissions.request({
         toolName: "write",
@@ -54,8 +55,10 @@ export function createWriteTool({
         throw new Error("Permission denied")
       }
 
+      throwIfAborted(input.signal)
       const file = await resolveWorkspaceWritePath(input.workspaceRoot, path)
 
+      throwIfAborted(input.signal)
       await Bun.write(file, content)
 
       return { output: `Wrote ${path}` }

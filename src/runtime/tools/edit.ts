@@ -2,7 +2,7 @@ import { realpath } from "node:fs/promises"
 import { resolve, sep } from "node:path"
 import { z } from "zod"
 import type { PermissionCoordinator } from "../permissions"
-import type { ToolDefinition } from "./types"
+import { throwIfAborted, type ToolDefinition } from "./types"
 
 const EditArgsSchema = z.object({
   path: z.string().trim().min(1, "Path must not be empty"),
@@ -31,6 +31,7 @@ export function createEditTool({
     description: "Replace one exact text span in a file",
     inputSchema: EditArgsSchema,
     async execute(input) {
+      throwIfAborted(input.signal)
       const { path, oldText, newText } = EditArgsSchema.parse(input.args)
       const decision = await permissions.request({
         toolName: "edit",
@@ -41,8 +42,10 @@ export function createEditTool({
         throw new Error("Permission denied")
       }
 
+      throwIfAborted(input.signal)
       const file = await resolveWorkspaceFile(input.workspaceRoot, path)
       const original = await Bun.file(file).text()
+      throwIfAborted(input.signal)
       const firstMatch = original.indexOf(oldText)
 
       if (firstMatch === -1) {
@@ -55,6 +58,7 @@ export function createEditTool({
         throw new Error("Target text must appear exactly once")
       }
 
+      throwIfAborted(input.signal)
       await Bun.write(
         file,
         `${original.slice(0, firstMatch)}${newText}${original.slice(firstMatch + oldText.length)}`,

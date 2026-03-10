@@ -8,6 +8,7 @@ export type ToolExecutionInput = {
   toolName: string
   args: unknown
   workspaceRoot: string
+  signal?: AbortSignal
 }
 
 export type ToolDefinition = {
@@ -20,4 +21,16 @@ export type ToolDefinition = {
 export type ToolRegistry = {
   list(): Array<Pick<ToolDefinition, "name" | "description" | "inputSchema">>
   execute(input: ToolExecutionInput): Promise<ToolExecutionResult>
+}
+
+export function createAbortError(message = "Operation aborted") {
+  const error = new Error(message)
+  error.name = "AbortError"
+  return error
+}
+
+export function throwIfAborted(signal: AbortSignal | undefined, message?: string) {
+  if (signal?.aborted) {
+    throw createAbortError(message)
+  }
 }
