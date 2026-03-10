@@ -190,6 +190,81 @@ describe("server recovery and operator errors", () => {
     ])
   })
 
+  test("stop cancels an active run before shutdown closes storage", async () => {
+    let releaseProvider!: () => void
+    const continueProvider = new Promise<void>((resolve) => {
+      releaseProvider = resolve
+    })
+    let abortObserved = false
+    const unhandledRejections: string[] = []
+    const handleUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason instanceof Error ? reason.message : String(reason))
+    }
+
+    process.on("unhandledRejection", handleUnhandledRejection)
+
+    try {
+      const harness = await createHarness(
+        "server-stop-active-run",
+        createTurnProvider([
+          async function* (request) {
+            yield {
+              type: "tool.call",
+              callId: "call_read",
+              name: "read",
+              inputText: '{"path":"placeholder.txt"}',
+            }
+
+            await Promise.race([
+              continueProvider,
+              waitForAbort(request.signal).then(() => {
+                abortObserved = true
+              }),
+            ])
+          },
+        ]),
+      )
+
+      const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+        directory: harness.workspaceRoot,
+      })
+      const sessionId = createdSession.body.data.session.id as string
+
+      const startedRun = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+        prompt: "Read placeholder.txt",
+      })
+      const runId = startedRun.body.data.run.id as string
+
+      await waitForAssistantToolResult(harness.repository, sessionId, runId)
+      await harness.server.stop()
+
+      expect(harness.repository.runs.get(runId).status).toBe("cancelled")
+      expect(abortObserved).toBe(true)
+
+      activeServers.pop()
+      const database = openDatabases.pop()
+      expect(database).toBe(harness.database)
+      database?.close(false)
+
+      releaseProvider()
+      await Bun.sleep(50)
+      expect(unhandledRejections).toEqual([])
+
+      const reopenedConnection = openStorageDatabase(harness.databasePath)
+      try {
+        const reopenedRepository = createStorageRepository({
+          database: reopenedConnection,
+          now: harness.now,
+        })
+        expect(reopenedRepository.runs.get(runId).status).toBe("cancelled")
+      } finally {
+        reopenedConnection.close(false)
+      }
+    } finally {
+      process.off("unhandledRejection", handleUnhandledRejection)
+    }
+  })
+
   test("returns clear operator-facing errors for missing records and active-run conflicts", async () => {
     const harness = await createHarness(
       "server-operator-errors",
@@ -288,7 +363,9 @@ async function createHarness(prefix: string, provider: Provider) {
 
   return {
     databasePath,
+    database: connection,
     now,
+    repository,
     server,
     workspaceRoot,
   }
@@ -380,6 +457,33 @@ async function waitForRunStatus(
   }
 
   throw new Error(`Timed out waiting for run ${runId} to reach ${status}`)
+}
+
+async function waitForAssistantToolResult(
+  repository: ReturnType<typeof createStorageRepository>,
+  sessionId: string,
+  runId: string,
+  timeoutMs = 2_000,
+) {
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const transcript = repository.messages.listSessionTranscript(sessionId)
+    const assistantMessage = transcript.find(
+      (message) =>
+        message.runId === runId &&
+        message.role === "assistant" &&
+        message.parts.some((part) => part.kind === "tool_result"),
+    )
+
+    if (assistantMessage) {
+      return assistantMessage
+    }
+
+    await Bun.sleep(20)
+  }
+
+  throw new Error(`Timed out waiting for run ${runId} to persist a tool result`)
 }
 
 async function waitForAbort(signal: AbortSignal) {

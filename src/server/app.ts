@@ -33,6 +33,14 @@ export function createServerApp(input: {
     systemPrompt: input.systemPrompt,
     now,
   })
+  const activeRuns = new Map<
+    string,
+    {
+      cancel(): void
+      drained: Promise<void>
+    }
+  >()
+  let closing: Promise<void> | null = null
 
   async function startRun(runInput: {
     sessionId: string
@@ -41,6 +49,10 @@ export function createServerApp(input: {
     runId?: string
     messageId?: string
   }) {
+    if (closing) {
+      throw new Error("Server is shutting down")
+    }
+
     const createdAt = now()
     const messageCreatedAt = now()
     const started = sessionRuns.startRun({
@@ -67,7 +79,16 @@ export function createServerApp(input: {
       runId: started.run.id,
     })
 
-    void drainRunHandle(handle)
+    const drained = drainRunHandle(handle).finally(() => {
+      activeRuns.delete(started.run.id)
+    })
+
+    activeRuns.set(started.run.id, {
+      cancel() {
+        handle.cancel()
+      },
+      drained,
+    })
 
     return started
   }
@@ -127,8 +148,21 @@ export function createServerApp(input: {
     subscribe(filter?: Parameters<typeof eventBus.subscribe>[0]) {
       return eventBus.subscribe(filter)
     },
-    close() {
-      eventBus.close()
+    async close() {
+      if (!closing) {
+        closing = (async () => {
+          const runsToStop = Array.from(activeRuns.values())
+
+          for (const activeRun of runsToStop) {
+            activeRun.cancel()
+          }
+
+          await Promise.allSettled(runsToStop.map((activeRun) => activeRun.drained))
+          eventBus.close()
+        })()
+      }
+
+      await closing
     },
   }
 }

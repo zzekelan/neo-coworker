@@ -270,14 +270,11 @@ export function createAgentServer(input: {
       baseUrl = `http://${hostname}:${server.port}`
     },
     async stop() {
-      app.close()
-
-      if (!server) {
-        return
-      }
-
-      server.stop()
+      const activeServer = server
       server = null
+
+      activeServer?.stop()
+      await app.close()
     },
     fetch: handleRequest,
   }
