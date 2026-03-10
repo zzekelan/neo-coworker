@@ -51,6 +51,8 @@ server.storage /absolute/path/to/.agents/server.sqlite
 
 CLI 在设置了 `AGENT_SERVER_URL` 后，会走 server-client 路径，不再本地自启临时 server。
 
+`AGENT_SERVER_URL` 只接受根地址，例如 `http://127.0.0.1:3100`，不接受带路径、query 或 hash 的值。
+
 ```bash
 NO_PROXY=127.0.0.1,localhost \
 AGENT_SERVER_URL=http://127.0.0.1:3100 \

@@ -94,6 +94,10 @@ export function resolveAgentServerOrigin(
     throw new Error("AGENT_SERVER_URL must use http or https")
   }
 
+  if (url.pathname !== "/" || url.search || url.hash) {
+    throw new Error("AGENT_SERVER_URL must not include a path, query, or hash")
+  }
+
   return url.origin
 }
 

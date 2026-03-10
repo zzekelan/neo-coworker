@@ -2,8 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { cp, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createAgentServerClient } from "../../src/cli/server-client"
-import { buildCli } from "../../src/main"
 import { runCli } from "../../src/cli/run-command"
 import { createAgentServer } from "../../src/server"
 import { getDefaultCliStoragePath } from "../../src/runtime/runtime"
@@ -13,8 +11,17 @@ import type { ProviderTurnRequest } from "../../src/providers/types"
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
 const activeServers: Array<{ stop(): Promise<void> | void }> = []
+const activeProcesses: Bun.Subprocess[] = []
 
 afterEach(async () => {
+  while (activeProcesses.length > 0) {
+    const process = activeProcesses.pop()!
+    if (process.exitCode == null) {
+      process.kill("SIGKILL")
+    }
+    await process.exited
+  }
+
   while (activeServers.length > 0) {
     await activeServers.pop()?.stop()
   }
@@ -99,8 +106,7 @@ describe("agent run e2e", () => {
     ])
   })
 
-  test("completes through the remote-client CLI path when AGENT_SERVER_URL is configured", async () => {
-    const output: string[] = []
+  test("completes through the remote-client CLI path over real HTTP and SSE", async () => {
     const directory = await mkdtemp(join(tmpdir(), "agent-run-remote-e2e-"))
     tempDirectories.push(directory)
     const workspaceRoot = join(directory, "workspace")
@@ -140,39 +146,42 @@ describe("agent run e2e", () => {
     activeServers.push(server)
 
     const serverState: { turn?: number } = {}
-    const previousCwd = process.cwd()
+    await server.start({
+      hostname: "127.0.0.1",
+    })
 
-    try {
-      process.chdir(workspaceRoot)
-      await buildCli({
-        env: {
-          AGENT_SERVER_URL: "http://server.test",
-        },
-        createAgentServerClientImpl(input) {
-          return createAgentServerClient({
-            origin: input.origin,
-            send(request) {
-              return server.fetch(request)
-            },
-          })
-        },
-        createIo() {
-          return {
-            write(text: string) {
-              output.push(text)
-            },
-            async prompt() {
-              throw new Error("remote e2e should not request permission")
-            },
-            onSigint() {},
-          }
-        },
-      }).run(["run", "Read README.md and summarize it"])
-    } finally {
-      process.chdir(previousCwd)
-    }
+    const cli = Bun.spawn({
+      cmd: [
+        "bun",
+        "run",
+        join(globalThis.process.cwd(), "src/main.ts"),
+        "run",
+        "Read README.md and summarize it",
+      ],
+      cwd: workspaceRoot,
+      env: buildLoopbackEnv({
+        AGENT_SERVER_URL: server.baseUrl,
+      }),
+      stdout: "pipe",
+      stderr: "pipe",
+      stdin: "ignore",
+    })
+    activeProcesses.push(cli)
 
-    const rendered = output.join("")
+    const exitCode = await Promise.race([
+      cli.exited,
+      Bun.sleep(10_000).then(() => {
+        cli.kill("SIGKILL")
+        throw new Error("Timed out waiting for remote CLI process to exit")
+      }),
+    ])
+    const stderr = await readProcessStream(cli.stderr)
+    const stdout = await readProcessStream(cli.stdout)
+
+    expect(exitCode).toBe(0)
+    expect(stderr.trim()).toBe("")
+
+    const rendered = stdout
     expect(rendered).toContain("session.created")
     expect(rendered).toContain("run.started")
     expect(rendered).toContain("tool.call.completed read:")
@@ -193,4 +202,36 @@ describe("agent run e2e", () => {
 function trackDatabase<T extends { close: (throwOnError: boolean) => void }>(database: T) {
   openDatabases.push(database)
   return database
+}
+
+function buildLoopbackEnv(overrides: Record<string, string>) {
+  const env: Record<string, string> = {}
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value != null) {
+      env[key] = value
+    }
+  }
+
+  delete env.HTTP_PROXY
+  delete env.HTTPS_PROXY
+  delete env.ALL_PROXY
+  delete env.http_proxy
+  delete env.https_proxy
+  delete env.all_proxy
+  env.NO_PROXY = "127.0.0.1,localhost"
+  env.no_proxy = "127.0.0.1,localhost"
+
+  return {
+    ...env,
+    ...overrides,
+  }
+}
+
+async function readProcessStream(stream: ReadableStream<Uint8Array> | null) {
+  if (!stream) {
+    return ""
+  }
+
+  return await new Response(stream).text()
 }
