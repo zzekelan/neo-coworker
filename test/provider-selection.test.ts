@@ -41,9 +41,10 @@ describe("provider selection", () => {
     const provider = (runCliCalls[0] as { provider: { streamTurn: Function } }).provider
     const events = []
     for await (const event of provider.streamTurn({
-      system: "system",
-      messages: [],
+      systemPrompt: "system",
+      activeSkillInstructions: [],
       tools: [],
+      transcript: [],
       signal: new AbortController().signal,
     })) {
       events.push(event)
@@ -53,7 +54,7 @@ describe("provider selection", () => {
     expect(receivedBody).toEqual({
       model: "gpt-5",
       input: [],
-      instructions: "system",
+      instructions: "system\n\nAvailable tools:",
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal: expect.any(AbortSignal) })
@@ -106,9 +107,10 @@ describe("provider selection", () => {
     const provider = (runCliCalls[0] as { provider: { streamTurn: Function } }).provider
     const events = []
     for await (const event of provider.streamTurn({
-      system: "system",
-      messages: [],
+      systemPrompt: "system",
+      activeSkillInstructions: [],
       tools: [],
+      transcript: [],
       signal: new AbortController().signal,
     })) {
       events.push(event)
@@ -117,7 +119,7 @@ describe("provider selection", () => {
     expect(events).toEqual([])
     expect(receivedBody).toEqual({
       model: "kimi-k2.5",
-      messages: [{ role: "system", content: "system" }],
+      messages: [{ role: "system", content: "system\n\nAvailable tools:" }],
       stream: true,
       tools: [],
     })

@@ -5,7 +5,7 @@ import {
   type PermissionRepository,
   type StoredPermissionRequest,
 } from "../permission/repo"
-import type { Provider } from "../providers/types"
+import type { OrchestrationModelPort } from "../orchestration/ports/model"
 import { createAgentServer } from "../server"
 import type { ServerEvent } from "../server/events"
 import {
@@ -265,7 +265,7 @@ export function createAgentServerClient(input: {
 }
 
 export async function createLocalCliServerClient(input: {
-  provider: Provider
+  provider: OrchestrationModelPort
   workspaceRoot: string
   repository?: StorageRepository
   permissionRepository?: PermissionRepository

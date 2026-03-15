@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from "../conversation/service"
+import type { OrchestrationModelPort } from "../orchestration/ports/model"
 import type { PermissionDecision } from "../permission/service"
-import type { Provider } from "../providers/types"
 import type { ServerEvent } from "../server/events"
 import type { CliIO } from "./io"
 import { createCliRenderState, renderServerEvent } from "./render"
@@ -82,7 +82,7 @@ export type RunCliInput = {
   cwd?: string
   workspaceRoot?: string
   client?: AgentServerClient
-  provider?: Provider
+  provider?: OrchestrationModelPort
 }
 
 function getPermissionDecision(answer: string): PermissionDecision {

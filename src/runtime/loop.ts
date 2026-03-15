@@ -1,13 +1,12 @@
 import { isActiveRunStatus } from "../conversation/service"
 import type { createConversationRunService as createSessionRunService } from "../conversation/service"
+import type { OrchestrationModelPort } from "../orchestration/ports/model"
 import type { OrchestrationToolPort } from "../orchestration/ports/tool"
-import type { Provider } from "../providers/types"
 import type {
   ConversationRepository as StorageRepository,
   StoredMessage,
   StoredPart,
 } from "../conversation/repo"
-import { buildModelInput, buildTranscriptMessages } from "./context"
 import type { RuntimeEvent } from "./events"
 import type { createEventQueue } from "./event-queue"
 
@@ -21,7 +20,7 @@ type AgentLoopInput = {
   runId: string
   repository: StorageRepository
   sessionRuns: SessionRunService
-  provider: Provider
+  provider: OrchestrationModelPort
   queue: ReturnType<typeof createEventQueue<RuntimeEvent>>
   signal: AbortSignal
   tools: OrchestrationToolPort
@@ -85,13 +84,10 @@ export async function runAgentLoop(input: AgentLoopInput) {
 
       try {
         for await (const item of input.provider.streamTurn({
-          ...buildModelInput({
-            systemPrompt: input.systemPrompt,
-            activeSkillInstructions: [],
-            tools: input.tools.list(),
-            messages: buildTranscriptMessages(transcript),
-          }),
+          systemPrompt: input.systemPrompt,
+          activeSkillInstructions: [],
           tools: input.tools.list(),
+          transcript,
           signal: input.signal,
         })) {
           if (item.type === "text.delta") {

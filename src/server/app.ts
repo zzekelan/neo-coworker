@@ -1,4 +1,4 @@
-import type { Provider } from "../providers/types"
+import type { OrchestrationModelPort } from "../orchestration/ports/model"
 import {
   assertRunStatusTransition,
   createConversationRunService as createSessionRunService,
@@ -21,7 +21,7 @@ export class ServerShuttingDownError extends Error {
 }
 
 export function createServerApp(input: {
-  provider: Provider
+  provider: OrchestrationModelPort
   repository: StorageRepository
   permissionRepository: PermissionRepository
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>

@@ -3,8 +3,14 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import {
+  createModelRuntimeApi,
+  type ProviderEvent,
+  type ProviderTurnRequest,
+} from "../../src/model/runtime/api"
+import { createModelProvider } from "../../src/model/wiring/provider"
+import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
 import { createPermissionRepository } from "../../src/permission/repo"
-import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 import { createAgentServer } from "../../src/server"
 import {
   createConversationRepository as createStorageRepository,
@@ -442,7 +448,7 @@ describe("server recovery and operator errors", () => {
 
 async function createHarness(
   prefix: string,
-  provider: Provider,
+  provider: OrchestrationModelPort,
   options: {
     permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
   } = {},
@@ -518,23 +524,25 @@ async function restartHarness(harness: {
 
 function createTurnProvider(
   turns: Array<(request: ProviderTurnRequest) => AsyncIterable<ProviderEvent>>,
-): Provider {
+){
   let index = 0
 
-  return {
-    async *streamTurn(request: ProviderTurnRequest) {
-      const turn = turns[index]
-      index += 1
+  return createModelProvider({
+    runtime: createModelRuntimeApi({
+      async *streamTurn(request: ProviderTurnRequest) {
+        const turn = turns[index]
+        index += 1
 
-      if (!turn) {
-        throw new Error(`Unexpected provider turn ${index}`)
-      }
+        if (!turn) {
+          throw new Error(`Unexpected provider turn ${index}`)
+        }
 
-      for await (const event of turn(request)) {
-        yield event
-      }
-    },
-  }
+        for await (const event of turn(request)) {
+          yield event
+        }
+      },
+    }),
+  })
 }
 
 async function requestJson(

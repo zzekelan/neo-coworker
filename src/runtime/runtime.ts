@@ -9,6 +9,7 @@ import {
   openConversationDatabase as openStorageDatabase,
   type ConversationRepository as StorageRepository,
 } from "../conversation/repo"
+import type { OrchestrationModelPort } from "../orchestration/ports/model"
 import {
   createPermissionRepository,
   type PermissionRepository,
@@ -20,7 +21,6 @@ import {
 } from "../permission/service"
 import { createPermissionRuntimeApi } from "../permission/runtime/api"
 import type { PermissionCoordinator } from "../permission/runtime/coordinator"
-import type { Provider } from "../providers/types"
 import { createToolProvider } from "../tool/wiring/provider"
 import type { RunHandle } from "./run-handle"
 import { createEventQueue } from "./event-queue"
@@ -28,7 +28,7 @@ import type { RuntimeEvent } from "./events"
 import { runAgentLoop } from "./loop"
 
 type RuntimeInput = {
-  provider: Provider
+  provider: OrchestrationModelPort
   repository: StorageRepository
   permissionRepository: PermissionRepository
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>

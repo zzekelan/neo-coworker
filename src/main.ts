@@ -2,8 +2,9 @@ import OpenAI from "openai"
 import { createAgentServerClient } from "./cli/server-client"
 import { createStdioCliIo } from "./cli/io"
 import { parseRunCommand, runCli } from "./cli/run-command"
-import { createOpenAIProvider } from "./providers/openai"
-import type { Provider } from "./providers/types"
+import { createOpenAIProvider } from "./model/runtime/openai"
+import { createModelProvider } from "./model/wiring/provider"
+import type { OrchestrationModelPort } from "./orchestration/ports/model"
 
 type ProviderKind = "openai" | "openai-compatible"
 
@@ -19,7 +20,7 @@ type OpenAIClientConfig = Pick<ProviderConfig, "apiKey" | "baseURL" | "timeout">
 type OpenAICompatibleProviderFactory = (input: {
   model: string
   client: OpenAI
-}) => Provider
+}) => ReturnType<typeof createOpenAIProvider>
 type DefaultProviderInput = {
   env?: Record<string, string | undefined>
   createClient?: (config: OpenAIClientConfig) => OpenAI
@@ -27,7 +28,7 @@ type DefaultProviderInput = {
   createOpenAICompatibleProviderImpl?: OpenAICompatibleProviderFactory
 }
 type BuildCliInput = {
-  provider?: Provider
+  provider?: OrchestrationModelPort
   env?: Record<string, string | undefined>
   createClient?: (config: OpenAIClientConfig) => OpenAI
   createOpenAIProviderImpl?: typeof createOpenAIProvider
@@ -130,11 +131,13 @@ export function resolveDefaultProviderConfig(
 }
 
 async function loadOpenAICompatibleProviderFactory(): Promise<OpenAICompatibleProviderFactory> {
-  const module = await import("./providers/openai-compatible")
+  const module = await import("./model/runtime/openai-compatible")
   return module.createOpenAICompatibleProvider
 }
 
-export async function createDefaultProvider(input: DefaultProviderInput = {}): Promise<Provider> {
+export async function createDefaultProvider(
+  input: DefaultProviderInput = {},
+): Promise<OrchestrationModelPort> {
   const config = resolveDefaultProviderConfig(input.env)
   const createClient =
     input.createClient ??
@@ -154,17 +157,21 @@ export async function createDefaultProvider(input: DefaultProviderInput = {}): P
     const createOpenAICompatibleProvider =
       input.createOpenAICompatibleProviderImpl ?? (await loadOpenAICompatibleProviderFactory())
 
-    return createOpenAICompatibleProvider({
-      model: config.model,
-      client,
+    return createModelProvider({
+      runtime: createOpenAICompatibleProvider({
+        model: config.model,
+        client,
+      }),
     })
   }
 
   const createProvider = input.createOpenAIProviderImpl ?? createOpenAIProvider
 
-  return createProvider({
-    model: config.model,
-    client,
+  return createModelProvider({
+    runtime: createProvider({
+      model: config.model,
+      client,
+    }),
   })
 }
 

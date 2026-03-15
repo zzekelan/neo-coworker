@@ -12,9 +12,14 @@ import {
   openConversationDatabase as openStorageDatabase,
   type ConversationRepository as StorageRepository,
 } from "../../src/conversation/repo"
-import { buildTranscriptMessages } from "../../src/runtime/context"
+import { buildTranscriptMessages } from "../../src/model/service/projection"
+import {
+  createModelRuntimeApi,
+  type ProviderEvent,
+  type ProviderTurnRequest,
+} from "../../src/model/runtime/api"
+import { createModelProvider } from "../../src/model/wiring/provider"
 import { createRuntime } from "../../src/runtime/runtime"
-import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -533,7 +538,7 @@ describe("agent loop", () => {
     })
     const runtime = createRuntime({
       provider: {
-        async *streamTurn(request: ProviderTurnRequest) {
+        async *streamTurn(request: { signal: AbortSignal }) {
           yield { type: "text.delta", text: "Partial output." }
           await new Promise<void>((_, reject) => {
             request.signal.addEventListener(
@@ -762,24 +767,26 @@ function seedCompletedRun(input: {
 function createTurnProvider(
   requests: ProviderTurnRequest[],
   turns: Array<(request: ProviderTurnRequest) => AsyncIterable<ProviderEvent>>,
-): Provider {
+){
   let index = 0
 
-  return {
-    async *streamTurn(request: ProviderTurnRequest) {
-      requests.push(request)
-      const turn = turns[index]
-      index += 1
+  return createModelProvider({
+    runtime: createModelRuntimeApi({
+      async *streamTurn(request: ProviderTurnRequest) {
+        requests.push(request)
+        const turn = turns[index]
+        index += 1
 
-      if (!turn) {
-        throw new Error(`Unexpected provider turn ${index}`)
-      }
+        if (!turn) {
+          throw new Error(`Unexpected provider turn ${index}`)
+        }
 
-      for await (const event of turn(request)) {
-        yield event
-      }
-    },
-  }
+        for await (const event of turn(request)) {
+          yield event
+        }
+      },
+    }),
+  })
 }
 
 async function collectEvents(events: AsyncIterable<unknown>) {

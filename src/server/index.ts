@@ -11,6 +11,7 @@ import {
   PermissionRequestRunStateError,
   type PermissionMode,
 } from "../permission/service"
+import type { OrchestrationModelPort } from "../orchestration/ports/model"
 import { PermissionRequestNotAwaitingActiveRuntimeError } from "../runtime/runtime"
 import {
   RUN_TRIGGERS,
@@ -18,7 +19,6 @@ import {
   ConversationNotFoundError as StorageNotFoundError,
   type ConversationRepository as StorageRepository,
 } from "../conversation/repo"
-import type { Provider } from "../providers/types"
 import type { ServerEvent } from "./events"
 import { serializeSseEvent } from "./events"
 import { createServerApp, ServerShuttingDownError } from "./app"
@@ -42,7 +42,7 @@ const replyPermissionBodySchema = z.object({
 type ServerInstance = ReturnType<typeof Bun.serve>
 
 export function createAgentServer(input: {
-  provider: Provider
+  provider: OrchestrationModelPort
   repository: StorageRepository
   permissionRepository: PermissionRepository
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>

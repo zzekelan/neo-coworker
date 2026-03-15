@@ -1,23 +1,15 @@
 import type OpenAI from "openai"
-import type {
-  Provider,
-  ProviderEvent,
-  ProviderMessage,
-  ProviderToolCallPart,
-  ProviderToolResultPart,
-  ProviderTurnRequest,
-} from "./types"
+import {
+  createOpenAIEventNormalizer,
+  type ModelMessage,
+} from "../service"
+import { createModelRuntimeApi } from "./api"
 
 type OpenAIStreamEvent = OpenAI.Responses.ResponseStreamEvent
 type OpenAIStreamRequest = Parameters<OpenAI["responses"]["stream"]>[0]
 type OpenAIResponseInput = OpenAI.Responses.ResponseInput
 type OpenAIResponseInputItem = OpenAI.Responses.ResponseInputItem
 type OpenAITools = OpenAI.Responses.Tool[]
-
-type FunctionCallMetadata = {
-  callId: string
-  name: string
-}
 
 type OpenAIClient = {
   responses: {
@@ -28,28 +20,14 @@ type OpenAIClient = {
   }
 }
 
-function rememberFunctionCall(
-  functionCalls: Map<string, FunctionCallMetadata>,
-  item: OpenAI.Responses.ResponseOutputItem,
-) {
-  if (item.type !== "function_call" || item.id == null) {
-    return
-  }
-
-  functionCalls.set(item.id, {
-    callId: item.call_id,
-    name: item.name,
-  })
-}
-
-function readMessageText(message: ProviderMessage) {
+function readMessageText(message: ModelMessage) {
   return message.parts
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("\n\n")
 }
 
-function toResponseInput(message: ProviderMessage): OpenAIResponseInputItem[] {
+function toResponseInput(message: ModelMessage): OpenAIResponseInputItem[] {
   if (message.role === "tool") {
     return message.parts.flatMap((part) =>
       part.type === "tool_result"
@@ -94,18 +72,16 @@ function toResponseInput(message: ProviderMessage): OpenAIResponseInputItem[] {
   return items
 }
 
-function toResponseInputs(messages: ProviderMessage[]): OpenAIResponseInput {
+function toResponseInputs(messages: ModelMessage[]): OpenAIResponseInput {
   return messages.flatMap((message) => toResponseInput(message))
 }
 
 export function createOpenAIProvider(input: {
   model: string
   client: OpenAIClient
-}): Provider {
-  return {
-    async *streamTurn(
-      request: ProviderTurnRequest,
-    ): AsyncGenerator<ProviderEvent, void, void> {
+}) {
+  return createModelRuntimeApi({
+    async *streamTurn(request) {
       const stream = input.client.responses.stream(
         {
           model: input.model,
@@ -115,34 +91,11 @@ export function createOpenAIProvider(input: {
         },
         { signal: request.signal },
       )
-      const functionCalls = new Map<string, FunctionCallMetadata>()
+      const normalize = createOpenAIEventNormalizer()
 
       for await (const event of stream) {
-        if (
-          event.type === "response.output_item.added" ||
-          event.type === "response.output_item.done"
-        ) {
-          rememberFunctionCall(functionCalls, event.item)
-        }
-
-        if (event.type === "response.output_text.delta") {
-          yield { type: "text.delta", text: event.delta }
-        }
-
-        if (event.type === "response.function_call_arguments.done") {
-          const functionCall = functionCalls.get(event.item_id)
-          if (functionCall == null) {
-            continue
-          }
-
-          yield {
-            type: "tool.call",
-            callId: functionCall.callId,
-            name: functionCall.name,
-            inputText: event.arguments,
-          }
-        }
+        yield* normalize.push(event)
       }
     },
-  }
+  })
 }

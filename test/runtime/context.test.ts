@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test"
-import { buildModelInput, buildTranscriptMessages } from "../../src/runtime/context"
+import { buildModelTurnInput, buildTranscriptMessages } from "../../src/model/service/projection"
 
 describe("context builder", () => {
   test("injects system prompt, active skills, tool names, and transcript", () => {
-    const input = buildModelInput({
+    const input = buildModelTurnInput({
       systemPrompt: "You are the agent runtime.",
       activeSkillInstructions: ["Always explain the diff."],
       tools: [{ name: "read", description: "Read a file" }],
-      messages: [{ role: "user", parts: [{ type: "text", text: "inspect README" }] }],
+      transcript: [
+        {
+          role: "user",
+          parts: [{ kind: "text", text: "inspect README" }],
+        },
+      ],
     })
 
     expect(input.system).toContain("You are the agent runtime.")

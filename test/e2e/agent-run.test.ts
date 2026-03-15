@@ -3,6 +3,8 @@ import { cp, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runCli } from "../../src/cli/run-command"
+import { createModelRuntimeApi } from "../../src/model/runtime/api"
+import { createModelProvider } from "../../src/model/wiring/provider"
 import { createPermissionRepository } from "../../src/permission/repo"
 import { createAgentServer } from "../../src/server"
 import { getDefaultCliStoragePath } from "../../src/runtime/runtime"
@@ -10,7 +12,6 @@ import {
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,
 } from "../../src/conversation/repo"
-import type { ProviderTurnRequest } from "../../src/providers/types"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -53,29 +54,31 @@ describe("agent run e2e", () => {
       argv: ["run", "Read README.md and summarize it"],
       cwd: workspaceRoot,
       workspaceRoot,
-      provider: {
-        async *streamTurn(_request: ProviderTurnRequest) {
-          turn += 1
+      provider: createModelProvider({
+        runtime: createModelRuntimeApi({
+          async *streamTurn() {
+            turn += 1
 
-          if (turn === 1) {
-            yield { type: "text.delta", text: "Opening README.md\n" }
-            yield {
-              type: "tool.call",
-              callId: "call_1",
-              name: "read",
-              inputText: '{"path":"README.md"}',
+            if (turn === 1) {
+              yield { type: "text.delta", text: "Opening README.md\n" }
+              yield {
+                type: "tool.call",
+                callId: "call_1",
+                name: "read",
+                inputText: '{"path":"README.md"}',
+              }
+              return
             }
-            return
-          }
 
-          if (turn === 2) {
-            yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
-            return
-          }
+            if (turn === 2) {
+              yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
+              return
+            }
 
-          throw new Error(`Unexpected provider turn ${turn}`)
-        },
-      },
+            throw new Error(`Unexpected provider turn ${turn}`)
+          },
+        }),
+      }),
       io: {
         write(text: string) {
           output.push(text)
@@ -120,32 +123,34 @@ describe("agent run e2e", () => {
     const repository = createStorageRepository({ database })
     const permissionRepository = createPermissionRepository({ database })
     const server = createAgentServer({
-      provider: {
-        async *streamTurn(_request: ProviderTurnRequest) {
-          if (!("turn" in serverState)) {
-            serverState.turn = 0
-          }
-          serverState.turn += 1
-
-          if (serverState.turn === 1) {
-            yield { type: "text.delta", text: "Opening README.md\n" }
-            yield {
-              type: "tool.call",
-              callId: "call_1",
-              name: "read",
-              inputText: '{"path":"README.md"}',
+      provider: createModelProvider({
+        runtime: createModelRuntimeApi({
+          async *streamTurn() {
+            if (!("turn" in serverState)) {
+              serverState.turn = 0
             }
-            return
-          }
+            serverState.turn += 1
 
-          if (serverState.turn === 2) {
-            yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
-            return
-          }
+            if (serverState.turn === 1) {
+              yield { type: "text.delta", text: "Opening README.md\n" }
+              yield {
+                type: "tool.call",
+                callId: "call_1",
+                name: "read",
+                inputText: '{"path":"README.md"}',
+              }
+              return
+            }
 
-          throw new Error(`Unexpected provider turn ${serverState.turn}`)
-        },
-      },
+            if (serverState.turn === 2) {
+              yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
+              return
+            }
+
+            throw new Error(`Unexpected provider turn ${serverState.turn}`)
+          },
+        }),
+      }),
       repository,
       permissionRepository,
     })

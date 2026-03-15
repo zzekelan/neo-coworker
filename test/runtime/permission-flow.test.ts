@@ -4,6 +4,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createConversationRunService as createSessionRunService } from "../../src/conversation/service"
 import {
+  createModelRuntimeApi,
+  type ProviderEvent,
+  type ProviderTurnRequest,
+} from "../../src/model/runtime/api"
+import { createModelProvider } from "../../src/model/wiring/provider"
+import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
+import {
   PermissionNotFoundError,
   createPermissionRepository,
   type PermissionRepository,
@@ -15,7 +22,6 @@ import {
   openConversationDatabase as openStorageDatabase,
   type ConversationRepository as StorageRepository,
 } from "../../src/conversation/repo"
-import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -630,7 +636,7 @@ async function createHarness(
 }
 
 function createPermissionRuntime(input: {
-  provider: Provider
+  provider: OrchestrationModelPort
   harness: Awaited<ReturnType<typeof createHarness>>
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
 }) {
@@ -673,24 +679,26 @@ function startPromptRun(input: {
 function createTurnProvider(
   requests: ProviderTurnRequest[],
   turns: Array<(request: ProviderTurnRequest) => AsyncIterable<ProviderEvent>>,
-): Provider {
+){
   let index = 0
 
-  return {
-    async *streamTurn(request: ProviderTurnRequest) {
-      requests.push(request)
-      const turn = turns[index]
-      index += 1
+  return createModelProvider({
+    runtime: createModelRuntimeApi({
+      async *streamTurn(request: ProviderTurnRequest) {
+        requests.push(request)
+        const turn = turns[index]
+        index += 1
 
-      if (!turn) {
-        throw new Error(`Unexpected provider turn ${index}`)
-      }
+        if (!turn) {
+          throw new Error(`Unexpected provider turn ${index}`)
+        }
 
-      for await (const event of turn(request)) {
-        yield event
-      }
-    },
-  }
+        for await (const event of turn(request)) {
+          yield event
+        }
+      },
+    }),
+  })
 }
 
 async function waitForPermissionRequest(iterator: AsyncIterator<unknown>) {

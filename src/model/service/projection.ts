@@ -1,32 +1,37 @@
-import type { ProviderMessage, ProviderMessagePart, ProviderTextPart } from "../providers/types"
-import type { StoredPart, TranscriptMessage } from "../conversation/repo"
+import type {
+  ModelMessage,
+  ModelMessagePart,
+  ModelProjectionInput,
+  ModelTextPart,
+  ModelTranscriptMessage,
+  ModelTranscriptPart,
+  ModelTurnRequest,
+} from "../repo"
 
-type Tool = {
-  name: string
-  description: string
-}
-
-export function buildModelInput(input: {
-  systemPrompt: string
-  activeSkillInstructions: string[]
-  tools: Tool[]
-  messages: ProviderMessage[]
-}) {
-  const toolList = input.tools
-    .map((tool) => `- ${tool.name}: ${tool.description}`)
-    .join("\n")
+export function buildModelTurnInput(input: ModelProjectionInput) {
+  const toolList = input.tools.map((tool) => `- ${tool.name}: ${tool.description}`).join("\n")
   const skillText = input.activeSkillInstructions.join("\n\n")
 
   return {
     system: [input.systemPrompt, skillText, "Available tools:", toolList]
       .filter(Boolean)
       .join("\n\n"),
-    messages: input.messages,
+    messages: buildTranscriptMessages(input.transcript),
+    tools: input.tools,
   }
 }
 
-export function buildTranscriptMessages(transcript: TranscriptMessage[]): ProviderMessage[] {
-  const messages: ProviderMessage[] = []
+export function projectModelTurn(
+  input: ModelProjectionInput & Pick<ModelTurnRequest, "signal">,
+): ModelTurnRequest {
+  return {
+    ...buildModelTurnInput(input),
+    signal: input.signal,
+  }
+}
+
+export function buildTranscriptMessages(transcript: ModelTranscriptMessage[]): ModelMessage[] {
+  const messages: ModelMessage[] = []
 
   for (const message of transcript) {
     const role = message.role === "synthetic" ? "assistant" : message.role
@@ -36,9 +41,13 @@ export function buildTranscriptMessages(transcript: TranscriptMessage[]): Provid
       continue
     }
 
+    if (role !== "user" && role !== "system") {
+      continue
+    }
+
     const parts = message.parts
       .map(renderTextPart)
-      .filter((part): part is ProviderTextPart => part !== null)
+      .filter((part): part is ModelTextPart => part !== null)
 
     if (parts.length === 0) {
       continue
@@ -53,9 +62,9 @@ export function buildTranscriptMessages(transcript: TranscriptMessage[]): Provid
   return messages
 }
 
-function buildAssistantMessages(parts: StoredPart[]): ProviderMessage[] {
-  const assistantParts: ProviderMessagePart[] = []
-  const toolMessages: ProviderMessage[] = []
+function buildAssistantMessages(parts: ModelTranscriptPart[]): ModelMessage[] {
+  const assistantParts: ModelMessagePart[] = []
+  const toolMessages: ModelMessage[] = []
 
   for (const part of parts) {
     if (isTextPart(part.kind)) {
@@ -94,7 +103,7 @@ function buildAssistantMessages(parts: StoredPart[]): ProviderMessage[] {
     }
   }
 
-  const messages: ProviderMessage[] = []
+  const messages: ModelMessage[] = []
   if (assistantParts.length > 0) {
     messages.push({
       role: "assistant",
@@ -106,7 +115,7 @@ function buildAssistantMessages(parts: StoredPart[]): ProviderMessage[] {
   return messages
 }
 
-function isTextPart(kind: StoredPart["kind"]) {
+function isTextPart(kind: ModelTranscriptPart["kind"]) {
   return (
     kind === "text" ||
     kind === "reasoning" ||
@@ -116,7 +125,7 @@ function isTextPart(kind: StoredPart["kind"]) {
   )
 }
 
-function renderTextPart(part: StoredPart): ProviderTextPart | null {
+function renderTextPart(part: ModelTranscriptPart): ModelTextPart | null {
   switch (part.kind) {
     case "text":
     case "reasoning":
@@ -134,27 +143,27 @@ function renderTextPart(part: StoredPart): ProviderTextPart | null {
   }
 }
 
-function renderToolCallPart(part: StoredPart) {
+function renderToolCallPart(part: ModelTranscriptPart) {
   const data = readObject(part.data)
   return {
     type: "tool_call" as const,
     toolName: readString(data, "toolName") ?? "unknown",
-    callId: readString(data, "callId") ?? part.id,
+    callId: readString(data, "callId") ?? "unknown_call",
     inputText: readString(data, "inputText") ?? "",
   }
 }
 
-function renderToolResultPart(part: StoredPart) {
+function renderToolResultPart(part: ModelTranscriptPart) {
   const data = readObject(part.data)
   return {
     type: "tool_result" as const,
     toolName: readString(data, "toolName") ?? "unknown",
-    callId: readString(data, "callId") ?? part.id,
+    callId: readString(data, "callId") ?? "unknown_call",
     output: part.text ?? readString(data, "output") ?? "",
   }
 }
 
-function renderToolErrorPart(part: StoredPart) {
+function renderToolErrorPart(part: ModelTranscriptPart) {
   if (part.kind !== "error") {
     return null
   }
@@ -167,7 +176,7 @@ function renderToolErrorPart(part: StoredPart) {
   return {
     type: "tool_result" as const,
     toolName: readString(data, "toolName") ?? "unknown",
-    callId: readString(data, "callId") ?? part.id,
+    callId: readString(data, "callId") ?? "unknown_call",
     output: `Error: ${part.text ?? "unknown error"}`,
     isError: true,
   }

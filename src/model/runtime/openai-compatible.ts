@@ -1,14 +1,11 @@
 import type OpenAI from "openai"
 import type { ZodTypeAny } from "zod"
-import type {
-  Provider,
-  ProviderEvent,
-  ProviderMessage,
-  ProviderMessagePart,
-  ProviderToolCallPart,
-  ProviderToolResultPart,
-  ProviderTurnRequest,
-} from "./types"
+import {
+  createOpenAICompatibleEventNormalizer,
+  type ModelMessage,
+  type ModelTool,
+} from "../service"
+import { createModelRuntimeApi } from "./api"
 
 type OpenAICompatibleChunk = OpenAI.Chat.ChatCompletionChunk
 type OpenAICompatibleMessage = OpenAI.Chat.ChatCompletionMessageParam
@@ -26,35 +23,20 @@ type OpenAICompatibleClient = {
   }
 }
 
-type RuntimeTool = {
-  name: string
-  description: string
-  inputSchema?: ZodTypeAny
-}
-
-type ToolCallState = {
-  callId?: string
-  name?: string
-  inputText: string
-  emitted: boolean
-}
-
 function unsupportedSchema(schema: ZodTypeAny): never {
   throw new Error(
     `Unsupported Zod schema type for openai-compatible tools: ${schema._def.typeName as string}`,
   )
 }
 
-function readMessageText(message: RuntimeMessage) {
+function readMessageText(message: ModelMessage) {
   return message.parts
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("\n\n")
 }
 
-type RuntimeMessage = ProviderMessage
-
-function toChatCompletionMessages(messages: RuntimeMessage[]): OpenAICompatibleMessage[] {
+function toChatCompletionMessages(messages: ModelMessage[]): OpenAICompatibleMessage[] {
   const serialized: OpenAICompatibleMessage[] = []
 
   for (const message of messages) {
@@ -76,8 +58,15 @@ function toChatCompletionMessages(messages: RuntimeMessage[]): OpenAICompatibleM
     const content = readMessageText(message)
     if (message.role === "assistant") {
       const toolCalls = message.parts
-        .filter((part): part is ProviderToolCallPart => part.type === "tool_call")
-        .map(toChatCompletionToolCall)
+        .filter((part): part is Extract<typeof part, { type: "tool_call" }> => part.type === "tool_call")
+        .map((part) => ({
+          id: part.callId,
+          type: "function" as const,
+          function: {
+            name: part.toolName,
+            arguments: part.inputText,
+          },
+        }))
 
       if (!content && toolCalls.length === 0) {
         continue
@@ -102,19 +91,6 @@ function toChatCompletionMessages(messages: RuntimeMessage[]): OpenAICompatibleM
   }
 
   return serialized
-}
-
-function toChatCompletionToolCall(
-  part: ProviderToolCallPart,
-): OpenAI.Chat.ChatCompletionMessageToolCall {
-  return {
-    id: part.callId,
-    type: "function",
-    function: {
-      name: part.toolName,
-      arguments: part.inputText,
-    },
-  }
 }
 
 function unwrapSchema(schema: ZodTypeAny): ZodTypeAny {
@@ -178,7 +154,7 @@ function toJsonSchema(schema: ZodTypeAny): Record<string, unknown> {
   }
 }
 
-function toChatCompletionTool(tool: RuntimeTool): OpenAI.Chat.ChatCompletionTool {
+function toChatCompletionTool(tool: ModelTool): OpenAI.Chat.ChatCompletionTool {
   return {
     type: "function",
     function: {
@@ -189,84 +165,31 @@ function toChatCompletionTool(tool: RuntimeTool): OpenAI.Chat.ChatCompletionTool
   }
 }
 
-function flushToolCalls(
-  toolCalls: Map<number, ToolCallState>,
-): ProviderEvent[] {
-  const events: ProviderEvent[] = []
-
-  for (const [index, toolCall] of [...toolCalls.entries()].sort(([left], [right]) => left - right)) {
-    if (toolCall.emitted || !toolCall.name) {
-      continue
-    }
-
-    events.push({
-      type: "tool.call",
-      callId: toolCall.callId ?? `tool_call_${index}`,
-      name: toolCall.name,
-      inputText: toolCall.inputText,
-    })
-    toolCall.emitted = true
-  }
-
-  return events
-}
-
 export function createOpenAICompatibleProvider(input: {
   model: string
   client: OpenAICompatibleClient
-}): Provider {
-  return {
-    async *streamTurn(
-      request: ProviderTurnRequest,
-    ): AsyncGenerator<ProviderEvent, void, void> {
+}) {
+  return createModelRuntimeApi({
+    async *streamTurn(request) {
       const stream = await input.client.chat.completions.create(
         {
           model: input.model,
           messages: [
             { role: "system", content: request.system },
-            ...toChatCompletionMessages(request.messages as RuntimeMessage[]),
+            ...toChatCompletionMessages(request.messages),
           ],
           stream: true,
-          tools: (request.tools as RuntimeTool[]).map(toChatCompletionTool),
+          tools: (request.tools as OpenAICompatibleTools["0"][]).map(toChatCompletionTool),
         },
         { signal: request.signal },
       )
-      const toolCalls = new Map<number, ToolCallState>()
+      const normalize = createOpenAICompatibleEventNormalizer()
 
       for await (const chunk of stream) {
-        for (const choice of chunk.choices) {
-          if (choice.delta.content) {
-            yield { type: "text.delta", text: choice.delta.content }
-          }
-
-          for (const toolCall of choice.delta.tool_calls ?? []) {
-            const state = toolCalls.get(toolCall.index) ?? {
-              inputText: "",
-              emitted: false,
-            }
-
-            if (toolCall.id) {
-              state.callId = toolCall.id
-            }
-
-            if (toolCall.function?.name) {
-              state.name = toolCall.function.name
-            }
-
-            if (toolCall.function?.arguments) {
-              state.inputText += toolCall.function.arguments
-            }
-
-            toolCalls.set(toolCall.index, state)
-          }
-
-          if (choice.finish_reason === "tool_calls") {
-            yield* flushToolCalls(toolCalls)
-          }
-        }
+        yield* normalize.push(chunk)
       }
 
-      yield* flushToolCalls(toolCalls)
+      yield* normalize.flush()
     },
-  }
+  })
 }
