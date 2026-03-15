@@ -8,7 +8,10 @@ import {
   getDefaultStandaloneServerStoragePath,
   resolveStandaloneServerConfig,
 } from "../../src/server-main"
-import { CURRENT_STORAGE_SCHEMA_VERSION, openStorageDatabase } from "../../src/storage"
+import {
+  CURRENT_CONVERSATION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
+  openConversationDatabase as openStorageDatabase,
+} from "../../src/conversation/repo"
 
 const tempDirectories: string[] = []
 const activeProcesses: Bun.Subprocess[] = []

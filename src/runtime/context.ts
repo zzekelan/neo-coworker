@@ -1,5 +1,5 @@
 import type { ProviderMessage, ProviderMessagePart, ProviderTextPart } from "../providers/types"
-import type { StoredPart, TranscriptMessage } from "../storage"
+import type { StoredPart, TranscriptMessage } from "../conversation/repo"
 
 type Tool = {
   name: string

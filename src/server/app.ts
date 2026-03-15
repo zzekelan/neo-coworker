@@ -1,9 +1,14 @@
 import type { Provider } from "../providers/types"
-import { assertRunStatusTransition } from "../run"
-import { createSessionRunService } from "../session"
+import {
+  assertRunStatusTransition,
+  createConversationRunService as createSessionRunService,
+} from "../conversation/service"
+import type {
+  ConversationRepository as StorageRepository,
+  RunTrigger,
+} from "../conversation/repo"
 import { createRuntime } from "../runtime/runtime"
 import type { PermissionMode, PermissionResponse } from "../runtime/permissions"
-import type { RunTrigger, StorageRepository } from "../storage"
 import { buildSessionSnapshot, createServerEventBus } from "./events"
 import { createObservedRepository } from "./repository-events"
 

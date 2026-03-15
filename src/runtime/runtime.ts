@@ -1,11 +1,14 @@
 import { join } from "node:path"
-import { isTerminalRunStatus } from "../run"
-import { PermissionRequestNotPendingError, createSessionRunService } from "../session"
 import {
-  createStorageRepository,
-  openStorageDatabase,
-  type StorageRepository,
-} from "../storage"
+  PermissionRequestNotPendingError,
+  createConversationRunService as createSessionRunService,
+  isTerminalRunStatus,
+} from "../conversation/service"
+import {
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+  type ConversationRepository as StorageRepository,
+} from "../conversation/repo"
 import type { Provider } from "../providers/types"
 import type { RunHandle } from "./run-handle"
 import { createEventQueue } from "./event-queue"

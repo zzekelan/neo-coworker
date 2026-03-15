@@ -1,7 +1,11 @@
-import { isActiveRunStatus } from "../run"
-import type { createSessionRunService } from "../session/service"
+import { isActiveRunStatus } from "../conversation/service"
+import type { createConversationRunService as createSessionRunService } from "../conversation/service"
 import type { Provider } from "../providers/types"
-import type { StorageRepository, StoredMessage, StoredPart } from "../storage"
+import type {
+  ConversationRepository as StorageRepository,
+  StoredMessage,
+  StoredPart,
+} from "../conversation/repo"
 import { buildModelInput, buildTranscriptMessages } from "./context"
 import type { RuntimeEvent } from "./events"
 import type { createEventQueue } from "./event-queue"

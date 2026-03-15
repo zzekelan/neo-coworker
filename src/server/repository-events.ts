@@ -1,4 +1,7 @@
-import type { StorageRepository, StoredRun } from "../storage"
+import type {
+  ConversationRepository as StorageRepository,
+  StoredRun,
+} from "../conversation/repo"
 import { buildSessionSnapshot, type ServerEventPayload, type createServerEventBus } from "./events"
 
 type ServerEventBus = ReturnType<typeof createServerEventBus>

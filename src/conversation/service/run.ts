@@ -1,19 +1,19 @@
 import {
-  StorageConflictError,
-  StorageNotFoundError,
+  ConversationConflictError,
+  ConversationNotFoundError,
+  type ConversationRepository,
   type RequestPermissionAndPauseRunInput,
   type RunTrigger,
-  type StorageRepository,
   type StoredPermissionRequest,
-  type TranscriptMessage,
   type StoredRun,
-} from "../storage"
-import { assertRunStatusTransition, createRunStateMachine } from "../run"
+} from "../repo/contract"
+import { createConversationTranscriptService } from "./transcript"
+import { assertRunStatusTransition, createRunStateMachine } from "./state-machine"
 
 export type SessionActivityStatus = "idle" | "busy"
 
 export type SessionRunState = {
-  session: ReturnType<StorageRepository["sessions"]["get"]>
+  session: ReturnType<ConversationRepository["sessions"]["get"]>
   latestRun: StoredRun | null
   activeRun: StoredRun | null
   status: SessionActivityStatus
@@ -83,16 +83,6 @@ export class RetrySourceRunError extends SessionRunServiceError {
   }
 }
 
-export class RunInitiatingMessageNotFoundError extends SessionRunServiceError {
-  readonly runId: string
-
-  constructor(runId: string) {
-    super(`Run ${runId} is missing its initiating user message`)
-    this.name = "RunInitiatingMessageNotFoundError"
-    this.runId = runId
-  }
-}
-
 export class PermissionRequestNotPendingError extends SessionRunServiceError {
   readonly requestId: string
   readonly status: StoredPermissionRequest["status"]
@@ -121,16 +111,19 @@ export class PermissionRequestRunStateError extends SessionRunServiceError {
   }
 }
 
-export function createSessionRunService(input: {
-  repository: StorageRepository
+export type CreateConversationRunServiceInput = {
+  repository: ConversationRepository
   now?: () => number
-}) {
+}
+
+export function createConversationRunService(input: CreateConversationRunServiceInput) {
   const repository = input.repository
   const now = input.now ?? Date.now
   const runStateMachine = createRunStateMachine({
     repository,
     now,
   })
+  const transcript = createConversationTranscriptService({ repository })
 
   function getSessionState(sessionId: string): SessionRunState {
     const session = repository.sessions.get(sessionId)
@@ -176,7 +169,7 @@ export function createSessionRunService(input: {
         throw identityConflict
       }
 
-      if (error instanceof StorageConflictError) {
+      if (error instanceof ConversationConflictError) {
         if (identityConflict) {
           throw identityConflict
         }
@@ -201,7 +194,7 @@ export function createSessionRunService(input: {
       })
     }
 
-    const sourceInitiatingMessage = getInitiatingMessage(repository, sourceRun)
+    const sourceInitiatingMessage = transcript.getInitiatingMessage(sourceRun)
     const nextRun = startRun({
       ...run,
       trigger: "retry",
@@ -288,21 +281,8 @@ export function createSessionRunService(input: {
   }
 }
 
-function getInitiatingMessage(repository: StorageRepository, run: StoredRun): TranscriptMessage {
-  const sessionTranscript = repository.messages.listSessionTranscript(run.sessionId)
-  const initiatingMessage = sessionTranscript.find(
-    (message) => message.runId === run.id && message.role === "user" && message.sequence === 0,
-  )
-
-  if (!initiatingMessage) {
-    throw new RunInitiatingMessageNotFoundError(run.id)
-  }
-
-  return initiatingMessage
-}
-
 function assertStartRunIdentityAvailable(
-  repository: StorageRepository,
+  repository: ConversationRepository,
   run: Pick<StartRunInput, "runId" | "messageId">,
 ) {
   const conflict = getStartRunIdentityConflict(repository, run)
@@ -312,7 +292,7 @@ function assertStartRunIdentityAvailable(
 }
 
 function getStartRunIdentityConflict(
-  repository: StorageRepository,
+  repository: ConversationRepository,
   run: Pick<StartRunInput, "runId" | "messageId">,
 ) {
   if (run.runId && entityExists(() => repository.runs.get(run.runId!))) {
@@ -337,7 +317,7 @@ function entityExists(read: () => unknown) {
     read()
     return true
   } catch (error) {
-    if (error instanceof StorageNotFoundError) {
+    if (error instanceof ConversationNotFoundError) {
       return false
     }
 

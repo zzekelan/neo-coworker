@@ -4,14 +4,14 @@ import type { Provider } from "../providers/types"
 import { createAgentServer } from "../server"
 import type { ServerEvent } from "../server/events"
 import {
-  createStorageRepository,
-  openStorageDatabase,
-  type StorageRepository,
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+  type ConversationRepository as StorageRepository,
   type StoredMessage,
   type StoredPermissionRequest,
   type StoredRun,
   type StoredSession,
-} from "../storage"
+} from "../conversation/repo"
 
 type SendRequest = (request: Request) => Promise<Response> | Response
 

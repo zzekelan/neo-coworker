@@ -3,9 +3,15 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { InvalidRunStatusTransitionError } from "../../src/run"
-import { SessionBusyError, createSessionRunService } from "../../src/session"
-import { createStorageRepository, openStorageDatabase } from "../../src/storage"
+import {
+  InvalidRunStatusTransitionError,
+  SessionBusyError,
+  createConversationRunService as createSessionRunService,
+} from "../../src/conversation/service"
+import {
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+} from "../../src/conversation/repo"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

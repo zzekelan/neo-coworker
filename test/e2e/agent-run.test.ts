@@ -5,7 +5,10 @@ import { join } from "node:path"
 import { runCli } from "../../src/cli/run-command"
 import { createAgentServer } from "../../src/server"
 import { getDefaultCliStoragePath } from "../../src/runtime/runtime"
-import { createStorageRepository, openStorageDatabase } from "../../src/storage"
+import {
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+} from "../../src/conversation/repo"
 import type { ProviderTurnRequest } from "../../src/providers/types"
 
 const tempDirectories: string[] = []

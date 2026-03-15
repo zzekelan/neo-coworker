@@ -5,7 +5,10 @@ import { join } from "node:path"
 
 import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 import { createAgentServer } from "../../src/server"
-import { createStorageRepository, openStorageDatabase } from "../../src/storage"
+import {
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+} from "../../src/conversation/repo"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

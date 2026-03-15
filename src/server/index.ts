@@ -1,20 +1,20 @@
 import { createServer as createNetServer } from "node:net"
 import { z, ZodError } from "zod"
-import { InvalidRunStatusTransitionError } from "../run"
 import {
+  InvalidRunStatusTransitionError,
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
   SessionBusyError,
   StartRunIdentityConflictError,
-} from "../session"
+} from "../conversation/service"
 import type { PermissionMode } from "../runtime/permissions"
 import { PermissionRequestNotAwaitingActiveRuntimeError } from "../runtime/runtime"
 import {
   RUN_TRIGGERS,
-  StorageConflictError,
-  StorageNotFoundError,
-  type StorageRepository,
-} from "../storage"
+  ConversationConflictError as StorageConflictError,
+  ConversationNotFoundError as StorageNotFoundError,
+  type ConversationRepository as StorageRepository,
+} from "../conversation/repo"
 import type { Provider } from "../providers/types"
 import type { ServerEvent } from "./events"
 import { serializeSseEvent } from "./events"

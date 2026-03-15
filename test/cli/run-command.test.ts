@@ -7,7 +7,10 @@ import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/pro
 import { runCli } from "../../src/cli/run-command"
 import { createAgentServerClient } from "../../src/cli/server-client"
 import { createAgentServer } from "../../src/server"
-import { createStorageRepository, openStorageDatabase } from "../../src/storage"
+import {
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+} from "../../src/conversation/repo"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

@@ -2,8 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createSessionRunService } from "../../src/session"
-import { createStorageRepository, openStorageDatabase, type StorageRepository } from "../../src/storage"
+import { createConversationRunService as createSessionRunService } from "../../src/conversation/service"
+import {
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+  type ConversationRepository as StorageRepository,
+} from "../../src/conversation/repo"
 import { buildTranscriptMessages } from "../../src/runtime/context"
 import { createRuntime } from "../../src/runtime/runtime"
 import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"

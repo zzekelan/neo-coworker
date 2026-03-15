@@ -1,12 +1,12 @@
 import { createEventQueue } from "../runtime/event-queue"
 import type {
-  StorageRepository,
+  ConversationRepository as StorageRepository,
   StoredMessage,
   StoredPart,
   StoredPermissionRequest,
   StoredRun,
   StoredSession,
-} from "../storage"
+} from "../conversation/repo"
 
 export type SessionSnapshot = {
   session: StoredSession

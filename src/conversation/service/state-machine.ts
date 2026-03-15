@@ -1,4 +1,4 @@
-import type { RunStatus, StorageRepository, StoredRun } from "../storage"
+import type { ConversationRepository, RunStatus, StoredRun } from "../repo/contract"
 
 export const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_permission"] as const
 export const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const
@@ -63,7 +63,7 @@ export function assertRunStatusTransition(
 }
 
 export function createRunStateMachine(input: {
-  repository: StorageRepository
+  repository: ConversationRepository
   now?: () => number
 }) {
   const repository = input.repository

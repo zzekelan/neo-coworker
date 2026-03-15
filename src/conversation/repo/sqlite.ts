@@ -1,284 +1,228 @@
-import { getStorageDatabaseIdentity, type StorageDatabase } from "./db"
+import { Database } from "bun:sqlite"
+import { existsSync, mkdirSync, realpathSync } from "node:fs"
+import { dirname, resolve } from "node:path"
+
 import {
+  CURRENT_CONVERSATION_SCHEMA_VERSION,
   MESSAGE_ROLES,
   PART_KINDS,
   PERMISSION_STATUSES,
-  RUN_TRIGGERS,
   RUN_STATUSES,
-} from "./schema"
+  RUN_TRIGGERS,
+} from "../config/defaults"
+import {
+  ConversationConflictError,
+  ConversationNotFoundError,
+  ConversationOwnershipError,
+  type ConversationRepository,
+  type CancelRunAndPendingPermissionsInput,
+  type CreateAssistantMessageWithFirstPartInput,
+  type CreateMessageInput,
+  type CreatePartInput,
+  type CreatePermissionRequestInput,
+  type CreateQueuedRunWithInitiatingMessageInput,
+  type CreateRunInput,
+  type CreateSessionInput,
+  type RequestPermissionAndPauseRunInput,
+  type StoredMessage,
+  type StoredPart,
+  type StoredPermissionRequest,
+  type StoredRun,
+  type StoredSession,
+  type TranscriptMessage,
+  type UpdatePartContentInput,
+  type UpdatePermissionRequestStatusInput,
+  type UpdateRunStatusInput,
+} from "./contract"
+import {
+  mapMessageRow,
+  mapPartRow,
+  mapPermissionRequestRow,
+  mapRunRow,
+  mapSessionRow,
+  serializeJson,
+  type MessageRow,
+  type PartRow,
+  type PermissionRequestRow,
+  type RunRow,
+  type SessionRow,
+  type TranscriptRow,
+} from "./mappers"
+import { assertPendingPermissionRequestInput } from "./tx"
 
-export type RunStatus = (typeof RUN_STATUSES)[number]
-export type MessageRole = (typeof MESSAGE_ROLES)[number]
-export type PartKind = (typeof PART_KINDS)[number]
-export type PermissionStatus = (typeof PERMISSION_STATUSES)[number]
-export type RunTrigger = (typeof RUN_TRIGGERS)[number]
+export type ConversationDatabase = Database
 
 const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_permission"] as const
 const activeRunStatusCheck = ACTIVE_RUN_STATUSES.map((status) => `'${status}'`).join(", ")
+const runStatusCheck = RUN_STATUSES.map((status) => `'${status}'`).join(", ")
+const runTriggerCheck = RUN_TRIGGERS.map((trigger) => `'${trigger}'`).join(", ")
+const messageRoleCheck = MESSAGE_ROLES.map((role) => `'${role}'`).join(", ")
+const partKindCheck = PART_KINDS.map((kind) => `'${kind}'`).join(", ")
+const permissionStatusCheck = PERMISSION_STATUSES.map((status) => `'${status}'`).join(", ")
 
-type EntityType = "session" | "run" | "message" | "part" | "permission_request"
+const conversationMigrations = [
+  {
+    version: 1,
+    statements: [
+      `
+        CREATE TABLE session (
+          id TEXT PRIMARY KEY,
+          directory TEXT NOT NULL,
+          workspace_root TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+      `,
+      `
+        CREATE TABLE run (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          trigger TEXT NOT NULL CHECK (trigger IN (${runTriggerCheck})),
+          status TEXT NOT NULL CHECK (status IN (${runStatusCheck})),
+          created_at INTEGER NOT NULL,
+          started_at INTEGER,
+          finished_at INTEGER,
+          error_text TEXT,
+          FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+          UNIQUE (id, session_id)
+        )
+      `,
+      `
+        CREATE TABLE message (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN (${messageRoleCheck})),
+          sequence INTEGER NOT NULL CHECK (sequence >= 0),
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+          FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+          UNIQUE (id, run_id, session_id),
+          UNIQUE (run_id, sequence)
+        )
+      `,
+      `
+        CREATE TABLE part (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          message_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN (${partKindCheck})),
+          sequence INTEGER NOT NULL CHECK (sequence >= 0),
+          text_value TEXT,
+          data_json TEXT,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+          FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+          FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+          UNIQUE (id, message_id, run_id, session_id),
+          UNIQUE (message_id, sequence)
+        )
+      `,
+      `
+        CREATE TABLE permission_request (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          tool_name TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN (${permissionStatusCheck})),
+          created_at INTEGER NOT NULL,
+          resolved_at INTEGER,
+          FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+          FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE
+        )
+      `,
+    ],
+  },
+  {
+    version: 2,
+    statements: [
+      `
+        ALTER TABLE run
+        ADD COLUMN session_sequence INTEGER NOT NULL DEFAULT -1
+      `,
+      `
+        WITH ordered_runs AS (
+          SELECT
+            id,
+            ROW_NUMBER() OVER (
+              PARTITION BY session_id
+              ORDER BY created_at ASC, rowid ASC
+            ) - 1 AS session_sequence
+          FROM run
+        )
+        UPDATE run
+        SET session_sequence = (
+          SELECT ordered_runs.session_sequence
+          FROM ordered_runs
+          WHERE ordered_runs.id = run.id
+        )
+        WHERE session_sequence < 0
+      `,
+      `
+        CREATE UNIQUE INDEX run_session_sequence_idx
+        ON run (session_id, session_sequence)
+        WHERE session_sequence >= 0
+      `,
+      `
+        CREATE TRIGGER run_assign_session_sequence_after_insert
+        AFTER INSERT ON run
+        FOR EACH ROW
+        WHEN NEW.session_sequence < 0
+        BEGIN
+          UPDATE run
+          SET session_sequence = (
+            SELECT COALESCE(MAX(session_sequence), -1) + 1
+            FROM run
+            WHERE session_id = NEW.session_id
+              AND id <> NEW.id
+              AND session_sequence >= 0
+          )
+          WHERE id = NEW.id;
+        END
+      `,
+    ],
+  },
+] as const
+
 type IdPrefix = "session" | "run" | "message" | "part" | "permission"
 
-type SessionRow = {
-  id: string
-  directory: string
-  workspace_root: string
-  created_at: number
-}
+export function getConversationDatabaseIdentity(database: ConversationDatabase) {
+  const filename = database.filename
 
-type RunRow = {
-  id: string
-  session_id: string
-  trigger: RunTrigger
-  status: RunStatus
-  created_at: number
-  session_sequence: number
-  started_at: number | null
-  finished_at: number | null
-  error_text: string | null
-}
+  if (!filename || filename === ":memory:") {
+    return `memory:${String(database.handle)}`
+  }
 
-type MessageRow = {
-  id: string
-  session_id: string
-  run_id: string
-  role: MessageRole
-  sequence: number
-  created_at: number
-}
-
-type PartRow = {
-  id: string
-  session_id: string
-  run_id: string
-  message_id: string
-  kind: PartKind
-  sequence: number
-  text_value: string | null
-  data_json: string | null
-  created_at: number
-}
-
-type PermissionRequestRow = {
-  id: string
-  session_id: string
-  run_id: string
-  tool_name: string
-  reason: string
-  status: PermissionStatus
-  created_at: number
-  resolved_at: number | null
-}
-
-type TranscriptRow = {
-  message_id: string
-  message_session_id: string
-  message_run_id: string
-  message_role: MessageRole
-  message_sequence: number
-  message_created_at: number
-  part_id: string | null
-  part_session_id: string | null
-  part_run_id: string | null
-  part_message_id: string | null
-  part_kind: PartKind | null
-  part_sequence: number | null
-  part_text_value: string | null
-  part_data_json: string | null
-  part_created_at: number | null
-}
-
-export type StoredSession = {
-  id: string
-  directory: string
-  workspaceRoot: string
-  createdAt: number
-}
-
-export type StoredRun = {
-  id: string
-  sessionId: string
-  trigger: RunTrigger
-  status: RunStatus
-  createdAt: number
-  startedAt: number | null
-  finishedAt: number | null
-  errorText: string | null
-}
-
-export type StoredMessage = {
-  id: string
-  sessionId: string
-  runId: string
-  role: MessageRole
-  sequence: number
-  createdAt: number
-}
-
-export type StoredPart = {
-  id: string
-  sessionId: string
-  runId: string
-  messageId: string
-  kind: PartKind
-  sequence: number
-  text: string | null
-  data: unknown
-  createdAt: number
-}
-
-export type StoredPermissionRequest = {
-  id: string
-  sessionId: string
-  runId: string
-  toolName: string
-  reason: string
-  status: PermissionStatus
-  createdAt: number
-  resolvedAt: number | null
-}
-
-export type TranscriptMessage = StoredMessage & {
-  parts: StoredPart[]
-}
-
-export type CreateSessionInput = {
-  id?: string
-  directory: string
-  workspaceRoot: string
-  createdAt?: number
-}
-
-export type CreateRunInput = {
-  id?: string
-  sessionId: string
-  trigger: RunTrigger
-  status?: RunStatus
-  createdAt?: number
-  startedAt?: number | null
-  finishedAt?: number | null
-  errorText?: string | null
-}
-
-export type UpdateRunStatusInput = {
-  runId: string
-  status: RunStatus
-  startedAt?: number | null
-  finishedAt?: number | null
-  errorText?: string | null
-}
-
-export type CreateMessageInput = {
-  id?: string
-  sessionId: string
-  runId: string
-  role: MessageRole
-  sequence: number
-  createdAt?: number
-}
-
-export type CreatePartInput = {
-  id?: string
-  sessionId: string
-  runId: string
-  messageId: string
-  kind: PartKind
-  sequence: number
-  text?: string | null
-  data?: unknown
-  createdAt?: number
-}
-
-export type UpdatePartContentInput = {
-  partId: string
-  text?: string | null
-  data?: unknown
-}
-
-export type CreatePermissionRequestInput = {
-  id?: string
-  sessionId: string
-  runId: string
-  toolName: string
-  reason: string
-  status?: PermissionStatus
-  createdAt?: number
-  resolvedAt?: number | null
-}
-
-export type UpdatePermissionRequestStatusInput = {
-  requestId: string
-  status: PermissionStatus
-  resolvedAt?: number | null
-}
-
-export type CreateQueuedRunWithInitiatingMessageInput = {
-  run: Omit<CreateRunInput, "status">
-  message: {
-    id?: string
-    sequence?: number
-    createdAt?: number
+  try {
+    return realpathSync.native(filename)
+  } catch {
+    return resolve(filename)
   }
 }
 
-export type CreateAssistantMessageWithFirstPartInput = {
-  message: Omit<CreateMessageInput, "role">
-  part: Omit<CreatePartInput, "sessionId" | "runId" | "messageId">
-}
+export function openConversationDatabase(filePath: string) {
+  ensureParentDirectory(filePath)
 
-export type RequestPermissionAndPauseRunInput = {
-  runId: string
-  permissionRequest: Pick<CreatePermissionRequestInput, "id" | "toolName" | "reason" | "createdAt">
-}
+  const database = new Database(filePath, { create: true, strict: true })
 
-type CancelRunAndPendingPermissionsInput = {
-  runId: string
-  finishedAt?: number
-  resolvedAt?: number
-}
-
-export class StorageRepositoryError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = "StorageRepositoryError"
+  try {
+    configureDatabase(database)
+    runConversationMigrations(database)
+    return database
+  } catch (error) {
+    database.close(false)
+    throw wrapConversationSetupError(filePath, error)
   }
 }
 
-export class StorageNotFoundError extends StorageRepositoryError {
-  readonly entityType: EntityType
-  readonly entityId: string
-
-  constructor(entityType: EntityType, entityId: string) {
-    super(`Unknown ${entityType}: ${entityId}`)
-    this.name = "StorageNotFoundError"
-    this.entityType = entityType
-    this.entityId = entityId
-  }
-}
-
-export class StorageOwnershipError extends StorageRepositoryError {
-  constructor(message: string) {
-    super(message)
-    this.name = "StorageOwnershipError"
-  }
-}
-
-export class StorageConflictError extends StorageRepositoryError {
-  constructor(message: string) {
-    super(message)
-    this.name = "StorageConflictError"
-  }
-}
-
-export type StorageRepository = ReturnType<typeof createStorageRepository>
-
-export function createStorageRepository(input: {
-  database: StorageDatabase
+export function createConversationRepository(input: {
+  database: ConversationDatabase
   now?: () => number
   createId?: (prefix: IdPrefix) => string
-}) {
+}): ConversationRepository {
   const database = input.database
-  const storageIdentity = getStorageDatabaseIdentity(database)
+  const storageIdentity = getConversationDatabaseIdentity(database)
   const now = input.now ?? Date.now
   const createId =
     input.createId ?? ((prefix: IdPrefix) => `${prefix}_${crypto.randomUUID()}`)
@@ -394,65 +338,76 @@ export function createStorageRepository(input: {
   function requireSession(sessionId: string) {
     const row = getSessionRow(sessionId)
     if (!row) {
-      throw new StorageNotFoundError("session", sessionId)
+      throw new ConversationNotFoundError("session", sessionId)
     }
+
     return mapSessionRow(row)
   }
 
   function requireRun(runId: string) {
     const row = getRunRow(runId)
     if (!row) {
-      throw new StorageNotFoundError("run", runId)
+      throw new ConversationNotFoundError("run", runId)
     }
+
     return mapRunRow(row)
   }
 
   function requireRunOwnership(runId: string, sessionId: string) {
     const run = requireRun(runId)
     if (run.sessionId !== sessionId) {
-      throw new StorageOwnershipError(`Run ${runId} does not belong to session ${sessionId}`)
+      throw new ConversationOwnershipError(
+        `Run ${runId} does not belong to session ${sessionId}`,
+      )
     }
+
     return run
   }
 
   function requireMessage(messageId: string) {
     const row = getMessageRow(messageId)
     if (!row) {
-      throw new StorageNotFoundError("message", messageId)
+      throw new ConversationNotFoundError("message", messageId)
     }
+
     return mapMessageRow(row)
   }
 
   function requireMessageOwnership(messageId: string, runId: string, sessionId: string) {
     const message = requireMessage(messageId)
+
     if (message.sessionId !== sessionId) {
-      throw new StorageOwnershipError(
+      throw new ConversationOwnershipError(
         `Message ${messageId} does not belong to session ${sessionId}`,
       )
     }
+
     if (message.runId !== runId) {
-      throw new StorageOwnershipError(`Message ${messageId} does not belong to run ${runId}`)
+      throw new ConversationOwnershipError(`Message ${messageId} does not belong to run ${runId}`)
     }
+
     return message
   }
 
   function requirePart(partId: string) {
     const row = getPartRow(partId)
     if (!row) {
-      throw new StorageNotFoundError("part", partId)
+      throw new ConversationNotFoundError("part", partId)
     }
+
     return mapPartRow(row)
   }
 
   function requirePermissionRequest(requestId: string) {
     const row = getPermissionRequestRow(requestId)
     if (!row) {
-      throw new StorageNotFoundError("permission_request", requestId)
+      throw new ConversationNotFoundError("permission_request", requestId)
     }
+
     return mapPermissionRequestRow(row)
   }
 
-  const sessions = {
+  const sessions: ConversationRepository["sessions"] = {
     create(session: CreateSessionInput): StoredSession {
       const record: StoredSession = {
         id: buildId("session", session.id),
@@ -477,7 +432,7 @@ export function createStorageRepository(input: {
     },
   }
 
-  const runs = {
+  const runs: ConversationRepository["runs"] = {
     create(run: CreateRunInput): StoredRun {
       requireSession(run.sessionId)
 
@@ -563,7 +518,7 @@ export function createStorageRepository(input: {
     },
   }
 
-  const messages = {
+  const messages: ConversationRepository["messages"] = {
     create(message: CreateMessageInput): StoredMessage {
       requireSession(message.sessionId)
       requireRunOwnership(message.runId, message.sessionId)
@@ -675,7 +630,7 @@ export function createStorageRepository(input: {
     },
   }
 
-  const parts = {
+  const parts: ConversationRepository["parts"] = {
     create(part: CreatePartInput): StoredPart {
       requireSession(part.sessionId)
       requireRunOwnership(part.runId, part.sessionId)
@@ -742,7 +697,7 @@ export function createStorageRepository(input: {
     },
   }
 
-  const permissionRequests = {
+  const permissionRequests: ConversationRepository["permissionRequests"] = {
     create(request: CreatePermissionRequestInput): StoredPermissionRequest {
       requireSession(request.sessionId)
       requireRunOwnership(request.runId, request.sessionId)
@@ -813,7 +768,7 @@ export function createStorageRepository(input: {
     (value: CreateQueuedRunWithInitiatingMessageInput) => {
       const activeRun = getActiveRunRowBySession(value.run.sessionId)
       if (activeRun) {
-        throw new StorageConflictError(
+        throw new ConversationConflictError(
           `Session ${value.run.sessionId} already has active run ${activeRun.id}`,
         )
       }
@@ -885,21 +840,19 @@ export function createStorageRepository(input: {
         errorText: null,
       })
       const resolvedAt = value.resolvedAt ?? run.finishedAt ?? now()
-      const permissionRequests = listPermissionRequestRowsByRun(currentRun.id)
+      const permissionRequestsForRun = listPermissionRequestRowsByRun(currentRun.id)
         .filter((request) => request.status === "pending")
         .map((request) =>
-          permissionRequestsApi.updateStatus({
+          permissionRequests.updateStatus({
             requestId: request.id,
             status: "cancelled",
             resolvedAt,
           }),
         )
 
-      return { run, permissionRequests }
+      return { run, permissionRequests: permissionRequestsForRun }
     },
   )
-
-  const permissionRequestsApi = permissionRequests
 
   return {
     storageIdentity,
@@ -923,88 +876,48 @@ export function createStorageRepository(input: {
   }
 }
 
-function mapSessionRow(row: SessionRow): StoredSession {
-  return {
-    id: row.id,
-    directory: row.directory,
-    workspaceRoot: row.workspace_root,
-    createdAt: row.created_at,
+function ensureParentDirectory(filePath: string) {
+  const parentDirectory = dirname(filePath)
+  if (!existsSync(parentDirectory)) {
+    mkdirSync(parentDirectory, { recursive: true })
   }
 }
 
-function mapRunRow(row: RunRow): StoredRun {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    trigger: row.trigger,
-    status: row.status,
-    createdAt: row.created_at,
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
-    errorText: row.error_text,
-  }
+function configureDatabase(database: ConversationDatabase) {
+  database.exec("PRAGMA foreign_keys = ON")
+  database.exec("PRAGMA journal_mode = WAL")
 }
 
-function mapMessageRow(row: MessageRow): StoredMessage {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    runId: row.run_id,
-    role: row.role,
-    sequence: row.sequence,
-    createdAt: row.created_at,
-  }
-}
+function runConversationMigrations(database: ConversationDatabase) {
+  const versionRow = database
+    .query("PRAGMA user_version")
+    .get() as { user_version: number } | null
+  const currentVersion = versionRow?.user_version ?? 0
 
-function mapPartRow(row: PartRow): StoredPart {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    runId: row.run_id,
-    messageId: row.message_id,
-    kind: row.kind,
-    sequence: row.sequence,
-    text: row.text_value,
-    data: parseJson(row.data_json),
-    createdAt: row.created_at,
-  }
-}
-
-function mapPermissionRequestRow(row: PermissionRequestRow): StoredPermissionRequest {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    runId: row.run_id,
-    toolName: row.tool_name,
-    reason: row.reason,
-    status: row.status,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at,
-  }
-}
-
-function serializeJson(value: unknown) {
-  if (value === null || value === undefined) {
-    return null
-  }
-  return JSON.stringify(value)
-}
-
-function parseJson(value: string | null) {
-  if (value === null) {
-    return null
-  }
-  return JSON.parse(value)
-}
-
-function assertPendingPermissionRequestInput(
-  input: RequestPermissionAndPauseRunInput["permissionRequest"],
-) {
-  const permissionRequest = input as Record<string, unknown>
-
-  if ("status" in permissionRequest || "resolvedAt" in permissionRequest) {
-    throw new StorageRepositoryError(
-      "requestPermissionAndPauseRun only creates pending unresolved permission requests",
+  if (currentVersion > CURRENT_CONVERSATION_SCHEMA_VERSION) {
+    throw new Error(
+      `Database schema version ${currentVersion} is newer than supported version ${CURRENT_CONVERSATION_SCHEMA_VERSION}`,
     )
   }
+
+  for (const migration of conversationMigrations) {
+    if (migration.version <= currentVersion) {
+      continue
+    }
+
+    const applyMigration = database.transaction((statements: readonly string[], version: number) => {
+      for (const statement of statements) {
+        database.exec(statement)
+      }
+      database.exec(`PRAGMA user_version = ${version}`)
+    })
+
+    applyMigration(migration.statements, migration.version)
+  }
+}
+
+function wrapConversationSetupError(filePath: string, error: unknown) {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "unknown error"
+  return new Error(`Failed to initialize storage at ${filePath}: ${message}`)
 }

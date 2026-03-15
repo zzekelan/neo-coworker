@@ -2,10 +2,15 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { access, cp, mkdir, mkdtemp, rm, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createSessionRunService } from "../../src/session"
+import { createConversationRunService as createSessionRunService } from "../../src/conversation/service"
 import type { PermissionResponse } from "../../src/runtime/permissions"
 import { createRuntime } from "../../src/runtime/runtime"
-import { StorageNotFoundError, createStorageRepository, openStorageDatabase, type StorageRepository } from "../../src/storage"
+import {
+  ConversationNotFoundError as StorageNotFoundError,
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+  type ConversationRepository as StorageRepository,
+} from "../../src/conversation/repo"
 import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 
 const tempDirectories: string[] = []

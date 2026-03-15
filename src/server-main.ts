@@ -1,7 +1,10 @@
 import { join } from "node:path"
 import { createDefaultProvider } from "./main"
 import { createAgentServer } from "./server"
-import { createStorageRepository, openStorageDatabase } from "./storage"
+import {
+  createConversationRepository as createStorageRepository,
+  openConversationDatabase as openStorageDatabase,
+} from "./conversation/repo"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
 const DEFAULT_SERVER_PORT = 3100

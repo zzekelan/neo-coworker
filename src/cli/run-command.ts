@@ -1,4 +1,4 @@
-import { isTerminalRunStatus } from "../run"
+import { isTerminalRunStatus } from "../conversation/service"
 import type { Provider } from "../providers/types"
 import type { PermissionDecision } from "../runtime/permissions"
 import type { ServerEvent } from "../server/events"
