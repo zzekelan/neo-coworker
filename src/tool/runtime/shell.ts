@@ -1,29 +1,29 @@
 import { realpath } from "node:fs/promises"
 import { resolve } from "node:path"
 import { z } from "zod"
-import type { PermissionCoordinator } from "../permissions"
-import { createAbortError, throwIfAborted, type ToolDefinition } from "./types"
+import {
+  SHELL_ABORT_GRACE_MS,
+  createToolAbortError,
+  throwIfToolAborted,
+  type RequestToolPermission,
+  type ToolDefinition,
+} from "../service"
 
 const ShellArgsSchema = z.object({
   command: z.string().trim().min(1, "Command must not be empty"),
 })
-const SHELL_ABORT_GRACE_MS = 100
 
-export function createShellTool({
-  permissions,
-}: {
-  permissions: PermissionCoordinator
-}): ToolDefinition {
+export function createShellTool(input: { requestPermission: RequestToolPermission }): ToolDefinition {
   return {
     name: "shell",
     description: "Run a shell command with the workspace as the current directory",
     inputSchema: ShellArgsSchema,
-    async execute(input) {
-      const signal = input.signal
+    async execute(value) {
+      const signal = value.signal
 
-      throwIfAborted(signal)
-      const { command } = ShellArgsSchema.parse(input.args)
-      const decision = await permissions.request({
+      throwIfToolAborted(signal)
+      const { command } = ShellArgsSchema.parse(value.args)
+      const decision = await input.requestPermission({
         toolName: "shell",
         reason: `shell ${command}`,
       })
@@ -32,9 +32,9 @@ export function createShellTool({
         throw new Error("Permission denied")
       }
 
-      throwIfAborted(signal)
-      const cwd = await realpath(resolve(input.workspaceRoot))
-      throwIfAborted(signal)
+      throwIfToolAborted(signal)
+      const cwd = await realpath(resolve(value.workspaceRoot))
+      throwIfToolAborted(signal)
       const process = Bun.spawn(["bash", "-lc", command], {
         cwd,
         stdin: "ignore",
@@ -78,7 +78,7 @@ export function createShellTool({
                     clearTimeout(forceKillTimer)
                   }
 
-                  reject(createAbortError())
+                  reject(createToolAbortError())
                 })()
               }
 

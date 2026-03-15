@@ -1,5 +1,6 @@
 import { isActiveRunStatus } from "../conversation/service"
 import type { createConversationRunService as createSessionRunService } from "../conversation/service"
+import type { OrchestrationToolPort } from "../orchestration/ports/tool"
 import type { Provider } from "../providers/types"
 import type {
   ConversationRepository as StorageRepository,
@@ -9,7 +10,6 @@ import type {
 import { buildModelInput, buildTranscriptMessages } from "./context"
 import type { RuntimeEvent } from "./events"
 import type { createEventQueue } from "./event-queue"
-import { createAbortError, type ToolRegistry } from "./tools/types"
 
 type SessionRunService = Pick<
   ReturnType<typeof createSessionRunService>,
@@ -24,7 +24,7 @@ type AgentLoopInput = {
   provider: Provider
   queue: ReturnType<typeof createEventQueue<RuntimeEvent>>
   signal: AbortSignal
-  tools: ToolRegistry
+  tools: OrchestrationToolPort
   workspaceRoot: string
   systemPrompt: string
   now?: () => number
@@ -43,6 +43,12 @@ function isAbortError(error: unknown, signal: AbortSignal) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
+}
+
+function createAbortError(message = "Operation aborted") {
+  const error = new Error(message)
+  error.name = "AbortError"
+  return error
 }
 
 export async function runAgentLoop(input: AgentLoopInput) {
@@ -149,7 +155,7 @@ async function executeToolCall(input: {
   assistantTurn: ReturnType<typeof createAssistantTurnRecorder>
   queue: ReturnType<typeof createEventQueue<RuntimeEvent>>
   signal: AbortSignal
-  tools: ToolRegistry
+  tools: OrchestrationToolPort
   workspaceRoot: string
 }) {
   input.assistantTurn.appendToolCall({

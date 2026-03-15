@@ -2,12 +2,14 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
-import { createReadTool } from "../../../src/runtime/tools/read"
-import { createToolRegistry } from "../../../src/runtime/tools/registry"
-import { createSearchTool } from "../../../src/runtime/tools/search"
+import { createToolRuntimeApi } from "../../../src/tool/runtime/api"
+import { createReadTool } from "../../../src/tool/runtime/read"
+import { createSearchTool } from "../../../src/tool/runtime/search"
 
 function createRegistry() {
-  return createToolRegistry([createReadTool(), createSearchTool()])
+  return createToolRuntimeApi({
+    tools: [createReadTool(), createSearchTool()],
+  })
 }
 
 describe("read-only tools", () => {

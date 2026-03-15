@@ -3,10 +3,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { createPermissionCoordinator } from "../../../src/permission/runtime/coordinator"
-import { createEditTool } from "../../../src/runtime/tools/edit"
-import { createToolRegistry } from "../../../src/runtime/tools/registry"
-import { createShellTool } from "../../../src/runtime/tools/shell"
-import { createWriteTool } from "../../../src/runtime/tools/write"
+import { createToolRuntimeApi } from "../../../src/tool/runtime/api"
+import { createEditTool } from "../../../src/tool/runtime/edit"
+import { createShellTool } from "../../../src/tool/runtime/shell"
+import { createWriteTool } from "../../../src/tool/runtime/write"
 
 async function createWorkspaceCopy() {
   const tempRoot = await mkdtemp(join(tmpdir(), "mutating-tools-"))
@@ -21,10 +21,12 @@ describe("mutating tools", () => {
   test("blocks write until permission is granted", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
-    const registry = createToolRegistry([
-      createWriteTool({ permissions: permissionState.permissions }),
-      createEditTool({ permissions: permissionState.permissions }),
-    ])
+    const registry = createToolRuntimeApi({
+      tools: [
+        createWriteTool({ requestPermission: permissionState.requestPermission }),
+        createEditTool({ requestPermission: permissionState.requestPermission }),
+      ],
+    })
 
     const pending = registry.execute({
       toolName: "write",
@@ -48,7 +50,9 @@ describe("mutating tools", () => {
   test("rejects edit when permission is denied", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
-    const registry = createToolRegistry([createEditTool({ permissions: permissionState.permissions })])
+    const registry = createToolRuntimeApi({
+      tools: [createEditTool({ requestPermission: permissionState.requestPermission })],
+    })
 
     const pending = registry.execute({
       toolName: "edit",
@@ -63,7 +67,9 @@ describe("mutating tools", () => {
   test("rejects edit when target text appears multiple times", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
-    const registry = createToolRegistry([createEditTool({ permissions: permissionState.permissions })])
+    const registry = createToolRuntimeApi({
+      tools: [createEditTool({ requestPermission: permissionState.requestPermission })],
+    })
     const repeatedFile = join(workspaceRoot, "src", "repeat.txt")
 
     await writeFile(repeatedFile, "demo demo\n")
@@ -83,7 +89,9 @@ describe("mutating tools", () => {
   test("rejects edit when target text has overlapping duplicate matches", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
-    const registry = createToolRegistry([createEditTool({ permissions: permissionState.permissions })])
+    const registry = createToolRuntimeApi({
+      tools: [createEditTool({ requestPermission: permissionState.requestPermission })],
+    })
     const overlappingFile = join(workspaceRoot, "src", "overlap.txt")
 
     await writeFile(overlappingFile, "ababa\n")
@@ -103,7 +111,9 @@ describe("mutating tools", () => {
   test("runs shell in the workspace after permission is granted", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
-    const registry = createToolRegistry([createShellTool({ permissions: permissionState.permissions })])
+    const registry = createToolRuntimeApi({
+      tools: [createShellTool({ requestPermission: permissionState.requestPermission })],
+    })
 
     const pending = registry.execute({
       toolName: "shell",
@@ -119,7 +129,11 @@ describe("mutating tools", () => {
 
   test("describes shell as running with the workspace as the current directory", () => {
     const tool = createShellTool({
-      permissions: createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" }),
+      requestPermission(request) {
+        return createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" }).request(
+          request,
+        )
+      },
     })
 
     expect(tool.description).toBe("Run a shell command with the workspace as the current directory")
@@ -128,7 +142,9 @@ describe("mutating tools", () => {
   test("rejects shell when permission is denied", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
-    const registry = createToolRegistry([createShellTool({ permissions: permissionState.permissions })])
+    const registry = createToolRuntimeApi({
+      tools: [createShellTool({ requestPermission: permissionState.requestPermission })],
+    })
 
     const pending = registry.execute({
       toolName: "shell",
@@ -144,7 +160,9 @@ describe("mutating tools", () => {
   test("surfaces shell non-zero exits after permission is granted", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
-    const registry = createToolRegistry([createShellTool({ permissions: permissionState.permissions })])
+    const registry = createToolRuntimeApi({
+      tools: [createShellTool({ requestPermission: permissionState.requestPermission })],
+    })
 
     const pending = registry.execute({
       toolName: "shell",
@@ -159,14 +177,28 @@ describe("mutating tools", () => {
 
   test("rejects duplicate tool names in the registry", () => {
     expect(() =>
-      createToolRegistry([
-        createWriteTool({
-          permissions: createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" }),
-        }),
-        createWriteTool({
-          permissions: createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" }),
-        }),
-      ]),
+      createToolRuntimeApi({
+        tools: [
+          createWriteTool({
+            requestPermission(request) {
+              return createPermissionCoordinator({
+                write: "allow",
+                edit: "allow",
+                shell: "allow",
+              }).request(request)
+            },
+          }),
+          createWriteTool({
+            requestPermission(request) {
+              return createPermissionCoordinator({
+                write: "allow",
+                edit: "allow",
+                shell: "allow",
+              }).request(request)
+            },
+          }),
+        ],
+      }),
     ).toThrow("Duplicate tool: write")
   })
 })
@@ -184,7 +216,9 @@ function createPermissionState() {
   )
 
   return {
-    permissions,
+    requestPermission(input: { toolName: string; reason: string }) {
+      return permissions.request(input)
+    },
     resolve(decision: "allow" | "deny") {
       if (!lastRequestId) {
         throw new Error("Expected a pending permission request")

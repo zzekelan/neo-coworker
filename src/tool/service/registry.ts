@@ -1,6 +1,8 @@
-import type { ToolDefinition, ToolRegistry } from "./types"
+import type { ToolCatalogEntry, ToolDefinition } from "../repo"
 
-export function createToolRegistry(tools: ToolDefinition[]): ToolRegistry {
+export type ToolRegistryService = ReturnType<typeof createToolRegistryService>
+
+export function createToolRegistryService(tools: ToolDefinition[]) {
   const byName = new Map<string, ToolDefinition>()
 
   for (const tool of tools) {
@@ -12,20 +14,15 @@ export function createToolRegistry(tools: ToolDefinition[]): ToolRegistry {
   }
 
   return {
-    list() {
+    listTools(): ToolCatalogEntry[] {
       return [...byName.values()].map(({ name, description, inputSchema }) => ({
         name,
         description,
         inputSchema,
       }))
     },
-    async execute(input) {
-      const tool = byName.get(input.toolName)
-      if (!tool) {
-        throw new Error(`Unknown tool: ${input.toolName}`)
-      }
-
-      return await tool.execute(input)
+    getTool(toolName: string) {
+      return byName.get(toolName)
     },
   }
 }

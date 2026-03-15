@@ -1,12 +1,12 @@
 import { z } from "zod"
-import { discoverSkills } from "../skills/discover"
+import { type ToolDefinition } from "../service"
+import { discoverSkills } from "./skills/discover"
 import {
   getSkillCatalogPath,
   resolveSkillCatalogPath,
   resolveSkillFile,
   type ActiveSkill,
-} from "../skills/catalog"
-import type { ToolDefinition } from "./types"
+} from "./skills/catalog"
 
 const ActivateSkillArgsSchema = z.object({
   name: z.string().min(1),

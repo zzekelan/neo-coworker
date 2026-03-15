@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
-import { discoverSkills } from "../../../src/runtime/skills/discover"
-import { createActivateSkillTool } from "../../../src/runtime/tools/activate-skill"
+import { createActivateSkillTool } from "../../../src/tool/runtime/activate-skill"
+import { discoverSkills } from "../../../src/tool/runtime/skills/discover"
 
 async function createWorkspaceWithSkill(input: {
   directoryName: string

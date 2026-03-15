@@ -1,30 +1,32 @@
 import { readdir } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import { z } from "zod"
-import { throwIfAborted, type ToolDefinition } from "./types"
+import {
+  SEARCH_MAX_MATCHES,
+  SEARCH_SKIPPED_DIRECTORIES,
+  throwIfToolAborted,
+  type ToolDefinition,
+} from "../service"
 
 const SearchArgsSchema = z.object({
   query: z.string().trim().min(1, "Query must not be empty"),
 })
-
-const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", ".worktrees"])
-const MAX_MATCHES = 20
 
 async function collectFiles(
   workspaceRoot: string,
   directory: string,
   signal: AbortSignal | undefined,
 ): Promise<string[]> {
-  throwIfAborted(signal)
+  throwIfToolAborted(signal)
   const entries = await readdir(directory, { withFileTypes: true })
   const files: string[] = []
 
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    throwIfAborted(signal)
+    throwIfToolAborted(signal)
     const entryPath = join(directory, entry.name)
 
     if (entry.isDirectory()) {
-      if (SKIPPED_DIRECTORIES.has(entry.name)) {
+      if (SEARCH_SKIPPED_DIRECTORIES.has(entry.name)) {
         continue
       }
 
@@ -46,22 +48,24 @@ export function createSearchTool(): ToolDefinition {
     description: "Search text across workspace files",
     inputSchema: SearchArgsSchema,
     async execute(input) {
-      throwIfAborted(input.signal)
+      throwIfToolAborted(input.signal)
       const { query } = SearchArgsSchema.parse(input.args)
       const workspaceRoot = resolve(input.workspaceRoot)
       const files = await collectFiles(workspaceRoot, workspaceRoot, input.signal)
       const matches: string[] = []
 
       for (const relativePath of files) {
-        throwIfAborted(input.signal)
+        throwIfToolAborted(input.signal)
         const text = await Bun.file(join(workspaceRoot, relativePath)).text()
         const lines = text.split(/\r?\n/g)
 
         for (const [index, line] of lines.entries()) {
           if (line.includes(query)) {
-            if (matches.length === MAX_MATCHES) {
+            if (matches.length === SEARCH_MAX_MATCHES) {
               return {
-                output: [...matches, `... truncated after ${MAX_MATCHES} matches`].join("\n"),
+                output: [...matches, `... truncated after ${SEARCH_MAX_MATCHES} matches`].join(
+                  "\n",
+                ),
               }
             }
 

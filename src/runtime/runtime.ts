@@ -21,16 +21,11 @@ import {
 import { createPermissionRuntimeApi } from "../permission/runtime/api"
 import type { PermissionCoordinator } from "../permission/runtime/coordinator"
 import type { Provider } from "../providers/types"
+import { createToolProvider } from "../tool/wiring/provider"
 import type { RunHandle } from "./run-handle"
 import { createEventQueue } from "./event-queue"
 import type { RuntimeEvent } from "./events"
 import { runAgentLoop } from "./loop"
-import { createEditTool } from "./tools/edit"
-import { createReadTool } from "./tools/read"
-import { createToolRegistry } from "./tools/registry"
-import { createSearchTool } from "./tools/search"
-import { createShellTool } from "./tools/shell"
-import { createWriteTool } from "./tools/write"
 
 type RuntimeInput = {
   provider: Provider
@@ -229,13 +224,11 @@ export function createRuntime(input: RuntimeInput) {
         pendingPermissionIds: new Set<string>(),
       }
       sharedActiveRuns.set(activeRunKey, activeRun)
-      const tools = createToolRegistry([
-        createReadTool(),
-        createSearchTool(),
-        createWriteTool({ permissions }),
-        createEditTool({ permissions }),
-        createShellTool({ permissions }),
-      ])
+      const tools = createToolProvider({
+        requestPermission(request) {
+          return permissions.request(request)
+        },
+      })
 
       void runAgentLoop({
         sessionId: session.id,
