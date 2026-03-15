@@ -1,9 +1,9 @@
 import { createEventQueue } from "../runtime/event-queue"
+import type { StoredPermissionRequest } from "../permission/repo"
 import type {
   ConversationRepository as StorageRepository,
   StoredMessage,
   StoredPart,
-  StoredPermissionRequest,
   StoredRun,
   StoredSession,
 } from "../conversation/repo"

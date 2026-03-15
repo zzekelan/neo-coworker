@@ -1,12 +1,10 @@
 import type {
   MessageRole,
   PartKind,
-  PermissionStatus,
   RunStatus,
   RunTrigger,
   StoredMessage,
   StoredPart,
-  StoredPermissionRequest,
   StoredRun,
   StoredSession,
 } from "./contract"
@@ -49,17 +47,6 @@ export type PartRow = {
   text_value: string | null
   data_json: string | null
   created_at: number
-}
-
-export type PermissionRequestRow = {
-  id: string
-  session_id: string
-  run_id: string
-  tool_name: string
-  reason: string
-  status: PermissionStatus
-  created_at: number
-  resolved_at: number | null
 }
 
 export type TranscriptRow = {
@@ -124,19 +111,6 @@ export function mapPartRow(row: PartRow): StoredPart {
     text: row.text_value,
     data: parseJson(row.data_json),
     createdAt: row.created_at,
-  }
-}
-
-export function mapPermissionRequestRow(row: PermissionRequestRow): StoredPermissionRequest {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    runId: row.run_id,
-    toolName: row.tool_name,
-    reason: row.reason,
-    status: row.status,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at,
   }
 }
 

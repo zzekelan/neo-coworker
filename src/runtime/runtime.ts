@@ -1,6 +1,6 @@
 import { join } from "node:path"
 import {
-  PermissionRequestNotPendingError,
+  assertRunStatusTransition,
   createConversationRunService as createSessionRunService,
   isTerminalRunStatus,
 } from "../conversation/service"
@@ -9,15 +9,21 @@ import {
   openConversationDatabase as openStorageDatabase,
   type ConversationRepository as StorageRepository,
 } from "../conversation/repo"
+import {
+  createPermissionRepository,
+  type PermissionRepository,
+} from "../permission/repo"
+import {
+  PermissionRequestNotPendingError,
+  type PermissionMode,
+  type PermissionResponse,
+} from "../permission/service"
+import { createPermissionRuntimeApi } from "../permission/runtime/api"
+import type { PermissionCoordinator } from "../permission/runtime/coordinator"
 import type { Provider } from "../providers/types"
 import type { RunHandle } from "./run-handle"
 import { createEventQueue } from "./event-queue"
 import type { RuntimeEvent } from "./events"
-import {
-  createPermissionCoordinator,
-  type PermissionMode,
-  type PermissionResponse,
-} from "./permissions"
 import { runAgentLoop } from "./loop"
 import { createEditTool } from "./tools/edit"
 import { createReadTool } from "./tools/read"
@@ -29,6 +35,7 @@ import { createWriteTool } from "./tools/write"
 type RuntimeInput = {
   provider: Provider
   repository: StorageRepository
+  permissionRepository: PermissionRepository
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
   systemPrompt?: string
   now?: () => number
@@ -39,10 +46,12 @@ type RunInput = {
   runId: string
 }
 
-type CliRuntimeInput = RuntimeInput & {
+type CliRuntimeInput = Omit<RuntimeInput, "repository" | "permissionRepository"> & {
   createStorageRepositoryImpl?: typeof createStorageRepository
+  createPermissionRepositoryImpl?: typeof createPermissionRepository
   openStorageDatabaseImpl?: typeof openStorageDatabase
   repository?: StorageRepository
+  permissionRepository?: PermissionRepository
 }
 
 type CliRunInput = {
@@ -56,7 +65,7 @@ type ActiveRunState = {
   sessionId: string
   runId: string
   controller: AbortController
-  permissions: ReturnType<typeof createPermissionCoordinator>
+  permissions: PermissionCoordinator
   pendingPermissionIds: Set<string>
 }
 
@@ -82,9 +91,18 @@ function getActiveRunKey(input: { storageIdentity: string; sessionId: string; ru
 
 export function createRuntime(input: RuntimeInput) {
   const repository = input.repository
+  const permissionRepository = input.permissionRepository
   const now = input.now ?? Date.now
   const sessionRuns = createSessionRunService({
     repository,
+    now,
+  })
+  const permissionsApi = createPermissionRuntimeApi({
+    repository: permissionRepository,
+    conversation: createPermissionConversationPort({
+      repository,
+      sessionRuns,
+    }),
     now,
   })
 
@@ -100,7 +118,7 @@ export function createRuntime(input: RuntimeInput) {
   }
 
   function respondPermission(response: PermissionResponse) {
-    const permissionRequest = repository.permissionRequests.get(response.requestId)
+    const permissionRequest = permissionsApi.getPermissionRequest(response.requestId)
     const activeRun = sharedActiveRuns.get(
       getActiveRunKey({
         storageIdentity: repository.storageIdentity,
@@ -124,7 +142,7 @@ export function createRuntime(input: RuntimeInput) {
       })
     }
 
-    sessionRuns.respondPermission({
+    permissionsApi.respondPermission({
       requestId: response.requestId,
       decision: response.decision,
       resolvedAt: now(),
@@ -149,10 +167,12 @@ export function createRuntime(input: RuntimeInput) {
 
     if (!activeRun) {
       sessionRuns.cancelRun(runId)
+      permissionsApi.cancelPendingRequestsByRun(runId, now())
       return
     }
 
     sessionRuns.cancelRun(runId)
+    permissionsApi.cancelPendingRequestsByRun(runId, now())
     activeRun.controller.abort()
     activeRun.permissions.cancelAll()
   }
@@ -172,7 +192,7 @@ export function createRuntime(input: RuntimeInput) {
       const session = repository.sessions.get(runInput.sessionId)
       const controller = new AbortController()
       const queue = createEventQueue<RuntimeEvent>()
-      const permissions = createPermissionCoordinator(
+      const permissions = permissionsApi.createCoordinator(
         {
           write: "ask",
           edit: "ask",
@@ -181,7 +201,7 @@ export function createRuntime(input: RuntimeInput) {
         },
         {
           onRequest(request) {
-            sessionRuns.requestPermission({
+            permissionsApi.requestPermission({
               runId: runInput.runId,
               permissionRequest: {
                 id: request.requestId,
@@ -263,9 +283,18 @@ export function createCliRuntime(input: CliRuntimeInput) {
               getDefaultCliStoragePath(runInput.workspaceRoot),
             )
           : null
+      if (input.repository && !input.permissionRepository) {
+        throw new Error("permissionRepository is required when repository is provided")
+      }
       const repository =
         input.repository ??
         (input.createStorageRepositoryImpl ?? createStorageRepository)({
+          database: database!,
+          now,
+        })
+      const permissionRepository =
+        input.permissionRepository ??
+        (input.createPermissionRepositoryImpl ?? createPermissionRepository)({
           database: database!,
           now,
         })
@@ -276,6 +305,7 @@ export function createCliRuntime(input: CliRuntimeInput) {
       const runtime = createRuntime({
         ...input,
         repository,
+        permissionRepository,
         now,
       })
 
@@ -312,6 +342,28 @@ export function createCliRuntime(input: CliRuntimeInput) {
         database?.close(false)
         throw error
       }
+    },
+  }
+}
+
+function createPermissionConversationPort(input: {
+  repository: StorageRepository
+  sessionRuns: Pick<ReturnType<typeof createSessionRunService>, "transitionRunToRunning">
+}) {
+  return {
+    getRun(runId: string) {
+      return input.repository.runs.get(runId)
+    },
+    transitionRunToWaitingPermission(runId: string) {
+      const run = input.repository.runs.get(runId)
+      assertRunStatusTransition(run, "waiting_permission")
+      return input.repository.runs.updateStatus({
+        runId,
+        status: "waiting_permission",
+      })
+    },
+    transitionRunToRunning(runId: string) {
+      return input.sessionRuns.transitionRunToRunning(runId)
     },
   }
 }

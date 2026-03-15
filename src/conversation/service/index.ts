@@ -1,6 +1,4 @@
 export {
-  PermissionRequestNotPendingError,
-  PermissionRequestRunStateError,
   RetrySourceRunError,
   SessionBusyError,
   SessionRunServiceError,

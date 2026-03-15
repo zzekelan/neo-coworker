@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import { createPermissionRepository } from "../../src/permission/repo"
 import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 import { createAgentServer } from "../../src/server"
 import {
@@ -462,9 +463,14 @@ async function createHarness(
     database: connection,
     now,
   })
+  const permissionRepository = createPermissionRepository({
+    database: connection,
+    now,
+  })
   const server = createAgentServer({
     provider,
     repository,
+    permissionRepository,
     now,
     permissionPolicy: options.permissionPolicy,
   })
@@ -475,6 +481,7 @@ async function createHarness(
     database: connection,
     now,
     repository,
+    permissionRepository,
     server,
     workspaceRoot,
   }
@@ -495,9 +502,14 @@ async function restartHarness(harness: {
     database: reopenedConnection,
     now: harness.now,
   })
+  const reopenedPermissionRepository = createPermissionRepository({
+    database: reopenedConnection,
+    now: harness.now,
+  })
   const reopenedServer = createAgentServer({
     provider: createTurnProvider([]),
     repository: reopenedRepository,
+    permissionRepository: reopenedPermissionRepository,
     now: harness.now,
   })
   activeServers.push(reopenedServer)

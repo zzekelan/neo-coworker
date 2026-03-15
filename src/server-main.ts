@@ -1,4 +1,5 @@
 import { join } from "node:path"
+import { createPermissionRepository } from "./permission/repo"
 import { createDefaultProvider } from "./main"
 import { createAgentServer } from "./server"
 import {
@@ -45,9 +46,13 @@ export async function startStandaloneServer(input: {
     const repository = createStorageRepository({
       database,
     })
+    const permissionRepository = createPermissionRepository({
+      database,
+    })
     const server = createAgentServer({
       provider,
       repository,
+      permissionRepository,
     })
     await server.start({
       hostname: config.host,

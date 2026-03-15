@@ -6,7 +6,6 @@ import {
   CURRENT_CONVERSATION_SCHEMA_VERSION,
   MESSAGE_ROLES,
   PART_KINDS,
-  PERMISSION_STATUSES,
   RUN_STATUSES,
   RUN_TRIGGERS,
 } from "../config/defaults"
@@ -15,40 +14,32 @@ import {
   ConversationNotFoundError,
   ConversationOwnershipError,
   type ConversationRepository,
-  type CancelRunAndPendingPermissionsInput,
   type CreateAssistantMessageWithFirstPartInput,
   type CreateMessageInput,
   type CreatePartInput,
-  type CreatePermissionRequestInput,
   type CreateQueuedRunWithInitiatingMessageInput,
   type CreateRunInput,
   type CreateSessionInput,
-  type RequestPermissionAndPauseRunInput,
   type StoredMessage,
   type StoredPart,
-  type StoredPermissionRequest,
   type StoredRun,
   type StoredSession,
   type TranscriptMessage,
   type UpdatePartContentInput,
-  type UpdatePermissionRequestStatusInput,
   type UpdateRunStatusInput,
 } from "./contract"
 import {
   mapMessageRow,
   mapPartRow,
-  mapPermissionRequestRow,
   mapRunRow,
   mapSessionRow,
   serializeJson,
   type MessageRow,
   type PartRow,
-  type PermissionRequestRow,
   type RunRow,
   type SessionRow,
   type TranscriptRow,
 } from "./mappers"
-import { assertPendingPermissionRequestInput } from "./tx"
 
 export type ConversationDatabase = Database
 
@@ -58,7 +49,9 @@ const runStatusCheck = RUN_STATUSES.map((status) => `'${status}'`).join(", ")
 const runTriggerCheck = RUN_TRIGGERS.map((trigger) => `'${trigger}'`).join(", ")
 const messageRoleCheck = MESSAGE_ROLES.map((role) => `'${role}'`).join(", ")
 const partKindCheck = PART_KINDS.map((kind) => `'${kind}'`).join(", ")
-const permissionStatusCheck = PERMISSION_STATUSES.map((status) => `'${status}'`).join(", ")
+const permissionStatusCheck = ["pending", "approved", "denied", "cancelled"]
+  .map((status) => `'${status}'`)
+  .join(", ")
 
 const conversationMigrations = [
   {
@@ -185,7 +178,7 @@ const conversationMigrations = [
   },
 ] as const
 
-type IdPrefix = "session" | "run" | "message" | "part" | "permission"
+type IdPrefix = "session" | "run" | "message" | "part"
 
 export function getConversationDatabaseIdentity(database: ConversationDatabase) {
   const filename = database.filename
@@ -314,27 +307,6 @@ export function createConversationRepository(input: {
       .get(partId) as PartRow | null
   }
 
-  function getPermissionRequestRow(requestId: string) {
-    return database
-      .query(
-        "SELECT id, session_id, run_id, tool_name, reason, status, created_at, resolved_at FROM permission_request WHERE id = ?",
-      )
-      .get(requestId) as PermissionRequestRow | null
-  }
-
-  function listPermissionRequestRowsByRun(runId: string) {
-    return database
-      .query(
-        `
-          SELECT id, session_id, run_id, tool_name, reason, status, created_at, resolved_at
-          FROM permission_request
-          WHERE run_id = ?
-          ORDER BY created_at ASC, id ASC
-        `,
-      )
-      .all(runId) as PermissionRequestRow[]
-  }
-
   function requireSession(sessionId: string) {
     const row = getSessionRow(sessionId)
     if (!row) {
@@ -396,15 +368,6 @@ export function createConversationRepository(input: {
     }
 
     return mapPartRow(row)
-  }
-
-  function requirePermissionRequest(requestId: string) {
-    const row = getPermissionRequestRow(requestId)
-    if (!row) {
-      throw new ConversationNotFoundError("permission_request", requestId)
-    }
-
-    return mapPermissionRequestRow(row)
   }
 
   const sessions: ConversationRepository["sessions"] = {
@@ -697,73 +660,6 @@ export function createConversationRepository(input: {
     },
   }
 
-  const permissionRequests: ConversationRepository["permissionRequests"] = {
-    create(request: CreatePermissionRequestInput): StoredPermissionRequest {
-      requireSession(request.sessionId)
-      requireRunOwnership(request.runId, request.sessionId)
-
-      const record: StoredPermissionRequest = {
-        id: buildId("permission", request.id),
-        sessionId: request.sessionId,
-        runId: request.runId,
-        toolName: request.toolName,
-        reason: request.reason,
-        status: request.status ?? "pending",
-        createdAt: request.createdAt ?? now(),
-        resolvedAt: request.resolvedAt ?? null,
-      }
-
-      database
-        .query(
-          `
-            INSERT INTO permission_request (
-              id,
-              session_id,
-              run_id,
-              tool_name,
-              reason,
-              status,
-              created_at,
-              resolved_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `,
-        )
-        .run(
-          record.id,
-          record.sessionId,
-          record.runId,
-          record.toolName,
-          record.reason,
-          record.status,
-          record.createdAt,
-          record.resolvedAt,
-        )
-
-      return record
-    },
-    get(requestId: string) {
-      return requirePermissionRequest(requestId)
-    },
-    listByRun(runId: string) {
-      requireRun(runId)
-      return listPermissionRequestRowsByRun(runId).map(mapPermissionRequestRow)
-    },
-    updateStatus(update: UpdatePermissionRequestStatusInput) {
-      const current = requirePermissionRequest(update.requestId)
-      const record: StoredPermissionRequest = {
-        ...current,
-        status: update.status,
-        resolvedAt: update.resolvedAt === undefined ? current.resolvedAt : update.resolvedAt,
-      }
-
-      database
-        .query("UPDATE permission_request SET status = ?, resolved_at = ? WHERE id = ?")
-        .run(record.status, record.resolvedAt, record.id)
-
-      return record
-    },
-  }
-
   const createQueuedRunWithInitiatingMessageTransaction = database.transaction(
     (value: CreateQueuedRunWithInitiatingMessageInput) => {
       const activeRun = getActiveRunRowBySession(value.run.sessionId)
@@ -807,71 +703,17 @@ export function createConversationRepository(input: {
     },
   )
 
-  const requestPermissionAndPauseRunTransaction = database.transaction(
-    (value: RequestPermissionAndPauseRunInput) => {
-      assertPendingPermissionRequestInput(value.permissionRequest)
-      const currentRun = runs.get(value.runId)
-      const run = runs.updateStatus({
-        runId: currentRun.id,
-        status: "waiting_permission",
-      })
-      const permissionRequest = permissionRequests.create({
-        id: value.permissionRequest.id,
-        sessionId: currentRun.sessionId,
-        runId: currentRun.id,
-        toolName: value.permissionRequest.toolName,
-        reason: value.permissionRequest.reason,
-        createdAt: value.permissionRequest.createdAt,
-        status: "pending",
-        resolvedAt: null,
-      })
-
-      return { run, permissionRequest }
-    },
-  )
-
-  const cancelRunAndPendingPermissionsTransaction = database.transaction(
-    (value: CancelRunAndPendingPermissionsInput) => {
-      const currentRun = runs.get(value.runId)
-      const run = runs.updateStatus({
-        runId: currentRun.id,
-        status: "cancelled",
-        finishedAt: value.finishedAt ?? now(),
-        errorText: null,
-      })
-      const resolvedAt = value.resolvedAt ?? run.finishedAt ?? now()
-      const permissionRequestsForRun = listPermissionRequestRowsByRun(currentRun.id)
-        .filter((request) => request.status === "pending")
-        .map((request) =>
-          permissionRequests.updateStatus({
-            requestId: request.id,
-            status: "cancelled",
-            resolvedAt,
-          }),
-        )
-
-      return { run, permissionRequests: permissionRequestsForRun }
-    },
-  )
-
   return {
     storageIdentity,
     sessions,
     runs,
     messages,
     parts,
-    permissionRequests,
     createQueuedRunWithInitiatingMessage(input: CreateQueuedRunWithInitiatingMessageInput) {
       return createQueuedRunWithInitiatingMessageTransaction(input)
     },
     createAssistantMessageWithFirstPart(input: CreateAssistantMessageWithFirstPartInput) {
       return createAssistantMessageWithFirstPartTransaction(input)
-    },
-    requestPermissionAndPauseRun(input: RequestPermissionAndPauseRunInput) {
-      return requestPermissionAndPauseRunTransaction(input)
-    },
-    cancelRunAndPendingPermissions(input: CancelRunAndPendingPermissionsInput) {
-      return cancelRunAndPendingPermissionsTransaction(input)
     },
   }
 }

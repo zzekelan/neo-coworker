@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import { createPermissionRepository } from "../../src/permission/repo"
 import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 import { runCli } from "../../src/cli/run-command"
 import { createAgentServerClient } from "../../src/cli/server-client"
@@ -141,7 +142,7 @@ describe("run command", () => {
 
     const sessionId = harness.repository.sessions.list()[0]!.id
     const run = harness.repository.runs.listBySession(sessionId)[0]!
-    const permissionRequests = harness.repository.permissionRequests.listByRun(run.id)
+    const permissionRequests = harness.permissionRepository.requests.listByRun(run.id)
 
     expect(permissionRequests).toMatchObject([
       {
@@ -360,9 +361,13 @@ async function createHarness(
   const repository = createStorageRepository({
     database,
   })
+  const permissionRepository = createPermissionRepository({
+    database,
+  })
   const server = createAgentServer({
     provider,
     repository,
+    permissionRepository,
     heartbeatIntervalMs: 15,
     permissionPolicy: options.permissionPolicy,
   })
@@ -371,6 +376,7 @@ async function createHarness(
   return {
     workspaceRoot,
     repository,
+    permissionRepository,
     client: createAgentServerClient({
       send(request) {
         return server.fetch(request)

@@ -4,6 +4,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createConversationRunService as createSessionRunService } from "../../src/conversation/service"
 import {
+  createPermissionRepository,
+  type PermissionRepository,
+} from "../../src/permission/repo"
+import {
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,
   type ConversationRepository as StorageRepository,
@@ -60,6 +64,7 @@ describe("agent loop", () => {
         },
       ]),
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       now: harness.now,
     })
 
@@ -154,6 +159,7 @@ describe("agent loop", () => {
         },
       ]),
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       now: harness.now,
     })
 
@@ -223,6 +229,7 @@ describe("agent loop", () => {
         },
       ]),
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       now: harness.now,
     })
 
@@ -316,6 +323,7 @@ describe("agent loop", () => {
         },
       ]),
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       now: harness.now,
     })
 
@@ -388,6 +396,7 @@ describe("agent loop", () => {
         },
       ]),
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       now: harness.now,
       permissionPolicy: {
         write: "ask",
@@ -412,7 +421,7 @@ describe("agent loop", () => {
 
     const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
-    const permissionRequests = harness.repository.permissionRequests.listByRun(started.run.id)
+    const permissionRequests = harness.permissionRepository.requests.listByRun(started.run.id)
 
     expect(requests).toHaveLength(2)
     expect(requests[1]?.messages.slice(-2)).toEqual([
@@ -483,6 +492,7 @@ describe("agent loop", () => {
         },
       },
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       now: harness.now,
     })
 
@@ -539,6 +549,7 @@ describe("agent loop", () => {
         },
       },
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       now: harness.now,
     })
 
@@ -591,6 +602,7 @@ describe("agent loop", () => {
         },
       },
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       now: harness.now,
     })
 
@@ -648,6 +660,10 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
     database,
     now,
   })
+  const permissionRepository = createPermissionRepository({
+    database,
+    now,
+  })
   const service = createSessionRunService({
     repository,
     now,
@@ -661,6 +677,7 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
 
   return {
     repository,
+    permissionRepository,
     service,
     session,
     workspaceRoot,
@@ -670,6 +687,7 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
 
 function startPromptRun(input: {
   repository: StorageRepository
+  permissionRepository: PermissionRepository
   service: ReturnType<typeof createSessionRunService>
   sessionId: string
   runId: string

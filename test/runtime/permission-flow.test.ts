@@ -3,10 +3,14 @@ import { access, cp, mkdir, mkdtemp, rm, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createConversationRunService as createSessionRunService } from "../../src/conversation/service"
-import type { PermissionResponse } from "../../src/runtime/permissions"
+import {
+  PermissionNotFoundError,
+  createPermissionRepository,
+  type PermissionRepository,
+  type PermissionResponse,
+} from "../../src/permission/repo"
 import { createRuntime } from "../../src/runtime/runtime"
 import {
-  ConversationNotFoundError as StorageNotFoundError,
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,
   type ConversationRepository as StorageRepository,
@@ -77,7 +81,7 @@ describe("runtime permission flow", () => {
       id: started.run.id,
       status: "waiting_permission",
     })
-    expect(harness.repository.permissionRequests.listByRun(started.run.id)).toMatchObject([
+    expect(harness.permissionRepository.requests.listByRun(started.run.id)).toMatchObject([
       {
         id: permissionEvent.requestId,
         sessionId: harness.session.id,
@@ -109,7 +113,7 @@ describe("runtime permission flow", () => {
       type: "run.completed",
       runId: started.run.id,
     })
-    expect(harness.repository.permissionRequests.get(permissionEvent.requestId)).toMatchObject({
+    expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
       status: "approved",
     })
@@ -165,7 +169,7 @@ describe("runtime permission flow", () => {
 
     expect(await fileExists(join(harness.workspaceRoot, "notes.txt"))).toBe(false)
     expect(requests).toHaveLength(2)
-    expect(harness.repository.permissionRequests.get(permissionEvent.requestId)).toMatchObject({
+    expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
       status: "denied",
     })
@@ -224,7 +228,7 @@ describe("runtime permission flow", () => {
     await collectEvents(iterator)
 
     expect(await readFile(join(harness.workspaceRoot, "counter.txt"), "utf8")).toBe("1")
-    expect(harness.repository.permissionRequests.get(permissionEvent.requestId)).toMatchObject({
+    expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
       status: "approved",
     })
@@ -273,7 +277,7 @@ describe("runtime permission flow", () => {
       runId: started.run.id,
     })
     expect(await fileExists(join(harness.workspaceRoot, "notes.txt"))).toBe(false)
-    expect(harness.repository.permissionRequests.get(permissionEvent.requestId)).toMatchObject({
+    expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
       status: "cancelled",
       resolvedAt: expect.any(Number),
@@ -368,10 +372,10 @@ describe("runtime permission flow", () => {
     })
     await collectEvents(secondIterator)
 
-    expect(harness.repository.permissionRequests.listByRun(firstRun.run.id)).toMatchObject([
+    expect(harness.permissionRepository.requests.listByRun(firstRun.run.id)).toMatchObject([
       { id: firstPermission.requestId, status: "approved" },
     ])
-    expect(harness.repository.permissionRequests.listByRun(secondRun.run.id)).toMatchObject([
+    expect(harness.permissionRepository.requests.listByRun(secondRun.run.id)).toMatchObject([
       { id: secondPermission.requestId, status: "approved" },
     ])
   })
@@ -418,9 +422,14 @@ describe("runtime permission flow", () => {
       database: reopenedDatabase,
       now: harness.now,
     })
+    const reopenedPermissionRepository = createPermissionRepository({
+      database: reopenedDatabase,
+      now: harness.now,
+    })
     const secondRuntime = createRuntime({
       provider: createTurnProvider([], []),
       repository: reopenedRepository,
+      permissionRepository: reopenedPermissionRepository,
       now: harness.now,
       permissionPolicy: {
         write: "ask",
@@ -439,7 +448,7 @@ describe("runtime permission flow", () => {
       type: "run.completed",
       runId: started.run.id,
     })
-    expect(reopenedRepository.permissionRequests.get(permissionEvent.requestId)).toMatchObject({
+    expect(reopenedPermissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
       status: "approved",
     })
@@ -529,13 +538,13 @@ describe("runtime permission flow", () => {
       runId: startedB.run.id,
     })
     expect(harnessB.repository.runs.get(startedB.run.id).status).toBe("cancelled")
-    expect(harnessB.repository.permissionRequests.get(permissionB.requestId)).toMatchObject({
+    expect(harnessB.permissionRepository.requests.get(permissionB.requestId)).toMatchObject({
       id: permissionB.requestId,
       status: "cancelled",
     })
 
     expect(harnessA.repository.runs.get(startedA.run.id).status).toBe("waiting_permission")
-    expect(harnessA.repository.permissionRequests.get(permissionA.requestId)).toMatchObject({
+    expect(harnessA.permissionRepository.requests.get(permissionA.requestId)).toMatchObject({
       id: permissionA.requestId,
       status: "pending",
     })
@@ -566,7 +575,7 @@ describe("runtime permission flow", () => {
         requestId: "permission_missing",
         decision: "allow",
       }),
-    ).toThrow(StorageNotFoundError)
+    ).toThrow(PermissionNotFoundError)
   })
 })
 
@@ -594,6 +603,10 @@ async function createHarness(
     database,
     now,
   })
+  const permissionRepository = createPermissionRepository({
+    database,
+    now,
+  })
   const service = createSessionRunService({
     repository,
     now,
@@ -607,6 +620,7 @@ async function createHarness(
 
   return {
     repository,
+    permissionRepository,
     service,
     session,
     workspaceRoot,
@@ -623,6 +637,7 @@ function createPermissionRuntime(input: {
   return createRuntime({
     provider: input.provider,
     repository: input.harness.repository,
+    permissionRepository: input.harness.permissionRepository,
     now: input.harness.now,
     permissionPolicy: input.permissionPolicy,
   }) as RuntimeController
@@ -630,6 +645,7 @@ function createPermissionRuntime(input: {
 
 function startPromptRun(input: {
   repository: StorageRepository
+  permissionRepository: PermissionRepository
   service: ReturnType<typeof createSessionRunService>
   sessionId: string
   runId: string

@@ -1,5 +1,10 @@
 import { createEventQueue } from "../runtime/event-queue"
 import { getDefaultCliStoragePath } from "../runtime/runtime"
+import {
+  createPermissionRepository,
+  type PermissionRepository,
+  type StoredPermissionRequest,
+} from "../permission/repo"
 import type { Provider } from "../providers/types"
 import { createAgentServer } from "../server"
 import type { ServerEvent } from "../server/events"
@@ -8,7 +13,6 @@ import {
   openConversationDatabase as openStorageDatabase,
   type ConversationRepository as StorageRepository,
   type StoredMessage,
-  type StoredPermissionRequest,
   type StoredRun,
   type StoredSession,
 } from "../conversation/repo"
@@ -264,17 +268,27 @@ export async function createLocalCliServerClient(input: {
   provider: Provider
   workspaceRoot: string
   repository?: StorageRepository
+  permissionRepository?: PermissionRepository
 }) {
   const database =
     input.repository == null ? openStorageDatabase(getDefaultCliStoragePath(input.workspaceRoot)) : null
+  if (input.repository && !input.permissionRepository) {
+    throw new Error("permissionRepository is required when repository is provided")
+  }
   const repository =
     input.repository ??
     createStorageRepository({
       database: database!,
     })
+  const permissionRepository =
+    input.permissionRepository ??
+    createPermissionRepository({
+      database: database!,
+    })
   const server = createAgentServer({
     provider: input.provider,
     repository,
+    permissionRepository,
   })
 
   return {

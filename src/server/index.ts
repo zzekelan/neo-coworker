@@ -2,12 +2,15 @@ import { createServer as createNetServer } from "node:net"
 import { z, ZodError } from "zod"
 import {
   InvalidRunStatusTransitionError,
-  PermissionRequestNotPendingError,
-  PermissionRequestRunStateError,
   SessionBusyError,
   StartRunIdentityConflictError,
 } from "../conversation/service"
-import type { PermissionMode } from "../runtime/permissions"
+import { PermissionNotFoundError, type PermissionRepository } from "../permission/repo"
+import {
+  PermissionRequestNotPendingError,
+  PermissionRequestRunStateError,
+  type PermissionMode,
+} from "../permission/service"
 import { PermissionRequestNotAwaitingActiveRuntimeError } from "../runtime/runtime"
 import {
   RUN_TRIGGERS,
@@ -41,6 +44,7 @@ type ServerInstance = ReturnType<typeof Bun.serve>
 export function createAgentServer(input: {
   provider: Provider
   repository: StorageRepository
+  permissionRepository: PermissionRepository
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
   systemPrompt?: string
   now?: () => number
@@ -51,6 +55,7 @@ export function createAgentServer(input: {
   const app = createServerApp({
     provider: input.provider,
     repository: input.repository,
+    permissionRepository: input.permissionRepository,
     permissionPolicy: input.permissionPolicy,
     systemPrompt: input.systemPrompt,
     now,
@@ -344,7 +349,7 @@ function errorResponse(status: number, code: string, message: string) {
 }
 
 function mapHttpError(error: unknown) {
-  if (error instanceof StorageNotFoundError) {
+  if (error instanceof StorageNotFoundError || error instanceof PermissionNotFoundError) {
     return {
       status: 404,
       code: "not_found",

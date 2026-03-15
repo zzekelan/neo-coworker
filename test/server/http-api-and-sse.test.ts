@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import { createPermissionRepository } from "../../src/permission/repo"
 import type { Provider, ProviderEvent, ProviderTurnRequest } from "../../src/providers/types"
 import { createAgentServer } from "../../src/server"
 import {
@@ -282,7 +283,7 @@ describe("server HTTP API and SSE", () => {
       createdAt: harness.now(),
       startedAt: harness.now(),
     })
-    const permissionRequest = harness.repository.permissionRequests.create({
+    const permissionRequest = harness.permissionRepository.requests.create({
       id: "permission_stale",
       sessionId: session.id,
       runId: run.id,
@@ -308,7 +309,7 @@ describe("server HTTP API and SSE", () => {
         message: expect.stringContaining("not awaiting a reply in the active runtime"),
       },
     })
-    expect(harness.repository.permissionRequests.get(permissionRequest.id)).toMatchObject({
+    expect(harness.permissionRepository.requests.get(permissionRequest.id)).toMatchObject({
       id: permissionRequest.id,
       status: "pending",
     })
@@ -486,9 +487,14 @@ async function createHarness(
     database,
     now,
   })
+  const permissionRepository = createPermissionRepository({
+    database,
+    now,
+  })
   const server = createAgentServer({
     provider,
     repository,
+    permissionRepository,
     now,
     heartbeatIntervalMs: 15,
     permissionPolicy: options.permissionPolicy,
@@ -499,6 +505,7 @@ async function createHarness(
     workspaceRoot,
     server,
     repository,
+    permissionRepository,
     now,
   }
 }

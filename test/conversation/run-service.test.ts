@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("session run service", () => {
   test("supports the valid run lifecycle and derives session busy or idle state", () => {
-    const { repository, service } = createTestSubject("valid-lifecycle", [11, 22, 33])
+    const { repository, service } = createTestSubject("valid-lifecycle", [11, 22])
     const session = repository.sessions.create({
       id: "session_1",
       directory: "/workspace",
@@ -72,26 +72,6 @@ describe("session run service", () => {
       startedAt: 11,
       finishedAt: null,
     })
-
-    const paused = service.requestPermission({
-      runId: "run_1",
-      permissionRequest: {
-        id: "permission_1",
-        toolName: "shell",
-        reason: "Need to inspect the worktree",
-        createdAt: 4,
-      },
-    })
-    expect(paused.run.status).toBe("waiting_permission")
-    expect(paused.permissionRequest).toMatchObject({
-      id: "permission_1",
-      status: "pending",
-      resolvedAt: null,
-    })
-
-    const resumed = service.resumeRun("run_1")
-    expect(resumed.status).toBe("running")
-    expect(resumed.startedAt).toBe(11)
 
     const completed = service.completeRun("run_1")
     expect(completed).toMatchObject({
@@ -273,26 +253,12 @@ describe("session run service", () => {
     })
 
     service.transitionRunToRunning(first.run.id)
-    service.requestPermission({
-      runId: first.run.id,
-      permissionRequest: {
-        id: "permission_1",
-        toolName: "shell",
-        reason: "Need approval",
-        createdAt: 4,
-      },
-    })
 
     const cancelled = service.cancelRun(first.run.id)
     expect(cancelled).toMatchObject({
       id: "run_1",
       status: "cancelled",
       finishedAt: 22,
-    })
-    expect(repository.permissionRequests.get("permission_1")).toMatchObject({
-      id: "permission_1",
-      status: "cancelled",
-      resolvedAt: 22,
     })
 
     expect(() => service.resumeRun(first.run.id)).toThrow(InvalidRunStatusTransitionError)

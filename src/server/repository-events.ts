@@ -2,15 +2,18 @@ import type {
   ConversationRepository as StorageRepository,
   StoredRun,
 } from "../conversation/repo"
+import type { PermissionRepository } from "../permission/repo"
 import { buildSessionSnapshot, type ServerEventPayload, type createServerEventBus } from "./events"
 
 type ServerEventBus = ReturnType<typeof createServerEventBus>
 
 export function createObservedRepository(input: {
   repository: StorageRepository
+  permissionRepository: PermissionRepository
   events: ServerEventBus
 }) {
   const repository = input.repository
+  const permissionRepository = input.permissionRepository
   const events = input.events
 
   function publishSessionUpdated(sessionId: string, reason: string) {
@@ -46,7 +49,7 @@ export function createObservedRepository(input: {
     }
   }
 
-  const observed: StorageRepository = {
+  const observedRepository: StorageRepository = {
     ...repository,
     sessions: {
       ...repository.sessions,
@@ -102,27 +105,6 @@ export function createObservedRepository(input: {
         return updated
       },
     },
-    permissionRequests: {
-      ...repository.permissionRequests,
-      create(request) {
-        const created = repository.permissionRequests.create(request)
-        events.publish({
-          type: "permission.requested",
-          permissionRequest: created,
-        })
-        publishSessionUpdated(created.sessionId, "permission.requested")
-        return created
-      },
-      updateStatus(update) {
-        const updated = repository.permissionRequests.updateStatus(update)
-        events.publish({
-          type: "permission.updated",
-          permissionRequest: updated,
-        })
-        publishSessionUpdated(updated.sessionId, "permission.updated")
-        return updated
-      },
-    },
     createQueuedRunWithInitiatingMessage(inputValue) {
       const created = repository.createQueuedRunWithInitiatingMessage(inputValue)
       publishRunCreated(created.run)
@@ -144,29 +126,35 @@ export function createObservedRepository(input: {
       })
       return created
     },
-    requestPermissionAndPauseRun(inputValue) {
-      const created = repository.requestPermissionAndPauseRun(inputValue)
-      publishRunUpdated(created.run)
-      events.publish({
-        type: "permission.requested",
-        permissionRequest: created.permissionRequest,
-      })
-      return created
-    },
-    cancelRunAndPendingPermissions(inputValue) {
-      const cancelled = repository.cancelRunAndPendingPermissions(inputValue)
-      publishRunUpdated(cancelled.run)
+  }
 
-      for (const permissionRequest of cancelled.permissionRequests) {
+  const observedPermissionRepository: PermissionRepository = {
+    ...permissionRepository,
+    requests: {
+      ...permissionRepository.requests,
+      create(request) {
+        const created = permissionRepository.requests.create(request)
+        events.publish({
+          type: "permission.requested",
+          permissionRequest: created,
+        })
+        publishSessionUpdated(created.sessionId, "permission.requested")
+        return created
+      },
+      updateStatus(update) {
+        const updated = permissionRepository.requests.updateStatus(update)
         events.publish({
           type: "permission.updated",
-          permissionRequest,
+          permissionRequest: updated,
         })
-      }
-
-      return cancelled
+        publishSessionUpdated(updated.sessionId, "permission.updated")
+        return updated
+      },
     },
   }
 
-  return observed
+  return {
+    repository: observedRepository,
+    permissionRepository: observedPermissionRepository,
+  }
 }

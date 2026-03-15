@@ -7,8 +7,9 @@ import type {
   ConversationRepository as StorageRepository,
   RunTrigger,
 } from "../conversation/repo"
+import type { PermissionRepository } from "../permission/repo"
+import type { PermissionMode, PermissionResponse } from "../permission/service"
 import { createRuntime } from "../runtime/runtime"
-import type { PermissionMode, PermissionResponse } from "../runtime/permissions"
 import { buildSessionSnapshot, createServerEventBus } from "./events"
 import { createObservedRepository } from "./repository-events"
 
@@ -22,6 +23,7 @@ export class ServerShuttingDownError extends Error {
 export function createServerApp(input: {
   provider: Provider
   repository: StorageRepository
+  permissionRepository: PermissionRepository
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
   systemPrompt?: string
   now?: () => number
@@ -30,10 +32,13 @@ export function createServerApp(input: {
   const eventBus = createServerEventBus({
     now,
   })
-  const repository = createObservedRepository({
+  const observed = createObservedRepository({
     repository: input.repository,
+    permissionRepository: input.permissionRepository,
     events: eventBus,
   })
+  const repository = observed.repository
+  const permissionRepository = observed.permissionRepository
   const sessionRuns = createSessionRunService({
     repository,
     now,
@@ -41,6 +46,7 @@ export function createServerApp(input: {
   const runtime = createRuntime({
     provider: input.provider,
     repository,
+    permissionRepository,
     permissionPolicy: input.permissionPolicy,
     systemPrompt: input.systemPrompt,
     now,
@@ -137,7 +143,7 @@ export function createServerApp(input: {
         const run = repository.runs.get(runId)
         return {
           run,
-          permissionRequests: repository.permissionRequests.listByRun(runId),
+          permissionRequests: permissionRepository.requests.listByRun(runId),
         }
       },
       cancel(runId: string) {
@@ -150,7 +156,7 @@ export function createServerApp(input: {
     permissions: {
       reply(response: PermissionResponse) {
         runtime.respondPermission(response)
-        const permissionRequest = repository.permissionRequests.get(response.requestId)
+        const permissionRequest = permissionRepository.requests.get(response.requestId)
         return {
           permissionRequest,
           run: repository.runs.get(permissionRequest.runId),

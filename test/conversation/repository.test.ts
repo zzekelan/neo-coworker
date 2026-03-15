@@ -6,10 +6,8 @@ import { join } from "node:path"
 import {
   ConversationNotFoundError as StorageNotFoundError,
   ConversationOwnershipError as StorageOwnershipError,
-  ConversationRepositoryError as StorageRepositoryError,
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,
-  type RequestPermissionAndPauseRunInput,
 } from "../../src/conversation/repo"
 
 const tempDirectories: string[] = []
@@ -280,104 +278,11 @@ describe("storage repository", () => {
     ).toThrow(StorageOwnershipError)
   })
 
-  test("rolls back run status when requestPermissionAndPauseRun fails", () => {
-    const { database, repository } = createTestRepository("permission-rollback")
-
-    repository.sessions.create({
-      id: "session_1",
-      directory: "/workspace",
-      workspaceRoot: "/workspace",
-      createdAt: 1,
-    })
-    repository.runs.create({
-      id: "run_1",
-      sessionId: "session_1",
-      trigger: "cli",
-      status: "running",
-      createdAt: 2,
-      startedAt: 3,
-    })
-    repository.permissionRequests.create({
-      id: "permission_duplicate",
-      sessionId: "session_1",
-      runId: "run_1",
-      toolName: "shell",
-      reason: "existing request",
-      status: "pending",
-      createdAt: 4,
-    })
-
-    expect(() =>
-      repository.requestPermissionAndPauseRun({
-        runId: "run_1",
-        permissionRequest: {
-          id: "permission_duplicate",
-          toolName: "shell",
-          reason: "Need to run git status",
-          createdAt: 5,
-        },
-      }),
-    ).toThrow(/UNIQUE|constraint/i)
-
-    expect(repository.runs.get("run_1").status).toBe("running")
-    expect(countRows(database, "permission_request")).toBe(1)
-  })
-
-  test("requestPermissionAndPauseRun always creates a pending unresolved request", () => {
-    const { repository } = createTestRepository("permission-invariants")
-
-    repository.sessions.create({
-      id: "session_1",
-      directory: "/workspace",
-      workspaceRoot: "/workspace",
-      createdAt: 1,
-    })
-    repository.runs.create({
-      id: "run_1",
-      sessionId: "session_1",
-      trigger: "cli",
-      status: "running",
-      createdAt: 2,
-    })
-
-    const result = repository.requestPermissionAndPauseRun({
-      runId: "run_1",
-      permissionRequest: {
-        id: "permission_1",
-        toolName: "shell",
-        reason: "Need to run git status",
-        createdAt: 3,
-      },
-    })
-
-    expect(result.run.status).toBe("waiting_permission")
-    expect(result.permissionRequest).toMatchObject({
-      id: "permission_1",
-      status: "pending",
-      resolvedAt: null,
-    })
-
-    expect(() =>
-      repository.requestPermissionAndPauseRun({
-        runId: "run_1",
-        permissionRequest: {
-          id: "permission_2",
-          toolName: "shell",
-          reason: "Need another command",
-          createdAt: 4,
-          status: "approved",
-          resolvedAt: 99,
-        } as RequestPermissionAndPauseRunInput["permissionRequest"],
-      }),
-    ).toThrow(StorageRepositoryError)
-  })
-
   test("surfaces explicit not-found errors for reads and updates", () => {
     const { repository } = createTestRepository("not-found")
 
     expect(() => repository.sessions.get("session_missing")).toThrow(StorageNotFoundError)
     expect(() => repository.messages.get("message_missing")).toThrow(StorageNotFoundError)
-    expect(() => repository.permissionRequests.get("permission_missing")).toThrow(StorageNotFoundError)
     expect(() =>
       repository.runs.updateStatus({
         runId: "run_missing",
@@ -388,12 +293,6 @@ describe("storage repository", () => {
       repository.parts.updateContent({
         partId: "part_missing",
         text: "hello",
-      }),
-    ).toThrow(StorageNotFoundError)
-    expect(() =>
-      repository.permissionRequests.updateStatus({
-        requestId: "permission_missing",
-        status: "approved",
       }),
     ).toThrow(StorageNotFoundError)
   })

@@ -5,15 +5,6 @@ export { type StoredSession } from "../types/session"
 
 export const CURRENT_CONVERSATION_SCHEMA_VERSION = 2
 
-export const PERMISSION_STATUSES = [
-  "pending",
-  "approved",
-  "denied",
-  "cancelled",
-] as const
-
-export type PermissionStatus = (typeof PERMISSION_STATUSES)[number]
-
 export const CONVERSATION_TABLES = [
   "session",
   "run",

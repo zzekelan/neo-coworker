@@ -20,8 +20,6 @@ export function createConversationRuntimeApi(input: ConversationRuntimeApiInput)
       complete: runService.completeRun,
       fail: runService.failRun,
       cancel: runService.cancelRun,
-      requestPermission: runService.requestPermission,
-      respondPermission: runService.respondPermission,
     },
     transcript: {
       listSessionTranscript: transcriptService.listSessionTranscript,

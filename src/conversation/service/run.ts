@@ -2,13 +2,11 @@ import {
   ConversationConflictError,
   ConversationNotFoundError,
   type ConversationRepository,
-  type RequestPermissionAndPauseRunInput,
   type RunTrigger,
-  type StoredPermissionRequest,
   type StoredRun,
 } from "../repo/contract"
 import { createConversationTranscriptService } from "./transcript"
-import { assertRunStatusTransition, createRunStateMachine } from "./state-machine"
+import { createRunStateMachine } from "./state-machine"
 
 export type SessionActivityStatus = "idle" | "busy"
 
@@ -80,34 +78,6 @@ export class RetrySourceRunError extends SessionRunServiceError {
     this.name = "RetrySourceRunError"
     this.sessionId = input.sessionId
     this.runId = input.runId
-  }
-}
-
-export class PermissionRequestNotPendingError extends SessionRunServiceError {
-  readonly requestId: string
-  readonly status: StoredPermissionRequest["status"]
-
-  constructor(input: { requestId: string; status: StoredPermissionRequest["status"] }) {
-    super(`Permission request ${input.requestId} is not pending (status: ${input.status})`)
-    this.name = "PermissionRequestNotPendingError"
-    this.requestId = input.requestId
-    this.status = input.status
-  }
-}
-
-export class PermissionRequestRunStateError extends SessionRunServiceError {
-  readonly requestId: string
-  readonly runId: string
-  readonly runStatus: StoredRun["status"]
-
-  constructor(input: { requestId: string; runId: string; runStatus: StoredRun["status"] }) {
-    super(
-      `Permission request ${input.requestId} cannot be replied while run ${input.runId} is ${input.runStatus}`,
-    )
-    this.name = "PermissionRequestRunStateError"
-    this.requestId = input.requestId
-    this.runId = input.runId
-    this.runStatus = input.runStatus
   }
 }
 
@@ -211,46 +181,6 @@ export function createConversationRunService(input: CreateConversationRunService
     return runStateMachine.transitionRunStatus(runId, "running")
   }
 
-  function requestPermission(input: RequestPermissionAndPauseRunInput) {
-    const run = repository.runs.get(input.runId)
-    assertRunStatusTransition(run, "waiting_permission")
-    return repository.requestPermissionAndPauseRun(input)
-  }
-
-  function respondPermission(input: {
-    requestId: string
-    decision: "allow" | "deny"
-    resolvedAt?: number
-  }) {
-    const permissionRequest = repository.permissionRequests.get(input.requestId)
-    if (permissionRequest.status !== "pending") {
-      throw new PermissionRequestNotPendingError({
-        requestId: permissionRequest.id,
-        status: permissionRequest.status,
-      })
-    }
-
-    const run = repository.runs.get(permissionRequest.runId)
-    if (run.status !== "waiting_permission") {
-      throw new PermissionRequestRunStateError({
-        requestId: permissionRequest.id,
-        runId: run.id,
-        runStatus: run.status,
-      })
-    }
-
-    const resolvedPermissionRequest = repository.permissionRequests.updateStatus({
-      requestId: permissionRequest.id,
-      status: input.decision === "allow" ? "approved" : "denied",
-      resolvedAt: input.resolvedAt ?? now(),
-    })
-
-    return {
-      run: runStateMachine.transitionRunStatus(run.id, "running"),
-      permissionRequest: resolvedPermissionRequest,
-    }
-  }
-
   return {
     getSessionState,
     startRun,
@@ -268,16 +198,8 @@ export function createConversationRunService(input: CreateConversationRunService
       })
     },
     cancelRun(runId: string) {
-      const run = repository.runs.get(runId)
-      assertRunStatusTransition(run, "cancelled")
-
-      return repository.cancelRunAndPendingPermissions({
-        runId,
-        finishedAt: now(),
-      }).run
+      return runStateMachine.transitionRunStatus(runId, "cancelled")
     },
-    requestPermission,
-    respondPermission,
   }
 }
 

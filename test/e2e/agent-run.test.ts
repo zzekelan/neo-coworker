@@ -3,6 +3,7 @@ import { cp, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runCli } from "../../src/cli/run-command"
+import { createPermissionRepository } from "../../src/permission/repo"
 import { createAgentServer } from "../../src/server"
 import { getDefaultCliStoragePath } from "../../src/runtime/runtime"
 import {
@@ -117,6 +118,7 @@ describe("agent run e2e", () => {
 
     const database = trackDatabase(openStorageDatabase(join(directory, "server.sqlite")))
     const repository = createStorageRepository({ database })
+    const permissionRepository = createPermissionRepository({ database })
     const server = createAgentServer({
       provider: {
         async *streamTurn(_request: ProviderTurnRequest) {
@@ -145,6 +147,7 @@ describe("agent run e2e", () => {
         },
       },
       repository,
+      permissionRepository,
     })
     activeServers.push(server)
 

@@ -1,7 +1,6 @@
 import type {
   MessageRole,
   PartKind,
-  PermissionStatus,
   RunStatus,
   RunTrigger,
   StoredMessage,
@@ -14,7 +13,6 @@ import type {
 export type {
   MessageRole,
   PartKind,
-  PermissionStatus,
   RunStatus,
   RunTrigger,
   StoredMessage,
@@ -24,18 +22,7 @@ export type {
   TranscriptMessage,
 } from "../config/defaults"
 
-type EntityType = "session" | "run" | "message" | "part" | "permission_request"
-
-export type StoredPermissionRequest = {
-  id: string
-  sessionId: string
-  runId: string
-  toolName: string
-  reason: string
-  status: PermissionStatus
-  createdAt: number
-  resolvedAt: number | null
-}
+type EntityType = "session" | "run" | "message" | "part"
 
 export type CreateSessionInput = {
   id?: string
@@ -90,23 +77,6 @@ export type UpdatePartContentInput = {
   data?: unknown
 }
 
-export type CreatePermissionRequestInput = {
-  id?: string
-  sessionId: string
-  runId: string
-  toolName: string
-  reason: string
-  status?: PermissionStatus
-  createdAt?: number
-  resolvedAt?: number | null
-}
-
-export type UpdatePermissionRequestStatusInput = {
-  requestId: string
-  status: PermissionStatus
-  resolvedAt?: number | null
-}
-
 export type CreateQueuedRunWithInitiatingMessageInput = {
   run: Omit<CreateRunInput, "status">
   message: {
@@ -119,17 +89,6 @@ export type CreateQueuedRunWithInitiatingMessageInput = {
 export type CreateAssistantMessageWithFirstPartInput = {
   message: Omit<CreateMessageInput, "role">
   part: Omit<CreatePartInput, "sessionId" | "runId" | "messageId">
-}
-
-export type RequestPermissionAndPauseRunInput = {
-  runId: string
-  permissionRequest: Pick<CreatePermissionRequestInput, "id" | "toolName" | "reason" | "createdAt">
-}
-
-export type CancelRunAndPendingPermissionsInput = {
-  runId: string
-  finishedAt?: number
-  resolvedAt?: number
 }
 
 export class ConversationRepositoryError extends Error {
@@ -190,22 +149,10 @@ export type ConversationRepository = {
     get(partId: string): StoredPart
     updateContent(update: UpdatePartContentInput): StoredPart
   }
-  permissionRequests: {
-    create(request: CreatePermissionRequestInput): StoredPermissionRequest
-    get(requestId: string): StoredPermissionRequest
-    listByRun(runId: string): StoredPermissionRequest[]
-    updateStatus(update: UpdatePermissionRequestStatusInput): StoredPermissionRequest
-  }
   createQueuedRunWithInitiatingMessage(
     input: CreateQueuedRunWithInitiatingMessageInput,
   ): { run: StoredRun; message: StoredMessage }
   createAssistantMessageWithFirstPart(
     input: CreateAssistantMessageWithFirstPartInput,
   ): { message: StoredMessage; part: StoredPart }
-  requestPermissionAndPauseRun(
-    input: RequestPermissionAndPauseRunInput,
-  ): { run: StoredRun; permissionRequest: StoredPermissionRequest }
-  cancelRunAndPendingPermissions(
-    input: CancelRunAndPendingPermissionsInput,
-  ): { run: StoredRun; permissionRequests: StoredPermissionRequest[] }
 }

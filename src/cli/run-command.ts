@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from "../conversation/service"
+import type { PermissionDecision } from "../permission/service"
 import type { Provider } from "../providers/types"
-import type { PermissionDecision } from "../runtime/permissions"
 import type { ServerEvent } from "../server/events"
 import type { CliIO } from "./io"
 import { createCliRenderState, renderServerEvent } from "./render"
