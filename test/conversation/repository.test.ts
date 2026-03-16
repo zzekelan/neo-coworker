@@ -70,6 +70,71 @@ describe("storage repository", () => {
     expect(countRows(database, "message")).toBe(1)
   })
 
+  test("rolls back createQueuedRunWithInitiatingMessageAndPart when the part insert fails", () => {
+    const { database, repository } = createTestRepository("run-message-part-rollback")
+
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    const existingRun = repository.runs.create({
+      id: "run_existing",
+      sessionId: session.id,
+      trigger: "cli",
+      status: "completed",
+      createdAt: 2,
+    })
+    const existingMessage = repository.messages.create({
+      id: "message_existing",
+      sessionId: session.id,
+      runId: existingRun.id,
+      role: "user",
+      sequence: 0,
+      createdAt: 3,
+    })
+    repository.parts.create({
+      id: "part_duplicate",
+      sessionId: session.id,
+      runId: existingRun.id,
+      messageId: existingMessage.id,
+      kind: "text",
+      sequence: 0,
+      text: "existing",
+      createdAt: 4,
+    })
+
+    expect(() =>
+      repository.createQueuedRunWithInitiatingMessageAndPart({
+        run: {
+          id: "run_pending",
+          sessionId: session.id,
+          trigger: "cli",
+          createdAt: 5,
+        },
+        message: {
+          id: "message_pending",
+          sequence: 0,
+          createdAt: 6,
+        },
+        part: {
+          id: "part_duplicate",
+          kind: "text",
+          sequence: 0,
+          text: "prompt",
+          createdAt: 7,
+        },
+      }),
+    ).toThrow(/UNIQUE|constraint/i)
+
+    expect(() => repository.runs.get("run_pending")).toThrow(StorageNotFoundError)
+    expect(() => repository.messages.get("message_pending")).toThrow(StorageNotFoundError)
+    expect(countRows(database, "run")).toBe(1)
+    expect(countRows(database, "message")).toBe(1)
+    expect(countRows(database, "part")).toBe(1)
+  })
+
   test("returns session transcript with stable message and part ordering", () => {
     const { repository } = createTestRepository("transcript-ordering")
 

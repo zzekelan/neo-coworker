@@ -24,6 +24,8 @@ export type StartRunInput = {
   messageId?: string
   createdAt?: number
   messageCreatedAt?: number
+  promptText?: string
+  promptPartCreatedAt?: number
 }
 
 export type RetryRunInput = StartRunInput & {
@@ -120,6 +122,28 @@ export function createConversationRunService(input: CreateConversationRunService
     assertStartRunIdentityAvailable(repository, run)
 
     try {
+      if (run.promptText !== undefined) {
+        return repository.createQueuedRunWithInitiatingMessageAndPart({
+          run: {
+            id: run.runId,
+            sessionId: run.sessionId,
+            trigger: run.trigger ?? "prompt",
+            createdAt: run.createdAt,
+          },
+          message: {
+            id: run.messageId,
+            sequence: 0,
+            createdAt: run.messageCreatedAt,
+          },
+          part: {
+            kind: "text",
+            sequence: 0,
+            text: run.promptText,
+            createdAt: run.promptPartCreatedAt,
+          },
+        })
+      }
+
       return repository.createQueuedRunWithInitiatingMessage({
         run: {
           id: run.runId,

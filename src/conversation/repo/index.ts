@@ -20,6 +20,7 @@ export {
   type CreateMessageInput,
   type CreatePartInput,
   type CreateQueuedRunWithInitiatingMessageInput,
+  type CreateQueuedRunWithInitiatingMessageAndPartInput,
   type CreateRunInput,
   type CreateSessionInput,
   type StoredMessage,

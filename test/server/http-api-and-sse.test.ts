@@ -13,6 +13,7 @@ import type { OrchestrationModelPort } from "../../src/orchestration/ports/model
 import { createPermissionRepository } from "../../src/permission/repo"
 import { createAgentServer } from "../../src/orchestration/wiring/server"
 import {
+  type ConversationRepository,
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,
 } from "../../src/conversation/repo"
@@ -117,6 +118,82 @@ describe("server HTTP API and SSE", () => {
         parts: [{ kind: "text", text: "Server says hi." }],
       },
     ])
+  })
+
+  test("failed prompt persistence does not leave the session busy", async () => {
+    let failNextPromptWrite = true
+    const harness = await createHarness(
+      "server-http-start-run-rollback",
+      createTurnProvider([
+        async function* () {
+          yield { type: "text.delta", text: "Recovered after rollback." }
+        },
+      ]),
+      {
+        repositoryFactory(repository) {
+          return {
+            ...repository,
+            createQueuedRunWithInitiatingMessageAndPart(input) {
+              if (failNextPromptWrite) {
+                failNextPromptWrite = false
+                throw new Error("disk full")
+              }
+
+              return repository.createQueuedRunWithInitiatingMessageAndPart(input)
+            },
+          }
+        },
+      },
+    )
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const failedStart = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "This one should roll back",
+      },
+    )
+
+    expect(failedStart.status).toBe(500)
+    expect(failedStart.body).toMatchObject({
+      error: {
+        code: "internal_error",
+        message: "disk full",
+      },
+    })
+    expect(harness.repository.runs.listBySession(sessionId)).toEqual([])
+
+    const sessionStateAfterFailure = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+    expect(sessionStateAfterFailure.status).toBe(200)
+    expect(sessionStateAfterFailure.body.data).toMatchObject({
+      latestRun: null,
+      activeRun: null,
+      status: "idle",
+    })
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "This one should succeed",
+      },
+    )
+    expect(startedRun.status).toBe(201)
+
+    const runId = startedRun.body.data.run.id as string
+    const completedRun = await waitForRunStatus(harness.server, runId, "completed")
+
+    expect(completedRun.run).toMatchObject({
+      id: runId,
+      status: "completed",
+    })
   })
 
   test("SSE sends heartbeat and duplicate subscribers receive the same live run and part updates", async () => {
@@ -505,6 +582,7 @@ async function createHarness(
   provider: OrchestrationModelPort,
   options: {
     permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
+    repositoryFactory?(repository: ConversationRepository): ConversationRepository
   } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), `${prefix}-`))
@@ -518,10 +596,13 @@ async function createHarness(
   openDatabases.push(database)
 
   const now = createMonotonicClock()
-  const repository = createStorageRepository({
+  const baseRepository = createStorageRepository({
     database,
     now,
   })
+  const repository = options.repositoryFactory
+    ? options.repositoryFactory(baseRepository)
+    : baseRepository
   const permissionRepository = createPermissionRepository({
     database,
     now,

@@ -80,16 +80,8 @@ export function createServerApp(input: {
       messageId: runInput.messageId,
       createdAt,
       messageCreatedAt,
-    })
-
-    repository.parts.create({
-      sessionId: runInput.sessionId,
-      runId: started.run.id,
-      messageId: started.message.id,
-      kind: "text",
-      sequence: 0,
-      text: runInput.prompt,
-      createdAt: now(),
+      promptText: runInput.prompt,
+      promptPartCreatedAt: now(),
     })
 
     const handle = await runtime.run({

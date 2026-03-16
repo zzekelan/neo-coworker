@@ -18,6 +18,7 @@ import {
   type CreateMessageInput,
   type CreatePartInput,
   type CreateQueuedRunWithInitiatingMessageInput,
+  type CreateQueuedRunWithInitiatingMessageAndPartInput,
   type CreateRunInput,
   type CreateSessionInput,
   type StoredMessage,
@@ -686,6 +687,20 @@ export function createConversationRepository(input: {
     },
   )
 
+  const createQueuedRunWithInitiatingMessageAndPartTransaction = database.transaction(
+    (value: CreateQueuedRunWithInitiatingMessageAndPartInput) => {
+      const { run, message } = createQueuedRunWithInitiatingMessageTransaction(value)
+      const part = parts.create({
+        ...value.part,
+        sessionId: run.sessionId,
+        runId: run.id,
+        messageId: message.id,
+      })
+
+      return { run, message, part }
+    },
+  )
+
   const createAssistantMessageWithFirstPartTransaction = database.transaction(
     (value: CreateAssistantMessageWithFirstPartInput) => {
       const message = messages.create({
@@ -711,6 +726,11 @@ export function createConversationRepository(input: {
     parts,
     createQueuedRunWithInitiatingMessage(input: CreateQueuedRunWithInitiatingMessageInput) {
       return createQueuedRunWithInitiatingMessageTransaction(input)
+    },
+    createQueuedRunWithInitiatingMessageAndPart(
+      input: CreateQueuedRunWithInitiatingMessageAndPartInput,
+    ) {
+      return createQueuedRunWithInitiatingMessageAndPartTransaction(input)
     },
     createAssistantMessageWithFirstPart(input: CreateAssistantMessageWithFirstPartInput) {
       return createAssistantMessageWithFirstPartTransaction(input)

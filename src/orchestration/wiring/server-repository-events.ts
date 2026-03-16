@@ -118,6 +118,19 @@ export function createObservedRepository(input: {
       })
       return created
     },
+    createQueuedRunWithInitiatingMessageAndPart(inputValue) {
+      const created = repository.createQueuedRunWithInitiatingMessageAndPart(inputValue)
+      publishRunCreated(created.run)
+      events.publish({
+        type: "message.created",
+        message: created.message,
+      })
+      events.publish({
+        type: "message.part.updated",
+        part: created.part,
+      })
+      return created
+    },
     createAssistantMessageWithFirstPart(inputValue) {
       const created = repository.createAssistantMessageWithFirstPart(inputValue)
       events.publish({

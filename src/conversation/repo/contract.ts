@@ -86,6 +86,11 @@ export type CreateQueuedRunWithInitiatingMessageInput = {
   }
 }
 
+export type CreateQueuedRunWithInitiatingMessageAndPartInput =
+  CreateQueuedRunWithInitiatingMessageInput & {
+    part: Omit<CreatePartInput, "sessionId" | "runId" | "messageId">
+  }
+
 export type CreateAssistantMessageWithFirstPartInput = {
   message: Omit<CreateMessageInput, "role">
   part: Omit<CreatePartInput, "sessionId" | "runId" | "messageId">
@@ -152,6 +157,9 @@ export type ConversationRepository = {
   createQueuedRunWithInitiatingMessage(
     input: CreateQueuedRunWithInitiatingMessageInput,
   ): { run: StoredRun; message: StoredMessage }
+  createQueuedRunWithInitiatingMessageAndPart(
+    input: CreateQueuedRunWithInitiatingMessageAndPartInput,
+  ): { run: StoredRun; message: StoredMessage; part: StoredPart }
   createAssistantMessageWithFirstPart(
     input: CreateAssistantMessageWithFirstPartInput,
   ): { message: StoredMessage; part: StoredPart }
