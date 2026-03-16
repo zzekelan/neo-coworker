@@ -8,6 +8,7 @@ import {
   type RequestToolPermission,
   type ToolDefinition,
 } from "../service"
+import { createToolPermissionDeniedError } from "./errors"
 
 const ShellArgsSchema = z.object({
   command: z.string().trim().min(1, "Command must not be empty"),
@@ -29,7 +30,7 @@ export function createShellTool(input: { requestPermission: RequestToolPermissio
       })
 
       if (decision.decision !== "allow") {
-        throw new Error("Permission denied")
+        throw createToolPermissionDeniedError()
       }
 
       throwIfToolAborted(signal)

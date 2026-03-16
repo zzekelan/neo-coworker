@@ -30,10 +30,15 @@ type ToolCallEvent = {
   inputText: string
 }
 
+type ToolCallOutcome = "continue" | "cancel"
+type StepOutcome = "repeat" | "complete" | "failed" | "cancelled"
+
 type AssistantError = {
   text: string
   data?: unknown
 }
+
+const MODEL_REQUEST_MAX_ATTEMPTS = 3
 
 function isAbortError(error: unknown, signal: AbortSignal) {
   return signal.aborted || (error instanceof Error && error.name === "AbortError")
@@ -49,8 +54,51 @@ function createAbortError(message = "Operation aborted") {
   return error
 }
 
+function isToolPermissionDeniedError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  return error.name === "ToolPermissionDeniedError"
+}
+
 function isTerminalRunStatus(status: string) {
   return status === "completed" || status === "failed" || status === "cancelled"
+}
+
+async function readNextModelEvent<T>(input: {
+  iterator: AsyncIterator<T>
+  signal: AbortSignal
+}) {
+  if (input.signal.aborted) {
+    void input.iterator.return?.()
+    throw createAbortError()
+  }
+
+  let rejectAbort: ((error: Error) => void) | null = null
+  const nextValue = input.iterator.next()
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectAbort = reject
+  })
+  const onAbort = () => {
+    void input.iterator.return?.()
+    rejectAbort?.(createAbortError())
+  }
+
+  input.signal.addEventListener("abort", onAbort, { once: true })
+
+  try {
+    return await Promise.race([nextValue, aborted])
+  } finally {
+    input.signal.removeEventListener("abort", onAbort)
+  }
+}
+
+function shouldRetryModelRequest(input: {
+  attempt: number
+  sawProviderOutput: boolean
+}) {
+  return !input.sawProviderOutput && input.attempt < MODEL_REQUEST_MAX_ATTEMPTS
 }
 
 export function createOrchestrationStepService(input: CreateOrchestrationStepServiceInput) {
@@ -110,7 +158,15 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       runInput.emit?.({ type: "run.cancelled", runId: runInput.runId })
       return true
     },
-    async executeStep(stepInput: ExecuteOrchestrationStepInput) {
+    async executeStep(stepInput: ExecuteOrchestrationStepInput): Promise<
+      | {
+          status: Extract<StepOutcome, "repeat" | "complete" | "cancelled">
+        }
+      | {
+          status: Extract<StepOutcome, "failed">
+          error: string
+        }
+    > {
       const transcript = input.conversation.listTranscript(stepInput.sessionId)
       const assistantTurn = createAssistantTurnRecorder({
         conversation: input.conversation,
@@ -122,43 +178,80 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       })
       let requestedTool = false
 
-      try {
-        for await (const item of input.model.streamTurn({
-          systemPrompt: stepInput.systemPrompt,
-          activeSkillInstructions: [],
-          tools: stepInput.tools.list(),
-          transcript,
-          signal: stepInput.signal,
-        })) {
-          if (item.type === "text.delta") {
-            assistantTurn.appendText(item.text)
-            stepInput.emit({ type: "message.delta", text: item.text })
+      for (let attempt = 1; attempt <= MODEL_REQUEST_MAX_ATTEMPTS; attempt += 1) {
+        let sawProviderOutput = false
+        let iterator: AsyncIterator<
+          Awaited<ReturnType<OrchestrationModelPort["streamTurn"]>> extends AsyncIterable<infer T>
+            ? T
+            : never
+        > | null = null
+
+        try {
+          const modelEvents = input.model.streamTurn({
+            systemPrompt: stepInput.systemPrompt,
+            activeSkillInstructions: [],
+            tools: stepInput.tools.list(),
+            transcript,
+            signal: stepInput.signal,
+          })
+          iterator = modelEvents[Symbol.asyncIterator]()
+
+          while (true) {
+            const next = await readNextModelEvent({
+              iterator,
+              signal: stepInput.signal,
+            })
+
+            if (next.done) {
+              break
+            }
+
+            sawProviderOutput = true
+            const item = next.value
+            if (item.type === "text.delta") {
+              assistantTurn.appendText(item.text)
+              stepInput.emit({ type: "message.delta", text: item.text })
+              continue
+            }
+
+            requestedTool = true
+            const outcome = await executeToolCall({
+              item,
+              assistantTurn,
+              emit: stepInput.emit,
+              signal: stepInput.signal,
+              tools: stepInput.tools,
+              workspaceRoot: stepInput.workspaceRoot,
+            })
+
+            if (outcome === "cancel") {
+              return {
+                status: "cancelled" as const,
+              }
+            }
+          }
+
+          break
+        } catch (error) {
+          if (isAbortError(error, stepInput.signal)) {
+            throw error
+          }
+
+          void iterator?.return?.()
+
+          if (shouldRetryModelRequest({ attempt, sawProviderOutput })) {
             continue
           }
 
-          requestedTool = true
-          await executeToolCall({
-            item,
-            assistantTurn,
-            emit: stepInput.emit,
-            signal: stepInput.signal,
-            tools: stepInput.tools,
-            workspaceRoot: stepInput.workspaceRoot,
+          const message = getErrorMessage(error)
+          assistantTurn.appendError({
+            text: message,
+            data: { source: "provider" },
           })
-        }
-      } catch (error) {
-        if (isAbortError(error, stepInput.signal)) {
-          throw error
-        }
-
-        const message = getErrorMessage(error)
-        assistantTurn.appendError({
-          text: message,
-          data: { source: "provider" },
-        })
-        return {
-          status: "failed" as const,
-          error: message,
+          return {
+            status: "failed" as const,
+            error: message,
+          }
         }
       }
 
@@ -180,7 +273,7 @@ async function executeToolCall(input: {
   signal: AbortSignal
   tools: OrchestrationToolPort
   workspaceRoot: string
-}) {
+}): Promise<ToolCallOutcome> {
   input.assistantTurn.appendToolCall({
     callId: input.item.callId,
     toolName: input.item.name,
@@ -199,7 +292,7 @@ async function executeToolCall(input: {
         toolName: input.item.name,
       },
     })
-    return
+    return "continue"
   }
 
   try {
@@ -224,6 +317,7 @@ async function executeToolCall(input: {
       name: input.item.name,
       output: result.output,
     })
+    return "continue"
   } catch (error) {
     if (isAbortError(error, input.signal)) {
       throw error
@@ -237,6 +331,8 @@ async function executeToolCall(input: {
         toolName: input.item.name,
       },
     })
+
+    return isToolPermissionDeniedError(error) ? "cancel" : "continue"
   }
 }
 

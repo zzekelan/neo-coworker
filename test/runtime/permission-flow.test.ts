@@ -127,7 +127,7 @@ describe("runtime permission flow", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
-  test("denial does not execute the tool side effect", async () => {
+  test("denial does not execute the tool side effect and cancels the run", async () => {
     const harness = await createHarness("permission-deny", false)
     const started = startPromptRun({
       repository: harness.repository,
@@ -174,12 +174,12 @@ describe("runtime permission flow", () => {
     await collectEvents(iterator)
 
     expect(await fileExists(join(harness.workspaceRoot, "notes.txt"))).toBe(false)
-    expect(requests).toHaveLength(2)
+    expect(requests).toHaveLength(1)
     expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
       status: "denied",
     })
-    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
   })
 
   test("duplicate approval does not execute the tool twice", async () => {

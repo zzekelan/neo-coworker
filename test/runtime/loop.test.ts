@@ -374,7 +374,7 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
-  test("continues after permission denial and roundtrips the tool error into the next turn", async () => {
+  test("cancels the run after permission denial and preserves the tool error", async () => {
     const harness = await createHarness("permission-denied", false)
     const started = startPromptRun({
       repository: harness.repository,
@@ -428,33 +428,7 @@ describe("agent loop", () => {
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
     const permissionRequests = harness.permissionRepository.requests.listByRun(started.run.id)
 
-    expect(requests).toHaveLength(2)
-    expect(requests[1]?.messages.slice(-2)).toEqual([
-      {
-        role: "assistant",
-        parts: [
-          { type: "text", text: "Trying to write notes.txt." },
-          {
-            type: "tool_call",
-            callId: "call_write",
-            toolName: "write",
-            inputText: '{"path":"notes.txt","content":"hello"}',
-          },
-        ],
-      },
-      {
-        role: "tool",
-        parts: [
-          {
-            type: "tool_result",
-            callId: "call_write",
-            toolName: "write",
-            output: "Error: Tool write failed: Permission denied",
-            isError: true,
-          },
-        ],
-      },
-    ])
+    expect(requests).toHaveLength(1)
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "error"])
     expect(activeRunMessages[1]?.parts[2]).toMatchObject({
       kind: "error",
@@ -465,9 +439,6 @@ describe("agent loop", () => {
         toolName: "write",
       },
     })
-    expect(activeRunMessages[2]?.parts).toMatchObject([
-      { kind: "text", text: "Permission denial handled." },
-    ])
     expect(permissionRequests).toMatchObject([
       {
         toolName: "write",
@@ -475,11 +446,62 @@ describe("agent loop", () => {
       },
     ])
     expect(events.map((event) => event.type)).toContain("permission.requested")
+    expect(events.map((event) => event.type)).toContain("run.cancelled")
     expect(events.map((event) => event.type)).not.toContain("tool.call.completed")
-    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
   })
 
-  test("persists provider failures and marks the run failed", async () => {
+  test("retries transient provider failures before completing the run", async () => {
+    const harness = await createHarness("provider-retry", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_provider_retry",
+      messageId: "message_provider_retry_user",
+      prompt: "Retry the provider request",
+    })
+    let attempts = 0
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          attempts += 1
+
+          if (attempts < 3) {
+            throw new Error("provider exploded")
+          }
+
+          yield { type: "text.delta", text: "Recovered after retry." }
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(attempts).toBe(3)
+    expect(activeRunMessages[1]?.parts).toMatchObject([
+      { kind: "text", text: "Recovered after retry." },
+    ])
+    expect(events.at(-1)).toMatchObject({
+      type: "run.completed",
+      runId: started.run.id,
+    })
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      status: "completed",
+      errorText: null,
+    })
+  })
+
+  test("persists provider failures after exhausting retries and marks the run failed", async () => {
     const harness = await createHarness("provider-failure", false)
     const started = startPromptRun({
       repository: harness.repository,
@@ -489,9 +511,60 @@ describe("agent loop", () => {
       messageId: "message_provider_failure_user",
       prompt: "Trigger a provider error",
     })
+    let attempts = 0
     const runtime = createRuntime({
       provider: {
         async *streamTurn() {
+          attempts += 1
+          throw new Error("provider exploded")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(attempts).toBe(3)
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["error"])
+    expect(activeRunMessages[1]?.parts[0]).toMatchObject({
+      kind: "error",
+      text: "provider exploded",
+      data: { source: "provider" },
+    })
+    expect(events.at(-1)).toMatchObject({
+      type: "run.failed",
+      runId: started.run.id,
+      error: "provider exploded",
+    })
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      status: "failed",
+      errorText: "provider exploded",
+    })
+  })
+
+  test("does not retry provider failures after partial output is already persisted", async () => {
+    const harness = await createHarness("provider-partial-failure", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_provider_partial_failure",
+      messageId: "message_provider_partial_failure_user",
+      prompt: "Trigger a provider error after partial output",
+    })
+    let attempts = 0
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          attempts += 1
           yield { type: "text.delta", text: "Starting." }
           throw new Error("provider exploded")
         },
@@ -509,7 +582,12 @@ describe("agent loop", () => {
     const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
 
+    expect(attempts).toBe(1)
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "error"])
+    expect(activeRunMessages[1]?.parts[0]).toMatchObject({
+      kind: "text",
+      text: "Starting.",
+    })
     expect(activeRunMessages[1]?.parts[1]).toMatchObject({
       kind: "error",
       text: "provider exploded",
@@ -519,10 +597,6 @@ describe("agent loop", () => {
       type: "run.failed",
       runId: started.run.id,
       error: "provider exploded",
-    })
-    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
-      status: "failed",
-      errorText: "provider exploded",
     })
   })
 
@@ -582,6 +656,56 @@ describe("agent loop", () => {
 
     expect(observedTypes.at(-1)).toBe("run.cancelled")
     expect(activeRunMessages[1]?.parts).toMatchObject([{ kind: "text", text: "Partial output." }])
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
+  })
+
+  test("cancellation does not wait for a provider that ignores abort", async () => {
+    const harness = await createHarness("cancelled-stalled-provider", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_cancelled_stalled_provider",
+      messageId: "message_cancelled_stalled_provider_user",
+      prompt: "Start and then cancel the stalled provider",
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          yield { type: "text.delta", text: "Still working." }
+          await new Promise<void>(() => {})
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const observedTypes: string[] = []
+
+    while (true) {
+      const next = await Promise.race([
+        iterator.next(),
+        Bun.sleep(500).then(() => {
+          throw new Error("Timed out waiting for runtime events")
+        }),
+      ])
+      if (next.done) {
+        break
+      }
+
+      observedTypes.push(next.value.type)
+      if (next.value.type === "message.delta") {
+        handle.cancel()
+      }
+    }
+
+    expect(observedTypes.at(-1)).toBe("run.cancelled")
     expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
   })
 

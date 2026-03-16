@@ -44,6 +44,14 @@ export async function runOrchestrationLoop(input: OrchestrationLoopInput) {
         return
       }
 
+      if (outcome.status === "cancelled") {
+        input.stepService.cancelRun({
+          runId: input.runId,
+          emit: input.emit,
+        })
+        return
+      }
+
       input.stepService.completeRun({
         runId: input.runId,
         emit: input.emit,

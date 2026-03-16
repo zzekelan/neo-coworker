@@ -6,6 +6,7 @@ import {
   type RequestToolPermission,
   type ToolDefinition,
 } from "../service"
+import { createToolPermissionDeniedError } from "./errors"
 
 const EditArgsSchema = z.object({
   path: z.string().trim().min(1, "Path must not be empty"),
@@ -38,7 +39,7 @@ export function createEditTool(input: { requestPermission: RequestToolPermission
       })
 
       if (decision.decision !== "allow") {
-        throw new Error("Permission denied")
+        throw createToolPermissionDeniedError()
       }
 
       throwIfToolAborted(value.signal)

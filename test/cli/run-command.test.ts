@@ -164,6 +164,152 @@ describe("run command", () => {
     expect(countOccurrences(output.join(""), "run.started")).toBe(1)
   })
 
+  test("cancels the run after a denied permission reply", async () => {
+    const harness = await createHarness(
+      "cli-run-permission-denied",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello from cli"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "This turn should not run." }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          write: "ask",
+        },
+      },
+    )
+    const output: string[] = []
+
+    await runCli({
+      argv: ["run", "Write notes.txt"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["n"]),
+    })
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const run = harness.repository.runs.listBySession(sessionId)[0]!
+    const permissionRequests = harness.permissionRepository.requests.listByRun(run.id)
+
+    expect(permissionRequests).toMatchObject([
+      {
+        runId: run.id,
+        status: "denied",
+        toolName: "write",
+      },
+    ])
+    expect(run.status).toBe("cancelled")
+    expect(output.join("")).toContain("permission.requested write write notes.txt")
+    expect(output.join("")).toContain("error Tool write failed: Permission denied")
+    expect(output.join("")).toContain(`run.cancelled ${run.id}`)
+    expect(output.join("")).not.toContain("This turn should not run.")
+  })
+
+  test("retries a transient provider timeout after permission approval and completes", async () => {
+    let attempts = 0
+    const harness = await createHarness("cli-run-provider-retry", {
+      async *streamTurn() {
+        attempts += 1
+
+        if (attempts === 1) {
+          yield {
+            type: "tool.call",
+            callId: "call_shell",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          return
+        }
+
+        if (attempts < 4) {
+          throw new Error("request timed out")
+        }
+
+        yield { type: "text.delta", text: "Recovered after retry." }
+      },
+    }, {
+      permissionPolicy: {
+        shell: "ask",
+      },
+    })
+    const output: string[] = []
+
+    await runCli({
+      argv: ["run", "Print the current directory"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["y"]),
+    })
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const run = harness.repository.runs.listBySession(sessionId)[0]!
+
+    expect(attempts).toBe(4)
+    expect(run.status).toBe("completed")
+    expect(output.join("")).toContain("tool.call.completed shell:")
+    expect(output.join("")).toContain("Recovered after retry.")
+    expect(output.join("")).toContain(`run.completed ${run.id}`)
+  })
+
+  test("fails promptly after exhausting provider retries after permission approval", async () => {
+    let attempts = 0
+    const harness = await createHarness("cli-run-provider-timeout", {
+      async *streamTurn() {
+        attempts += 1
+
+        if (attempts === 1) {
+          yield {
+            type: "tool.call",
+            callId: "call_shell",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          return
+        }
+
+        throw new Error("request timed out")
+      },
+    }, {
+      permissionPolicy: {
+        shell: "ask",
+      },
+    })
+    const output: string[] = []
+
+    const result = await Promise.race([
+      runCli({
+        argv: ["run", "Print the current directory"],
+        cwd: harness.workspaceRoot,
+        workspaceRoot: harness.workspaceRoot,
+        client: harness.client,
+        io: createIo(output, ["y"]),
+      })
+        .then(() => "completed")
+        .catch((error) => (error instanceof Error ? error.message : String(error))),
+      Bun.sleep(500).then(() => "timed_out"),
+    ])
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const run = harness.repository.runs.listBySession(sessionId)[0]!
+
+    expect(attempts).toBe(4)
+    expect(result).toBe("request timed out")
+    expect(run.status).toBe("failed")
+    expect(run.errorText).toBe("request timed out")
+    expect(output.join("")).toContain("tool.call.completed shell:")
+    expect(output.join("")).toContain("run.failed request timed out")
+  })
+
   test("cancels and exits while a permission prompt is still waiting for input", async () => {
     const harness = await createHarness(
       "cli-run-permission-cancel",
@@ -267,6 +413,55 @@ describe("run command", () => {
     const sessionId = harness.repository.sessions.list()[0]!.id
     const run = harness.repository.runs.listBySession(sessionId)[0]!
 
+    expect(run.status).toBe("cancelled")
+    expect(output.join("")).toContain("Still working...")
+    expect(output.join("")).toContain(`run.cancelled ${run.id}`)
+  })
+
+  test("cancels the active run even when the provider ignores abort", async () => {
+    const harness = await createHarness("cli-run-stalled-provider", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "Still working..." }
+        await new Promise<void>(() => {})
+      },
+    ]))
+    const output: string[] = []
+    let sigintHandler: (() => void) | undefined
+    let releaseStarted!: () => void
+    const runStarted = new Promise<void>((resolve) => {
+      releaseStarted = resolve
+    })
+
+    const runPromise = runCli({
+      argv: ["run", "Keep going"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, [], {
+        onWrite(text) {
+          if (text.includes("Still working...")) {
+            releaseStarted()
+          }
+        },
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+      }),
+    })
+
+    await runStarted
+    expect(sigintHandler).toBeDefined()
+    sigintHandler?.()
+
+    const result = await Promise.race([
+      runPromise.then(() => "completed"),
+      Bun.sleep(500).then(() => "timed_out"),
+    ])
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const run = harness.repository.runs.listBySession(sessionId)[0]!
+
+    expect(result).toBe("completed")
     expect(run.status).toBe("cancelled")
     expect(output.join("")).toContain("Still working...")
     expect(output.join("")).toContain(`run.cancelled ${run.id}`)
