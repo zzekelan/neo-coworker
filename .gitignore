@@ -1,4 +1,8 @@
-docs/
+docs/plans
+docs/task_contract
+docs/project-rules
+.agents/
+AGENTS.md
 .worktrees/
 node_modules/
 .env
