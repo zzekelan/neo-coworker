@@ -1,6 +1,5 @@
 import type OpenAI from "openai"
 import type { OrchestrationModelPort } from "../../orchestration/ports/model"
-import { projectModelTurn } from "../service/projection"
 import { createOpenAICompatibleProvider } from "../runtime/openai-compatible"
 import { createOpenAIProvider } from "../runtime/openai"
 import type { ModelRuntimeApi } from "../runtime/api"
@@ -11,7 +10,7 @@ export function createModelProvider(input: { runtime: ModelRuntimeApi }): ModelP
   return {
     streamTurn(request) {
       return input.runtime.streamTurn(
-        projectModelTurn({
+        input.runtime.projectTurn({
           systemPrompt: request.systemPrompt,
           activeSkillInstructions: request.activeSkillInstructions,
           tools: request.tools,
