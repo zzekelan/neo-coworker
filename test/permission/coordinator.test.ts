@@ -138,6 +138,48 @@ describe("permission coordinator", () => {
       }),
     ).toThrow("Unknown permission request")
   })
+
+  test("cleans up a pending request when publishing it throws", async () => {
+    const unhandledRejections: string[] = []
+    const handleUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason instanceof Error ? reason.message : String(reason))
+    }
+    const permissions = createPermissionCoordinator(
+      {
+        write: "ask",
+      },
+      {
+        createRequestId: createMonotonicRequestIdGenerator(),
+        onRequest() {
+          throw new Error("permission storage unavailable")
+        },
+      },
+    )
+
+    process.on("unhandledRejection", handleUnhandledRejection)
+
+    try {
+      await expect(
+        permissions.request({
+          toolName: "write",
+          reason: "write notes.txt",
+        }),
+      ).rejects.toThrow("permission storage unavailable")
+
+      permissions.cancelAll()
+      await Bun.sleep(0)
+
+      expect(() =>
+        permissions.resolve({
+          requestId: "permission_1",
+          decision: "allow",
+        }),
+      ).toThrow("Unknown permission request")
+      expect(unhandledRejections).toEqual([])
+    } finally {
+      process.off("unhandledRejection", handleUnhandledRejection)
+    }
+  })
 })
 
 function createMonotonicRequestIdGenerator() {

@@ -62,7 +62,12 @@ export function createPermissionCoordinator(
         })
       })
 
-      options.onRequest?.(pendingRequest)
+      try {
+        options.onRequest?.(pendingRequest)
+      } catch (error) {
+        pending.delete(requestId)
+        throw error
+      }
 
       return await response
     },
