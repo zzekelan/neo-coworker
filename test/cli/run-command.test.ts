@@ -374,6 +374,108 @@ describe("run command", () => {
     expect(output.join("")).toContain(`run.cancelled ${run.id}`)
   })
 
+  test("retries the same session after permission-time cancellation without replaying the stale tool call", async () => {
+    let secondRunSawCancelledToolCall = false
+    const harness = await createHarness(
+      "cli-run-permission-cancel-retry",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write_first",
+            name: "write",
+            inputText: '{"path":"hello.ts","content":"console.log(\\"hello, world\\");"}',
+          }
+        },
+        async function* (request) {
+          secondRunSawCancelledToolCall = request.messages.some(
+            (message) =>
+              message.role === "assistant" &&
+              message.parts.some(
+                (part) => part.type === "tool_call" && part.callId === "call_write_first",
+              ),
+          )
+
+          yield {
+            type: "tool.call",
+            callId: "call_write_second",
+            name: "write",
+            inputText: '{"path":"hello.ts","content":"console.log(\\"hello, world\\");"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Write finished." }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          write: "ask",
+        },
+      },
+    )
+    const cancelledOutput: string[] = []
+    let sigintHandler: (() => void) | undefined
+    let releasePermissionRequested!: () => void
+    const permissionRequested = new Promise<void>((resolve) => {
+      releasePermissionRequested = resolve
+    })
+
+    const cancelledRun = runCli({
+      argv: ["run", "Write hello.ts"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(cancelledOutput, [], {
+        onWrite(text) {
+          if (text.includes("permission.requested")) {
+            releasePermissionRequested()
+          }
+        },
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        prompt() {
+          return new Promise<string>(() => {})
+        },
+      }),
+    })
+
+    await permissionRequested
+    sigintHandler?.()
+    await cancelledRun
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const retryOutput: string[] = []
+
+    await runCli({
+      argv: ["run", "--session", sessionId, "Write hello.ts"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(retryOutput, ["y"]),
+    })
+
+    const runs = harness.repository.runs.listBySession(sessionId)
+
+    expect(secondRunSawCancelledToolCall).toBe(false)
+    expect(runs.map((run) => run.status)).toEqual(["cancelled", "completed"])
+    expect(
+      harness.permissionRepository.requests.listByRun(runs[0]!.id).map((request) => request.status),
+    ).toEqual(["cancelled"])
+    expect(
+      harness.permissionRepository.requests.listByRun(runs[1]!.id).map((request) => request.status),
+    ).toEqual(["approved"])
+    expect(await readFile(join(harness.workspaceRoot, "hello.ts"), "utf8")).toBe(
+      'console.log("hello, world");',
+    )
+    expect(cancelledOutput.join("")).toContain("permission.requested write write hello.ts")
+    expect(cancelledOutput.join("")).toContain(`run.cancelled ${runs[0]!.id}`)
+    expect(retryOutput.join("")).toContain("permission.requested write write hello.ts")
+    expect(retryOutput.join("")).toContain("tool.call.completed write: Wrote hello.ts")
+    expect(retryOutput.join("")).toContain("Write finished.")
+    expect(retryOutput.join("")).toContain(`run.completed ${runs[1]!.id}`)
+  })
+
   test("cancels the active run through the server and exits after cancellation", async () => {
     const harness = await createHarness("cli-run-cancel", createTurnProvider([
       async function* (request) {

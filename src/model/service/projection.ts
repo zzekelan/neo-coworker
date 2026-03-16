@@ -32,12 +32,13 @@ export function projectModelTurn(
 
 export function buildTranscriptMessages(transcript: ModelTranscriptMessage[]): ModelMessage[] {
   const messages: ModelMessage[] = []
+  const resolvedToolCallIds = collectResolvedToolCallIds(transcript)
 
   for (const message of transcript) {
     const role = message.role === "synthetic" ? "assistant" : message.role
 
     if (role === "assistant") {
-      messages.push(...buildAssistantMessages(message.parts))
+      messages.push(...buildAssistantMessages(message, resolvedToolCallIds))
       continue
     }
 
@@ -62,11 +63,14 @@ export function buildTranscriptMessages(transcript: ModelTranscriptMessage[]): M
   return messages
 }
 
-function buildAssistantMessages(parts: ModelTranscriptPart[]): ModelMessage[] {
+function buildAssistantMessages(
+  message: ModelTranscriptMessage,
+  resolvedToolCallIds: ReadonlySet<string>,
+): ModelMessage[] {
   const assistantParts: ModelMessagePart[] = []
   const toolMessages: ModelMessage[] = []
 
-  for (const part of parts) {
+  for (const part of message.parts) {
     if (isTextPart(part.kind)) {
       const rendered = renderTextPart(part)
       if (rendered) {
@@ -76,7 +80,10 @@ function buildAssistantMessages(parts: ModelTranscriptPart[]): ModelMessage[] {
     }
 
     if (part.kind === "tool_call") {
-      assistantParts.push(renderToolCallPart(part))
+      const rendered = renderToolCallPart(part)
+      if (resolvedToolCallIds.has(createResolvedToolCallKey(message, rendered.callId))) {
+        assistantParts.push(rendered)
+      }
       continue
     }
 
@@ -113,6 +120,34 @@ function buildAssistantMessages(parts: ModelTranscriptPart[]): ModelMessage[] {
 
   messages.push(...toolMessages)
   return messages
+}
+
+function collectResolvedToolCallIds(transcript: ModelTranscriptMessage[]) {
+  const resolvedToolCallIds = new Set<string>()
+
+  for (const message of transcript) {
+    for (const part of message.parts) {
+      if (part.kind === "tool_result") {
+        const rendered = renderToolResultPart(part)
+        resolvedToolCallIds.add(createResolvedToolCallKey(message, rendered.callId))
+        continue
+      }
+
+      const rendered = renderToolErrorPart(part)
+      if (rendered) {
+        resolvedToolCallIds.add(createResolvedToolCallKey(message, rendered.callId))
+      }
+    }
+  }
+
+  return resolvedToolCallIds
+}
+
+function createResolvedToolCallKey(message: ModelTranscriptMessage, callId: string) {
+  const runId =
+    "runId" in message && typeof message.runId === "string" ? message.runId : null
+
+  return runId ? `${runId}:${callId}` : callId
 }
 
 function isTextPart(kind: ModelTranscriptPart["kind"]) {

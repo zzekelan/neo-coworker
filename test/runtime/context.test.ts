@@ -114,4 +114,62 @@ describe("context builder", () => {
       },
     ])
   })
+
+  test("omits unresolved tool calls from replayed transcript messages", () => {
+    const messages = buildTranscriptMessages([
+      {
+        id: "message_1",
+        sessionId: "session_1",
+        runId: "run_1",
+        role: "assistant",
+        sequence: 1,
+        createdAt: 1,
+        parts: [
+          {
+            id: "part_1",
+            sessionId: "session_1",
+            runId: "run_1",
+            messageId: "message_1",
+            kind: "tool_call",
+            sequence: 0,
+            text: null,
+            data: {
+              callId: "call_pending",
+              toolName: "write",
+              inputText: '{"path":"hello.ts","content":"console.log(\\"hello\\")"}',
+            },
+            createdAt: 2,
+          },
+        ],
+      },
+      {
+        id: "message_2",
+        sessionId: "session_1",
+        runId: "run_2",
+        role: "user",
+        sequence: 0,
+        createdAt: 3,
+        parts: [
+          {
+            id: "part_2",
+            sessionId: "session_1",
+            runId: "run_2",
+            messageId: "message_2",
+            kind: "text",
+            sequence: 0,
+            text: "Try again",
+            data: null,
+            createdAt: 4,
+          },
+        ],
+      },
+    ])
+
+    expect(messages).toEqual([
+      {
+        role: "user",
+        parts: [{ type: "text", text: "Try again" }],
+      },
+    ])
+  })
 })
