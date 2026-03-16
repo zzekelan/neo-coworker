@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises"
-import { resolve, sep } from "node:path"
+import { relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import { throwIfToolAborted, type ToolDefinition } from "../service"
 
@@ -13,6 +13,11 @@ async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string)
 
   if (file !== root && !file.startsWith(`${root}${sep}`)) {
     throw new Error(`Path must stay inside workspace: ${relativePath}`)
+  }
+
+  const workspacePath = relative(root, file)
+  if (workspacePath === ".agents" || workspacePath.startsWith(`.agents${sep}`)) {
+    throw new Error(`Path is reserved for agent runtime data: ${relativePath}`)
   }
 
   return file

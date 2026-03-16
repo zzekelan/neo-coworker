@@ -58,6 +58,22 @@ describe("read-only tools", () => {
     ).rejects.toThrow("Path must stay inside workspace")
   })
 
+  test("read rejects agent runtime storage files", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "read-search-workspace-"))
+
+    await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
+    await writeFile(join(workspaceRoot, ".agents", "server.sqlite"), "secret\n")
+
+    await expect(
+      registry.execute({
+        toolName: "read",
+        args: { path: ".agents/server.sqlite" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+  })
+
   test("search rejects empty or whitespace-only queries", async () => {
     const registry = createRegistry()
 
@@ -70,16 +86,18 @@ describe("read-only tools", () => {
     ).rejects.toThrow("Query must not be empty")
   })
 
-  test("search skips heavy directories", async () => {
+  test("search skips heavy directories and agent runtime storage", async () => {
     const registry = createRegistry()
     const workspaceRoot = await mkdtemp(join(tmpdir(), "read-search-workspace-"))
 
     await mkdir(join(workspaceRoot, "src"), { recursive: true })
+    await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
     await mkdir(join(workspaceRoot, "node_modules"), { recursive: true })
     await mkdir(join(workspaceRoot, ".git"), { recursive: true })
     await mkdir(join(workspaceRoot, ".worktrees"), { recursive: true })
 
     await writeFile(join(workspaceRoot, "src", "visible.ts"), 'export const value = "skipMe"\n')
+    await writeFile(join(workspaceRoot, ".agents", "server.sqlite"), "skipMe=true\n")
     await writeFile(join(workspaceRoot, "node_modules", "hidden.ts"), 'export const value = "skipMe"\n')
     await writeFile(join(workspaceRoot, ".git", "config"), "skipMe=true\n")
     await writeFile(join(workspaceRoot, ".worktrees", "hidden.ts"), 'export const value = "skipMe"\n')
@@ -91,6 +109,7 @@ describe("read-only tools", () => {
     })
 
     expect(result.output).toContain("src/visible.ts")
+    expect(result.output).not.toContain(".agents/server.sqlite")
     expect(result.output).not.toContain("node_modules/hidden.ts")
     expect(result.output).not.toContain(".git/config")
     expect(result.output).not.toContain(".worktrees/hidden.ts")
