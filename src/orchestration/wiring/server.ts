@@ -42,6 +42,7 @@ const replyPermissionBodySchema = z.object({
 })
 
 type ServerInstance = ReturnType<typeof Bun.serve>
+const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 5_000
 
 export function createAgentServer(input: {
   provider: OrchestrationModelPort
@@ -53,7 +54,7 @@ export function createAgentServer(input: {
   heartbeatIntervalMs?: number
 }) {
   const now = input.now ?? Date.now
-  const heartbeatIntervalMs = input.heartbeatIntervalMs ?? 15_000
+  const heartbeatIntervalMs = input.heartbeatIntervalMs ?? DEFAULT_SSE_HEARTBEAT_INTERVAL_MS
   const app = createServerApp({
     provider: input.provider,
     repository: input.repository,
@@ -66,17 +67,7 @@ export function createAgentServer(input: {
   let baseUrl = ""
   let nextHeartbeatId = 0
 
-  function buildHeartbeatEvent(): ServerEvent {
-    nextHeartbeatId += 1
-
-    return {
-      id: `heartbeat_${nextHeartbeatId}`,
-      type: "heartbeat",
-      time: now(),
-    }
-  }
-
-  async function handleRequest(request: Request) {
+  async function handleRequest(request: Request, activeServer?: ServerInstance) {
     const url = new URL(request.url)
     const path = trimSlashes(url.pathname)
 
@@ -90,6 +81,7 @@ export function createAgentServer(input: {
       }
 
       if (request.method === "GET" && path === "events") {
+        activeServer?.timeout(request, 0)
         return createSseResponse(request)
       }
 
@@ -185,6 +177,16 @@ export function createAgentServer(input: {
     }
   }
 
+  function buildHeartbeatEvent(): ServerEvent {
+    nextHeartbeatId += 1
+
+    return {
+      id: `heartbeat_${nextHeartbeatId}`,
+      type: "heartbeat",
+      time: now(),
+    }
+  }
+
   function createSseResponse(request: Request) {
     const encoder = new TextEncoder()
     const subscription = app.subscribe()
@@ -272,7 +274,7 @@ export function createAgentServer(input: {
       server = Bun.serve({
         hostname,
         port,
-        fetch: handleRequest,
+        fetch: (request, activeServer) => handleRequest(request, activeServer),
       })
       baseUrl = `http://${hostname}:${server.port}`
     },

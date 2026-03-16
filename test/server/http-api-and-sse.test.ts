@@ -182,6 +182,35 @@ describe("server HTTP API and SSE", () => {
     await subscriberB.close()
   })
 
+  test("disables Bun idle timeout for SSE subscriptions", async () => {
+    const harness = await createHarness("server-sse-timeout", createTurnProvider([]))
+    const request = new Request("http://server.test/events", {
+      headers: {
+        accept: "text/event-stream",
+      },
+    })
+    const timeoutCalls: Array<{ request: Request; seconds: number }> = []
+
+    const response = await harness.server.fetch(request, {
+      timeout(receivedRequest, seconds) {
+        timeoutCalls.push({
+          request: receivedRequest,
+          seconds,
+        })
+      },
+    } as unknown as Parameters<typeof harness.server.fetch>[1])
+
+    expect(response.status).toBe(200)
+    expect(timeoutCalls).toEqual([
+      {
+        request,
+        seconds: 0,
+      },
+    ])
+
+    await response.body?.cancel()
+  })
+
   test("permission replies over HTTP resume the paused run and complete the work", async () => {
     const harness = await createHarness("server-permission", createTurnProvider([
       async function* () {
