@@ -1,17 +1,17 @@
-import type { OrchestrationModelPort } from "../orchestration/ports/model"
+import type { OrchestrationModelPort } from "../ports/model"
 import {
   assertRunStatusTransition,
   createConversationRunService as createSessionRunService,
-} from "../conversation/service"
+} from "../../conversation/service"
 import type {
   ConversationRepository as StorageRepository,
   RunTrigger,
-} from "../conversation/repo"
-import type { PermissionRepository } from "../permission/repo"
-import type { PermissionMode, PermissionResponse } from "../permission/service"
-import { createRuntime } from "../orchestration/wiring/provider"
-import { buildSessionSnapshot, createServerEventBus } from "./events"
-import { createObservedRepository } from "./repository-events"
+} from "../../conversation/repo"
+import type { PermissionRepository } from "../../permission/repo"
+import type { PermissionMode, PermissionResponse } from "../../permission/service"
+import { createRuntime } from "./runtime"
+import { buildSessionSnapshot, createServerEventBus } from "./server-events"
+import { createObservedRepository } from "./server-repository-events"
 
 export class ServerShuttingDownError extends Error {
   constructor() {

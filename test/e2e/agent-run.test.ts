@@ -2,12 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { cp, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { runCli } from "../../src/cli/run-command"
 import { createModelRuntimeApi } from "../../src/model/runtime/api"
 import { createModelProvider } from "../../src/model/wiring/provider"
+import {
+  getDefaultCliStoragePath,
+  runCli,
+} from "../../src/orchestration/wiring/cli"
+import { createAgentServer } from "../../src/orchestration/wiring/server"
 import { createPermissionRepository } from "../../src/permission/repo"
-import { getDefaultCliStoragePath } from "../../src/orchestration/wiring/provider"
-import { createAgentServer } from "../../src/server"
 import {
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,
@@ -165,7 +167,7 @@ describe("agent run e2e", () => {
       cmd: [
         "bun",
         "run",
-        join(globalThis.process.cwd(), "src/main.ts"),
+        join(globalThis.process.cwd(), "src/wiring/main.ts"),
         "run",
         "Read README.md and summarize it",
       ],

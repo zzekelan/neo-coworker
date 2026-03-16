@@ -11,7 +11,7 @@ import {
 import { createModelProvider } from "../../src/model/wiring/provider"
 import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
 import { createPermissionRepository } from "../../src/permission/repo"
-import { createAgentServer } from "../../src/server"
+import { createAgentServer } from "../../src/orchestration/wiring/server"
 import {
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,

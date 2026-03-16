@@ -1,9 +1,13 @@
 import type {
   ConversationRepository as StorageRepository,
   StoredRun,
-} from "../conversation/repo"
-import type { PermissionRepository } from "../permission/repo"
-import { buildSessionSnapshot, type ServerEventPayload, type createServerEventBus } from "./events"
+} from "../../conversation/repo"
+import type { PermissionRepository } from "../../permission/repo"
+import {
+  buildSessionSnapshot,
+  type ServerEventPayload,
+  type createServerEventBus,
+} from "./server-events"
 
 type ServerEventBus = ReturnType<typeof createServerEventBus>
 

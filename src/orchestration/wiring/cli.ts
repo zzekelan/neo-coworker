@@ -1,15 +1,19 @@
-import { isTerminalRunStatus } from "../conversation/service"
-import type { OrchestrationModelPort } from "../orchestration/ports/model"
-import type { PermissionDecision } from "../permission/service"
-import type { ServerEvent } from "../server/events"
-import type { CliIO } from "./io"
-import { createCliRenderState, renderServerEvent } from "./render"
+import { isTerminalRunStatus } from "../../conversation/service"
+import type { OrchestrationModelPort } from "../ports/model"
+import type { PermissionDecision } from "../../permission/service"
+import type { ServerEvent } from "./server-events"
+import type { CliIO } from "./cli-io"
+import { createCliRenderState, renderServerEvent } from "./cli-render"
 import {
   AgentServerClientError,
   createLocalCliServerClient,
   type AgentServerClient,
   type CliServerClientHandle,
-} from "./server-client"
+} from "./cli-server-client"
+
+export { createStdioCliIo } from "./cli-io"
+export { createAgentServerClient, createLocalCliServerClient } from "./cli-server-client"
+export { createCliRuntime, getDefaultCliStoragePath } from "./runtime"
 
 export type RunCommand = {
   command: "run"

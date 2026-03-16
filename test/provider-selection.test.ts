@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type OpenAI from "openai"
-import { buildCli } from "../src/main"
+import { buildCli } from "../src/wiring/main"
 
 describe("provider selection", () => {
   test("buildCli wires LLM_PROVIDER=openai through the responses adapter", async () => {

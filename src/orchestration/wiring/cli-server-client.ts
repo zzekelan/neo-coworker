@@ -1,13 +1,13 @@
-import { createEventQueue } from "../orchestration/runtime/stream"
-import { getDefaultCliStoragePath } from "../orchestration/wiring/provider"
+import { createEventQueue } from "../runtime/stream"
+import { getDefaultCliStoragePath } from "./runtime"
 import {
   createPermissionRepository,
   type PermissionRepository,
   type StoredPermissionRequest,
-} from "../permission/repo"
-import type { OrchestrationModelPort } from "../orchestration/ports/model"
-import { createAgentServer } from "../server"
-import type { ServerEvent } from "../server/events"
+} from "../../permission/repo"
+import type { OrchestrationModelPort } from "../ports/model"
+import { createAgentServer } from "./server"
+import type { ServerEvent } from "./server-events"
 import {
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,
@@ -15,7 +15,7 @@ import {
   type StoredMessage,
   type StoredRun,
   type StoredSession,
-} from "../conversation/repo"
+} from "../../conversation/repo"
 
 type SendRequest = (request: Request) => Promise<Response> | Response
 

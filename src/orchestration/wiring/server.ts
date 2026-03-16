@@ -4,24 +4,26 @@ import {
   InvalidRunStatusTransitionError,
   SessionBusyError,
   StartRunIdentityConflictError,
-} from "../conversation/service"
-import { PermissionNotFoundError, type PermissionRepository } from "../permission/repo"
+} from "../../conversation/service"
+import { PermissionNotFoundError, type PermissionRepository } from "../../permission/repo"
 import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
   type PermissionMode,
-} from "../permission/service"
-import type { OrchestrationModelPort } from "../orchestration/ports/model"
-import { PermissionRequestNotAwaitingActiveRuntimeError } from "../orchestration/wiring/provider"
+} from "../../permission/service"
+import type { OrchestrationModelPort } from "../ports/model"
+import { PermissionRequestNotAwaitingActiveRuntimeError } from "./runtime"
 import {
   RUN_TRIGGERS,
   ConversationConflictError as StorageConflictError,
   ConversationNotFoundError as StorageNotFoundError,
   type ConversationRepository as StorageRepository,
-} from "../conversation/repo"
-import type { ServerEvent } from "./events"
-import { serializeSseEvent } from "./events"
-import { createServerApp, ServerShuttingDownError } from "./app"
+} from "../../conversation/repo"
+import type { ServerEvent } from "./server-events"
+import { serializeSseEvent } from "./server-events"
+import { createServerApp, ServerShuttingDownError } from "./server-app"
+
+export { createRuntime, PermissionRequestNotAwaitingActiveRuntimeError } from "./runtime"
 
 const createSessionBodySchema = z.object({
   directory: z.string().min(1),

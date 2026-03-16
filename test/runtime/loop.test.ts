@@ -19,7 +19,7 @@ import {
   type ProviderTurnRequest,
 } from "../../src/model/runtime/api"
 import { createModelProvider } from "../../src/model/wiring/provider"
-import { createRuntime } from "../../src/orchestration/wiring/provider"
+import { createRuntime } from "../../src/orchestration/wiring/server"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
