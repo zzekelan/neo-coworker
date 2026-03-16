@@ -9,7 +9,7 @@ import type {
 } from "../conversation/repo"
 import type { PermissionRepository } from "../permission/repo"
 import type { PermissionMode, PermissionResponse } from "../permission/service"
-import { createRuntime } from "../runtime/runtime"
+import { createRuntime } from "../orchestration/wiring/provider"
 import { buildSessionSnapshot, createServerEventBus } from "./events"
 import { createObservedRepository } from "./repository-events"
 

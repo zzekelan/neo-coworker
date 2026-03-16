@@ -1,4 +1,4 @@
-import { createEventQueue } from "../runtime/event-queue"
+import { createEventQueue } from "../orchestration/runtime/stream"
 import type { StoredPermissionRequest } from "../permission/repo"
 import type {
   ConversationRepository as StorageRepository,

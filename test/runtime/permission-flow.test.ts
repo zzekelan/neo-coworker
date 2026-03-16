@@ -10,13 +10,13 @@ import {
 } from "../../src/model/runtime/api"
 import { createModelProvider } from "../../src/model/wiring/provider"
 import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
+import { createRuntime } from "../../src/orchestration/wiring/provider"
 import {
   PermissionNotFoundError,
   createPermissionRepository,
   type PermissionRepository,
   type PermissionResponse,
 } from "../../src/permission/repo"
-import { createRuntime } from "../../src/runtime/runtime"
 import {
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,

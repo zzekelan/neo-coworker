@@ -1,4 +1,5 @@
 import type { ZodTypeAny } from "zod"
+import type { OrchestrationPermissionResponse } from "./permission"
 
 export type OrchestrationTool = {
   name: string
@@ -22,4 +23,17 @@ export type OrchestrationToolPort = {
   execute(
     input: OrchestrationToolExecutionInput,
   ): Promise<OrchestrationToolExecutionResult> | OrchestrationToolExecutionResult
+}
+
+export type RequestOrchestrationToolPermission = (input: {
+  toolName: string
+  reason: string
+}) =>
+  | Promise<OrchestrationPermissionResponse>
+  | OrchestrationPermissionResponse
+
+export type OrchestrationToolPortFactory = {
+  create(input: {
+    requestPermission: RequestOrchestrationToolPermission
+  }): OrchestrationToolPort
 }

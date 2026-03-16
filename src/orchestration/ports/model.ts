@@ -1,15 +1,5 @@
+import type { OrchestrationTranscriptMessage } from "./conversation"
 import type { OrchestrationTool } from "./tool"
-
-export type OrchestrationTranscriptPart = {
-  kind: string
-  text: string | null
-  data?: unknown
-}
-
-export type OrchestrationTranscriptMessage = {
-  role: "user" | "assistant" | "system" | "synthetic"
-  parts: OrchestrationTranscriptPart[]
-}
 
 export type OrchestrationModelTurnRequest = {
   systemPrompt: string

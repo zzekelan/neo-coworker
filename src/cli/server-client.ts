@@ -1,5 +1,5 @@
-import { createEventQueue } from "../runtime/event-queue"
-import { getDefaultCliStoragePath } from "../runtime/runtime"
+import { createEventQueue } from "../orchestration/runtime/stream"
+import { getDefaultCliStoragePath } from "../orchestration/wiring/provider"
 import {
   createPermissionRepository,
   type PermissionRepository,

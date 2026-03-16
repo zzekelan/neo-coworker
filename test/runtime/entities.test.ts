@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { RuntimeEvent } from "../../src/runtime/events"
-import { RunSchema } from "../../src/runtime/types"
-import { createEventQueue } from "../../src/runtime/event-queue"
+import { type RuntimeEvent, RunSchema } from "../../src/orchestration/runtime/api"
+import { createEventQueue } from "../../src/orchestration/runtime/stream"
 
 describe("runtime entities", () => {
   test("validates a run shape", () => {

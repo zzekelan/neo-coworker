@@ -12,7 +12,7 @@ import {
   type PermissionMode,
 } from "../permission/service"
 import type { OrchestrationModelPort } from "../orchestration/ports/model"
-import { PermissionRequestNotAwaitingActiveRuntimeError } from "../runtime/runtime"
+import { PermissionRequestNotAwaitingActiveRuntimeError } from "../orchestration/wiring/provider"
 import {
   RUN_TRIGGERS,
   ConversationConflictError as StorageConflictError,

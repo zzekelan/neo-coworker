@@ -6,8 +6,8 @@ import { runCli } from "../../src/cli/run-command"
 import { createModelRuntimeApi } from "../../src/model/runtime/api"
 import { createModelProvider } from "../../src/model/wiring/provider"
 import { createPermissionRepository } from "../../src/permission/repo"
+import { getDefaultCliStoragePath } from "../../src/orchestration/wiring/provider"
 import { createAgentServer } from "../../src/server"
-import { getDefaultCliStoragePath } from "../../src/runtime/runtime"
 import {
   createConversationRepository as createStorageRepository,
   openConversationDatabase as openStorageDatabase,
