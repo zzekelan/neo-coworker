@@ -1,0 +1,117 @@
+[
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli-render.ts->conversation/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli-server-client.ts->conversation/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli-server-client.ts->permission/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli.ts->conversation/service/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation service directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli.ts->permission/service/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission service directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->conversation/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->conversation/service/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation service directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->permission/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->permission/runtime/api.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still reaches into permission runtime instead of a port."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->permission/service/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission service directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->tool/wiring/provider.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still reaches into tool wiring instead of a port."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->conversation/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->conversation/service/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation service directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->permission/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->permission/service/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission service directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-events.ts->conversation/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-events.ts->permission/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-repository-events.ts->conversation/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-repository-events.ts->permission/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->conversation/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->conversation/service/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the conversation service directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->permission/repo/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission repository directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->permission/service/index.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Existing orchestration wiring still composes the permission service directly."
+  }
+]
