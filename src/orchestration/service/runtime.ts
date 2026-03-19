@@ -1,19 +1,12 @@
-import { z } from "zod"
 import type { OrchestrationModelPort } from "../ports/model"
-import type {
-  OrchestrationPermissionDecision,
-  OrchestrationPermissionMode,
-  OrchestrationPermissionPort,
-  OrchestrationPermissionResponse,
-} from "../ports/permission"
+import type { OrchestrationPermissionPort, OrchestrationPermissionResponse } from "../ports/permission"
 import type { OrchestrationSessionPort } from "../ports/session"
 import type { OrchestrationToolPort, OrchestrationToolPortFactory } from "../ports/tool"
 import {
   createInMemoryActiveRunRegistry,
-  resolvePermissionPolicy,
   type ActiveRunRegistry,
-  type PermissionPolicyInput,
-  type ResolvedPermissionPolicy,
+  type OrchestrationPermissionPolicy,
+  type RuntimeEvent,
 } from "../repo"
 import { createOrchestrationStepService } from "./step"
 
@@ -50,79 +43,22 @@ export type {
   OrchestrationToolPortFactory,
   RequestOrchestrationToolPermission,
 } from "../ports/tool"
+export { OrchestrationRunSchema, RunSchema, resolvePermissionPolicy } from "../repo"
+export type {
+  OrchestrationPermissionPolicy,
+  OrchestrationPermissionPolicyInput,
+  OrchestrationPermissionPolicyMode,
+  OrchestrationRun,
+  OrchestrationRunHandle,
+  OrchestrationRunPermissionDecision,
+  OrchestrationRunPermissionResponse,
+  OrchestrationRuntimeEvent,
+  Run,
+  RunHandle,
+  RuntimeEvent,
+} from "../repo"
 
-export const OrchestrationRunSchema = z.object({
-  id: z.string(),
-  sessionId: z.string(),
-  trigger: z.enum(["cli"]),
-  status: z.enum([
-    "queued",
-    "running",
-    "waiting_permission",
-    "completed",
-    "failed",
-    "cancelled",
-  ]),
-})
-
-export const RunSchema = OrchestrationRunSchema
-
-export type OrchestrationRun = z.infer<typeof OrchestrationRunSchema>
-export type Run = OrchestrationRun
-
-export type OrchestrationRuntimeEvent =
-  | {
-      type: "run.started"
-      runId: string
-    }
-  | {
-      type: "message.started"
-      role: "assistant"
-    }
-  | {
-      type: "message.delta"
-      text: string
-    }
-  | {
-      type: "permission.requested"
-      requestId: string
-      toolName: string
-      reason: string
-    }
-  | {
-      type: "tool.call.completed"
-      callId: string
-      name: string
-      output: string
-    }
-  | {
-      type: "run.completed"
-      runId: string
-    }
-  | {
-      type: "run.failed"
-      runId: string
-      error: string
-    }
-  | {
-      type: "run.cancelled"
-      runId: string
-    }
-
-export type RuntimeEvent = OrchestrationRuntimeEvent
-
-export type OrchestrationRunPermissionDecision = OrchestrationPermissionDecision
-export type OrchestrationRunPermissionResponse = OrchestrationPermissionResponse
-
-export type OrchestrationRunHandle = {
-  events: AsyncIterable<RuntimeEvent>
-  cancel(): void | Promise<void>
-  respondPermission(input: OrchestrationRunPermissionResponse): void | Promise<void>
-}
-
-export type RunHandle = OrchestrationRunHandle
-
-export type OrchestrationEventEmitter = (event: OrchestrationRuntimeEvent) => void
+export type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 
 export type OrchestrationRunSuspension = {
   isPending(requestId: string): boolean
@@ -134,10 +70,7 @@ export type OrchestrationRunSuspension = {
   cancel(error?: Error): void
 }
 
-export type OrchestrationPermissionPolicy = ResolvedPermissionPolicy
-export type OrchestrationPermissionPolicyInput = PermissionPolicyInput
-export type OrchestrationPermissionPolicyMode = OrchestrationPermissionMode
-export type OrchestrationResolvedPermissionPolicy = ResolvedPermissionPolicy
+export type OrchestrationResolvedPermissionPolicy = OrchestrationPermissionPolicy
 
 export type OrchestrationActiveRunRegistry = ActiveRunRegistry<
   OrchestrationRunSuspension,
@@ -150,7 +83,7 @@ export type CreateOrchestrationRuntimeApiInput = {
   permission: OrchestrationPermissionPort
   tools: OrchestrationToolPortFactory
   activeRuns: OrchestrationActiveRunRegistry
-  permissionPolicy: ResolvedPermissionPolicy
+  permissionPolicy: OrchestrationPermissionPolicy
   systemPrompt?: string
   now?: () => number
 }
@@ -176,4 +109,3 @@ export function createOrchestrationActiveRunRegistry(): OrchestrationActiveRunRe
 }
 
 export { createOrchestrationStepService } from "./step"
-export { resolvePermissionPolicy }
