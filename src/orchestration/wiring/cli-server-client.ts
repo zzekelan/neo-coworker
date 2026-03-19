@@ -1,5 +1,5 @@
+import { join } from "node:path"
 import { createEventQueue } from "../runtime/stream"
-import { getDefaultCliStoragePath } from "./runtime"
 import {
   createPermissionRepository,
   type PermissionRepository,
@@ -7,6 +7,7 @@ import {
 } from "../../permission"
 import type { OrchestrationModelPort } from "../ports/model"
 import { createAgentServer } from "./server"
+import type { ServerAppRuntime } from "./server-app"
 import type { ServerEvent } from "./server-events"
 import {
   createSessionRepository as createStorageRepository,
@@ -63,6 +64,13 @@ export type CliServerClientHandle = {
   client: AgentServerClient
   close(): Promise<void>
 }
+
+type LocalRuntimeFactory = (input: {
+  provider: OrchestrationModelPort
+  repository: StorageRepository
+  permissionRepository: PermissionRepository
+  now: () => number
+}) => ServerAppRuntime
 
 export class AgentServerClientError extends Error {
   readonly status: number
@@ -267,11 +275,17 @@ export function createAgentServerClient(input: {
 export async function createLocalCliServerClient(input: {
   provider: OrchestrationModelPort
   workspaceRoot: string
+  createRuntimeImpl: LocalRuntimeFactory
+  getStoragePath?: (workspaceRoot: string) => string
   repository?: StorageRepository
   permissionRepository?: PermissionRepository
 }) {
   const database =
-    input.repository == null ? openStorageDatabase(getDefaultCliStoragePath(input.workspaceRoot)) : null
+    input.repository == null
+      ? openStorageDatabase(
+          (input.getStoragePath ?? getDefaultLocalCliStoragePath)(input.workspaceRoot),
+        )
+      : null
   if (input.repository && !input.permissionRepository) {
     throw new Error("permissionRepository is required when repository is provided")
   }
@@ -286,7 +300,14 @@ export async function createLocalCliServerClient(input: {
       database: database!,
     })
   const server = createAgentServer({
-    provider: input.provider,
+    createRuntimeImpl(serverInput) {
+      return input.createRuntimeImpl({
+        provider: input.provider,
+        repository: serverInput.repository,
+        permissionRepository: serverInput.permissionRepository,
+        now: serverInput.now,
+      })
+    },
     repository,
     permissionRepository,
   })
@@ -303,6 +324,10 @@ export async function createLocalCliServerClient(input: {
       database?.close(false)
     },
   } satisfies CliServerClientHandle
+}
+
+function getDefaultLocalCliStoragePath(workspaceRoot: string) {
+  return join(workspaceRoot, ".agents", "agent.sqlite")
 }
 
 async function readJsonBody(response: Response) {

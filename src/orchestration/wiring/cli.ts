@@ -13,7 +13,6 @@ import {
 
 export { createStdioCliIo } from "./cli-io"
 export { createAgentServerClient, createLocalCliServerClient } from "./cli-server-client"
-export { createCliRuntime, getDefaultCliStoragePath } from "./runtime"
 
 export type RunCommand = {
   command: "run"
@@ -87,6 +86,9 @@ export type RunCliInput = {
   workspaceRoot?: string
   client?: AgentServerClient
   provider?: OrchestrationModelPort
+  createLocalCliServerClientImpl?: typeof createLocalCliServerClient
+  createLocalRuntimeImpl?: Parameters<typeof createLocalCliServerClient>[0]["createRuntimeImpl"]
+  getLocalStoragePath?: Parameters<typeof createLocalCliServerClient>[0]["getStoragePath"]
 }
 
 function getPermissionDecision(answer: string): PermissionDecision {
@@ -155,9 +157,19 @@ async function resolveClient(input: RunCliInput, workspaceRoot: string): Promise
   }
 
   if (input.provider) {
-    return createLocalCliServerClient({
+    const createLocalRuntimeImpl = input.createLocalRuntimeImpl
+    if (!createLocalRuntimeImpl) {
+      throw new Error("runCli requires createLocalRuntimeImpl when provider is supplied")
+    }
+
+    const createLocalClient =
+      input.createLocalCliServerClientImpl ?? createLocalCliServerClient
+
+    return createLocalClient({
       provider: input.provider,
       workspaceRoot,
+      createRuntimeImpl: createLocalRuntimeImpl,
+      getStoragePath: input.getLocalStoragePath,
     })
   }
 

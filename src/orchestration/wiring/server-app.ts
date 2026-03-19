@@ -1,4 +1,4 @@
-import type { OrchestrationModelPort } from "../ports/model"
+import type { OrchestrationRuntimeApi } from "../index"
 import {
   assertRunStatusTransition,
   createSessionRunService,
@@ -8,10 +8,20 @@ import type {
   RunTrigger,
 } from "../../session/repo"
 import type { PermissionRepository } from "../../permission"
-import type { PermissionMode, PermissionResponse } from "../../permission"
-import { createRuntime } from "./runtime"
+import type { PermissionResponse } from "../../permission"
 import { buildSessionSnapshot, createServerEventBus } from "./server-events"
 import { createObservedRepository } from "./server-repository-events"
+
+export type ServerAppRuntime = Pick<
+  OrchestrationRuntimeApi,
+  "run" | "cancelRun" | "respondPermission"
+>
+
+export type CreateServerAppRuntime = (input: {
+  repository: StorageRepository
+  permissionRepository: PermissionRepository
+  now: () => number
+}) => ServerAppRuntime
 
 export class ServerShuttingDownError extends Error {
   constructor() {
@@ -21,11 +31,9 @@ export class ServerShuttingDownError extends Error {
 }
 
 export function createServerApp(input: {
-  provider: OrchestrationModelPort
   repository: StorageRepository
   permissionRepository: PermissionRepository
-  permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
-  systemPrompt?: string
+  createRuntimeImpl: CreateServerAppRuntime
   now?: () => number
 }) {
   const now = input.now ?? Date.now
@@ -43,12 +51,9 @@ export function createServerApp(input: {
     repository,
     now,
   })
-  const runtime = createRuntime({
-    provider: input.provider,
+  const runtime = input.createRuntimeImpl({
     repository,
     permissionRepository,
-    permissionPolicy: input.permissionPolicy,
-    systemPrompt: input.systemPrompt,
     now,
   })
   const activeRuns = new Map<

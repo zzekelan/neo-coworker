@@ -1,98 +1,45 @@
-import { join } from "node:path"
-import {
-  createSessionRepository,
-  openSessionDatabase,
-} from "../session"
 import { createAgentServer } from "../orchestration/wiring/server"
-import { createPermissionRepository } from "../permission"
-import { createDefaultProvider } from "../bootstrap/provider"
+import {
+  createStandaloneServerComposition,
+  getDefaultStandaloneServerStoragePath,
+  resolveStandaloneServerConfig,
+  type StandaloneServerConfig,
+} from "../bootstrap/server"
 
-const DEFAULT_SERVER_HOST = "127.0.0.1"
-const DEFAULT_SERVER_PORT = 3100
-
-export type StandaloneServerConfig = {
-  host: string
-  port: number
-  databasePath: string
-}
-
-export function getDefaultStandaloneServerStoragePath(cwd: string = process.cwd()) {
-  return join(cwd, ".agents", "server.sqlite")
-}
-
-export function resolveStandaloneServerConfig(
-  env: Record<string, string | undefined> = process.env,
-  cwd: string = process.cwd(),
-): StandaloneServerConfig {
-  return {
-    host: readEnvValue(env, "AGENT_SERVER_HOST") ?? DEFAULT_SERVER_HOST,
-    port: parseServerPort(readEnvValue(env, "AGENT_SERVER_PORT")),
-    databasePath: readEnvValue(env, "AGENT_SERVER_DB_PATH") ?? getDefaultStandaloneServerStoragePath(cwd),
-  }
-}
+export { getDefaultStandaloneServerStoragePath, resolveStandaloneServerConfig, type StandaloneServerConfig }
 
 export async function startStandaloneServer(input: {
   env?: Record<string, string | undefined>
   cwd?: string
 } = {}) {
-  const env = input.env ?? process.env
-  const config = resolveStandaloneServerConfig(env, input.cwd)
-  const provider = await createDefaultProvider({
-    env,
+  const composition = await createStandaloneServerComposition({
+    env: input.env,
+    cwd: input.cwd,
   })
-  const database = openSessionDatabase(config.databasePath)
+  const server = createAgentServer({
+    createRuntimeImpl: composition.createRuntimeImpl,
+    repository: composition.repository,
+    permissionRepository: composition.permissionRepository,
+  })
 
   try {
-    const repository = createSessionRepository({
-      database,
-    })
-    const permissionRepository = createPermissionRepository({
-      database,
-    })
-    const server = createAgentServer({
-      provider,
-      repository,
-      permissionRepository,
-    })
     await server.start({
-      hostname: config.host,
-      port: config.port,
+      hostname: composition.config.host,
+      port: composition.config.port,
     })
 
     return {
       server,
-      config,
+      config: composition.config,
       async stop() {
         await server.stop()
-        database.close(false)
+        composition.closeDatabase()
       },
     }
   } catch (error) {
-    database.close(false)
+    composition.closeDatabase()
     throw error
   }
-}
-
-function readEnvValue(env: Record<string, string | undefined>, key: string) {
-  const value = env[key]?.trim()
-  return value ? value : undefined
-}
-
-function parseServerPort(value: string | undefined) {
-  if (value == null) {
-    return DEFAULT_SERVER_PORT
-  }
-
-  if (!/^\d+$/.test(value)) {
-    throw new Error("AGENT_SERVER_PORT must be a valid integer")
-  }
-
-  const port = Number.parseInt(value, 10)
-  if (port < 1 || port > 65535) {
-    throw new Error("AGENT_SERVER_PORT must be between 1 and 65535")
-  }
-
-  return port
 }
 
 async function waitForShutdown(input: { stop(): Promise<void> }) {

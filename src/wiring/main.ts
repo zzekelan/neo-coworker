@@ -1,5 +1,6 @@
 import {
   createAgentServerClient,
+  createLocalCliServerClient,
   createStdioCliIo,
   parseRunCommand,
   runCli,
@@ -11,6 +12,7 @@ import {
   resolveDefaultProviderConfig,
   type DefaultProviderInput,
 } from "../bootstrap/provider"
+import { createRuntime, getDefaultCliStoragePath } from "../bootstrap/runtime"
 
 type BuildCliInput = {
   provider?: ModelProvider
@@ -58,6 +60,11 @@ export function buildCli(input: BuildCliInput = {}) {
         argv,
         io: input.createIo?.() ?? createStdioCliIo(),
         provider,
+        createLocalCliServerClientImpl: createLocalCliServerClient,
+        createLocalRuntimeImpl(runtimeInput) {
+          return createRuntime(runtimeInput)
+        },
+        getLocalStoragePath: getDefaultCliStoragePath,
       })
     },
   }

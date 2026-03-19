@@ -5,10 +5,13 @@ import { join } from "node:path"
 import { createModelRuntimeApi } from "../../src/model/runtime/api"
 import { createModelProvider } from "../../src/model"
 import {
-  getDefaultCliStoragePath,
   runCli,
 } from "../../src/orchestration/wiring/cli"
 import { createAgentServer } from "../../src/orchestration/wiring/server"
+import {
+  createRuntime,
+  getDefaultCliStoragePath,
+} from "../../src/bootstrap/runtime"
 import { createPermissionRepository } from "../../src/permission/repo"
 import {
   createSessionRepository as createStorageRepository,
@@ -52,35 +55,41 @@ describe("agent run e2e", () => {
 
     let turn = 0
 
+    const provider = createModelProvider({
+      runtime: createModelRuntimeApi({
+        async *streamTurn() {
+          turn += 1
+
+          if (turn === 1) {
+            yield { type: "text.delta", text: "Opening README.md\n" }
+            yield {
+              type: "tool.call",
+              callId: "call_1",
+              name: "read",
+              inputText: '{"path":"README.md"}',
+            }
+            return
+          }
+
+          if (turn === 2) {
+            yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
+            return
+          }
+
+          throw new Error(`Unexpected provider turn ${turn}`)
+        },
+      }),
+    })
+
     await runCli({
       argv: ["run", "Read README.md and summarize it"],
       cwd: workspaceRoot,
       workspaceRoot,
-      provider: createModelProvider({
-        runtime: createModelRuntimeApi({
-          async *streamTurn() {
-            turn += 1
-
-            if (turn === 1) {
-              yield { type: "text.delta", text: "Opening README.md\n" }
-              yield {
-                type: "tool.call",
-                callId: "call_1",
-                name: "read",
-                inputText: '{"path":"README.md"}',
-              }
-              return
-            }
-
-            if (turn === 2) {
-              yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
-              return
-            }
-
-            throw new Error(`Unexpected provider turn ${turn}`)
-          },
-        }),
-      }),
+      provider,
+      createLocalRuntimeImpl(input) {
+        return createRuntime(input)
+      },
+      getLocalStoragePath: getDefaultCliStoragePath,
       io: {
         write(text: string) {
           output.push(text)
@@ -124,41 +133,48 @@ describe("agent run e2e", () => {
     const database = trackDatabase(openStorageDatabase(join(directory, "server.sqlite")))
     const repository = createStorageRepository({ database })
     const permissionRepository = createPermissionRepository({ database })
-    const server = createAgentServer({
-      provider: createModelProvider({
-        runtime: createModelRuntimeApi({
-          async *streamTurn() {
-            if (!("turn" in serverState)) {
-              serverState.turn = 0
-            }
-            serverState.turn += 1
+    const serverState: { turn?: number } = {}
+    const provider = createModelProvider({
+      runtime: createModelRuntimeApi({
+        async *streamTurn() {
+          if (!("turn" in serverState)) {
+            serverState.turn = 0
+          }
+          serverState.turn += 1
 
-            if (serverState.turn === 1) {
-              yield { type: "text.delta", text: "Opening README.md\n" }
-              yield {
-                type: "tool.call",
-                callId: "call_1",
-                name: "read",
-                inputText: '{"path":"README.md"}',
-              }
-              return
+          if (serverState.turn === 1) {
+            yield { type: "text.delta", text: "Opening README.md\n" }
+            yield {
+              type: "tool.call",
+              callId: "call_1",
+              name: "read",
+              inputText: '{"path":"README.md"}',
             }
+            return
+          }
 
-            if (serverState.turn === 2) {
-              yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
-              return
-            }
+          if (serverState.turn === 2) {
+            yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
+            return
+          }
 
-            throw new Error(`Unexpected provider turn ${serverState.turn}`)
-          },
-        }),
+          throw new Error(`Unexpected provider turn ${serverState.turn}`)
+        },
       }),
+    })
+    const server = createAgentServer({
+      createRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          now: runtimeInput.now,
+        })
+      },
       repository,
       permissionRepository,
     })
     activeServers.push(server)
-
-    const serverState: { turn?: number } = {}
     await server.start({
       hostname: "127.0.0.1",
     })

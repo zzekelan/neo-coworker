@@ -10,7 +10,7 @@ import {
 } from "../../src/model/runtime/api"
 import { createModelProvider } from "../../src/model"
 import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
-import { createRuntime } from "../../src/orchestration/wiring/server"
+import { createRuntime } from "../../src/bootstrap/runtime"
 import {
   PermissionNotFoundError,
   createPermissionRepository,

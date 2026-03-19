@@ -120,11 +120,6 @@
     "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
   },
   {
-    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/runtime.ts",
-    "ruleId": "INV-STRUCTURE-001",
-    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
-  },
-  {
     "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server-app.ts",
     "ruleId": "INV-STRUCTURE-001",
     "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."

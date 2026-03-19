@@ -9,10 +9,8 @@ import { PermissionNotFoundError, type PermissionRepository } from "../../permis
 import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
-  type PermissionMode,
 } from "../../permission"
-import type { OrchestrationModelPort } from "../ports/model"
-import { PermissionRequestNotAwaitingActiveRuntimeError } from "./runtime"
+import { PermissionRequestNotAwaitingActiveRuntimeError } from "../index"
 import {
   RUN_TRIGGERS,
   SessionConflictError as StorageConflictError,
@@ -21,9 +19,13 @@ import {
 } from "../../session/repo"
 import type { ServerEvent } from "./server-events"
 import { serializeSseEvent } from "./server-events"
-import { createServerApp, ServerShuttingDownError } from "./server-app"
+import {
+  createServerApp,
+  type CreateServerAppRuntime,
+  ServerShuttingDownError,
+} from "./server-app"
 
-export { createRuntime, PermissionRequestNotAwaitingActiveRuntimeError } from "./runtime"
+export { PermissionRequestNotAwaitingActiveRuntimeError } from "../index"
 
 const createSessionBodySchema = z.object({
   directory: z.string().min(1),
@@ -45,22 +47,18 @@ type ServerInstance = ReturnType<typeof Bun.serve>
 const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 5_000
 
 export function createAgentServer(input: {
-  provider: OrchestrationModelPort
+  createRuntimeImpl: CreateServerAppRuntime
   repository: StorageRepository
   permissionRepository: PermissionRepository
-  permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
-  systemPrompt?: string
   now?: () => number
   heartbeatIntervalMs?: number
 }) {
   const now = input.now ?? Date.now
   const heartbeatIntervalMs = input.heartbeatIntervalMs ?? DEFAULT_SSE_HEARTBEAT_INTERVAL_MS
   const app = createServerApp({
-    provider: input.provider,
+    createRuntimeImpl: input.createRuntimeImpl,
     repository: input.repository,
     permissionRepository: input.permissionRepository,
-    permissionPolicy: input.permissionPolicy,
-    systemPrompt: input.systemPrompt,
     now,
   })
   let server: ServerInstance | null = null

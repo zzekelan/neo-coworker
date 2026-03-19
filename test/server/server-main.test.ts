@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { createServer as createNetServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { resolveAgentServerOrigin } from "../../src/wiring/main"
+import { resolveAgentServerOrigin } from "../../src/bootstrap/provider"
 import {
   getDefaultStandaloneServerStoragePath,
   resolveStandaloneServerConfig,

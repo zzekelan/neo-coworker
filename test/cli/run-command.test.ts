@@ -13,6 +13,7 @@ import type { OrchestrationModelPort } from "../../src/orchestration/ports/model
 import { createPermissionRepository } from "../../src/permission/repo"
 import { createAgentServerClient, runCli } from "../../src/orchestration/wiring/cli"
 import { createAgentServer } from "../../src/orchestration/wiring/server"
+import { createRuntime } from "../../src/bootstrap/runtime"
 import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,
@@ -667,11 +668,18 @@ async function createHarness(
     database,
   })
   const server = createAgentServer({
-    provider,
+    createRuntimeImpl(runtimeInput) {
+      return createRuntime({
+        provider,
+        repository: runtimeInput.repository,
+        permissionRepository: runtimeInput.permissionRepository,
+        permissionPolicy: options.permissionPolicy,
+        now: runtimeInput.now,
+      })
+    },
     repository,
     permissionRepository,
     heartbeatIntervalMs: 15,
-    permissionPolicy: options.permissionPolicy,
   })
   activeServers.push(server)
 
