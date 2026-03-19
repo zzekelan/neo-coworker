@@ -1,4 +1,5 @@
 import { createAgentServer } from "../orchestration/wiring/server"
+export { createAgentServer }
 import {
   createStandaloneServerComposition,
   getDefaultStandaloneServerStoragePath,

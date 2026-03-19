@@ -1,24 +1,16 @@
 import {
   type PermissionRepository,
-  type PermissionResponse,
   type StoredPermissionRequest,
 } from "../permission"
-import type {
-  OrchestrationModelPort,
-  OrchestrationRunHandle,
-  OrchestrationRuntimeApi,
-} from "../orchestration"
+import type { OrchestrationModelPort } from "../orchestration"
+import { createAgentServer } from "../wiring/server-main"
+import type { ServerEvent } from "./server-events"
 import {
-  assertRunStatusTransition,
-  createSessionRunService,
-  InvalidRunStatusTransitionError,
-  type RunTrigger,
   type SessionRepository as StorageRepository,
   type StoredMessage,
   type StoredRun,
   type StoredSession,
 } from "../session"
-import type { ServerEvent, ServerEventPayload, SessionSnapshot } from "./server-events"
 
 type SendRequest = (request: Request) => Promise<Response> | Response
 
@@ -67,12 +59,14 @@ export type CliServerClientHandle = {
   close(): Promise<void>
 }
 
+type LocalServerRuntime = ReturnType<Parameters<typeof createAgentServer>[0]["createRuntimeImpl"]>
+
 type LocalRuntimeFactory = (input: {
   provider: OrchestrationModelPort
   repository: StorageRepository
   permissionRepository: PermissionRepository
   now: () => number
-}) => Pick<OrchestrationRuntimeApi, "run" | "cancelRun" | "respondPermission">
+}) => LocalServerRuntime
 
 export class AgentServerClientError extends Error {
   readonly status: number
@@ -279,51 +273,30 @@ export async function createLocalCliServerClient(input: {
   repository: StorageRepository
   permissionRepository: PermissionRepository
   createRuntimeImpl: LocalRuntimeFactory
-  now?: () => number
   closeImpl?: () => void | Promise<void>
 }) {
-  const app = createLocalCliServerApp({
-    provider: input.provider,
+  const server = createAgentServer({
+    createRuntimeImpl(serverInput) {
+      return input.createRuntimeImpl({
+        provider: input.provider,
+        repository: serverInput.repository,
+        permissionRepository: serverInput.permissionRepository,
+        now: serverInput.now,
+      })
+    },
     repository: input.repository,
     permissionRepository: input.permissionRepository,
-    createRuntimeImpl: input.createRuntimeImpl,
-    now: input.now,
   })
 
   return {
-    client: {
-      async createSession(inputValue) {
-        return app.sessions.create(inputValue)
+    client: createAgentServerClient({
+      origin: "http://server.test",
+      send(request) {
+        return server.fetch(request)
       },
-      async startRun(inputValue) {
-        return app.runs.start(inputValue)
-      },
-      async getRun(runId) {
-        return app.runs.get(runId)
-      },
-      async replyPermission(inputValue) {
-        return app.permissions.reply(inputValue)
-      },
-      async cancelRun(runId) {
-        try {
-          return app.runs.cancel(runId)
-        } catch (error) {
-          throw mapLocalClientError(error)
-        }
-      },
-      async subscribe() {
-        const subscription = app.subscribe()
-
-        return {
-          events: subscription.events,
-          async close() {
-            subscription.unsubscribe()
-          },
-        }
-      },
-    },
+    }),
     async close() {
-      await app.close()
+      await server.stop()
       await input.closeImpl?.()
     },
   } satisfies CliServerClientHandle
@@ -360,222 +333,6 @@ function parseSseBlock(block: string): ServerEvent | null {
   }
 
   return JSON.parse(dataLines.join("\n")) as ServerEvent
-}
-
-function createLocalCliServerApp(input: {
-  provider: OrchestrationModelPort
-  repository: StorageRepository
-  permissionRepository: PermissionRepository
-  createRuntimeImpl: LocalRuntimeFactory
-  now?: () => number
-}) {
-  const now = input.now ?? Date.now
-  const events = createServerEventBus({
-    now,
-  })
-  const observed = createObservedRepository({
-    repository: input.repository,
-    permissionRepository: input.permissionRepository,
-    events,
-  })
-  const repository = observed.repository
-  const permissionRepository = observed.permissionRepository
-  const sessionRuns = createSessionRunService({
-    repository,
-    now,
-  })
-  const runtime = input.createRuntimeImpl({
-    provider: input.provider,
-    repository,
-    permissionRepository,
-    now,
-  })
-  const activeRuns = new Map<
-    string,
-    {
-      cancel(): void
-      drained: Promise<void>
-    }
-  >()
-  let closing: Promise<void> | null = null
-
-  async function startRun(runInput: {
-    sessionId: string
-    prompt: string
-    trigger?: RunTrigger
-    runId?: string
-    messageId?: string
-  }) {
-    const createdAt = now()
-    const messageCreatedAt = now()
-    const started = sessionRuns.startRun({
-      sessionId: runInput.sessionId,
-      trigger: runInput.trigger ?? "prompt",
-      runId: runInput.runId,
-      messageId: runInput.messageId,
-      createdAt,
-      messageCreatedAt,
-      promptText: runInput.prompt,
-      promptPartCreatedAt: now(),
-    })
-
-    const handle = await runtime.run({
-      sessionId: runInput.sessionId,
-      runId: started.run.id,
-    })
-
-    const drained = drainRunHandle(handle).finally(() => {
-      activeRuns.delete(started.run.id)
-    })
-
-    activeRuns.set(started.run.id, {
-      cancel() {
-        handle.cancel()
-      },
-      drained,
-    })
-
-    return started
-  }
-
-  return {
-    sessions: {
-      create(sessionInput: {
-        directory: string
-        workspaceRoot?: string
-      }) {
-        return repository.sessions.create({
-          directory: sessionInput.directory,
-          workspaceRoot: sessionInput.workspaceRoot ?? sessionInput.directory,
-          createdAt: now(),
-        })
-      },
-    },
-    runs: {
-      start: startRun,
-      get(runId: string) {
-        const run = repository.runs.get(runId)
-        return {
-          run,
-          permissionRequests: permissionRepository.requests.listByRun(runId),
-        }
-      },
-      cancel(runId: string) {
-        const run = repository.runs.get(runId)
-        assertRunStatusTransition(run, "cancelled")
-        runtime.cancelRun(runId)
-        return repository.runs.get(runId)
-      },
-    },
-    permissions: {
-      reply(response: PermissionResponse) {
-        runtime.respondPermission(response)
-        const permissionRequest = permissionRepository.requests.get(response.requestId)
-        return {
-          permissionRequest,
-          run: repository.runs.get(permissionRequest.runId),
-        }
-      },
-    },
-    subscribe(filter?: Parameters<ReturnType<typeof createServerEventBus>["subscribe"]>[0]) {
-      return events.subscribe(filter)
-    },
-    async close() {
-      if (closing) {
-        await closing
-        return
-      }
-
-      closing = (async () => {
-        const runsToStop = Array.from(activeRuns.values())
-
-        for (const activeRun of runsToStop) {
-          activeRun.cancel()
-        }
-
-        await Promise.allSettled(runsToStop.map((activeRun) => activeRun.drained))
-        events.close()
-      })()
-
-      await closing
-    },
-  }
-}
-
-function createServerEventBus(input: { now?: () => number } = {}) {
-  const now = input.now ?? Date.now
-  let nextEventId = 0
-  const subscriptions = new Set<{
-    filter?: (event: ServerEvent) => boolean
-    queue: ReturnType<typeof createEventQueue<ServerEvent>>
-  }>()
-
-  function buildEventId() {
-    nextEventId += 1
-    return `event_${nextEventId}`
-  }
-
-  return {
-    publish(payload: ServerEventPayload) {
-      const event: ServerEvent = {
-        ...payload,
-        id: buildEventId(),
-        time: now(),
-      }
-
-      for (const subscription of subscriptions) {
-        if (subscription.filter && !subscription.filter(event)) {
-          continue
-        }
-
-        subscription.queue.push(event)
-      }
-
-      return event
-    },
-    subscribe(filter?: (event: ServerEvent) => boolean) {
-      const queue = createEventQueue<ServerEvent>()
-      const subscription = {
-        filter,
-        queue,
-      }
-      subscriptions.add(subscription)
-
-      let closed = false
-
-      return {
-        events: queue.stream(),
-        unsubscribe() {
-          if (closed) {
-            return
-          }
-
-          closed = true
-          subscriptions.delete(subscription)
-          queue.close()
-        },
-      }
-    },
-    close() {
-      for (const subscription of subscriptions) {
-        subscription.queue.close()
-      }
-
-      subscriptions.clear()
-    },
-  }
-}
-
-function mapLocalClientError(error: unknown) {
-  if (error instanceof InvalidRunStatusTransitionError) {
-    return new AgentServerClientError({
-      status: 409,
-      code: "invalid_state",
-      message: error.message,
-    })
-  }
-
-  return error
 }
 
 function createEventQueue<T>() {
@@ -632,198 +389,5 @@ function createEventQueue<T>() {
         await waitForSignal()
       }
     },
-  }
-}
-
-function buildSessionSnapshot(
-  repository: Pick<StorageRepository, "sessions" | "runs">,
-  sessionId: string,
-): SessionSnapshot {
-  const session = repository.sessions.get(sessionId)
-  const latestRun = repository.runs.getLatestBySession(sessionId)
-  const activeRun = repository.runs.getActiveBySession(sessionId)
-
-  return {
-    session,
-    latestRun,
-    activeRun,
-    status: activeRun ? "busy" : "idle",
-  }
-}
-
-function createObservedRepository(input: CreateObservedRepositoryInput) {
-  const repository = input.repository
-  const permissionRepository = input.permissionRepository
-  const events = input.events
-
-  function publishSessionUpdated(sessionId: string, reason: string) {
-    events.publish({
-      type: "session.updated",
-      ...buildSessionSnapshot(repository, sessionId),
-      reason,
-    })
-  }
-
-  function publishRunCreated(run: StoredRun) {
-    events.publish({
-      type: "run.created",
-      run,
-    })
-    publishSessionUpdated(run.sessionId, "run.created")
-  }
-
-  function publishRunUpdated(run: StoredRun) {
-    events.publish({
-      type: "run.updated",
-      run,
-    })
-    publishSessionUpdated(run.sessionId, "run.updated")
-
-    if (run.status === "failed" && run.errorText) {
-      events.publish({
-        type: "runtime.error",
-        sessionId: run.sessionId,
-        runId: run.id,
-        error: run.errorText,
-      })
-    }
-  }
-
-  const observedRepository: StorageRepository = {
-    ...repository,
-    sessions: {
-      ...repository.sessions,
-      create(session) {
-        const created = repository.sessions.create(session)
-        events.publish({
-          type: "session.created",
-          ...buildSessionSnapshot(repository, created.id),
-        })
-        return created
-      },
-    },
-    runs: {
-      ...repository.runs,
-      create(run) {
-        const created = repository.runs.create(run)
-        publishRunCreated(created)
-        return created
-      },
-      updateStatus(update) {
-        const updated = repository.runs.updateStatus(update)
-        publishRunUpdated(updated)
-        return updated
-      },
-    },
-    messages: {
-      ...repository.messages,
-      create(message) {
-        const created = repository.messages.create(message)
-        events.publish({
-          type: "message.created",
-          message: created,
-        })
-        return created
-      },
-    },
-    parts: {
-      ...repository.parts,
-      create(part) {
-        const created = repository.parts.create(part)
-        events.publish({
-          type: "message.part.updated",
-          part: created,
-        })
-        return created
-      },
-      updateContent(update) {
-        const updated = repository.parts.updateContent(update)
-        events.publish({
-          type: "message.part.updated",
-          part: updated,
-        })
-        return updated
-      },
-    },
-    createQueuedRunWithInitiatingMessage(inputValue) {
-      const created = repository.createQueuedRunWithInitiatingMessage(inputValue)
-      publishRunCreated(created.run)
-      events.publish({
-        type: "message.created",
-        message: created.message,
-      })
-      return created
-    },
-    createQueuedRunWithInitiatingMessageAndPart(inputValue) {
-      const created = repository.createQueuedRunWithInitiatingMessageAndPart(inputValue)
-      publishRunCreated(created.run)
-      events.publish({
-        type: "message.created",
-        message: created.message,
-      })
-      events.publish({
-        type: "message.part.updated",
-        part: created.part,
-      })
-      return created
-    },
-    createAssistantMessageWithFirstPart(inputValue) {
-      const created = repository.createAssistantMessageWithFirstPart(inputValue)
-      events.publish({
-        type: "message.created",
-        message: created.message,
-      })
-      events.publish({
-        type: "message.part.updated",
-        part: created.part,
-      })
-      return created
-    },
-  }
-
-  const observedPermissionRepository: PermissionRepository = {
-    ...permissionRepository,
-    requests: {
-      ...permissionRepository.requests,
-      create(request) {
-        const created = permissionRepository.requests.create(request)
-        events.publish({
-          type: "permission.requested",
-          permissionRequest: created,
-        })
-        publishSessionUpdated(created.sessionId, "permission.requested")
-        return created
-      },
-      updateStatus(update) {
-        const updated = permissionRepository.requests.updateStatus(update)
-        events.publish({
-          type: "permission.updated",
-          permissionRequest: updated,
-        })
-        publishSessionUpdated(updated.sessionId, "permission.updated")
-        return updated
-      },
-    },
-  }
-
-  return {
-    repository: observedRepository,
-    permissionRepository: observedPermissionRepository,
-  }
-}
-
-type CreateObservedRepositoryInput = {
-  repository: StorageRepository
-  permissionRepository: PermissionRepository
-  events: ReturnType<typeof createServerEventBus>
-}
-
-async function drainRunHandle(handle: OrchestrationRunHandle) {
-  try {
-    for await (const _event of handle.events) {
-      // Repository writes are already observed and published as ServerEvents.
-    }
-  } catch {
-    // Runtime state changes are persisted through repositories.
   }
 }
