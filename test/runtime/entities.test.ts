@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { type RuntimeEvent, RunSchema } from "../../src/orchestration/runtime/api"
+import { type RuntimeEvent, RunSchema } from "../../src/orchestration"
 import { createEventQueue } from "../../src/orchestration/runtime/stream"
 
 describe("runtime entities", () => {

@@ -1,88 +1,27 @@
-import { z } from "zod"
 import type { OrchestrationSessionPort } from "../ports/session"
 import type { OrchestrationModelPort } from "../ports/model"
-import type {
-  OrchestrationPermissionMode,
-  OrchestrationPermissionPort,
-  OrchestrationPermissionResponse,
-} from "../ports/permission"
+import type { OrchestrationPermissionPort, OrchestrationPermissionResponse } from "../ports/permission"
 import type { OrchestrationToolPort, OrchestrationToolPortFactory } from "../ports/tool"
+import type {
+  OrchestrationRunHandle as PublicOrchestrationRunHandle,
+  RuntimeEvent as PublicRuntimeEvent,
+} from "../index"
+import {
+  createInMemoryActiveRunRegistry,
+  resolvePermissionPolicy,
+  type ActiveRunRecord,
+  type ActiveRunRegistry,
+  type PermissionPolicyInput,
+  type ResolvedPermissionPolicy,
+} from "../repo"
 import { createOrchestrationStepService } from "./step"
 
-export const OrchestrationRunSchema = z.object({
-  id: z.string(),
-  sessionId: z.string(),
-  trigger: z.enum(["cli"]),
-  status: z.enum([
-    "queued",
-    "running",
-    "waiting_permission",
-    "completed",
-    "failed",
-    "cancelled",
-  ]),
-})
-
-export const RunSchema = OrchestrationRunSchema
-
-export type OrchestrationRun = z.infer<typeof OrchestrationRunSchema>
-export type Run = OrchestrationRun
-
-export type OrchestrationRuntimeEvent =
-  | {
-      type: "run.started"
-      runId: string
-    }
-  | {
-      type: "message.started"
-      role: "assistant"
-    }
-  | {
-      type: "message.delta"
-      text: string
-    }
-  | {
-      type: "permission.requested"
-      requestId: string
-      toolName: string
-      reason: string
-    }
-  | {
-      type: "tool.call.completed"
-      callId: string
-      name: string
-      output: string
-    }
-  | {
-      type: "run.completed"
-      runId: string
-    }
-  | {
-      type: "run.failed"
-      runId: string
-      error: string
-    }
-  | {
-      type: "run.cancelled"
-      runId: string
-    }
-
-export type RuntimeEvent = OrchestrationRuntimeEvent
-
-export type OrchestrationRunHandle = {
-  events: AsyncIterable<OrchestrationRuntimeEvent>
-  cancel(): void | Promise<void>
-  respondPermission(input: OrchestrationPermissionResponse): void | Promise<void>
-}
-
+export type RuntimeEvent = PublicRuntimeEvent
+export type OrchestrationRunHandle = PublicOrchestrationRunHandle
 export type RunHandle = OrchestrationRunHandle
 
-export type OrchestrationEventEmitter = (event: OrchestrationRuntimeEvent) => void
-
-export type OrchestrationResolvedPermissionPolicy = Record<
-  string,
-  OrchestrationPermissionMode
->
+export type OrchestrationEventEmitter = (event: RuntimeEvent) => void
+export type OrchestrationResolvedPermissionPolicy = ResolvedPermissionPolicy
 
 export type OrchestrationRunSuspension = {
   isPending(requestId: string): boolean
@@ -94,21 +33,22 @@ export type OrchestrationRunSuspension = {
   cancel(error?: Error): void
 }
 
-export type OrchestrationActiveRunState = {
-  storageIdentity: string
-  sessionId: string
-  runId: string
-  controller: AbortController
-  suspend: OrchestrationRunSuspension
-  emit: OrchestrationEventEmitter
-}
+export type OrchestrationActiveRunState = ActiveRunRecord<
+  OrchestrationRunSuspension,
+  OrchestrationEventEmitter
+>
+export type OrchestrationActiveRunRegistry = ActiveRunRegistry<
+  OrchestrationRunSuspension,
+  OrchestrationEventEmitter
+>
 
 export type CreateOrchestrationRuntimeApiInput = {
   model: OrchestrationModelPort
   session: OrchestrationSessionPort
   permission: OrchestrationPermissionPort
   tools: OrchestrationToolPortFactory
-  permissionPolicy?: Partial<Record<"write" | "edit" | "shell", OrchestrationPermissionMode>>
+  activeRuns?: OrchestrationActiveRunRegistry
+  permissionPolicy?: PermissionPolicyInput
   systemPrompt?: string
   now?: () => number
 }
@@ -127,6 +67,16 @@ export type OrchestrationLoopInput = {
   workspaceRoot: string
   systemPrompt: string
   stepService: ReturnType<typeof createOrchestrationStepService>
+}
+
+export function createOrchestrationActiveRunRegistry(): OrchestrationActiveRunRegistry {
+  return createInMemoryActiveRunRegistry()
+}
+
+export function resolveOrchestrationPermissionPolicy(
+  input?: PermissionPolicyInput,
+): OrchestrationResolvedPermissionPolicy {
+  return resolvePermissionPolicy(input)
 }
 
 export { createOrchestrationStepService } from "./step"

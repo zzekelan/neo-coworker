@@ -110,26 +110,6 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-LAYER-001:missing-index:orchestration",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
-    "fingerprint": "ARCH-LAYER-001:missing-layer:orchestration/config",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
-    "fingerprint": "ARCH-LAYER-001:missing-layer:orchestration/repo",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
-    "fingerprint": "ARCH-LAYER-001:missing-layer:orchestration/types",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
     "fingerprint": "ARCH-TOPLEVEL-001:transition-file:wiring/main.ts",
     "ruleId": "ARCH-TOPLEVEL-001",
     "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."

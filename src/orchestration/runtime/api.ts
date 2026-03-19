@@ -1,36 +1,34 @@
 import {
+  createOrchestrationActiveRunRegistry,
   createOrchestrationStepService,
+  resolveOrchestrationPermissionPolicy,
   type CreateOrchestrationRuntimeApiInput,
   type OrchestrationRunHandle,
   type OrchestrationRunInput,
   type RuntimeEvent,
-  OrchestrationRunSchema,
-  type RunHandle,
-  RunSchema,
 } from "../service"
 import { runOrchestrationLoop } from "./loop"
-import { createActiveRunRegistry } from "./registry"
 import {
   createRunSuspension,
   PermissionRequestNotAwaitingActiveRuntimeError,
 } from "./suspend"
 import { createEventQueue } from "./stream"
 
-const sharedActiveRuns = createActiveRunRegistry()
-
-export { PermissionRequestNotAwaitingActiveRuntimeError, OrchestrationRunSchema, RunSchema }
+export { PermissionRequestNotAwaitingActiveRuntimeError }
 export type {
-  OrchestrationRun,
-  OrchestrationRuntimeEvent,
-  RuntimeEvent,
+  CreateOrchestrationRuntimeApiInput,
   OrchestrationRunHandle,
+  OrchestrationRunInput,
+  RuntimeEvent,
   RunHandle,
 } from "../service"
 
-export function createOrchestrationRuntimeApi(
-  input: CreateOrchestrationRuntimeApiInput,
-) {
+const DEFAULT_SYSTEM_PROMPT = "You are the agent runtime."
+const sharedActiveRuns = createOrchestrationActiveRunRegistry()
+
+export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeApiInput) {
   const now = input.now ?? Date.now
+  const activeRuns = input.activeRuns ?? sharedActiveRuns
   const stepService = createOrchestrationStepService({
     session: input.session,
     model: input.model,
@@ -39,7 +37,7 @@ export function createOrchestrationRuntimeApi(
 
   function respondPermission(response: Parameters<OrchestrationRunHandle["respondPermission"]>[0]) {
     const permissionRequest = input.permission.getPermissionRequest(response.requestId)
-    const activeRun = sharedActiveRuns.get({
+    const activeRun = activeRuns.get({
       storageIdentity: input.session.storageIdentity,
       sessionId: permissionRequest.sessionId,
       runId: permissionRequest.runId,
@@ -66,7 +64,7 @@ export function createOrchestrationRuntimeApi(
 
   function cancelRun(runId: string) {
     const run = input.session.getRun(runId)
-    const activeRun = sharedActiveRuns.get({
+    const activeRun = activeRuns.get({
       storageIdentity: input.session.storageIdentity,
       sessionId: run.sessionId,
       runId,
@@ -98,7 +96,7 @@ export function createOrchestrationRuntimeApi(
         runId: runInput.runId,
       }
 
-      if (sharedActiveRuns.has(activeRunKey)) {
+      if (activeRuns.has(activeRunKey)) {
         throw new Error(`Run ${runInput.runId} is already active`)
       }
 
@@ -112,12 +110,7 @@ export function createOrchestrationRuntimeApi(
         permission: input.permission,
         runId: runInput.runId,
         sessionId: session.id,
-        policy: {
-          write: "ask",
-          edit: "ask",
-          shell: "ask",
-          ...input.permissionPolicy,
-        },
+        policy: resolveOrchestrationPermissionPolicy(input.permissionPolicy),
         now,
         emit,
       })
@@ -127,7 +120,7 @@ export function createOrchestrationRuntimeApi(
         suspend,
         emit,
       }
-      sharedActiveRuns.add(activeRun)
+      activeRuns.add(activeRun)
       const tools = input.tools.create({
         requestPermission(request) {
           return suspend.requestPermission(request)
@@ -142,10 +135,10 @@ export function createOrchestrationRuntimeApi(
         signal: controller.signal,
         tools,
         workspaceRoot: session.workspaceRoot,
-        systemPrompt: input.systemPrompt ?? "You are the agent runtime.",
+        systemPrompt: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       }).finally(() => {
         suspend.cancel()
-        sharedActiveRuns.delete(activeRunKey)
+        activeRuns.delete(activeRunKey)
         queue.close()
       })
 
@@ -163,3 +156,5 @@ export function createOrchestrationRuntimeApi(
     cancelRun,
   }
 }
+
+export type OrchestrationRuntimeApi = ReturnType<typeof createOrchestrationRuntimeApi>
