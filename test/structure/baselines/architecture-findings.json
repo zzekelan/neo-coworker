@@ -200,6 +200,106 @@
     "note": "Current domain does not yet satisfy the fixed layer skeleton required by the harness."
   },
   {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/config/defaults.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/ports/telemetry.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/repo/contract.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/repo/index.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/repo/mappers.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/repo/sqlite.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/runtime/api.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/service/index.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/service/run.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/service/state-machine.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/service/transcript.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/types/message.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/types/part.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/types/run.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/types/session.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:conversation/wiring/provider.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:wiring/main.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:wiring/server-main.ts",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-top-level:conversation",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level names remain as migration debt and are tolerated only through the baseline."
+  },
+  {
+    "fingerprint": "ARCH-TOPLEVEL-001:transition-top-level:wiring",
+    "ruleId": "ARCH-TOPLEVEL-001",
+    "note": "Transition-only top-level names remain as migration debt and are tolerated only through the baseline."
+  },
+  {
     "fingerprint": "INV-STRUCTURE-001:file:conversation/wiring/provider.ts",
     "ruleId": "INV-STRUCTURE-001",
     "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."

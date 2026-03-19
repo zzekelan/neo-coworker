@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
-  ALLOWED_TOP_LEVELS,
+  APPROVED_TOP_LEVELS,
   FINAL_CORE_TOP_LEVELS,
   FINAL_OUTER_SHELL_TOP_LEVELS,
   STRUCTURE_BASELINE_PATH,
@@ -29,19 +29,27 @@ describe("architecture structure", () => {
     ])
   })
 
-  test("keeps transition-only names available while migration is in progress", () => {
+  test("tracks transition-only names as explicit debt during migration", () => {
     expect(toSortedArray(TRANSITION_CORE_TOP_LEVELS)).toEqual(["conversation"])
     expect(toSortedArray(TRANSITION_OUTER_SHELL_TOP_LEVELS)).toEqual([
       "server",
       "wiring",
     ])
-    expect(ALLOWED_TOP_LEVELS.has("conversation")).toBe(true)
-    expect(ALLOWED_TOP_LEVELS.has("wiring")).toBe(true)
+    expect(APPROVED_TOP_LEVELS.has("conversation")).toBe(false)
+    expect(APPROVED_TOP_LEVELS.has("wiring")).toBe(false)
+
+    const findings = validateRepositoryGraph({
+      directories: ["wiring"],
+      files: ["wiring/main.ts"],
+      edges: [],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("transition-only top-level")
   })
 
   test("detects a cross-domain import violation", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(ALLOWED_TOP_LEVELS),
+      directories: Array.from(APPROVED_TOP_LEVELS),
       files: [],
       edges: [
         {
@@ -57,7 +65,7 @@ describe("architecture structure", () => {
 
   test("detects a runtime-to-repo import violation", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(ALLOWED_TOP_LEVELS),
+      directories: Array.from(APPROVED_TOP_LEVELS),
       files: [],
       edges: [
         {
@@ -123,7 +131,7 @@ describe("architecture structure", () => {
 
   test("detects outer-shell composition importing a domain internal file", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(ALLOWED_TOP_LEVELS),
+      directories: Array.from(APPROVED_TOP_LEVELS),
       files: [],
       edges: [
         {
@@ -139,7 +147,7 @@ describe("architecture structure", () => {
 
   test("detects an unsupported layer directory", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(ALLOWED_TOP_LEVELS),
+      directories: Array.from(APPROVED_TOP_LEVELS),
       files: ["session/wiring/provider.ts"],
       edges: [],
     })
@@ -149,7 +157,7 @@ describe("architecture structure", () => {
 
   test("formats findings with a stable id and remediation text", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(ALLOWED_TOP_LEVELS),
+      directories: Array.from(APPROVED_TOP_LEVELS),
       files: [],
       edges: [
         {

@@ -34,10 +34,15 @@ export const OUTER_SHELL_TOP_LEVELS = new Set([
   ...FINAL_OUTER_SHELL_TOP_LEVELS,
   ...TRANSITION_OUTER_SHELL_TOP_LEVELS,
 ])
-export const ALLOWED_TOP_LEVELS = new Set([
-  ...CORE_TOP_LEVELS,
-  ...OUTER_SHELL_TOP_LEVELS,
+export const APPROVED_TOP_LEVELS = new Set([
+  ...FINAL_CORE_TOP_LEVELS,
+  ...FINAL_OUTER_SHELL_TOP_LEVELS,
 ])
+export const TRANSITION_TOP_LEVELS = new Set([
+  ...TRANSITION_CORE_TOP_LEVELS,
+  ...TRANSITION_OUTER_SHELL_TOP_LEVELS,
+])
+export const ALLOWED_TOP_LEVELS = new Set([...APPROVED_TOP_LEVELS, ...TRANSITION_TOP_LEVELS])
 export const LEGACY_TOP_LEVELS = new Set(["providers", "runtime"])
 export const APPROVED_DOMAIN_LAYERS = new Set([
   "types",
@@ -169,6 +174,17 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
       })
     }
+
+    if (TRANSITION_TOP_LEVELS.has(directory)) {
+      addFinding(findings, {
+        ruleId: "ARCH-TOPLEVEL-001",
+        fingerprint: `ARCH-TOPLEVEL-001:transition-top-level:${directory}`,
+        summary: `src/${directory} is a transition-only top-level and must be removed by the end of the migration.`,
+        remediation:
+          "Move code to the final top-level vocabulary (session, bootstrap, cli, app-server) and keep this debt tracked only through the migration baseline.",
+        doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
+      })
+    }
   }
 
   for (const domain of graph.directories.filter((directory) => CORE_TOP_LEVELS.has(directory))) {
@@ -203,6 +219,18 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
 
   for (const file of graph.files) {
     const meta = getSourceFileMeta(file)
+
+    if (TRANSITION_TOP_LEVELS.has(meta.topLevel)) {
+      addFinding(findings, {
+        ruleId: "ARCH-TOPLEVEL-001",
+        fingerprint: `ARCH-TOPLEVEL-001:transition-file:${file}`,
+        summary: `src/${file} is under transition-only top-level src/${meta.topLevel} and must move to final naming.`,
+        remediation:
+          "Migrate this file into the final architecture vocabulary and remove legacy top-level usage instead of adding more files under transition-only names.",
+        doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
+      })
+    }
+
     if (!meta.isCoreDomain || meta.isDomainIndex) {
       continue
     }
