@@ -56,6 +56,8 @@ export type OrchestrationRunSuspension = {
   cancel(error?: Error): void
 }
 
+export type OrchestrationResolvedPermissionPolicy = ResolvedPermissionPolicy
+
 export type CreateOrchestrationRuntimeApiInput = {
   model: OrchestrationModelPort
   session: OrchestrationSessionPort
