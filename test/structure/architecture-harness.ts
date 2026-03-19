@@ -9,19 +9,30 @@ export const STRUCTURE_BASELINE_PATH = join(
   "baselines",
   "architecture-findings.json",
 )
-export const CORE_TOP_LEVELS = new Set([
-  "conversation",
+export const FINAL_CORE_TOP_LEVELS = new Set([
+  "session",
   "model",
   "orchestration",
   "permission",
   "tool",
 ])
-export const OUTER_SHELL_TOP_LEVELS = new Set([
-  "wiring",
-  "cli",
-  "server",
-  "app-server",
+export const TRANSITION_CORE_TOP_LEVELS = new Set(["conversation"])
+export const CORE_TOP_LEVELS = new Set([
+  ...FINAL_CORE_TOP_LEVELS,
+  ...TRANSITION_CORE_TOP_LEVELS,
+])
+export const FINAL_OUTER_SHELL_TOP_LEVELS = new Set([
   "bootstrap",
+  "cli",
+  "app-server",
+])
+export const TRANSITION_OUTER_SHELL_TOP_LEVELS = new Set([
+  "wiring",
+  "server",
+])
+export const OUTER_SHELL_TOP_LEVELS = new Set([
+  ...FINAL_OUTER_SHELL_TOP_LEVELS,
+  ...TRANSITION_OUTER_SHELL_TOP_LEVELS,
 ])
 export const ALLOWED_TOP_LEVELS = new Set([
   ...CORE_TOP_LEVELS,
@@ -203,7 +214,7 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         summary: `src/${file} uses unsupported layer directory "${meta.layer ?? "(missing)"}".`,
         remediation:
           meta.layer === "wiring"
-            ? "Move the code into an approved domain layer or relocate true composition code into an outer-shell top-level such as src/wiring/*, src/cli/*, src/server/*, src/app-server/*, or src/bootstrap/*."
+            ? "Move the code into an approved domain layer or relocate true composition code into final outer-shell top-levels: src/bootstrap/*, src/cli/*, or src/app-server/*. src/wiring/* and src/server/* are transition-only."
             : "Move the file into one of: types, config, repo, ports, service, runtime, or the domain root index.ts.",
         doc: RULE_DOCS["INV-STRUCTURE-001"],
       })
@@ -275,7 +286,7 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
         summary: `src/${edge.from} may not depend on outer-shell code such as src/${edge.to}.`,
         remediation:
-          "Keep domains headless and inject outer-shell behavior from src/wiring/* or another outer-shell top-level instead of importing it into a domain.",
+          "Keep domains headless and inject outer-shell behavior from src/bootstrap/*, src/cli/*, or src/app-server/* instead of importing it into a domain.",
         doc: RULE_DOCS["ARCH-CROSS-001"],
       })
       continue

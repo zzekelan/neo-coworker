@@ -135,6 +135,16 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
+    "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->conversation/wiring/provider.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->permission/wiring/provider.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
+  },
+  {
     "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->orchestration/wiring/server.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."

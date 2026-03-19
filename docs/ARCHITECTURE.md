@@ -13,14 +13,21 @@ Architecture ID: `ARCH-TOPLEVEL-001`
 Approved top-level modules under `src/` fall into two groups:
 
 - Core domains:
-  - `conversation`: durable session, run, message, and transcript state
+  - `session`: durable session, run, message, and transcript state
   - `permission`: durable permission-request state and decision flow
   - `model`: model-provider integration and transcript projection
   - `tool`: tool catalog, execution, and tool-side runtime helpers
   - `orchestration`: the agent loop, run progression, suspend/resume, streaming, and cross-domain coordination through explicit ports
 - Outer-shell top-levels:
-  - `wiring`: the current composition root and entrypoint location
-  - `cli`, `server`, `app-server`, and `bootstrap`: reserved outer-shell names that may appear as the current `src/wiring/*` extraction continues
+  - `bootstrap`: shared composition root and runtime assembly
+  - `cli`: CLI outer-shell adapter and entrypoint
+  - `app-server`: HTTP/SSE outer-shell adapter and entrypoint
+
+Transition-only legacy top-level names may still appear while the migration tasks are in flight:
+
+- `conversation`: pre-rename durable-state domain name, replaced by `session`
+- `wiring`: pre-split outer-shell composition location, replaced by `bootstrap`, `cli`, and `app-server`
+- `server`: pre-rename HTTP/SSE outer-shell name, replaced by `app-server`
 
 Legacy top-level directories such as `src/providers` and `src/runtime` are not allowed to reappear.
 
@@ -77,8 +84,8 @@ If composition needs another domain's internals, the fix is to export a public A
 
 Positive examples:
 
-- Target pattern: `src/wiring/main.ts -> src/orchestration/index.ts`
-- Target pattern: `src/server/app.ts -> src/model/index.ts`
+- Target pattern: `src/bootstrap/runtime.ts -> src/orchestration/index.ts`
+- Target pattern: `src/app-server/app.ts -> src/model/index.ts`
 
 Negative examples:
 
@@ -100,7 +107,8 @@ Use these questions to place new code:
 - Concrete runtime integrations and adapter behavior that fulfill a domain contract: put them in that domain's `runtime/`
 - Cross-domain capability contracts consumed by a domain: define them in that domain's `ports/`
 - The public module exit for a domain: put it in `src/<domain>/index.ts`
-- Final composition and entrypoints: put them in an outer-shell top-level, using `src/wiring/*` today; extraction to `src/cli/*`, `src/server/*`, `src/app-server/*`, or `src/bootstrap/*` is allowed without another harness rename
+- Final composition and entrypoints: put them in `src/bootstrap/*`, `src/cli/*`, or `src/app-server/*`
+- Existing code under `src/wiring/*` and `src/server/*` is transition debt and should be migrated to the final outer-shell top-levels
 - Existing domain-local `wiring/*` code should be treated as migration debt, not as the placement target for new code
 
 If a change needs a new directory name or a new cross-domain shortcut, stop and update the harness docs and checks first.
@@ -115,7 +123,7 @@ As of 2026-03-19, the remaining structural debt includes:
 - Missing required layers in several current domains
 - Domain-local `wiring/*` directories that still hold composition code
 - Outer-shell composition in `src/wiring/*` that still reaches into domain internals
-- `src/orchestration/wiring/*`, which currently mixes outer-shell concerns with cross-domain imports to concrete `conversation/*`, `permission/*`, and `tool/*` paths
+- `src/orchestration/wiring/*`, which currently mixes outer-shell concerns with cross-domain imports to concrete `conversation/*`, `permission/*`, and `tool/*` paths during the `conversation -> session` rename transition
 
 Those findings are tolerated only because they are recorded as baseline debt.
 New violations outside that baseline should fail the structure checks immediately.

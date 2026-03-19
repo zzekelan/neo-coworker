@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import {
   ALLOWED_TOP_LEVELS,
+  FINAL_CORE_TOP_LEVELS,
+  FINAL_OUTER_SHELL_TOP_LEVELS,
   STRUCTURE_BASELINE_PATH,
+  TRANSITION_CORE_TOP_LEVELS,
+  TRANSITION_OUTER_SHELL_TOP_LEVELS,
   formatFinding,
   loadRepositoryGraph,
   loadStructureBaseline,
@@ -10,13 +14,38 @@ import {
 } from "./architecture-harness"
 
 describe("architecture structure", () => {
+  test("declares the final target vocabulary explicitly", () => {
+    expect(toSortedArray(FINAL_CORE_TOP_LEVELS)).toEqual([
+      "model",
+      "orchestration",
+      "permission",
+      "session",
+      "tool",
+    ])
+    expect(toSortedArray(FINAL_OUTER_SHELL_TOP_LEVELS)).toEqual([
+      "app-server",
+      "bootstrap",
+      "cli",
+    ])
+  })
+
+  test("keeps transition-only names available while migration is in progress", () => {
+    expect(toSortedArray(TRANSITION_CORE_TOP_LEVELS)).toEqual(["conversation"])
+    expect(toSortedArray(TRANSITION_OUTER_SHELL_TOP_LEVELS)).toEqual([
+      "server",
+      "wiring",
+    ])
+    expect(ALLOWED_TOP_LEVELS.has("conversation")).toBe(true)
+    expect(ALLOWED_TOP_LEVELS.has("wiring")).toBe(true)
+  })
+
   test("detects a cross-domain import violation", () => {
     const findings = validateRepositoryGraph({
       directories: Array.from(ALLOWED_TOP_LEVELS),
       files: [],
       edges: [
         {
-          from: "conversation/service/query.ts",
+          from: "session/service/query.ts",
           to: "model/index.ts",
           specifier: "../../model",
         },
@@ -61,14 +90,14 @@ describe("architecture structure", () => {
 
   test("detects a missing domain root index", () => {
     const findings = validateRepositoryGraph({
-      directories: ["conversation"],
+      directories: ["session"],
       files: [
-        "conversation/types/message.ts",
-        "conversation/config/defaults.ts",
-        "conversation/repo/index.ts",
-        "conversation/ports/telemetry.ts",
-        "conversation/service/index.ts",
-        "conversation/runtime/api.ts",
+        "session/types/message.ts",
+        "session/config/defaults.ts",
+        "session/repo/index.ts",
+        "session/ports/telemetry.ts",
+        "session/service/index.ts",
+        "session/runtime/api.ts",
       ],
       edges: [],
     })
@@ -78,11 +107,11 @@ describe("architecture structure", () => {
 
   test("allows outer-shell composition to depend on a domain root index", () => {
     const findings = validateRepositoryGraph({
-      directories: ["wiring"],
+      directories: ["bootstrap"],
       files: ["orchestration/index.ts"],
       edges: [
         {
-          from: "wiring/main.ts",
+          from: "bootstrap/runtime.ts",
           to: "orchestration/index.ts",
           specifier: "../orchestration",
         },
@@ -98,9 +127,9 @@ describe("architecture structure", () => {
       files: [],
       edges: [
         {
-          from: "wiring/main.ts",
-          to: "conversation/repo/index.ts",
-          specifier: "../conversation/repo",
+          from: "bootstrap/runtime.ts",
+          to: "session/repo/index.ts",
+          specifier: "../session/repo",
         },
       ],
     })
@@ -111,7 +140,7 @@ describe("architecture structure", () => {
   test("detects an unsupported layer directory", () => {
     const findings = validateRepositoryGraph({
       directories: Array.from(ALLOWED_TOP_LEVELS),
-      files: ["conversation/wiring/provider.ts"],
+      files: ["session/wiring/provider.ts"],
       edges: [],
     })
 
@@ -124,7 +153,7 @@ describe("architecture structure", () => {
       files: [],
       edges: [
         {
-          from: "conversation/service/query.ts",
+          from: "session/service/query.ts",
           to: "model/runtime/api.ts",
           specifier: "../../model/runtime/api",
         },
@@ -164,4 +193,8 @@ describe("architecture structure", () => {
 
 function formatFindings(findings: ReturnType<typeof validateRepositoryGraph>) {
   return findings.map(formatFinding)
+}
+
+function toSortedArray(values: Set<string>) {
+  return Array.from(values).sort()
 }

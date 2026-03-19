@@ -24,8 +24,8 @@ Current blocking structure checks run through `bun run test:structure`.
 - Why this repo requires it: this repo depends on predictable directory roles and a single public exit per domain so a coding agent can navigate, place code, and obey import checks mechanically. Ad-hoc layer names or domain-local assembly layers hide intent and create new side doors around the architecture map.
 - Enforcement: `blocking` via `bun run test:structure`
 - Severity: `error`
-- Bad example: `src/conversation/wiring/provider.ts`
-- Good example: `src/conversation/service/run.ts`
+- Bad example: `src/session/wiring/provider.ts`
+- Good example: `src/session/service/run.ts`
 - Remediation: move the file into an approved layer, add the missing root `index.ts` when a domain lacks one, or relocate true composition code into an outer-shell top-level. Update `docs/ARCHITECTURE.md`, this file, and the structure checks in the same change only if the architecture has genuinely changed.
 - Source: `docs/ARCHITECTURE.md#domain-layers`, `docs/plans/2026-03-17-agent-collaboration-harness-design.md`
 
