@@ -1,7 +1,7 @@
 # QUALITY_INVARIANTS
 
 This file catalogs repo-specific invariants for the coding and review agent collaborating in this repository.
-Architecture rules live in `ARCHITECTURE.md`.
+Architecture rules live in `docs/ARCHITECTURE.md`.
 Quality invariants capture the stable naming, boundary, and reliability rules that are specific to this repo's failure modes.
 
 Current blocking structure checks run through `bun run test:structure`.
@@ -26,8 +26,8 @@ Current blocking structure checks run through `bun run test:structure`.
 - Severity: `error`
 - Bad example: `src/conversation/wiring/provider.ts`
 - Good example: `src/conversation/service/run.ts`
-- Remediation: move the file into an approved layer, add the missing root `index.ts` when a domain lacks one, or relocate true composition code into an outer-shell top-level. Update `ARCHITECTURE.md`, this file, and the structure checks in the same change only if the architecture has genuinely changed.
-- Source: `ARCHITECTURE.md#domain-layers`, `docs/plans/2026-03-17-agent-collaboration-harness-design.md`
+- Remediation: move the file into an approved layer, add the missing root `index.ts` when a domain lacks one, or relocate true composition code into an outer-shell top-level. Update `docs/ARCHITECTURE.md`, this file, and the structure checks in the same change only if the architecture has genuinely changed.
+- Source: `docs/ARCHITECTURE.md#domain-layers`, `docs/plans/2026-03-17-agent-collaboration-harness-design.md`
 
 ### INV-BOUNDARY-001: Public Adapters Map Explicit Errors
 

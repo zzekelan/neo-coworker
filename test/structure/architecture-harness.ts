@@ -48,11 +48,11 @@ const ALLOWED_INTERNAL_IMPORTS = {
 } as const
 const IMPORT_PATTERN = /\b(?:import|export)\b[\s\S]*?\bfrom\s+["']([^"']+)["']/g
 const RULE_DOCS = {
-  "ARCH-TOPLEVEL-001": "ARCHITECTURE.md#top-level-map",
-  "ARCH-LAYER-001": "ARCHITECTURE.md#domain-layers",
-  "ARCH-CROSS-001": "ARCHITECTURE.md#cross-domain-boundaries",
+  "ARCH-TOPLEVEL-001": "docs/ARCHITECTURE.md#top-level-map",
+  "ARCH-LAYER-001": "docs/ARCHITECTURE.md#domain-layers",
+  "ARCH-CROSS-001": "docs/ARCHITECTURE.md#cross-domain-boundaries",
   "INV-STRUCTURE-001":
-    "QUALITY_INVARIANTS.md#inv-structure-001-approved-domain-layer-names",
+    "docs/dev/QUALITY_INVARIANTS.md#inv-structure-001-approved-domain-layer-names",
 } as const
 
 export type StructureRuleId =
@@ -154,7 +154,7 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         fingerprint: `ARCH-TOPLEVEL-001:top-level:${directory}`,
         summary: `src/${directory} is not an approved top-level module.`,
         remediation:
-          "Place the code under an approved core domain or an approved outer-shell top-level, or update ARCHITECTURE.md and the structure checks in the same change.",
+          "Place the code under an approved core domain or an approved outer-shell top-level, or update docs/ARCHITECTURE.md and the structure checks in the same change.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
       })
     }
@@ -248,7 +248,7 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
           fingerprint: `ARCH-LAYER-001:edge:${edge.from}->${edge.to}`,
           summary: `src/${edge.from} may not import src/${edge.to} inside the same domain.`,
           remediation:
-            "Follow the fixed layer direction from ARCHITECTURE.md and route the dependency through the next legal layer.",
+            "Follow the fixed layer direction from docs/ARCHITECTURE.md and route the dependency through the next legal layer.",
           doc: RULE_DOCS["ARCH-LAYER-001"],
         })
       }

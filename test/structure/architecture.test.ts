@@ -135,7 +135,7 @@ describe("architecture structure", () => {
 
     expect(message).toContain("[ARCH-CROSS-001]")
     expect(message).toContain("Define the external capability in the importing domain's ports/")
-    expect(message).toContain("See ARCHITECTURE.md#cross-domain-boundaries.")
+    expect(message).toContain("See docs/ARCHITECTURE.md#cross-domain-boundaries.")
   })
 
   test("repository structure only contains baselined findings", async () => {
