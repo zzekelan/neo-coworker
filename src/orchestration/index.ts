@@ -1,3 +1,14 @@
+import { createInMemoryActiveRunRegistry } from "./repo"
+import type { CreateOrchestrationRuntimeApiInput } from "./runtime/api"
+
+export type OrchestrationActiveRunRegistry = NonNullable<
+  CreateOrchestrationRuntimeApiInput["activeRuns"]
+>
+
+export function createOrchestrationActiveRunRegistry(): OrchestrationActiveRunRegistry {
+  return createInMemoryActiveRunRegistry()
+}
+
 export * from "./config/defaults"
 export type {
   OrchestrationModelEvent,
@@ -34,10 +45,8 @@ export type {
 } from "./ports/tool"
 export * from "./repo"
 export {
-  createOrchestrationActiveRunRegistry,
   createOrchestrationRuntimeApi,
   PermissionRequestNotAwaitingActiveRuntimeError,
-  type OrchestrationActiveRunRegistry,
   type CreateOrchestrationRuntimeApiInput,
   type OrchestrationRuntimeApi,
   type OrchestrationRunInput,

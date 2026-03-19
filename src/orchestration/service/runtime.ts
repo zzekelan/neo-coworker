@@ -2,17 +2,10 @@ import type { OrchestrationSessionPort } from "../ports/session"
 import type { OrchestrationModelPort } from "../ports/model"
 import type { OrchestrationPermissionPort, OrchestrationPermissionResponse } from "../ports/permission"
 import type { OrchestrationToolPort, OrchestrationToolPortFactory } from "../ports/tool"
-import {
-  createInMemoryActiveRunRegistry,
-  resolvePermissionPolicy,
-  type ActiveRunRecord,
-  type ActiveRunRegistry,
-  type PermissionPolicyInput,
-  type ResolvedPermissionPolicy,
-} from "../repo"
+import type { ActiveRunRegistry, ResolvedPermissionPolicy } from "../repo"
 import { createOrchestrationStepService } from "./step"
 
-export type OrchestrationRuntimeEvent =
+type OrchestrationRuntimeEventPayload =
   | {
       type: "run.started"
       runId: string
@@ -51,18 +44,7 @@ export type OrchestrationRuntimeEvent =
       runId: string
     }
 
-export type RuntimeEvent = OrchestrationRuntimeEvent
-
-export type OrchestrationRunHandle = {
-  events: AsyncIterable<OrchestrationRuntimeEvent>
-  cancel(): void | Promise<void>
-  respondPermission(input: OrchestrationPermissionResponse): void | Promise<void>
-}
-
-export type RunHandle = OrchestrationRunHandle
-
-export type OrchestrationEventEmitter = (event: OrchestrationRuntimeEvent) => void
-export type OrchestrationResolvedPermissionPolicy = ResolvedPermissionPolicy
+export type OrchestrationEventEmitter = (event: OrchestrationRuntimeEventPayload) => void
 
 export type OrchestrationRunSuspension = {
   isPending(requestId: string): boolean
@@ -74,22 +56,13 @@ export type OrchestrationRunSuspension = {
   cancel(error?: Error): void
 }
 
-export type OrchestrationActiveRunState = ActiveRunRecord<
-  OrchestrationRunSuspension,
-  OrchestrationEventEmitter
->
-export type OrchestrationActiveRunRegistry = ActiveRunRegistry<
-  OrchestrationRunSuspension,
-  OrchestrationEventEmitter
->
-
 export type CreateOrchestrationRuntimeApiInput = {
   model: OrchestrationModelPort
   session: OrchestrationSessionPort
   permission: OrchestrationPermissionPort
   tools: OrchestrationToolPortFactory
-  activeRuns?: OrchestrationActiveRunRegistry
-  permissionPolicy?: PermissionPolicyInput
+  activeRuns: ActiveRunRegistry<OrchestrationRunSuspension, OrchestrationEventEmitter>
+  permissionPolicy: ResolvedPermissionPolicy
   systemPrompt?: string
   now?: () => number
 }
@@ -108,16 +81,6 @@ export type OrchestrationLoopInput = {
   workspaceRoot: string
   systemPrompt: string
   stepService: ReturnType<typeof createOrchestrationStepService>
-}
-
-export function createOrchestrationActiveRunRegistry(): OrchestrationActiveRunRegistry {
-  return createInMemoryActiveRunRegistry()
-}
-
-export function resolveOrchestrationPermissionPolicy(
-  input?: PermissionPolicyInput,
-): OrchestrationResolvedPermissionPolicy {
-  return resolvePermissionPolicy(input)
 }
 
 export { createOrchestrationStepService } from "./step"

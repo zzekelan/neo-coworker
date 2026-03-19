@@ -20,15 +20,19 @@ import type { OrchestrationModelPort } from "../ports/model"
 import type { OrchestrationPermissionPort } from "../ports/permission"
 import type { OrchestrationToolPortFactory } from "../ports/tool"
 import {
+  createOrchestrationActiveRunRegistry,
   createOrchestrationRuntimeApi,
+  resolvePermissionPolicy,
+  type OrchestrationActiveRunRegistry,
   type RunHandle,
-} from "../runtime/api"
+} from "../index"
 
 type RuntimeInput = {
   provider: OrchestrationModelPort
   repository: StorageRepository
   permissionRepository: PermissionRepository
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
+  activeRuns?: OrchestrationActiveRunRegistry
   systemPrompt?: string
   now?: () => number
 }
@@ -54,6 +58,8 @@ type CliRunInput = {
 
 export { PermissionRequestNotAwaitingActiveRuntimeError } from "../runtime/api"
 
+const defaultActiveRuns = createOrchestrationActiveRunRegistry()
+
 export function createRuntime(input: RuntimeInput) {
   const now = input.now ?? Date.now
   const sessionRuns = createSessionRunService({
@@ -76,7 +82,8 @@ export function createRuntime(input: RuntimeInput) {
       now,
     }),
     tools: createToolPortFactory(),
-    permissionPolicy: input.permissionPolicy,
+    activeRuns: input.activeRuns ?? defaultActiveRuns,
+    permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
     systemPrompt: input.systemPrompt,
     now,
   })

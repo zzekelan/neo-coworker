@@ -1,13 +1,9 @@
 import {
-  createOrchestrationActiveRunRegistry,
   createOrchestrationStepService,
-  resolveOrchestrationPermissionPolicy,
-  type OrchestrationActiveRunRegistry,
   type CreateOrchestrationRuntimeApiInput,
-  type OrchestrationRunHandle,
   type OrchestrationRunInput,
-  type RuntimeEvent,
 } from "../service/runtime"
+import type { OrchestrationRunHandle, RuntimeEvent } from "../index"
 import { runOrchestrationLoop } from "./loop"
 import {
   createRunSuspension,
@@ -15,26 +11,17 @@ import {
 } from "./suspend"
 import { createEventQueue } from "./stream"
 
-export {
-  PermissionRequestNotAwaitingActiveRuntimeError,
-  createOrchestrationActiveRunRegistry,
-}
+export { PermissionRequestNotAwaitingActiveRuntimeError }
 export type {
-  OrchestrationActiveRunRegistry,
   CreateOrchestrationRuntimeApiInput,
-  OrchestrationRunHandle,
   OrchestrationRunInput,
-  OrchestrationRuntimeEvent,
-  RuntimeEvent,
-  RunHandle,
 } from "../service/runtime"
 
 const DEFAULT_SYSTEM_PROMPT = "You are the agent runtime."
-const sharedActiveRuns = createOrchestrationActiveRunRegistry()
 
 export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeApiInput) {
   const now = input.now ?? Date.now
-  const activeRuns = input.activeRuns ?? sharedActiveRuns
+  const activeRuns = input.activeRuns
   const stepService = createOrchestrationStepService({
     session: input.session,
     model: input.model,
@@ -116,7 +103,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         permission: input.permission,
         runId: runInput.runId,
         sessionId: session.id,
-        policy: resolveOrchestrationPermissionPolicy(input.permissionPolicy),
+        policy: input.permissionPolicy,
         now,
         emit,
       })
