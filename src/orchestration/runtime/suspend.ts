@@ -3,7 +3,7 @@ import type {
   OrchestrationEventEmitter,
   OrchestrationResolvedPermissionPolicy,
   OrchestrationRunSuspension,
-} from "../service"
+} from "../service/runtime"
 
 type CreateRunSuspensionInput = {
   permission: CreateOrchestrationRuntimeApiInput["permission"]

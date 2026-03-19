@@ -5,7 +5,7 @@ import type {
 } from "../ports/session"
 import type { OrchestrationModelPort } from "../ports/model"
 import type { OrchestrationToolPort } from "../ports/tool"
-import type { OrchestrationEventEmitter } from "./index"
+import type { OrchestrationEventEmitter } from "./runtime"
 
 type CreateOrchestrationStepServiceInput = {
   session: OrchestrationSessionPort

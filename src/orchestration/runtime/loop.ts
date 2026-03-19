@@ -1,4 +1,4 @@
-import type { OrchestrationLoopInput } from "../service"
+import type { OrchestrationLoopInput } from "../service/runtime"
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)

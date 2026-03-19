@@ -34,8 +34,10 @@ export type {
 } from "./ports/tool"
 export * from "./repo"
 export {
+  createOrchestrationActiveRunRegistry,
   createOrchestrationRuntimeApi,
   PermissionRequestNotAwaitingActiveRuntimeError,
+  type OrchestrationActiveRunRegistry,
   type CreateOrchestrationRuntimeApiInput,
   type OrchestrationRuntimeApi,
   type OrchestrationRunInput,

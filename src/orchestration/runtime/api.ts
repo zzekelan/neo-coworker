@@ -2,11 +2,12 @@ import {
   createOrchestrationActiveRunRegistry,
   createOrchestrationStepService,
   resolveOrchestrationPermissionPolicy,
+  type OrchestrationActiveRunRegistry,
   type CreateOrchestrationRuntimeApiInput,
   type OrchestrationRunHandle,
   type OrchestrationRunInput,
   type RuntimeEvent,
-} from "../service"
+} from "../service/runtime"
 import { runOrchestrationLoop } from "./loop"
 import {
   createRunSuspension,
@@ -14,14 +15,19 @@ import {
 } from "./suspend"
 import { createEventQueue } from "./stream"
 
-export { PermissionRequestNotAwaitingActiveRuntimeError }
+export {
+  PermissionRequestNotAwaitingActiveRuntimeError,
+  createOrchestrationActiveRunRegistry,
+}
 export type {
+  OrchestrationActiveRunRegistry,
   CreateOrchestrationRuntimeApiInput,
   OrchestrationRunHandle,
   OrchestrationRunInput,
+  OrchestrationRuntimeEvent,
   RuntimeEvent,
   RunHandle,
-} from "../service"
+} from "../service/runtime"
 
 const DEFAULT_SYSTEM_PROMPT = "You are the agent runtime."
 const sharedActiveRuns = createOrchestrationActiveRunRegistry()
