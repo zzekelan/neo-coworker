@@ -1,11 +1,11 @@
 import { join } from "node:path"
 import {
-  createSessionStorage,
-  openSessionStorage,
-} from "../session/wiring/provider"
+  createSessionRepository,
+  openSessionDatabase,
+} from "../session"
 import { createAgentServer } from "../orchestration/wiring/server"
-import { createPermissionStorage } from "../permission"
-import { createDefaultProvider } from "./main"
+import { createPermissionRepository } from "../permission"
+import { createDefaultProvider } from "../bootstrap/provider"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
 const DEFAULT_SERVER_PORT = 3100
@@ -40,13 +40,13 @@ export async function startStandaloneServer(input: {
   const provider = await createDefaultProvider({
     env,
   })
-  const database = openSessionStorage(config.databasePath)
+  const database = openSessionDatabase(config.databasePath)
 
   try {
-    const { repository } = createSessionStorage({
+    const repository = createSessionRepository({
       database,
     })
-    const { repository: permissionRepository } = createPermissionStorage({
+    const permissionRepository = createPermissionRepository({
       database,
     })
     const server = createAgentServer({

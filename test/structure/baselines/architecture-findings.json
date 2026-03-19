@@ -25,26 +25,6 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->permission/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->session/repo/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->session/service/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->tool/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
     "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->permission/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
@@ -101,11 +81,6 @@
   },
   {
     "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->orchestration/wiring/server.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->session/wiring/provider.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
