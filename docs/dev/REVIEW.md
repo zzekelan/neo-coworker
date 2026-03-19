@@ -15,7 +15,7 @@ Review the change against the source documents above instead of restating them f
 
 ## Review Priorities
 
-Order findings by severity and keep findings first.
+Keep findings first.
 
 Prioritize, in order:
 
@@ -23,7 +23,6 @@ Prioritize, in order:
 2. boundary and contract violations
 3. missing or weak tests for the changed risk
 4. document drift against `docs/ARCHITECTURE.md`, `docs/dev/QUALITY_INVARIANTS.md`, plans, or task contracts
-5. lower-signal maintainability concerns
 
 Style comments are not findings unless they hide one of the risks above.
 
@@ -36,11 +35,11 @@ Use these severity levels, from highest to lowest:
 
 - `error`: likely bug, regression, contract break, or missing coverage for a high-risk path
 - `warning`: material risk or design gap that is not yet proven broken
-- `note`: low-severity issue, doc drift, or promotion candidate that should not block by itself
+- `note`: low-severity issue, doc drift, or promotion candidate
 
 ## Required Review Lenses
 
-Every substantive review should explicitly check:
+Every substantive review should cover these areas:
 
 - behavior risk: does the change break runtime behavior, operator behavior, or recovery paths?
 - boundary risk: does it violate architecture, error mapping, or public contract expectations?
@@ -49,16 +48,17 @@ Every substantive review should explicitly check:
 
 ## Valid Finding Format
 
-A valid finding must include:
+A valid finding should make clear:
 
 - severity
-- file and line reference
+- the affected file or code location
 - the concrete problem
 - why it matters in this repo
 - an applicable `ARCH-*` or `INV-*` id when one exists
 - a remediation direction
 
-Preferred shape:
+The wording and exact structure are flexible.
+What matters is that the reader can quickly see the problem, risk, and expected fix.
 
 ```text
 1. [error] ARCH-CROSS-001 [src/wiring/main.ts:12]
@@ -71,13 +71,10 @@ If no current `ARCH-*` or `INV-*` id fits, say so directly and treat the issue a
 
 ## Review Output Rules
 
-- Findings first, sorted by severity.
-- Keep each finding self-contained.
+- Findings should come before summary.
 - Prefer concrete risks over abstract style commentary.
-- If no findings remain, state that explicitly and mention residual risk or unverified areas.
-- When relevant, distinguish:
-  - pre-existing debt that the change did not worsen
-  - new debt or new spread introduced by the change
+- Use whatever structure best communicates the review clearly and concisely.
+- When relevant, distinguish pre-existing debt from new debt or new spread introduced by the change.
 
 ## Promotion Loop
 
@@ -95,11 +92,11 @@ Promotion path:
 3. If the rule depends on runtime or persistence semantics, promote it into a behavior test and, when stable, cite it from `docs/dev/QUALITY_INVARIANTS.md`.
 4. After promotion, update this file to point reviewers at the new source of truth instead of duplicating the rule here.
 
-## Dry-Run Standard
+## Reviewer Latitude
 
-When validating this harness on a recent change or fixture, confirm the review naturally produces:
+This file defines review priorities and floor constraints, not a rigid script.
 
-- findings first
-- severity ordering
-- `ARCH-*` or `INV-*` citations when applicable
-- explicit mention of test gaps or doc drift when they exist
+- Do not force a finding when there is no real risk.
+- Do not expand low-signal style commentary into blocking review output.
+- Do not treat the example wording above as a required template.
+- Use judgment about how much structure, explanation, and citation the review needs.
