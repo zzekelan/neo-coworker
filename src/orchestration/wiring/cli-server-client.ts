@@ -1,4 +1,3 @@
-import { join } from "node:path"
 import { createEventQueue } from "../runtime/stream"
 import {
   createPermissionRepository,
@@ -276,15 +275,13 @@ export async function createLocalCliServerClient(input: {
   provider: OrchestrationModelPort
   workspaceRoot: string
   createRuntimeImpl: LocalRuntimeFactory
-  getStoragePath?: (workspaceRoot: string) => string
+  getStoragePath: (workspaceRoot: string) => string
   repository?: StorageRepository
   permissionRepository?: PermissionRepository
 }) {
   const database =
     input.repository == null
-      ? openStorageDatabase(
-          (input.getStoragePath ?? getDefaultLocalCliStoragePath)(input.workspaceRoot),
-        )
+      ? openStorageDatabase(input.getStoragePath(input.workspaceRoot))
       : null
   if (input.repository && !input.permissionRepository) {
     throw new Error("permissionRepository is required when repository is provided")
@@ -324,10 +321,6 @@ export async function createLocalCliServerClient(input: {
       database?.close(false)
     },
   } satisfies CliServerClientHandle
-}
-
-function getDefaultLocalCliStoragePath(workspaceRoot: string) {
-  return join(workspaceRoot, ".agents", "agent.sqlite")
 }
 
 async function readJsonBody(response: Response) {

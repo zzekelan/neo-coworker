@@ -79,17 +79,28 @@ export function parseRunCommand(argv: string[]): RunCommand {
   }
 }
 
+type RunCliClientInput = {
+  client: AgentServerClient
+  provider?: never
+  createLocalCliServerClientImpl?: never
+  createLocalRuntimeImpl?: never
+  getLocalStoragePath?: never
+}
+
+type RunCliProviderInput = {
+  client?: never
+  provider: OrchestrationModelPort
+  createLocalCliServerClientImpl?: typeof createLocalCliServerClient
+  createLocalRuntimeImpl: Parameters<typeof createLocalCliServerClient>[0]["createRuntimeImpl"]
+  getLocalStoragePath: Parameters<typeof createLocalCliServerClient>[0]["getStoragePath"]
+}
+
 export type RunCliInput = {
   argv: string[]
   io: CliIO
   cwd?: string
   workspaceRoot?: string
-  client?: AgentServerClient
-  provider?: OrchestrationModelPort
-  createLocalCliServerClientImpl?: typeof createLocalCliServerClient
-  createLocalRuntimeImpl?: Parameters<typeof createLocalCliServerClient>[0]["createRuntimeImpl"]
-  getLocalStoragePath?: Parameters<typeof createLocalCliServerClient>[0]["getStoragePath"]
-}
+} & (RunCliClientInput | RunCliProviderInput)
 
 function getPermissionDecision(answer: string): PermissionDecision {
   const normalized = answer.trim().toLowerCase()
@@ -149,26 +160,21 @@ function startPendingPermissionReply(
 }
 
 async function resolveClient(input: RunCliInput, workspaceRoot: string): Promise<CliServerClientHandle> {
-  if (input.client) {
+  if ("client" in input && input.client) {
     return {
       client: input.client,
       async close() {},
     }
   }
 
-  if (input.provider) {
-    const createLocalRuntimeImpl = input.createLocalRuntimeImpl
-    if (!createLocalRuntimeImpl) {
-      throw new Error("runCli requires createLocalRuntimeImpl when provider is supplied")
-    }
-
+  if ("provider" in input && input.provider) {
     const createLocalClient =
       input.createLocalCliServerClientImpl ?? createLocalCliServerClient
 
     return createLocalClient({
       provider: input.provider,
       workspaceRoot,
-      createRuntimeImpl: createLocalRuntimeImpl,
+      createRuntimeImpl: input.createLocalRuntimeImpl,
       getStoragePath: input.getLocalStoragePath,
     })
   }
