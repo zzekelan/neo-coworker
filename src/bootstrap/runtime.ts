@@ -90,32 +90,67 @@ export function getDefaultCliStoragePath(workspaceRoot: string) {
   return join(workspaceRoot, ".agents", "agent.sqlite")
 }
 
+export function createCliStorageComposition(input: {
+  workspaceRoot: string
+  now?: () => number
+  createStorageRepositoryImpl?: typeof createStorageRepository
+  createPermissionRepositoryImpl?: typeof createPermissionRepository
+  openStorageDatabaseImpl?: typeof openStorageDatabase
+  repository?: StorageRepository
+  permissionRepository?: PermissionRepository
+}) {
+  const now = input.now ?? Date.now
+  const database =
+    input.repository == null
+      ? (input.openStorageDatabaseImpl ?? openStorageDatabase)(
+          getDefaultCliStoragePath(input.workspaceRoot),
+        )
+      : null
+  if (input.repository && !input.permissionRepository) {
+    throw new Error("permissionRepository is required when repository is provided")
+  }
+  const repository =
+    input.repository ??
+    (input.createStorageRepositoryImpl ?? createStorageRepository)({
+      database: database!,
+      now,
+    })
+  const permissionRepository =
+    input.permissionRepository ??
+    (input.createPermissionRepositoryImpl ?? createPermissionRepository)({
+      database: database!,
+      now,
+    })
+
+  return {
+    repository,
+    permissionRepository,
+    close() {
+      database?.close(false)
+    },
+  } satisfies {
+    repository: StorageRepository
+    permissionRepository: PermissionRepository
+    close(): void
+  }
+}
+
 export function createCliRuntime(input: CliRuntimeInput) {
   const now = input.now ?? Date.now
 
   return {
     async run(runInput: CliRunInput): Promise<RunHandle> {
-      const database =
-        input.repository == null
-          ? (input.openStorageDatabaseImpl ?? openStorageDatabase)(
-              getDefaultCliStoragePath(runInput.workspaceRoot),
-            )
-          : null
-      if (input.repository && !input.permissionRepository) {
-        throw new Error("permissionRepository is required when repository is provided")
-      }
-      const repository =
-        input.repository ??
-        (input.createStorageRepositoryImpl ?? createStorageRepository)({
-          database: database!,
-          now,
-        })
-      const permissionRepository =
-        input.permissionRepository ??
-        (input.createPermissionRepositoryImpl ?? createPermissionRepository)({
-          database: database!,
-          now,
-        })
+      const storage = createCliStorageComposition({
+        workspaceRoot: runInput.workspaceRoot,
+        now,
+        repository: input.repository,
+        permissionRepository: input.permissionRepository,
+        openStorageDatabaseImpl: input.openStorageDatabaseImpl,
+        createStorageRepositoryImpl: input.createStorageRepositoryImpl,
+        createPermissionRepositoryImpl: input.createPermissionRepositoryImpl,
+      })
+      const repository = storage.repository
+      const permissionRepository = storage.permissionRepository
       const sessionRuns = createSessionRunService({
         repository,
         now,
@@ -155,9 +190,9 @@ export function createCliRuntime(input: CliRuntimeInput) {
           runId: started.run.id,
         })
 
-        return database ? withDatabaseCleanup(handle, () => database.close(false)) : handle
+        return input.repository ? handle : withDatabaseCleanup(handle, () => storage.close())
       } catch (error) {
-        database?.close(false)
+        storage.close()
         throw error
       }
     },

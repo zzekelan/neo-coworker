@@ -1,6 +1,5 @@
 import { createEventQueue } from "../runtime/stream"
 import {
-  createPermissionRepository,
   type PermissionRepository,
   type StoredPermissionRequest,
 } from "../../permission"
@@ -9,8 +8,6 @@ import { createAgentServer } from "./server"
 import type { ServerAppRuntime } from "./server-app"
 import type { ServerEvent } from "./server-events"
 import {
-  createSessionRepository as createStorageRepository,
-  openSessionDatabase as openStorageDatabase,
   type SessionRepository as StorageRepository,
   type StoredMessage,
   type StoredRun,
@@ -273,29 +270,11 @@ export function createAgentServerClient(input: {
 
 export async function createLocalCliServerClient(input: {
   provider: OrchestrationModelPort
-  workspaceRoot: string
+  repository: StorageRepository
+  permissionRepository: PermissionRepository
   createRuntimeImpl: LocalRuntimeFactory
-  getStoragePath: (workspaceRoot: string) => string
-  repository?: StorageRepository
-  permissionRepository?: PermissionRepository
+  closeImpl?: () => void | Promise<void>
 }) {
-  const database =
-    input.repository == null
-      ? openStorageDatabase(input.getStoragePath(input.workspaceRoot))
-      : null
-  if (input.repository && !input.permissionRepository) {
-    throw new Error("permissionRepository is required when repository is provided")
-  }
-  const repository =
-    input.repository ??
-    createStorageRepository({
-      database: database!,
-    })
-  const permissionRepository =
-    input.permissionRepository ??
-    createPermissionRepository({
-      database: database!,
-    })
   const server = createAgentServer({
     createRuntimeImpl(serverInput) {
       return input.createRuntimeImpl({
@@ -305,8 +284,8 @@ export async function createLocalCliServerClient(input: {
         now: serverInput.now,
       })
     },
-    repository,
-    permissionRepository,
+    repository: input.repository,
+    permissionRepository: input.permissionRepository,
   })
 
   return {
@@ -318,7 +297,7 @@ export async function createLocalCliServerClient(input: {
     }),
     async close() {
       await server.stop()
-      database?.close(false)
+      await input.closeImpl?.()
     },
   } satisfies CliServerClientHandle
 }

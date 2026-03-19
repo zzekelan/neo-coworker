@@ -12,7 +12,7 @@ import {
   resolveDefaultProviderConfig,
   type DefaultProviderInput,
 } from "../bootstrap/provider"
-import { createRuntime, getDefaultCliStoragePath } from "../bootstrap/runtime"
+import { createCliStorageComposition, createRuntime } from "../bootstrap/runtime"
 
 type BuildCliInput = {
   provider?: ModelProvider
@@ -64,7 +64,19 @@ export function buildCli(input: BuildCliInput = {}) {
         createLocalRuntimeImpl(runtimeInput) {
           return createRuntime(runtimeInput)
         },
-        getLocalStoragePath: getDefaultCliStoragePath,
+        createLocalStorageImpl(workspaceRoot) {
+          const storage = createCliStorageComposition({
+            workspaceRoot,
+          })
+
+          return {
+            repository: storage.repository,
+            permissionRepository: storage.permissionRepository,
+            closeImpl() {
+              storage.close()
+            },
+          }
+        },
       })
     },
   }

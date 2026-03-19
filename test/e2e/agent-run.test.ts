@@ -9,6 +9,7 @@ import {
 } from "../../src/orchestration/wiring/cli"
 import { createAgentServer } from "../../src/orchestration/wiring/server"
 import {
+  createCliStorageComposition,
   createRuntime,
   getDefaultCliStoragePath,
 } from "../../src/bootstrap/runtime"
@@ -89,7 +90,19 @@ describe("agent run e2e", () => {
       createLocalRuntimeImpl(input) {
         return createRuntime(input)
       },
-      getLocalStoragePath: getDefaultCliStoragePath,
+      createLocalStorageImpl(workspaceRoot) {
+        const storage = createCliStorageComposition({
+          workspaceRoot,
+        })
+
+        return {
+          repository: storage.repository,
+          permissionRepository: storage.permissionRepository,
+          closeImpl() {
+            storage.close()
+          },
+        }
+      },
       io: {
         write(text: string) {
           output.push(text)

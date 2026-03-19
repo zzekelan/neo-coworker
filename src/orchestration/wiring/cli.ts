@@ -84,7 +84,7 @@ type RunCliClientInput = {
   provider?: never
   createLocalCliServerClientImpl?: never
   createLocalRuntimeImpl?: never
-  getLocalStoragePath?: never
+  createLocalStorageImpl?: never
 }
 
 type RunCliProviderInput = {
@@ -92,7 +92,17 @@ type RunCliProviderInput = {
   provider: OrchestrationModelPort
   createLocalCliServerClientImpl?: typeof createLocalCliServerClient
   createLocalRuntimeImpl: Parameters<typeof createLocalCliServerClient>[0]["createRuntimeImpl"]
-  getLocalStoragePath: Parameters<typeof createLocalCliServerClient>[0]["getStoragePath"]
+  createLocalStorageImpl: (workspaceRoot: string) =>
+    | Pick<
+        Parameters<typeof createLocalCliServerClient>[0],
+        "repository" | "permissionRepository" | "closeImpl"
+      >
+    | Promise<
+        Pick<
+          Parameters<typeof createLocalCliServerClient>[0],
+          "repository" | "permissionRepository" | "closeImpl"
+        >
+      >
 }
 
 export type RunCliInput = {
@@ -170,12 +180,14 @@ async function resolveClient(input: RunCliInput, workspaceRoot: string): Promise
   if ("provider" in input && input.provider) {
     const createLocalClient =
       input.createLocalCliServerClientImpl ?? createLocalCliServerClient
+    const localStorage = await input.createLocalStorageImpl(workspaceRoot)
 
     return createLocalClient({
       provider: input.provider,
-      workspaceRoot,
+      repository: localStorage.repository,
+      permissionRepository: localStorage.permissionRepository,
       createRuntimeImpl: input.createLocalRuntimeImpl,
-      getStoragePath: input.getLocalStoragePath,
+      closeImpl: localStorage.closeImpl,
     })
   }
 
