@@ -13,10 +13,10 @@ import type { OrchestrationModelPort } from "../../src/orchestration/ports/model
 import { createPermissionRepository } from "../../src/permission/repo"
 import { createAgentServer } from "../../src/orchestration/wiring/server"
 import {
-  type ConversationRepository,
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-} from "../../src/conversation/repo"
+  type SessionRepository,
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+} from "../../src/session/repo"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -582,7 +582,7 @@ async function createHarness(
   provider: OrchestrationModelPort,
   options: {
     permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
-    repositoryFactory?(repository: ConversationRepository): ConversationRepository
+    repositoryFactory?(repository: SessionRepository): SessionRepository
   } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), `${prefix}-`))

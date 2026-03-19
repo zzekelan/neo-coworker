@@ -1,14 +1,14 @@
 import type {
-  OrchestrationConversationPort,
+  OrchestrationSessionPort,
   OrchestrationPartRecord,
   OrchestrationTranscriptMessage,
-} from "../ports/conversation"
+} from "../ports/session"
 import type { OrchestrationModelPort } from "../ports/model"
 import type { OrchestrationToolPort } from "../ports/tool"
 import type { OrchestrationEventEmitter } from "./index"
 
 type CreateOrchestrationStepServiceInput = {
-  conversation: OrchestrationConversationPort
+  session: OrchestrationSessionPort
   model: OrchestrationModelPort
   now?: () => number
 }
@@ -112,7 +112,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       runId: string
       emit: OrchestrationEventEmitter
     }) {
-      const run = input.conversation.getRun(runInput.runId)
+      const run = input.session.getRun(runInput.runId)
       if (run.sessionId !== runInput.sessionId) {
         throw new Error(`Run ${runInput.runId} does not belong to session ${runInput.sessionId}`)
       }
@@ -120,14 +120,14 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         throw new Error(`Run ${runInput.runId} cannot start from status ${run.status}`)
       }
 
-      input.conversation.transitionRunToRunning(runInput.runId)
+      input.session.transitionRunToRunning(runInput.runId)
       runInput.emit({ type: "run.started", runId: runInput.runId })
     },
     completeRun(runInput: {
       runId: string
       emit: OrchestrationEventEmitter
     }) {
-      input.conversation.completeRun(runInput.runId)
+      input.session.completeRun(runInput.runId)
       runInput.emit({ type: "run.completed", runId: runInput.runId })
     },
     failRun(runInput: {
@@ -135,7 +135,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       error: string
       emit: OrchestrationEventEmitter
     }) {
-      input.conversation.failRun({
+      input.session.failRun({
         runId: runInput.runId,
         errorText: runInput.error,
       })
@@ -149,12 +149,12 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       runId: string
       emit?: OrchestrationEventEmitter
     }) {
-      const run = input.conversation.getRun(runInput.runId)
+      const run = input.session.getRun(runInput.runId)
       if (run.status === "cancelled" || isTerminalRunStatus(run.status)) {
         return false
       }
 
-      input.conversation.cancelRun(runInput.runId)
+      input.session.cancelRun(runInput.runId)
       runInput.emit?.({ type: "run.cancelled", runId: runInput.runId })
       return true
     },
@@ -167,9 +167,9 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           error: string
         }
     > {
-      const transcript = input.conversation.listTranscript(stepInput.sessionId)
+      const transcript = input.session.listTranscript(stepInput.sessionId)
       const assistantTurn = createAssistantTurnRecorder({
-        conversation: input.conversation,
+        session: input.session,
         sessionId: stepInput.sessionId,
         runId: stepInput.runId,
         messageSequence: getNextMessageSequence(transcript, stepInput.runId),
@@ -348,7 +348,7 @@ function getNextMessageSequence(
 }
 
 function createAssistantTurnRecorder(input: {
-  conversation: OrchestrationConversationPort
+  session: OrchestrationSessionPort
   sessionId: string
   runId: string
   messageSequence: number
@@ -364,7 +364,7 @@ function createAssistantTurnRecorder(input: {
       return message
     }
 
-    message = input.conversation.createAssistantMessage({
+    message = input.session.createAssistantMessage({
       sessionId: input.sessionId,
       runId: input.runId,
       sequence: input.messageSequence,
@@ -379,7 +379,7 @@ function createAssistantTurnRecorder(input: {
     text?: string | null
     data?: unknown
   }) {
-    const createdPart = input.conversation.createMessagePart({
+    const createdPart = input.session.createMessagePart({
       sessionId: input.sessionId,
       runId: input.runId,
       messageId: ensureMessage().id,
@@ -398,7 +398,7 @@ function createAssistantTurnRecorder(input: {
     appendText(text: string) {
       if (activeTextPart) {
         activeTextPart.text += text
-        input.conversation.updateMessagePart({
+        input.session.updateMessagePart({
           partId: activeTextPart.id,
           text: activeTextPart.text,
         })

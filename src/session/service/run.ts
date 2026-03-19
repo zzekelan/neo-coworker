@@ -1,17 +1,17 @@
 import {
-  ConversationConflictError,
-  ConversationNotFoundError,
-  type ConversationRepository,
+  SessionConflictError,
+  SessionNotFoundError,
+  type SessionRepository,
   type RunTrigger,
   type StoredRun,
 } from "../repo/contract"
-import { createConversationTranscriptService } from "./transcript"
+import { createSessionTranscriptService } from "./transcript"
 import { createRunStateMachine } from "./state-machine"
 
 export type SessionActivityStatus = "idle" | "busy"
 
 export type SessionRunState = {
-  session: ReturnType<ConversationRepository["sessions"]["get"]>
+  session: ReturnType<SessionRepository["sessions"]["get"]>
   latestRun: StoredRun | null
   activeRun: StoredRun | null
   status: SessionActivityStatus
@@ -83,19 +83,19 @@ export class RetrySourceRunError extends SessionRunServiceError {
   }
 }
 
-export type CreateConversationRunServiceInput = {
-  repository: ConversationRepository
+export type CreateSessionRunServiceInput = {
+  repository: SessionRepository
   now?: () => number
 }
 
-export function createConversationRunService(input: CreateConversationRunServiceInput) {
+export function createSessionRunService(input: CreateSessionRunServiceInput) {
   const repository = input.repository
   const now = input.now ?? Date.now
   const runStateMachine = createRunStateMachine({
     repository,
     now,
   })
-  const transcript = createConversationTranscriptService({ repository })
+  const transcript = createSessionTranscriptService({ repository })
 
   function getSessionState(sessionId: string): SessionRunState {
     const session = repository.sessions.get(sessionId)
@@ -163,7 +163,7 @@ export function createConversationRunService(input: CreateConversationRunService
         throw identityConflict
       }
 
-      if (error instanceof ConversationConflictError) {
+      if (error instanceof SessionConflictError) {
         if (identityConflict) {
           throw identityConflict
         }
@@ -228,7 +228,7 @@ export function createConversationRunService(input: CreateConversationRunService
 }
 
 function assertStartRunIdentityAvailable(
-  repository: ConversationRepository,
+  repository: SessionRepository,
   run: Pick<StartRunInput, "runId" | "messageId">,
 ) {
   const conflict = getStartRunIdentityConflict(repository, run)
@@ -238,7 +238,7 @@ function assertStartRunIdentityAvailable(
 }
 
 function getStartRunIdentityConflict(
-  repository: ConversationRepository,
+  repository: SessionRepository,
   run: Pick<StartRunInput, "runId" | "messageId">,
 ) {
   if (run.runId && entityExists(() => repository.runs.get(run.runId!))) {
@@ -263,7 +263,7 @@ function entityExists(read: () => unknown) {
     read()
     return true
   } catch (error) {
-    if (error instanceof ConversationNotFoundError) {
+    if (error instanceof SessionNotFoundError) {
       return false
     }
 

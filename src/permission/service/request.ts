@@ -1,14 +1,14 @@
-import type { PermissionConversationPort } from "../ports/conversation"
+import type { PermissionSessionPort } from "../ports/session"
 import type { PermissionRepository } from "../repo"
 
 export type CreatePermissionRequestServiceInput = {
   repository: PermissionRepository
-  conversation: PermissionConversationPort
+  session: PermissionSessionPort
 }
 
 export function createPermissionRequestService(input: CreatePermissionRequestServiceInput) {
   const repository = input.repository
-  const conversation = input.conversation
+  const session = input.session
 
   return {
     requestPermission(inputValue: {
@@ -20,7 +20,7 @@ export function createPermissionRequestService(input: CreatePermissionRequestSer
         createdAt?: number
       }
     }) {
-      const run = conversation.transitionRunToWaitingPermission(inputValue.runId)
+      const run = session.transitionRunToWaitingPermission(inputValue.runId)
       try {
         const permissionRequest = repository.requests.create({
           id: inputValue.permissionRequest.id,
@@ -38,7 +38,7 @@ export function createPermissionRequestService(input: CreatePermissionRequestSer
           permissionRequest,
         }
       } catch (error) {
-        conversation.transitionRunToRunning(run.id)
+        session.transitionRunToRunning(run.id)
         throw error
       }
     },

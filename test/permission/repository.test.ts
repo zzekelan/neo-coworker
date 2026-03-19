@@ -4,9 +4,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
-  createConversationRepository,
-  openConversationDatabase,
-} from "../../src/conversation/repo"
+  createSessionRepository,
+  openSessionDatabase,
+} from "../../src/session/repo"
 import {
   PermissionNotFoundError,
   createPermissionRepository,
@@ -110,11 +110,11 @@ describe("permission repository", () => {
 })
 
 function createTestSubject(prefix: string) {
-  const database = openConversationDatabase(createDatabasePath(prefix))
+  const database = openSessionDatabase(createDatabasePath(prefix))
   trackDatabase(database)
 
   return {
-    conversationRepository: createConversationRepository({ database }),
+    conversationRepository: createSessionRepository({ database }),
     permissionRepository: createPermissionRepository({ database }),
   }
 }

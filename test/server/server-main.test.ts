@@ -9,9 +9,9 @@ import {
   resolveStandaloneServerConfig,
 } from "../../src/wiring/server-main"
 import {
-  CURRENT_CONVERSATION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
-  openConversationDatabase as openStorageDatabase,
-} from "../../src/conversation/repo"
+  CURRENT_SESSION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
+  openSessionDatabase as openStorageDatabase,
+} from "../../src/session/repo"
 
 const tempDirectories: string[] = []
 const activeProcesses: Bun.Subprocess[] = []

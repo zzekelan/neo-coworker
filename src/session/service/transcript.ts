@@ -1,4 +1,4 @@
-import type { ConversationRepository, StoredRun, TranscriptMessage } from "../repo/contract"
+import type { SessionRepository, StoredRun, TranscriptMessage } from "../repo/contract"
 
 export class RunInitiatingMessageNotFoundError extends Error {
   readonly runId: string
@@ -10,12 +10,12 @@ export class RunInitiatingMessageNotFoundError extends Error {
   }
 }
 
-export type CreateConversationTranscriptServiceInput = {
-  repository: ConversationRepository
+export type CreateSessionTranscriptServiceInput = {
+  repository: SessionRepository
 }
 
-export function createConversationTranscriptService(
-  input: CreateConversationTranscriptServiceInput,
+export function createSessionTranscriptService(
+  input: CreateSessionTranscriptServiceInput,
 ) {
   const repository = input.repository
 
@@ -38,6 +38,6 @@ export function createConversationTranscriptService(
   }
 }
 
-export type ConversationTranscriptService = ReturnType<typeof createConversationTranscriptService>
+export type SessionTranscriptService = ReturnType<typeof createSessionTranscriptService>
 
 export type { TranscriptMessage }

@@ -1,4 +1,4 @@
-import type { OrchestrationTranscriptMessage } from "./conversation"
+import type { OrchestrationTranscriptMessage } from "./session"
 import type { OrchestrationTool } from "./tool"
 
 export type OrchestrationModelTurnRequest = {

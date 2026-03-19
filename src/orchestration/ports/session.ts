@@ -43,7 +43,7 @@ export type OrchestrationPartRecord = {
   data?: unknown
 }
 
-export type OrchestrationConversationPort = {
+export type OrchestrationSessionPort = {
   storageIdentity: string
   getSession(sessionId: string): OrchestrationSessionRecord
   getRun(runId: string): OrchestrationRunRecord

@@ -32,7 +32,7 @@ export function createOrchestrationRuntimeApi(
 ) {
   const now = input.now ?? Date.now
   const stepService = createOrchestrationStepService({
-    conversation: input.conversation,
+    session: input.session,
     model: input.model,
     now,
   })
@@ -40,7 +40,7 @@ export function createOrchestrationRuntimeApi(
   function respondPermission(response: Parameters<OrchestrationRunHandle["respondPermission"]>[0]) {
     const permissionRequest = input.permission.getPermissionRequest(response.requestId)
     const activeRun = sharedActiveRuns.get({
-      storageIdentity: input.conversation.storageIdentity,
+      storageIdentity: input.session.storageIdentity,
       sessionId: permissionRequest.sessionId,
       runId: permissionRequest.runId,
     })
@@ -65,9 +65,9 @@ export function createOrchestrationRuntimeApi(
   }
 
   function cancelRun(runId: string) {
-    const run = input.conversation.getRun(runId)
+    const run = input.session.getRun(runId)
     const activeRun = sharedActiveRuns.get({
-      storageIdentity: input.conversation.storageIdentity,
+      storageIdentity: input.session.storageIdentity,
       sessionId: run.sessionId,
       runId,
     })
@@ -93,7 +93,7 @@ export function createOrchestrationRuntimeApi(
   return {
     async run(runInput: OrchestrationRunInput): Promise<OrchestrationRunHandle> {
       const activeRunKey = {
-        storageIdentity: input.conversation.storageIdentity,
+        storageIdentity: input.session.storageIdentity,
         sessionId: runInput.sessionId,
         runId: runInput.runId,
       }
@@ -102,7 +102,7 @@ export function createOrchestrationRuntimeApi(
         throw new Error(`Run ${runInput.runId} is already active`)
       }
 
-      const session = input.conversation.getSession(runInput.sessionId)
+      const session = input.session.getSession(runInput.sessionId)
       const controller = new AbortController()
       const queue = createEventQueue<RuntimeEvent>()
       const emit = (event: RuntimeEvent) => {

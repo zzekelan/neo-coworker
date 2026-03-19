@@ -1,5 +1,5 @@
 import { z } from "zod"
-import type { OrchestrationConversationPort } from "../ports/conversation"
+import type { OrchestrationSessionPort } from "../ports/session"
 import type { OrchestrationModelPort } from "../ports/model"
 import type {
   OrchestrationPermissionMode,
@@ -105,7 +105,7 @@ export type OrchestrationActiveRunState = {
 
 export type CreateOrchestrationRuntimeApiInput = {
   model: OrchestrationModelPort
-  conversation: OrchestrationConversationPort
+  session: OrchestrationSessionPort
   permission: OrchestrationPermissionPort
   tools: OrchestrationToolPortFactory
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", OrchestrationPermissionMode>>

@@ -1,13 +1,13 @@
 import { join } from "node:path"
 import {
   assertRunStatusTransition,
-  createConversationRunService as createSessionRunService,
-} from "../../conversation/service"
+  createSessionRunService,
+} from "../../session/service"
 import {
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-  type ConversationRepository as StorageRepository,
-} from "../../conversation/repo"
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+  type SessionRepository as StorageRepository,
+} from "../../session/repo"
 import {
   createPermissionRepository,
   type PermissionRepository,
@@ -15,7 +15,7 @@ import {
 import type { PermissionMode, PermissionResponse } from "../../permission/service"
 import { createPermissionRuntimeApi } from "../../permission/runtime/api"
 import { createToolProvider } from "../../tool/wiring/provider"
-import type { OrchestrationConversationPort } from "../ports/conversation"
+import type { OrchestrationSessionPort } from "../ports/session"
 import type { OrchestrationModelPort } from "../ports/model"
 import type { OrchestrationPermissionPort } from "../ports/permission"
 import type { OrchestrationToolPortFactory } from "../ports/tool"
@@ -63,13 +63,13 @@ export function createRuntime(input: RuntimeInput) {
 
   return createOrchestrationRuntimeApi({
     model: input.provider,
-    conversation: createConversationPort({
+    session: createSessionPort({
       repository: input.repository,
       sessionRuns,
     }),
     permission: createPermissionPort({
       repository: input.permissionRepository,
-      conversation: createPermissionConversationPort({
+      session: createPermissionSessionPort({
         repository: input.repository,
         sessionRuns,
       }),
@@ -160,13 +160,13 @@ export function createCliRuntime(input: CliRuntimeInput) {
   }
 }
 
-function createConversationPort(input: {
+function createSessionPort(input: {
   repository: StorageRepository
   sessionRuns: Pick<
     ReturnType<typeof createSessionRunService>,
     "transitionRunToRunning" | "completeRun" | "failRun" | "cancelRun"
   >
-}): OrchestrationConversationPort {
+}): OrchestrationSessionPort {
   return {
     storageIdentity: input.repository.storageIdentity,
     getSession(sessionId) {
@@ -219,12 +219,12 @@ function createConversationPort(input: {
 
 function createPermissionPort(input: {
   repository: PermissionRepository
-  conversation: ReturnType<typeof createPermissionConversationPort>
+  session: ReturnType<typeof createPermissionSessionPort>
   now: () => number
 }): OrchestrationPermissionPort {
   const permissionsApi = createPermissionRuntimeApi({
     repository: input.repository,
-    conversation: input.conversation,
+    session: input.session,
     now: input.now,
   })
 
@@ -249,7 +249,7 @@ function createToolPortFactory(): OrchestrationToolPortFactory {
   }
 }
 
-function createPermissionConversationPort(input: {
+function createPermissionSessionPort(input: {
   repository: StorageRepository
   sessionRuns: Pick<ReturnType<typeof createSessionRunService>, "transitionRunToRunning">
 }) {

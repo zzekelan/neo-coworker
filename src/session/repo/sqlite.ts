@@ -3,17 +3,17 @@ import { existsSync, mkdirSync, realpathSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 
 import {
-  CURRENT_CONVERSATION_SCHEMA_VERSION,
+  CURRENT_SESSION_SCHEMA_VERSION,
   MESSAGE_ROLES,
   PART_KINDS,
   RUN_STATUSES,
   RUN_TRIGGERS,
 } from "../config/defaults"
 import {
-  ConversationConflictError,
-  ConversationNotFoundError,
-  ConversationOwnershipError,
-  type ConversationRepository,
+  SessionConflictError,
+  SessionNotFoundError,
+  SessionOwnershipError,
+  type SessionRepository,
   type CreateAssistantMessageWithFirstPartInput,
   type CreateMessageInput,
   type CreatePartInput,
@@ -42,7 +42,7 @@ import {
   type TranscriptRow,
 } from "./mappers"
 
-export type ConversationDatabase = Database
+export type SessionDatabase = Database
 
 const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_permission"] as const
 const activeRunStatusCheck = ACTIVE_RUN_STATUSES.map((status) => `'${status}'`).join(", ")
@@ -54,7 +54,7 @@ const permissionStatusCheck = ["pending", "approved", "denied", "cancelled"]
   .map((status) => `'${status}'`)
   .join(", ")
 
-const conversationMigrations = [
+const sessionMigrations = [
   {
     version: 1,
     statements: [
@@ -181,7 +181,7 @@ const conversationMigrations = [
 
 type IdPrefix = "session" | "run" | "message" | "part"
 
-export function getConversationDatabaseIdentity(database: ConversationDatabase) {
+export function getSessionDatabaseIdentity(database: SessionDatabase) {
   const filename = database.filename
 
   if (!filename || filename === ":memory:") {
@@ -195,28 +195,28 @@ export function getConversationDatabaseIdentity(database: ConversationDatabase) 
   }
 }
 
-export function openConversationDatabase(filePath: string) {
+export function openSessionDatabase(filePath: string) {
   ensureParentDirectory(filePath)
 
   const database = new Database(filePath, { create: true, strict: true })
 
   try {
     configureDatabase(database)
-    runConversationMigrations(database)
+    runSessionMigrations(database)
     return database
   } catch (error) {
     database.close(false)
-    throw wrapConversationSetupError(filePath, error)
+    throw wrapSessionSetupError(filePath, error)
   }
 }
 
-export function createConversationRepository(input: {
-  database: ConversationDatabase
+export function createSessionRepository(input: {
+  database: SessionDatabase
   now?: () => number
   createId?: (prefix: IdPrefix) => string
-}): ConversationRepository {
+}): SessionRepository {
   const database = input.database
-  const storageIdentity = getConversationDatabaseIdentity(database)
+  const storageIdentity = getSessionDatabaseIdentity(database)
   const now = input.now ?? Date.now
   const createId =
     input.createId ?? ((prefix: IdPrefix) => `${prefix}_${crypto.randomUUID()}`)
@@ -311,7 +311,7 @@ export function createConversationRepository(input: {
   function requireSession(sessionId: string) {
     const row = getSessionRow(sessionId)
     if (!row) {
-      throw new ConversationNotFoundError("session", sessionId)
+      throw new SessionNotFoundError("session", sessionId)
     }
 
     return mapSessionRow(row)
@@ -320,7 +320,7 @@ export function createConversationRepository(input: {
   function requireRun(runId: string) {
     const row = getRunRow(runId)
     if (!row) {
-      throw new ConversationNotFoundError("run", runId)
+      throw new SessionNotFoundError("run", runId)
     }
 
     return mapRunRow(row)
@@ -329,7 +329,7 @@ export function createConversationRepository(input: {
   function requireRunOwnership(runId: string, sessionId: string) {
     const run = requireRun(runId)
     if (run.sessionId !== sessionId) {
-      throw new ConversationOwnershipError(
+      throw new SessionOwnershipError(
         `Run ${runId} does not belong to session ${sessionId}`,
       )
     }
@@ -340,7 +340,7 @@ export function createConversationRepository(input: {
   function requireMessage(messageId: string) {
     const row = getMessageRow(messageId)
     if (!row) {
-      throw new ConversationNotFoundError("message", messageId)
+      throw new SessionNotFoundError("message", messageId)
     }
 
     return mapMessageRow(row)
@@ -350,13 +350,13 @@ export function createConversationRepository(input: {
     const message = requireMessage(messageId)
 
     if (message.sessionId !== sessionId) {
-      throw new ConversationOwnershipError(
+      throw new SessionOwnershipError(
         `Message ${messageId} does not belong to session ${sessionId}`,
       )
     }
 
     if (message.runId !== runId) {
-      throw new ConversationOwnershipError(`Message ${messageId} does not belong to run ${runId}`)
+      throw new SessionOwnershipError(`Message ${messageId} does not belong to run ${runId}`)
     }
 
     return message
@@ -365,13 +365,13 @@ export function createConversationRepository(input: {
   function requirePart(partId: string) {
     const row = getPartRow(partId)
     if (!row) {
-      throw new ConversationNotFoundError("part", partId)
+      throw new SessionNotFoundError("part", partId)
     }
 
     return mapPartRow(row)
   }
 
-  const sessions: ConversationRepository["sessions"] = {
+  const sessions: SessionRepository["sessions"] = {
     create(session: CreateSessionInput): StoredSession {
       const record: StoredSession = {
         id: buildId("session", session.id),
@@ -396,7 +396,7 @@ export function createConversationRepository(input: {
     },
   }
 
-  const runs: ConversationRepository["runs"] = {
+  const runs: SessionRepository["runs"] = {
     create(run: CreateRunInput): StoredRun {
       requireSession(run.sessionId)
 
@@ -482,7 +482,7 @@ export function createConversationRepository(input: {
     },
   }
 
-  const messages: ConversationRepository["messages"] = {
+  const messages: SessionRepository["messages"] = {
     create(message: CreateMessageInput): StoredMessage {
       requireSession(message.sessionId)
       requireRunOwnership(message.runId, message.sessionId)
@@ -594,7 +594,7 @@ export function createConversationRepository(input: {
     },
   }
 
-  const parts: ConversationRepository["parts"] = {
+  const parts: SessionRepository["parts"] = {
     create(part: CreatePartInput): StoredPart {
       requireSession(part.sessionId)
       requireRunOwnership(part.runId, part.sessionId)
@@ -665,7 +665,7 @@ export function createConversationRepository(input: {
     (value: CreateQueuedRunWithInitiatingMessageInput) => {
       const activeRun = getActiveRunRowBySession(value.run.sessionId)
       if (activeRun) {
-        throw new ConversationConflictError(
+        throw new SessionConflictError(
           `Session ${value.run.sessionId} already has active run ${activeRun.id}`,
         )
       }
@@ -745,24 +745,24 @@ function ensureParentDirectory(filePath: string) {
   }
 }
 
-function configureDatabase(database: ConversationDatabase) {
+function configureDatabase(database: SessionDatabase) {
   database.exec("PRAGMA foreign_keys = ON")
   database.exec("PRAGMA journal_mode = WAL")
 }
 
-function runConversationMigrations(database: ConversationDatabase) {
+function runSessionMigrations(database: SessionDatabase) {
   const versionRow = database
     .query("PRAGMA user_version")
     .get() as { user_version: number } | null
   const currentVersion = versionRow?.user_version ?? 0
 
-  if (currentVersion > CURRENT_CONVERSATION_SCHEMA_VERSION) {
+  if (currentVersion > CURRENT_SESSION_SCHEMA_VERSION) {
     throw new Error(
-      `Database schema version ${currentVersion} is newer than supported version ${CURRENT_CONVERSATION_SCHEMA_VERSION}`,
+      `Database schema version ${currentVersion} is newer than supported version ${CURRENT_SESSION_SCHEMA_VERSION}`,
     )
   }
 
-  for (const migration of conversationMigrations) {
+  for (const migration of sessionMigrations) {
     if (migration.version <= currentVersion) {
       continue
     }
@@ -778,7 +778,7 @@ function runConversationMigrations(database: ConversationDatabase) {
   }
 }
 
-function wrapConversationSetupError(filePath: string, error: unknown) {
+function wrapSessionSetupError(filePath: string, error: unknown) {
   const message =
     error instanceof Error ? error.message : typeof error === "string" ? error : "unknown error"
   return new Error(`Failed to initialize storage at ${filePath}: ${message}`)

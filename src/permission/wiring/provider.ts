@@ -1,5 +1,5 @@
 import { createPermissionRepository, type PermissionDatabase } from "../repo"
-import type { PermissionConversationPort } from "../ports/conversation"
+import type { PermissionSessionPort } from "../ports/session"
 import type { PermissionTelemetryPort } from "../ports/telemetry"
 import { createPermissionRuntimeApi } from "../runtime/api"
 import type { PermissionRuntimeApi } from "../runtime/api"
@@ -28,7 +28,7 @@ export function createPermissionStorage(input: {
 
 export function createPermissionRuntimeProvider(input: {
   database: PermissionDatabase
-  conversation: PermissionConversationPort
+  session: PermissionSessionPort
   now?: () => number
 }) {
   const repository = createPermissionRepository({
@@ -37,7 +37,7 @@ export function createPermissionRuntimeProvider(input: {
   })
   const runtime = createPermissionRuntimeApi({
     repository,
-    conversation: input.conversation,
+    session: input.session,
     now: input.now,
   })
 

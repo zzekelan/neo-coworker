@@ -4,7 +4,7 @@ import {
   InvalidRunStatusTransitionError,
   SessionBusyError,
   StartRunIdentityConflictError,
-} from "../../conversation/service"
+} from "../../session/service"
 import { PermissionNotFoundError, type PermissionRepository } from "../../permission/repo"
 import {
   PermissionRequestNotPendingError,
@@ -15,10 +15,10 @@ import type { OrchestrationModelPort } from "../ports/model"
 import { PermissionRequestNotAwaitingActiveRuntimeError } from "./runtime"
 import {
   RUN_TRIGGERS,
-  ConversationConflictError as StorageConflictError,
-  ConversationNotFoundError as StorageNotFoundError,
-  type ConversationRepository as StorageRepository,
-} from "../../conversation/repo"
+  SessionConflictError as StorageConflictError,
+  SessionNotFoundError as StorageNotFoundError,
+  type SessionRepository as StorageRepository,
+} from "../../session/repo"
 import type { ServerEvent } from "./server-events"
 import { serializeSseEvent } from "./server-events"
 import { createServerApp, ServerShuttingDownError } from "./server-app"

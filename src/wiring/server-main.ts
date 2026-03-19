@@ -1,8 +1,8 @@
 import { join } from "node:path"
 import {
-  createConversationStorage,
-  openConversationStorage,
-} from "../conversation/wiring/provider"
+  createSessionStorage,
+  openSessionStorage,
+} from "../session/wiring/provider"
 import { createAgentServer } from "../orchestration/wiring/server"
 import { createPermissionStorage } from "../permission/wiring/provider"
 import { createDefaultProvider } from "./main"
@@ -40,10 +40,10 @@ export async function startStandaloneServer(input: {
   const provider = await createDefaultProvider({
     env,
   })
-  const database = openConversationStorage(config.databasePath)
+  const database = openSessionStorage(config.databasePath)
 
   try {
-    const { repository } = createConversationStorage({
+    const { repository } = createSessionStorage({
       database,
     })
     const { repository: permissionRepository } = createPermissionStorage({

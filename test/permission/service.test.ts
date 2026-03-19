@@ -5,13 +5,13 @@ import { join } from "node:path"
 
 import {
   assertRunStatusTransition,
-  createConversationRunService,
-} from "../../src/conversation/service"
+  createSessionRunService,
+} from "../../src/session/service"
 import {
-  createConversationRepository,
-  openConversationDatabase,
-  type ConversationRepository,
-} from "../../src/conversation/repo"
+  createSessionRepository,
+  openSessionDatabase,
+  type SessionRepository,
+} from "../../src/session/repo"
 import {
   createPermissionRepository,
   type PermissionRepository,
@@ -90,7 +90,7 @@ describe("permission service", () => {
       }),
     ).toThrow(/UNIQUE|constraint/i)
 
-    expect(harness.conversationRepository.runs.get(harness.run.id)).toMatchObject({
+    expect(harness.sessionRepository.runs.get(harness.run.id)).toMatchObject({
       id: harness.run.id,
       status: "running",
     })
@@ -214,27 +214,27 @@ describe("permission service", () => {
 })
 
 function createHarness(prefix: string, nowValues: number[]) {
-  const database = openConversationDatabase(createDatabasePath(prefix))
+  const database = openSessionDatabase(createDatabasePath(prefix))
   trackDatabase(database)
 
-  const nextConversationNow = createNow(nowValues)
-  const conversationRepository = createConversationRepository({
+  const nextSessionNow = createNow(nowValues)
+  const sessionRepository = createSessionRepository({
     database,
-    now: nextConversationNow,
+    now: nextSessionNow,
   })
   const permissionRepository = createPermissionRepository({ database })
-  const sessionRuns = createConversationRunService({
-    repository: conversationRepository,
+  const sessionRuns = createSessionRunService({
+    repository: sessionRepository,
     now: createNow(nowValues),
   })
 
-  const session = conversationRepository.sessions.create({
+  const session = sessionRepository.sessions.create({
     id: "session_1",
     directory: "/workspace",
     workspaceRoot: "/workspace",
     createdAt: 1,
   })
-  const run = conversationRepository.runs.create({
+  const run = sessionRepository.runs.create({
     id: "run_1",
     sessionId: session.id,
     trigger: "cli",
@@ -243,22 +243,22 @@ function createHarness(prefix: string, nowValues: number[]) {
     startedAt: 3,
   })
 
-  const conversation = createPermissionConversationPort({
-    repository: conversationRepository,
+  const sessionPort = createPermissionSessionPort({
+    repository: sessionRepository,
     sessionRuns,
   })
 
   return {
-    conversationRepository,
+    sessionRepository,
     permissionRepository,
     query: createPermissionQueryService({ repository: permissionRepository }),
     request: createPermissionRequestService({
       repository: permissionRepository,
-      conversation,
+      session: sessionPort,
     }),
     respond: createPermissionRespondService({
       repository: permissionRepository,
-      conversation,
+      session: sessionPort,
     }),
     sessionRuns,
     session,
@@ -266,9 +266,9 @@ function createHarness(prefix: string, nowValues: number[]) {
   }
 }
 
-function createPermissionConversationPort(input: {
-  repository: ConversationRepository
-  sessionRuns: Pick<ReturnType<typeof createConversationRunService>, "transitionRunToRunning">
+function createPermissionSessionPort(input: {
+  repository: SessionRepository
+  sessionRuns: Pick<ReturnType<typeof createSessionRunService>, "transitionRunToRunning">
 }) {
   return {
     getRun(runId: string) {

@@ -1,6 +1,6 @@
 export {
-  CONVERSATION_TABLES,
-  CURRENT_CONVERSATION_SCHEMA_VERSION,
+  SESSION_TABLES,
+  CURRENT_SESSION_SCHEMA_VERSION,
   MESSAGE_ROLES,
   PART_KINDS,
   RUN_STATUSES,
@@ -11,11 +11,11 @@ export {
   type RunTrigger,
 } from "../config/defaults"
 export {
-  ConversationConflictError,
-  ConversationNotFoundError,
-  ConversationOwnershipError,
-  ConversationRepositoryError,
-  type ConversationRepository,
+  SessionConflictError,
+  SessionNotFoundError,
+  SessionOwnershipError,
+  SessionRepositoryError,
+  type SessionRepository,
   type CreateAssistantMessageWithFirstPartInput,
   type CreateMessageInput,
   type CreatePartInput,
@@ -32,8 +32,8 @@ export {
   type UpdateRunStatusInput,
 } from "./contract"
 export {
-  getConversationDatabaseIdentity,
-  openConversationDatabase,
-  createConversationRepository,
-  type ConversationDatabase,
+  getSessionDatabaseIdentity,
+  openSessionDatabase,
+  createSessionRepository,
+  type SessionDatabase,
 } from "./sqlite"

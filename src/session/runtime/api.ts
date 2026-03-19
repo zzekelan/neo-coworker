@@ -1,14 +1,14 @@
 import {
-  createConversationRunService,
-  createConversationTranscriptService,
-  type CreateConversationRunServiceInput,
+  createSessionRunService,
+  createSessionTranscriptService,
+  type CreateSessionRunServiceInput,
 } from "../service"
 
-export type ConversationRuntimeApiInput = CreateConversationRunServiceInput
+export type SessionRuntimeApiInput = CreateSessionRunServiceInput
 
-export function createConversationRuntimeApi(input: ConversationRuntimeApiInput) {
-  const runService = createConversationRunService(input)
-  const transcriptService = createConversationTranscriptService(input)
+export function createSessionRuntimeApi(input: SessionRuntimeApiInput) {
+  const runService = createSessionRunService(input)
+  const transcriptService = createSessionTranscriptService(input)
 
   return {
     runs: {
@@ -28,4 +28,4 @@ export function createConversationRuntimeApi(input: ConversationRuntimeApiInput)
   }
 }
 
-export type ConversationRuntimeApi = ReturnType<typeof createConversationRuntimeApi>
+export type SessionRuntimeApi = ReturnType<typeof createSessionRuntimeApi>

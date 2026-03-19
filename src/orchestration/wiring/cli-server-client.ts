@@ -9,13 +9,13 @@ import type { OrchestrationModelPort } from "../ports/model"
 import { createAgentServer } from "./server"
 import type { ServerEvent } from "./server-events"
 import {
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-  type ConversationRepository as StorageRepository,
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+  type SessionRepository as StorageRepository,
   type StoredMessage,
   type StoredRun,
   type StoredSession,
-} from "../../conversation/repo"
+} from "../../session/repo"
 
 type SendRequest = (request: Request) => Promise<Response> | Response
 

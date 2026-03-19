@@ -1,12 +1,12 @@
 import type { OrchestrationModelPort } from "../ports/model"
 import {
   assertRunStatusTransition,
-  createConversationRunService as createSessionRunService,
-} from "../../conversation/service"
+  createSessionRunService,
+} from "../../session/service"
 import type {
-  ConversationRepository as StorageRepository,
+  SessionRepository as StorageRepository,
   RunTrigger,
-} from "../../conversation/repo"
+} from "../../session/repo"
 import type { PermissionRepository } from "../../permission/repo"
 import type { PermissionMode, PermissionResponse } from "../../permission/service"
 import { createRuntime } from "./runtime"

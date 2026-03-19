@@ -1,4 +1,4 @@
-import { isTerminalRunStatus } from "../../conversation/service"
+import { isTerminalRunStatus } from "../../session/service"
 import type { OrchestrationModelPort } from "../ports/model"
 import type { PermissionDecision } from "../../permission/service"
 import type { ServerEvent } from "./server-events"

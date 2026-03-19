@@ -3,9 +3,9 @@ export { PART_KINDS, type PartKind, type StoredPart } from "../types/part"
 export { RUN_STATUSES, RUN_TRIGGERS, type RunStatus, type RunTrigger, type StoredRun } from "../types/run"
 export { type StoredSession } from "../types/session"
 
-export const CURRENT_CONVERSATION_SCHEMA_VERSION = 2
+export const CURRENT_SESSION_SCHEMA_VERSION = 2
 
-export const CONVERSATION_TABLES = [
+export const SESSION_TABLES = [
   "session",
   "run",
   "message",

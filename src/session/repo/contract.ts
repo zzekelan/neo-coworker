@@ -96,40 +96,40 @@ export type CreateAssistantMessageWithFirstPartInput = {
   part: Omit<CreatePartInput, "sessionId" | "runId" | "messageId">
 }
 
-export class ConversationRepositoryError extends Error {
+export class SessionRepositoryError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = "ConversationRepositoryError"
+    this.name = "SessionRepositoryError"
   }
 }
 
-export class ConversationNotFoundError extends ConversationRepositoryError {
+export class SessionNotFoundError extends SessionRepositoryError {
   readonly entityType: EntityType
   readonly entityId: string
 
   constructor(entityType: EntityType, entityId: string) {
     super(`Unknown ${entityType}: ${entityId}`)
-    this.name = "ConversationNotFoundError"
+    this.name = "SessionNotFoundError"
     this.entityType = entityType
     this.entityId = entityId
   }
 }
 
-export class ConversationOwnershipError extends ConversationRepositoryError {
+export class SessionOwnershipError extends SessionRepositoryError {
   constructor(message: string) {
     super(message)
-    this.name = "ConversationOwnershipError"
+    this.name = "SessionOwnershipError"
   }
 }
 
-export class ConversationConflictError extends ConversationRepositoryError {
+export class SessionConflictError extends SessionRepositoryError {
   constructor(message: string) {
     super(message)
-    this.name = "ConversationConflictError"
+    this.name = "SessionConflictError"
   }
 }
 
-export type ConversationRepository = {
+export type SessionRepository = {
   storageIdentity: string
   sessions: {
     create(session: CreateSessionInput): StoredSession

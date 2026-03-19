@@ -2,16 +2,16 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createConversationRunService as createSessionRunService } from "../../src/conversation/service"
+import { createSessionRunService } from "../../src/session/service"
 import {
   createPermissionRepository,
   type PermissionRepository,
 } from "../../src/permission/repo"
 import {
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-  type ConversationRepository as StorageRepository,
-} from "../../src/conversation/repo"
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+  type SessionRepository as StorageRepository,
+} from "../../src/session/repo"
 import { buildTranscriptMessages } from "../../src/model/service/projection"
 import {
   createModelRuntimeApi,

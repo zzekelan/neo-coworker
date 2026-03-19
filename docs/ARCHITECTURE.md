@@ -123,7 +123,7 @@ As of 2026-03-19, the remaining structural debt includes:
 - Missing required layers in several current domains
 - Domain-local `wiring/*` directories that still hold composition code
 - Outer-shell composition in `src/wiring/*` that still reaches into domain internals
-- `src/orchestration/wiring/*`, which currently mixes outer-shell concerns with cross-domain imports to concrete `conversation/*`, `permission/*`, and `tool/*` paths during the `conversation -> session` rename transition
+- `src/orchestration/wiring/*`, which currently mixes outer-shell concerns with cross-domain imports to concrete `session/*`, `permission/*`, and `tool/*` paths
 
 Those findings are tolerated only because they are recorded as baseline debt.
 New violations outside that baseline should fail the structure checks immediately.

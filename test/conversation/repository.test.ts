@@ -4,11 +4,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
-  ConversationNotFoundError as StorageNotFoundError,
-  ConversationOwnershipError as StorageOwnershipError,
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-} from "../../src/conversation/repo"
+  SessionNotFoundError as StorageNotFoundError,
+  SessionOwnershipError as StorageOwnershipError,
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+} from "../../src/session/repo"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

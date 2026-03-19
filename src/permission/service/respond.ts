@@ -1,4 +1,4 @@
-import type { PermissionConversationPort } from "../ports/conversation"
+import type { PermissionSessionPort } from "../ports/session"
 import type { PermissionRepository, StoredPermissionRequest } from "../repo"
 
 export class PermissionRequestNotPendingError extends Error {
@@ -31,13 +31,13 @@ export class PermissionRequestRunStateError extends Error {
 
 export type CreatePermissionRespondServiceInput = {
   repository: PermissionRepository
-  conversation: PermissionConversationPort
+  session: PermissionSessionPort
   now?: () => number
 }
 
 export function createPermissionRespondService(input: CreatePermissionRespondServiceInput) {
   const repository = input.repository
-  const conversation = input.conversation
+  const session = input.session
   const now = input.now ?? Date.now
 
   return {
@@ -54,7 +54,7 @@ export function createPermissionRespondService(input: CreatePermissionRespondSer
         })
       }
 
-      const run = conversation.getRun(permissionRequest.runId)
+      const run = session.getRun(permissionRequest.runId)
       if (run.status !== "waiting_permission") {
         throw new PermissionRequestRunStateError({
           requestId: permissionRequest.id,
@@ -70,7 +70,7 @@ export function createPermissionRespondService(input: CreatePermissionRespondSer
       })
 
       return {
-        run: conversation.transitionRunToRunning(run.id),
+        run: session.transitionRunToRunning(run.id),
         permissionRequest: resolvedPermissionRequest,
       }
     },

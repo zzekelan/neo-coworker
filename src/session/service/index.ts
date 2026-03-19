@@ -3,8 +3,8 @@ export {
   SessionBusyError,
   SessionRunServiceError,
   StartRunIdentityConflictError,
-  createConversationRunService,
-  type CreateConversationRunServiceInput,
+  createSessionRunService,
+  type CreateSessionRunServiceInput,
   type RetryRunInput,
   type SessionActivityStatus,
   type SessionRunState,
@@ -23,7 +23,6 @@ export {
 } from "./state-machine"
 export {
   RunInitiatingMessageNotFoundError,
-  createConversationTranscriptService,
-  type ConversationTranscriptService,
-  type TranscriptMessage,
+  createSessionTranscriptService,
+  type SessionTranscriptService,
 } from "./transcript"
