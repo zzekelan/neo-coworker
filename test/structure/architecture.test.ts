@@ -79,6 +79,40 @@ describe("architecture structure", () => {
     expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
   })
 
+  test("detects a domain root index importing a non-runtime layer", () => {
+    const findings = validateRepositoryGraph({
+      directories: Array.from(APPROVED_TOP_LEVELS),
+      files: [],
+      edges: [
+        {
+          from: "session/index.ts",
+          to: "session/service/index.ts",
+          specifier: "./service",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
+    expect(formatFindings(findings).join("\n")).toContain("may only import src/session/runtime/*")
+  })
+
+  test("detects a domain-internal import routed through the same domain root", () => {
+    const findings = validateRepositoryGraph({
+      directories: Array.from(APPROVED_TOP_LEVELS),
+      files: [],
+      edges: [
+        {
+          from: "orchestration/runtime/api.ts",
+          to: "orchestration/index.ts",
+          specifier: "../index",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
+    expect(formatFindings(findings).join("\n")).toContain("may not import its own domain root")
+  })
+
   test("detects a missing required domain layer", () => {
     const findings = validateRepositoryGraph({
       directories: ["model"],

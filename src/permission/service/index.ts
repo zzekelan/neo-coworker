@@ -1,12 +1,6 @@
-export type {
-  PendingPermissionRequest,
-  PermissionDecision,
-  PermissionMode,
-  PermissionPolicy,
-  PermissionRequest,
-  PermissionResponse,
-  StoredPermissionRequest,
-} from "../repo"
+export type { PermissionSessionPort } from "../ports/session"
+export type { PermissionTelemetryPort } from "../ports/telemetry"
+export * from "../repo"
 export { resolvePermissionMode } from "./policy"
 export {
   createPermissionQueryService,

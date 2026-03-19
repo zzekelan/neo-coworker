@@ -29,6 +29,21 @@ Current blocking structure checks run through `bun run test:structure`.
 - Remediation: move the file into an approved layer, add the missing root `index.ts` when a domain lacks one, or relocate true composition code into an outer-shell top-level. Update `docs/ARCHITECTURE.md`, this file, and the structure checks in the same change only if the architecture has genuinely changed.
 - Source: `docs/ARCHITECTURE.md#domain-layers`, `docs/plans/2026-03-17-agent-collaboration-harness-design.md`
 
+### INV-STRUCTURE-002: Domain Root Is Runtime Facade Only
+
+- ID: `INV-STRUCTURE-002`
+- Title: Domain Root Is Runtime Facade Only
+- Class: `architecture`
+- Scope: `src/<domain>/index.ts` and same-domain imports that target it
+- Rule: each core-domain root `index.ts` may import only `src/<domain>/runtime/*` (prefer `runtime/api.ts`), and domain-internal files must not import their own root `index.ts`.
+- Why this repo requires it: the root index is the outer-shell contract boundary. If roots reach into arbitrary layers or domains route same-domain dependencies back through the root, the layer graph is bypassed and the facade becomes a hidden second business layer.
+- Enforcement: `blocking` via `bun run test:structure`
+- Severity: `error`
+- Bad example: `src/orchestration/runtime/api.ts -> src/orchestration/index.ts`
+- Good example: `src/session/index.ts -> src/session/runtime/api.ts`
+- Remediation: move same-domain dependencies to legal layer edges (`runtime -> service`) and expose root public surface by exporting from runtime modules rather than importing lower layers from `index.ts`.
+- Source: `docs/ARCHITECTURE.md#domain-layers`, `docs/ARCHITECTURE.md#cross-domain-boundaries`
+
 ### INV-BOUNDARY-001: Public Adapters Map Explicit Errors
 
 - ID: `INV-BOUNDARY-001`

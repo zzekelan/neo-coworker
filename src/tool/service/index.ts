@@ -1,3 +1,4 @@
+export type { ToolTelemetryPort } from "../ports/telemetry"
 export {
   SEARCH_MAX_MATCHES,
   SEARCH_SKIPPED_DIRECTORIES,

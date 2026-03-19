@@ -270,7 +270,33 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
     }
 
     if (from.topLevel === to.topLevel) {
-      if (from.isOuterShell || from.isDomainIndex || to.isDomainIndex) {
+      if (from.isDomainIndex) {
+        if (to.isDomainIndex || to.layer !== "runtime") {
+          addFinding(findings, {
+            ruleId: "ARCH-LAYER-001",
+            fingerprint: `ARCH-LAYER-001:domain-root-runtime-only:${edge.from}->${edge.to}`,
+            summary: `src/${edge.from} may only import src/${from.topLevel}/runtime/*, but imports src/${edge.to}.`,
+            remediation:
+              "Keep src/<domain>/index.ts as a thin runtime facade and route public exports through src/<domain>/runtime/* (preferably runtime/api.ts).",
+            doc: RULE_DOCS["ARCH-LAYER-001"],
+          })
+        }
+        continue
+      }
+
+      if (to.isDomainIndex) {
+        addFinding(findings, {
+          ruleId: "ARCH-LAYER-001",
+          fingerprint: `ARCH-LAYER-001:domain-internal-root-import:${edge.from}->${edge.to}`,
+          summary: `src/${edge.from} may not import its own domain root src/${edge.to}.`,
+          remediation:
+            "Import from the next legal domain layer directly instead of routing same-domain dependencies through src/<domain>/index.ts.",
+          doc: RULE_DOCS["ARCH-LAYER-001"],
+        })
+        continue
+      }
+
+      if (from.isOuterShell) {
         continue
       }
 

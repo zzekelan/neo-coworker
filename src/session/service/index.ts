@@ -1,3 +1,5 @@
+export type { SessionTelemetryPort } from "../ports/telemetry"
+export * from "../repo"
 export {
   RetrySourceRunError,
   SessionBusyError,

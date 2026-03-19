@@ -1,9 +1,10 @@
 import {
   createOrchestrationStepService,
   type CreateOrchestrationRuntimeApiInput,
+  type OrchestrationRunHandle,
   type OrchestrationRunInput,
+  type RuntimeEvent,
 } from "../service/runtime"
-import type { OrchestrationRunHandle, RuntimeEvent } from "../index"
 import { runOrchestrationLoop } from "./loop"
 import {
   createRunSuspension,
@@ -12,10 +13,7 @@ import {
 import { createEventQueue } from "./stream"
 
 export { PermissionRequestNotAwaitingActiveRuntimeError }
-export type {
-  CreateOrchestrationRuntimeApiInput,
-  OrchestrationRunInput,
-} from "../service/runtime"
+export * from "../service/runtime"
 
 const DEFAULT_SYSTEM_PROMPT = "You are the agent runtime."
 

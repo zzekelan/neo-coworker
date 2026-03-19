@@ -29,3 +29,6 @@ export function createSessionRuntimeApi(input: SessionRuntimeApiInput) {
 }
 
 export type SessionRuntimeApi = ReturnType<typeof createSessionRuntimeApi>
+export type SessionProvider = SessionRuntimeApi
+
+export * from "../service"

@@ -1,3 +1,4 @@
+export type { ModelTelemetryPort } from "../ports/telemetry"
 export type {
   ModelEvent,
   ModelMessage,

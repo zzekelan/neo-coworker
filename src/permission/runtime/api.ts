@@ -1,11 +1,15 @@
 import {
+  createPermissionRepository,
   createPermissionQueryService,
   createPermissionRequestService,
   createPermissionRespondService,
   type CreatePermissionQueryServiceInput,
   type CreatePermissionRequestServiceInput,
   type CreatePermissionRespondServiceInput,
+  type PermissionDatabase,
   type PermissionMode,
+  type PermissionSessionPort,
+  type PermissionTelemetryPort,
 } from "../service"
 import { createPermissionCoordinator, type PermissionCoordinatorOptions } from "./coordinator"
 
@@ -34,3 +38,50 @@ export function createPermissionRuntimeApi(input: CreatePermissionRuntimeApiInpu
 }
 
 export type PermissionRuntimeApi = ReturnType<typeof createPermissionRuntimeApi>
+
+export type PermissionProvider = PermissionRuntimeApi
+
+export function createPermissionProvider(input: {
+  runtime: PermissionRuntimeApi
+  telemetry?: PermissionTelemetryPort
+}) {
+  input.telemetry?.recordPermissionEvent?.("permission.provider.created")
+  return input.runtime
+}
+
+export function createPermissionStorage(input: {
+  database: PermissionDatabase
+  now?: () => number
+}) {
+  return {
+    repository: createPermissionRepository({
+      database: input.database,
+      now: input.now,
+    }),
+  }
+}
+
+export function createPermissionRuntimeProvider(input: {
+  database: PermissionDatabase
+  session: PermissionSessionPort
+  now?: () => number
+}) {
+  const repository = createPermissionRepository({
+    database: input.database,
+    now: input.now,
+  })
+  const runtime = createPermissionRuntimeApi({
+    repository,
+    session: input.session,
+    now: input.now,
+  })
+
+  return {
+    repository,
+    runtime: createPermissionProvider({
+      runtime,
+    }),
+  }
+}
+
+export * from "../service"
