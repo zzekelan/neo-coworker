@@ -7,7 +7,7 @@ import { resolveAgentServerOrigin } from "../../src/bootstrap/provider"
 import {
   getDefaultStandaloneServerStoragePath,
   resolveStandaloneServerConfig,
-} from "../../src/wiring/server-main"
+} from "../../src/app-server/main"
 import {
   CURRENT_SESSION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
   openSessionDatabase as openStorageDatabase,
@@ -147,7 +147,7 @@ describe("server main entrypoint", () => {
 
 function spawnServerMain(overrides: Record<string, string>) {
   const subprocess = Bun.spawn({
-    cmd: ["bun", "run", "src/wiring/server-main.ts"],
+    cmd: ["bun", "run", "src/app-server/main.ts"],
     cwd: globalThis.process.cwd(),
     env: buildLoopbackEnv(overrides),
     stdout: "pipe",

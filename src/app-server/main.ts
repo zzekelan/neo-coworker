@@ -1,4 +1,4 @@
-import { createAgentServer } from "../orchestration/wiring/server"
+import { createAgentServer } from "./server"
 export { createAgentServer }
 import {
   createStandaloneServerComposition,

@@ -3,7 +3,7 @@ import {
   type StoredPermissionRequest,
 } from "../permission"
 import type { OrchestrationModelPort } from "../orchestration"
-import { createAgentServer } from "../wiring/server-main"
+import { createAgentServer } from "../app-server/server"
 import type { ServerEvent } from "./server-events"
 import {
   type SessionRepository as StorageRepository,

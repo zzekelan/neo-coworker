@@ -1,16 +1,16 @@
-import type { OrchestrationRuntimeApi } from "../index"
+import type { OrchestrationRuntimeApi } from "../orchestration"
 import {
   assertRunStatusTransition,
   createSessionRunService,
-} from "../../session/service"
+} from "../session/service"
 import type {
   SessionRepository as StorageRepository,
   RunTrigger,
-} from "../../session/repo"
-import type { PermissionRepository } from "../../permission"
-import type { PermissionResponse } from "../../permission"
-import { buildSessionSnapshot, createServerEventBus } from "./server-events"
-import { createObservedRepository } from "./server-repository-events"
+} from "../session/repo"
+import type { PermissionRepository } from "../permission"
+import type { PermissionResponse } from "../permission"
+import { buildSessionSnapshot, createServerEventBus } from "./events"
+import { createObservedRepository } from "./repository-events"
 
 export type ServerAppRuntime = Pick<
   OrchestrationRuntimeApi,

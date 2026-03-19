@@ -1,12 +1,12 @@
-import { createEventQueue } from "../runtime/stream"
-import type { StoredPermissionRequest } from "../../permission"
+import { createEventQueue } from "../orchestration/runtime/stream"
+import type { StoredPermissionRequest } from "../permission"
 import type {
   SessionRepository as StorageRepository,
   StoredMessage,
   StoredPart,
   StoredRun,
   StoredSession,
-} from "../../session/repo"
+} from "../session/repo"
 
 export type SessionSnapshot = {
   session: StoredSession

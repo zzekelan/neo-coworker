@@ -7,7 +7,7 @@ import { createModelProvider } from "../../src/model"
 import {
   runCli,
 } from "../../src/cli/cli"
-import { createAgentServer } from "../../src/orchestration/wiring/server"
+import { createAgentServer } from "../../src/app-server/server"
 import {
   createCliStorageComposition,
   createRuntime,

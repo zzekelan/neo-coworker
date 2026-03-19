@@ -4,28 +4,28 @@ import {
   InvalidRunStatusTransitionError,
   SessionBusyError,
   StartRunIdentityConflictError,
-} from "../../session/service"
-import { PermissionNotFoundError, type PermissionRepository } from "../../permission"
+} from "../session/service"
+import { PermissionNotFoundError, type PermissionRepository } from "../permission"
 import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
-} from "../../permission"
-import { PermissionRequestNotAwaitingActiveRuntimeError } from "../index"
+} from "../permission"
+import { PermissionRequestNotAwaitingActiveRuntimeError } from "../orchestration"
 import {
   RUN_TRIGGERS,
   SessionConflictError as StorageConflictError,
   SessionNotFoundError as StorageNotFoundError,
   type SessionRepository as StorageRepository,
-} from "../../session/repo"
-import type { ServerEvent } from "./server-events"
-import { serializeSseEvent } from "./server-events"
+} from "../session/repo"
+import type { ServerEvent } from "./events"
+import { serializeSseEvent } from "./events"
 import {
   createServerApp,
   type CreateServerAppRuntime,
   ServerShuttingDownError,
-} from "./server-app"
+} from "./app"
 
-export { PermissionRequestNotAwaitingActiveRuntimeError } from "../index"
+export { PermissionRequestNotAwaitingActiveRuntimeError } from "../orchestration"
 
 const createSessionBodySchema = z.object({
   directory: z.string().min(1),

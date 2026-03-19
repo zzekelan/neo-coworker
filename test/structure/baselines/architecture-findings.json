@@ -1,88 +1,38 @@
 [
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->permission/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:app-server/app.ts->session/repo/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->session/repo/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:app-server/app.ts->session/service/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->session/service/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:app-server/events.ts->orchestration/runtime/stream.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-events.ts->permission/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:app-server/events.ts->session/repo/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-events.ts->session/repo/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:app-server/repository-events.ts->session/repo/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-repository-events.ts->permission/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:app-server/server.ts->session/repo/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-repository-events.ts->session/repo/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:app-server/server.ts->session/service/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->permission/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->session/repo/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->session/service/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->orchestration/wiring/server.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-TOPLEVEL-001:transition-file:wiring/server-main.ts",
-    "ruleId": "ARCH-TOPLEVEL-001",
-    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
-  },
-  {
-    "fingerprint": "ARCH-TOPLEVEL-001:transition-top-level:wiring",
-    "ruleId": "ARCH-TOPLEVEL-001",
-    "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
-  },
-  {
-    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server-app.ts",
-    "ruleId": "INV-STRUCTURE-001",
-    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
-  },
-  {
-    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server-events.ts",
-    "ruleId": "INV-STRUCTURE-001",
-    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
-  },
-  {
-    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server-repository-events.ts",
-    "ruleId": "INV-STRUCTURE-001",
-    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
-  },
-  {
-    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server.ts",
-    "ruleId": "INV-STRUCTURE-001",
-    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
   },
   {
     "fingerprint": "INV-STRUCTURE-001:file:session/wiring/provider.ts",
