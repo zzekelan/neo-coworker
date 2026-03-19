@@ -1,5 +1,5 @@
 import type { ServerEvent } from "./server-events"
-import type { StoredMessage, StoredRun } from "../../session/repo"
+import type { StoredMessage, StoredRun } from "../session"
 
 type StoredMessageRole = StoredMessage["role"]
 

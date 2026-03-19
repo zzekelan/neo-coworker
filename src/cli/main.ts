@@ -4,7 +4,7 @@ import {
   createStdioCliIo,
   parseRunCommand,
   runCli,
-} from "../orchestration/wiring/cli"
+} from "./cli"
 import type { ModelProvider } from "../model"
 import {
   createDefaultProvider,

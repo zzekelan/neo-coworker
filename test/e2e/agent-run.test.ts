@@ -6,7 +6,7 @@ import { createModelRuntimeApi } from "../../src/model/runtime/api"
 import { createModelProvider } from "../../src/model"
 import {
   runCli,
-} from "../../src/orchestration/wiring/cli"
+} from "../../src/cli/cli"
 import { createAgentServer } from "../../src/orchestration/wiring/server"
 import {
   createCliStorageComposition,
@@ -196,7 +196,7 @@ describe("agent run e2e", () => {
       cmd: [
         "bun",
         "run",
-        join(globalThis.process.cwd(), "src/wiring/main.ts"),
+        join(globalThis.process.cwd(), "src/cli/main.ts"),
         "run",
         "Read README.md and summarize it",
       ],

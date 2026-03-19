@@ -11,7 +11,7 @@ import {
 import { createModelProvider } from "../../src/model"
 import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
 import { createPermissionRepository } from "../../src/permission/repo"
-import { createAgentServerClient, runCli } from "../../src/orchestration/wiring/cli"
+import { createAgentServerClient, runCli } from "../../src/cli/cli"
 import { createAgentServer } from "../../src/orchestration/wiring/server"
 import { createRuntime } from "../../src/bootstrap/runtime"
 import {
