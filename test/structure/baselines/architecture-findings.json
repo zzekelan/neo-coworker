@@ -1,5 +1,10 @@
 [
   {
+    "fingerprint": "ARCH-CROSS-001:edge:model/wiring/provider.ts->orchestration/ports/model.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
+  },
+  {
     "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli-render.ts->conversation/repo/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Existing orchestration wiring still composes the conversation repository directly."
@@ -113,5 +118,140 @@
     "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->permission/service/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Existing orchestration wiring still composes the permission service directly."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:tool/wiring/provider.ts->orchestration/ports/tool.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:wiring/main.ts->model/wiring/provider.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:wiring/main.ts->orchestration/wiring/cli.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
+  },
+  {
+    "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->orchestration/wiring/server.ts",
+    "ruleId": "ARCH-CROSS-001",
+    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-index:conversation",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain has not yet exposed its required root index.ts public entrypoint."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-index:model",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain has not yet exposed its required root index.ts public entrypoint."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-index:orchestration",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain has not yet exposed its required root index.ts public entrypoint."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-index:permission",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain has not yet exposed its required root index.ts public entrypoint."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-index:tool",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain has not yet exposed its required root index.ts public entrypoint."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-layer:model/ports",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain does not yet satisfy the fixed layer skeleton required by the harness."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-layer:orchestration/config",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain does not yet satisfy the fixed layer skeleton required by the harness."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-layer:orchestration/repo",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain does not yet satisfy the fixed layer skeleton required by the harness."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-layer:orchestration/types",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain does not yet satisfy the fixed layer skeleton required by the harness."
+  },
+  {
+    "fingerprint": "ARCH-LAYER-001:missing-layer:tool/ports",
+    "ruleId": "ARCH-LAYER-001",
+    "note": "Current domain does not yet satisfy the fixed layer skeleton required by the harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:conversation/wiring/provider.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:model/wiring/provider.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/cli-io.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/cli-render.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/cli-server-client.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/cli.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/runtime.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server-app.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server-events.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server-repository-events.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/server.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:permission/wiring/provider.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
+  },
+  {
+    "fingerprint": "INV-STRUCTURE-001:file:tool/wiring/provider.ts",
+    "ruleId": "INV-STRUCTURE-001",
+    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
   }
 ]

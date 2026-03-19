@@ -10,16 +10,19 @@ Behavioral details still live in the design and task-contract docs under `docs/p
 
 Architecture ID: `ARCH-TOPLEVEL-001`
 
-Approved top-level modules under `src/`:
+Approved top-level modules under `src/` fall into two groups:
 
-- `conversation`: durable session, run, message, and transcript state
-- `permission`: durable permission-request state and decision flow
-- `model`: model-provider integration and transcript projection
-- `tool`: tool catalog, execution, and tool-side runtime helpers
-- `orchestration`: the agent loop, run progression, suspend/resume, streaming, and cross-domain coordination through explicit ports
-- `wiring`: root entrypoints that assemble domain wiring into the CLI and standalone server
+- Core domains:
+  - `conversation`: durable session, run, message, and transcript state
+  - `permission`: durable permission-request state and decision flow
+  - `model`: model-provider integration and transcript projection
+  - `tool`: tool catalog, execution, and tool-side runtime helpers
+  - `orchestration`: the agent loop, run progression, suspend/resume, streaming, and cross-domain coordination through explicit ports
+- Outer-shell top-levels:
+  - `wiring`: the current composition root and entrypoint location
+  - `cli`, `server`, `app-server`, and `bootstrap`: reserved outer-shell names that may appear as the current `src/wiring/*` extraction continues
 
-Legacy top-level directories such as `src/providers`, `src/runtime`, `src/server`, and `src/cli` are not allowed to reappear.
+Legacy top-level directories such as `src/providers` and `src/runtime` are not allowed to reappear.
 
 The current tree does not contain `src/utils/`.
 If a later change needs a shared utility layer, update this file and the structure checks in the same change instead of introducing it implicitly.
@@ -28,8 +31,8 @@ If a later change needs a shared utility layer, update this file and the structu
 
 Architecture ID: `ARCH-LAYER-001`
 
-Each business domain uses a fixed layer vocabulary.
-Not every domain needs every layer, but new code must stay within these names:
+Each core domain uses a fixed layer vocabulary plus a root `index.ts`.
+New code should stay within these layer names:
 
 - `types`
 - `config`
@@ -37,7 +40,10 @@ Not every domain needs every layer, but new code must stay within these names:
 - `ports`
 - `service`
 - `runtime`
-- `wiring`
+- domain root `index.ts`
+
+The target architecture is that every core domain carries all six layers plus its root `index.ts`.
+Current omissions are intentional ratchet debt: they should surface in the structure findings instead of relaxing the rule.
 
 Allowed same-domain dependency directions:
 
@@ -46,20 +52,15 @@ Allowed same-domain dependency directions:
 - `service -> repo`
 - `service -> ports`
 - `runtime -> service`
-- `wiring -> runtime`
-- `wiring -> ports`
 - same-layer imports when the file role stays within the same layer
 
 Anything else is a layer violation.
 In particular:
 
+- `ports` must not import `types`, `config`, `repo`, `service`, or `runtime`
 - `runtime` must not import `repo`, `ports`, `config`, or `types`
 - `repo` must not bypass `config` to reach `types`
-- `wiring` must not import `service`, `repo`, `config`, or `types` inside the same domain
-- ad-hoc layer names such as `adapter`, `handlers`, or `controllers` are not part of this repo's structure contract
-
-`ports/` exists only for explicit external capabilities that a domain consumes from elsewhere.
-If a domain has no external capability boundary, omit `ports/` entirely rather than creating a placeholder.
+- domain-local `wiring/` is no longer an approved target pattern for new code
 
 ## Cross-Domain Boundaries
 
@@ -67,36 +68,40 @@ Architecture ID: `ARCH-CROSS-001`
 
 Cross-domain imports are tightly constrained:
 
-- `src/wiring/*.ts` may import `<domain>/wiring/*`
-- `<domain>/wiring/*` may import another domain only through that domain's `ports/*`
-- all other cross-domain imports are forbidden
+- core domain files may not import another core domain directly
+- outer-shell top-levels may import a core domain only through `src/<domain>/index.ts`
+- core domains must not depend on outer-shell code
 
-`wiring` is an assembly boundary, not a loophole.
-If composition needs another domain's repo, service, runtime, or wiring internals, the fix is to add or use an explicit port or move the composition to `src/wiring/*`.
+The outer shell is an assembly boundary, not a loophole.
+If composition needs another domain's internals, the fix is to export a public API from that domain's root `index.ts` and inject dependencies from an outer-shell top-level.
 
 Positive examples:
 
-- `src/model/wiring/provider.ts -> src/orchestration/ports/model.ts`
-- `src/wiring/main.ts -> src/orchestration/wiring/cli.ts`
+- Target pattern: `src/wiring/main.ts -> src/orchestration/index.ts`
+- Target pattern: `src/server/app.ts -> src/model/index.ts`
 
 Negative examples:
 
 - `src/model/runtime/api.ts -> src/model/repo/index.ts`
-- `src/orchestration/wiring/runtime.ts -> src/conversation/repo/index.ts`
+- `src/model/wiring/provider.ts -> src/orchestration/ports/model.ts`
+- `src/wiring/main.ts -> src/model/wiring/provider.ts`
 
-The second example currently exists as tracked debt; it is not a legal pattern for new code.
+The second and third examples are current tracked debt; they are not legal patterns for new code.
 
 ## Placement Guide
 
 Use these questions to place new code:
 
-- New persisted entities, transcript records, or repository contracts: put them in the owning domain's `types/`, `config/`, or `repo/`
+- New domain-owned data shapes, enums, and persisted record structures: put them in the owning domain's `types/`
+- Domain-owned defaults, canonical constant sets, and configuration values that other layers read but do not persist themselves: put them in the owning domain's `config/`
+- Repository contracts, durable read/write interfaces, storage mappers, and database-backed implementations: put them in the owning domain's `repo/`
 - Business rules over one domain's state: put them in that domain's `service/`
 - Long-lived runtime orchestration, streaming, suspend/resume, or run registries: put them in `orchestration/runtime/`
-- Provider or adapter implementation details that fulfill a domain contract: put them in that domain's `runtime/`
-- Cross-domain contracts consumed by a domain: define them in that domain's `ports/`
-- Construction and adapter assembly for one domain: put them in that domain's `wiring/`
-- Final CLI or server entrypoints that compose multiple domains: put them in `src/wiring/`
+- Concrete runtime integrations and adapter behavior that fulfill a domain contract: put them in that domain's `runtime/`
+- Cross-domain capability contracts consumed by a domain: define them in that domain's `ports/`
+- The public module exit for a domain: put it in `src/<domain>/index.ts`
+- Final composition and entrypoints: put them in an outer-shell top-level, using `src/wiring/*` today; extraction to `src/cli/*`, `src/server/*`, `src/app-server/*`, or `src/bootstrap/*` is allowed without another harness rename
+- Existing domain-local `wiring/*` code should be treated as migration debt, not as the placement target for new code
 
 If a change needs a new directory name or a new cross-domain shortcut, stop and update the harness docs and checks first.
 
@@ -104,8 +109,13 @@ If a change needs a new directory name or a new cross-domain shortcut, stop and 
 
 The current no-new-violations baseline is tracked in `test/structure/baselines/architecture-findings.json`.
 
-As of 2026-03-17, the remaining structural debt is concentrated in `src/orchestration/wiring/*`.
-Those files still import concrete `conversation/*`, `permission/*`, and one `tool/wiring/*` path directly instead of crossing domain boundaries only through ports.
+As of 2026-03-19, the remaining structural debt includes:
 
-Those imports are tolerated only because they are recorded as baseline debt.
+- Missing root `index.ts` files across all current core domains
+- Missing required layers in several current domains
+- Domain-local `wiring/*` directories that still hold composition code
+- Outer-shell composition in `src/wiring/*` that still reaches into domain internals
+- `src/orchestration/wiring/*`, which currently mixes outer-shell concerns with cross-domain imports to concrete `conversation/*`, `permission/*`, and `tool/*` paths
+
+Those findings are tolerated only because they are recorded as baseline debt.
 New violations outside that baseline should fail the structure checks immediately.

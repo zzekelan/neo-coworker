@@ -7,7 +7,6 @@ import {
   loadStructureBaseline,
   partitionFindings,
   validateRepositoryGraph,
-  type RepositoryGraph,
 } from "./architecture-harness"
 
 describe("architecture structure", () => {
@@ -18,8 +17,8 @@ describe("architecture structure", () => {
       edges: [
         {
           from: "conversation/service/query.ts",
-          to: "model/runtime/api.ts",
-          specifier: "../../model/runtime/api",
+          to: "model/index.ts",
+          specifier: "../../model",
         },
       ],
     })
@@ -43,47 +42,49 @@ describe("architecture structure", () => {
     expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
   })
 
-  test("detects a wiring-to-service import violation", () => {
+  test("detects a missing required domain layer", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(ALLOWED_TOP_LEVELS),
-      files: [],
-      edges: [
-        {
-          from: "tool/wiring/provider.ts",
-          to: "tool/service/index.ts",
-          specifier: "../service",
-        },
+      directories: ["model"],
+      files: [
+        "model/index.ts",
+        "model/types/event.ts",
+        "model/config/defaults.ts",
+        "model/repo/index.ts",
+        "model/service/index.ts",
+        "model/runtime/api.ts",
       ],
+      edges: [],
     })
 
-    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
+    expect(formatFindings(findings).join("\n")).toContain("missing its required ports/ layer")
   })
 
-  test("detects a repo-to-service import violation", () => {
+  test("detects a missing domain root index", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(ALLOWED_TOP_LEVELS),
-      files: [],
-      edges: [
-        {
-          from: "conversation/repo/index.ts",
-          to: "conversation/service/index.ts",
-          specifier: "../service",
-        },
+      directories: ["conversation"],
+      files: [
+        "conversation/types/message.ts",
+        "conversation/config/defaults.ts",
+        "conversation/repo/index.ts",
+        "conversation/ports/telemetry.ts",
+        "conversation/service/index.ts",
+        "conversation/runtime/api.ts",
       ],
+      edges: [],
     })
 
-    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
+    expect(formatFindings(findings).join("\n")).toContain("missing its required root index.ts")
   })
 
-  test("allows provider wiring to depend on consumer ports", () => {
+  test("allows outer-shell composition to depend on a domain root index", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(ALLOWED_TOP_LEVELS),
-      files: [],
+      directories: ["wiring"],
+      files: ["orchestration/index.ts"],
       edges: [
         {
-          from: "model/wiring/provider.ts",
-          to: "orchestration/ports/model.ts",
-          specifier: "../../orchestration/ports/model",
+          from: "wiring/main.ts",
+          to: "orchestration/index.ts",
+          specifier: "../orchestration",
         },
       ],
     })
@@ -91,15 +92,15 @@ describe("architecture structure", () => {
     expect(findings).toEqual([])
   })
 
-  test("detects domain wiring importing another domain repo", () => {
+  test("detects outer-shell composition importing a domain internal file", () => {
     const findings = validateRepositoryGraph({
       directories: Array.from(ALLOWED_TOP_LEVELS),
       files: [],
       edges: [
         {
-          from: "orchestration/wiring/runtime.ts",
+          from: "wiring/main.ts",
           to: "conversation/repo/index.ts",
-          specifier: "../../conversation/repo",
+          specifier: "../conversation/repo",
         },
       ],
     })
@@ -110,7 +111,7 @@ describe("architecture structure", () => {
   test("detects an unsupported layer directory", () => {
     const findings = validateRepositoryGraph({
       directories: Array.from(ALLOWED_TOP_LEVELS),
-      files: ["conversation/adapter/query.ts"],
+      files: ["conversation/wiring/provider.ts"],
       edges: [],
     })
 
@@ -133,7 +134,7 @@ describe("architecture structure", () => {
     const message = formatFindings(findings)[0]
 
     expect(message).toContain("[ARCH-CROSS-001]")
-    expect(message).toContain("Keep cross-domain calls behind ports and wiring")
+    expect(message).toContain("Define the external capability in the importing domain's ports/")
     expect(message).toContain("See ARCHITECTURE.md#cross-domain-boundaries.")
   })
 

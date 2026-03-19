@@ -20,13 +20,13 @@ Current blocking structure checks run through `bun run test:structure`.
 - Title: Approved Domain Layer Names
 - Class: `architecture`
 - Scope: `src/<domain>/**`
-- Rule: Domain code may only live under `types`, `config`, `repo`, `ports`, `service`, `runtime`, or `wiring`.
-- Why this repo requires it: this repo depends on predictable directory roles so a coding agent can navigate, place code, and obey import checks mechanically. Ad-hoc layer names hide intent and create new side doors around the architecture map.
+- Rule: Core domain code may only live under `types`, `config`, `repo`, `ports`, `service`, or `runtime`, plus a root `index.ts`. Domain-local `wiring/*` is tracked debt, not an approved target pattern for new code.
+- Why this repo requires it: this repo depends on predictable directory roles and a single public exit per domain so a coding agent can navigate, place code, and obey import checks mechanically. Ad-hoc layer names or domain-local assembly layers hide intent and create new side doors around the architecture map.
 - Enforcement: `blocking` via `bun run test:structure`
 - Severity: `error`
-- Bad example: `src/conversation/adapter/query.ts`
+- Bad example: `src/conversation/wiring/provider.ts`
 - Good example: `src/conversation/service/run.ts`
-- Remediation: move the file into an approved layer or update `ARCHITECTURE.md`, this file, and the structure checks in the same change if the architecture has genuinely changed.
+- Remediation: move the file into an approved layer, add the missing root `index.ts` when a domain lacks one, or relocate true composition code into an outer-shell top-level. Update `ARCHITECTURE.md`, this file, and the structure checks in the same change only if the architecture has genuinely changed.
 - Source: `ARCHITECTURE.md#domain-layers`, `docs/plans/2026-03-17-agent-collaboration-harness-design.md`
 
 ### INV-BOUNDARY-001: Public Adapters Map Explicit Errors
@@ -40,7 +40,7 @@ Current blocking structure checks run through `bun run test:structure`.
 - Enforcement: `test` plus `review-required`
 - Severity: `error`
 - Bad example: letting a repository exception escape directly from an HTTP handler as a generic 500 without a stable error code
-- Good example: `src/orchestration/wiring/server.ts` normalizes failures through `mapHttpError(...)`
+- Good example: `test/server/http-api-and-sse.test.ts` exercises stable transport error mapping at the HTTP boundary
 - Remediation: classify the failure at the adapter boundary and map it to the adapter contract before the error crosses the transport.
 - Source: `docs/project-rules/coworker-coding-rules.md` rule 7, `test/server/http-api-and-sse.test.ts`
 

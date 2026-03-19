@@ -9,31 +9,42 @@ export const STRUCTURE_BASELINE_PATH = join(
   "baselines",
   "architecture-findings.json",
 )
-export const ALLOWED_TOP_LEVELS = new Set([
+export const CORE_TOP_LEVELS = new Set([
   "conversation",
   "model",
   "orchestration",
   "permission",
   "tool",
-  "wiring",
 ])
-export const LEGACY_TOP_LEVELS = new Set(["providers", "runtime", "server", "cli"])
-export const ALLOWED_DOMAIN_LAYERS = new Set([
+export const OUTER_SHELL_TOP_LEVELS = new Set([
+  "wiring",
+  "cli",
+  "server",
+  "app-server",
+  "bootstrap",
+])
+export const ALLOWED_TOP_LEVELS = new Set([
+  ...CORE_TOP_LEVELS,
+  ...OUTER_SHELL_TOP_LEVELS,
+])
+export const LEGACY_TOP_LEVELS = new Set(["providers", "runtime"])
+export const APPROVED_DOMAIN_LAYERS = new Set([
   "types",
   "config",
   "repo",
   "ports",
   "service",
   "runtime",
-  "wiring",
 ])
 
+const REQUIRED_DOMAIN_LAYERS = ["types", "config", "repo", "ports", "service", "runtime"] as const
 const ALLOWED_INTERNAL_IMPORTS = {
+  types: new Set<string>(),
   config: new Set(["types"]),
   repo: new Set(["config"]),
+  ports: new Set<string>(),
   service: new Set(["repo", "ports"]),
   runtime: new Set(["service"]),
-  wiring: new Set(["runtime", "ports"]),
 } as const
 const IMPORT_PATTERN = /\b(?:import|export)\b[\s\S]*?\bfrom\s+["']([^"']+)["']/g
 const RULE_DOCS = {
@@ -80,6 +91,14 @@ type SourceFileMeta = {
   relPath: string
   topLevel: string
   layer: string | null
+  isCoreDomain: boolean
+  isOuterShell: boolean
+  isDomainIndex: boolean
+}
+
+type DomainState = {
+  hasIndex: boolean
+  layers: Set<string>
 }
 
 export async function loadRepositoryGraph(): Promise<RepositoryGraph> {
@@ -91,8 +110,8 @@ export async function loadRepositoryGraph(): Promise<RepositoryGraph> {
   for (const file of files) {
     const source = await readFile(join(SOURCE_ROOT, file), "utf8")
 
-    for (const specifier of extractRelativeImportSpecifiers(source)) {
-      const resolved = resolveRelativeImport(file, specifier, fileSet)
+    for (const specifier of extractImportSpecifiers(source)) {
+      const resolved = resolveLocalImport(file, specifier, fileSet)
       if (!resolved) {
         continue
       }
@@ -114,6 +133,7 @@ export async function loadRepositoryGraph(): Promise<RepositoryGraph> {
 
 export function validateRepositoryGraph(graph: RepositoryGraph) {
   const findings = new Map<string, StructureFinding>()
+  const domainState = collectDomainState(graph)
 
   for (const directory of graph.directories) {
     if (LEGACY_TOP_LEVELS.has(directory)) {
@@ -122,7 +142,7 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         fingerprint: `ARCH-TOPLEVEL-001:top-level:${directory}`,
         summary: `src/${directory} is a legacy top-level directory and must not reappear.`,
         remediation:
-          "Move the code into one of the approved business domains or into src/wiring/*.",
+          "Move the code into one of the approved business domains or into an approved outer-shell top-level.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
       })
       continue
@@ -134,25 +154,57 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         fingerprint: `ARCH-TOPLEVEL-001:top-level:${directory}`,
         summary: `src/${directory} is not an approved top-level module.`,
         remediation:
-          "Place the code under an approved domain or update ARCHITECTURE.md and the structure checks in the same change.",
+          "Place the code under an approved core domain or an approved outer-shell top-level, or update ARCHITECTURE.md and the structure checks in the same change.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
+      })
+    }
+  }
+
+  for (const domain of graph.directories.filter((directory) => CORE_TOP_LEVELS.has(directory))) {
+    const state = domainState.get(domain)
+
+    if (!state?.hasIndex) {
+      addFinding(findings, {
+        ruleId: "ARCH-LAYER-001",
+        fingerprint: `ARCH-LAYER-001:missing-index:${domain}`,
+        summary: `src/${domain} is missing its required root index.ts public entrypoint.`,
+        remediation:
+          `Add src/${domain}/index.ts as the domain's public exit and route outer-shell composition through that file.`,
+        doc: RULE_DOCS["ARCH-LAYER-001"],
+      })
+    }
+
+    for (const layer of REQUIRED_DOMAIN_LAYERS) {
+      if (state?.layers.has(layer)) {
+        continue
+      }
+
+      addFinding(findings, {
+        ruleId: "ARCH-LAYER-001",
+        fingerprint: `ARCH-LAYER-001:missing-layer:${domain}/${layer}`,
+        summary: `src/${domain} is missing its required ${layer}/ layer.`,
+        remediation:
+          `Add src/${domain}/${layer}/ and move the domain code into the fixed layer skeleton instead of inventing a domain-specific shape.`,
+        doc: RULE_DOCS["ARCH-LAYER-001"],
       })
     }
   }
 
   for (const file of graph.files) {
     const meta = getSourceFileMeta(file)
-    if (!ALLOWED_TOP_LEVELS.has(meta.topLevel) || meta.topLevel === "wiring") {
+    if (!meta.isCoreDomain || meta.isDomainIndex) {
       continue
     }
 
-    if (meta.layer == null || !ALLOWED_DOMAIN_LAYERS.has(meta.layer)) {
+    if (meta.layer == null || !APPROVED_DOMAIN_LAYERS.has(meta.layer)) {
       addFinding(findings, {
         ruleId: "INV-STRUCTURE-001",
         fingerprint: `INV-STRUCTURE-001:file:${file}`,
         summary: `src/${file} uses unsupported layer directory "${meta.layer ?? "(missing)"}".`,
         remediation:
-          "Move the file into one of: types, config, repo, ports, service, runtime, wiring.",
+          meta.layer === "wiring"
+            ? "Move the code into an approved domain layer or relocate true composition code into an outer-shell top-level such as src/wiring/*, src/cli/*, src/server/*, src/app-server/*, or src/bootstrap/*."
+            : "Move the file into one of: types, config, repo, ports, service, runtime, or the domain root index.ts.",
         doc: RULE_DOCS["INV-STRUCTURE-001"],
       })
     }
@@ -172,18 +224,18 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         fingerprint: `ARCH-TOPLEVEL-001:target:${edge.from}->${edge.to}`,
         summary: `src/${edge.from} imports src/${edge.to}, which is outside the approved top-level modules.`,
         remediation:
-          "Import only from approved domains or move the target under an approved top-level module.",
+          "Import only from approved core domains or outer-shell top-levels, or move the target under an approved top-level module.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
       })
       continue
     }
 
     if (from.topLevel === to.topLevel) {
-      if (from.topLevel === "wiring") {
+      if (from.isOuterShell || from.isDomainIndex || to.isDomainIndex) {
         continue
       }
 
-      if (!isAllowedDomainLayer(from.layer) || !isAllowedDomainLayer(to.layer)) {
+      if (!isImportCheckedDomainLayer(from.layer) || !isImportCheckedDomainLayer(to.layer)) {
         continue
       }
 
@@ -196,53 +248,49 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
           fingerprint: `ARCH-LAYER-001:edge:${edge.from}->${edge.to}`,
           summary: `src/${edge.from} may not import src/${edge.to} inside the same domain.`,
           remediation:
-            "Follow the allowed layer direction from ARCHITECTURE.md and route the dependency through the next legal layer.",
+            "Follow the fixed layer direction from ARCHITECTURE.md and route the dependency through the next legal layer.",
           doc: RULE_DOCS["ARCH-LAYER-001"],
         })
       }
       continue
     }
 
-    if (from.topLevel === "wiring") {
-      if (to.layer !== "wiring") {
+    if (from.isOuterShell) {
+      if (to.isCoreDomain && !to.isDomainIndex) {
         addFinding(findings, {
           ruleId: "ARCH-CROSS-001",
           fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
-          summary: `src/${edge.from} may only import domain wiring entrypoints, but imports src/${edge.to}.`,
+          summary: `src/${edge.from} may only import a domain through its root index.ts, but imports src/${edge.to}.`,
           remediation:
-            "Import the target domain's wiring entrypoint instead of reaching into its internals from src/wiring/*.",
+            "Import the target domain through src/<domain>/index.ts instead of reaching into its internal layers from the outer shell.",
           doc: RULE_DOCS["ARCH-CROSS-001"],
         })
       }
       continue
     }
 
-    if (!isAllowedDomainLayer(from.layer) || !isAllowedDomainLayer(to.layer)) {
+    if (from.isCoreDomain && to.isOuterShell) {
+      addFinding(findings, {
+        ruleId: "ARCH-CROSS-001",
+        fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
+        summary: `src/${edge.from} may not depend on outer-shell code such as src/${edge.to}.`,
+        remediation:
+          "Keep domains headless and inject outer-shell behavior from src/wiring/* or another outer-shell top-level instead of importing it into a domain.",
+        doc: RULE_DOCS["ARCH-CROSS-001"],
+      })
       continue
     }
 
-    if (from.layer === "wiring") {
-      if (to.layer !== "ports") {
-        addFinding(findings, {
-          ruleId: "ARCH-CROSS-001",
-          fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
-          summary: `src/${edge.from} may only cross domains through ports, but imports src/${edge.to}.`,
-          remediation:
-            "Depend on the target domain's ports contract or move the composition to src/wiring/*.",
-          doc: RULE_DOCS["ARCH-CROSS-001"],
-        })
-      }
-      continue
+    if (from.isCoreDomain && to.isCoreDomain) {
+      addFinding(findings, {
+        ruleId: "ARCH-CROSS-001",
+        fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
+        summary: `src/${edge.from} may not import src/${edge.to} across core domains.`,
+        remediation:
+          "Define the external capability in the importing domain's ports/, inject the target domain from an outer-shell top-level, and keep cross-domain imports out of the domains themselves.",
+        doc: RULE_DOCS["ARCH-CROSS-001"],
+      })
     }
-
-    addFinding(findings, {
-      ruleId: "ARCH-CROSS-001",
-      fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
-      summary: `src/${edge.from} may not import src/${edge.to} across domains outside wiring.`,
-      remediation:
-        "Keep cross-domain calls behind ports and wiring instead of importing another domain directly.",
-      doc: RULE_DOCS["ARCH-CROSS-001"],
-    })
   }
 
   return [...findings.values()].sort((left, right) =>
@@ -281,31 +329,40 @@ function addFinding(
 function getSourceFileMeta(relPath: string): SourceFileMeta {
   const segments = relPath.split("/")
   const topLevel = segments[0] ?? ""
-  const layer = topLevel === "wiring" ? "wiring" : (segments[1] ?? null)
+  const isCoreDomain = CORE_TOP_LEVELS.has(topLevel)
+  const isOuterShell = OUTER_SHELL_TOP_LEVELS.has(topLevel)
+  const isDomainIndex = isCoreDomain && segments.length === 2 && segments[1] === "index.ts"
+  const layer = isCoreDomain && !isDomainIndex ? (segments[1] ?? null) : null
 
   return {
     relPath,
     topLevel,
     layer,
+    isCoreDomain,
+    isOuterShell,
+    isDomainIndex,
   }
 }
 
-function isAllowedDomainLayer(layer: string | null): layer is keyof typeof ALLOWED_INTERNAL_IMPORTS {
+function isImportCheckedDomainLayer(
+  layer: string | null,
+): layer is keyof typeof ALLOWED_INTERNAL_IMPORTS {
   return (
+    layer === "types" ||
     layer === "config" ||
     layer === "repo" ||
+    layer === "ports" ||
     layer === "service" ||
-    layer === "runtime" ||
-    layer === "wiring"
+    layer === "runtime"
   )
 }
 
-function extractRelativeImportSpecifiers(source: string) {
+function extractImportSpecifiers(source: string) {
   const specifiers: string[] = []
 
   for (const match of source.matchAll(IMPORT_PATTERN)) {
     const specifier = match[1]
-    if (!specifier?.startsWith(".")) {
+    if (!specifier) {
       continue
     }
 
@@ -315,12 +372,27 @@ function extractRelativeImportSpecifiers(source: string) {
   return specifiers
 }
 
-function resolveRelativeImport(
+function resolveLocalImport(
   fromRelPath: string,
   specifier: string,
   knownFiles: Set<string>,
 ) {
-  const normalizedBase = normalize(join(dirname(fromRelPath), specifier)).replaceAll("\\", "/")
+  if (specifier.startsWith(".")) {
+    return resolveKnownFile(normalize(join(dirname(fromRelPath), specifier)).replaceAll("\\", "/"), knownFiles)
+  }
+
+  if (specifier.startsWith("src/")) {
+    return resolveKnownFile(specifier.slice("src/".length), knownFiles)
+  }
+
+  if (specifier.startsWith("@/")) {
+    return resolveKnownFile(specifier.slice(2), knownFiles)
+  }
+
+  return null
+}
+
+function resolveKnownFile(normalizedBase: string, knownFiles: Set<string>) {
   const candidates = [
     normalizedBase,
     `${normalizedBase}.ts`,
@@ -334,6 +406,40 @@ function resolveRelativeImport(
   }
 
   return null
+}
+
+function collectDomainState(graph: RepositoryGraph) {
+  const state = new Map<string, DomainState>()
+
+  for (const domain of graph.directories.filter((directory) => CORE_TOP_LEVELS.has(directory))) {
+    state.set(domain, {
+      hasIndex: false,
+      layers: new Set<string>(),
+    })
+  }
+
+  for (const file of graph.files) {
+    const meta = getSourceFileMeta(file)
+    if (!meta.isCoreDomain) {
+      continue
+    }
+
+    const domain = state.get(meta.topLevel)
+    if (!domain) {
+      continue
+    }
+
+    if (meta.isDomainIndex) {
+      domain.hasIndex = true
+      continue
+    }
+
+    if (meta.layer) {
+      domain.layers.add(meta.layer)
+    }
+  }
+
+  return state
 }
 
 async function listTopLevelDirectories(root: string) {
