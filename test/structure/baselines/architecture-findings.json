@@ -1,16 +1,11 @@
 [
   {
-    "fingerprint": "ARCH-CROSS-001:edge:model/wiring/provider.ts->orchestration/ports/model.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
     "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli-render.ts->session/repo/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli-server-client.ts->permission/repo/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli-server-client.ts->permission/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
@@ -20,7 +15,7 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli.ts->permission/service/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/cli.ts->permission/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
@@ -30,17 +25,7 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->permission/repo/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->permission/runtime/api.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->permission/service/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->permission/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
@@ -55,17 +40,12 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->tool/wiring/provider.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/runtime.ts->tool/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->permission/repo/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->permission/service/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-app.ts->permission/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
@@ -80,7 +60,7 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-events.ts->permission/repo/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-events.ts->permission/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
@@ -90,7 +70,7 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-repository-events.ts->permission/repo/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server-repository-events.ts->permission/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
@@ -100,12 +80,7 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->permission/repo/index.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->permission/service/index.ts",
+    "fingerprint": "ARCH-CROSS-001:edge:orchestration/wiring/server.ts->permission/index.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
@@ -120,16 +95,6 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:tool/wiring/provider.ts->orchestration/ports/tool.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
-    "fingerprint": "ARCH-CROSS-001:edge:wiring/main.ts->model/wiring/provider.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
     "fingerprint": "ARCH-CROSS-001:edge:wiring/main.ts->orchestration/wiring/cli.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
@@ -140,37 +105,12 @@
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->permission/wiring/provider.ts",
-    "ruleId": "ARCH-CROSS-001",
-    "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
-  },
-  {
     "fingerprint": "ARCH-CROSS-001:edge:wiring/server-main.ts->session/wiring/provider.ts",
     "ruleId": "ARCH-CROSS-001",
     "note": "Current architecture still crosses core-domain boundaries or reaches into domain internals from the outer shell."
   },
   {
-    "fingerprint": "ARCH-LAYER-001:missing-index:model",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
     "fingerprint": "ARCH-LAYER-001:missing-index:orchestration",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
-    "fingerprint": "ARCH-LAYER-001:missing-index:permission",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
-    "fingerprint": "ARCH-LAYER-001:missing-index:tool",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
-    "fingerprint": "ARCH-LAYER-001:missing-layer:model/ports",
     "ruleId": "ARCH-LAYER-001",
     "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
   },
@@ -190,11 +130,6 @@
     "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
   },
   {
-    "fingerprint": "ARCH-LAYER-001:missing-layer:tool/ports",
-    "ruleId": "ARCH-LAYER-001",
-    "note": "Current domain has not yet satisfied the fixed layer and public-entry shape required by the transition harness."
-  },
-  {
     "fingerprint": "ARCH-TOPLEVEL-001:transition-file:wiring/main.ts",
     "ruleId": "ARCH-TOPLEVEL-001",
     "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
@@ -208,11 +143,6 @@
     "fingerprint": "ARCH-TOPLEVEL-001:transition-top-level:wiring",
     "ruleId": "ARCH-TOPLEVEL-001",
     "note": "Transition-only top-level usage remains as migration debt and is tolerated only through the baseline."
-  },
-  {
-    "fingerprint": "INV-STRUCTURE-001:file:model/wiring/provider.ts",
-    "ruleId": "INV-STRUCTURE-001",
-    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
   },
   {
     "fingerprint": "INV-STRUCTURE-001:file:orchestration/wiring/cli-io.ts",
@@ -260,17 +190,7 @@
     "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
   },
   {
-    "fingerprint": "INV-STRUCTURE-001:file:permission/wiring/provider.ts",
-    "ruleId": "INV-STRUCTURE-001",
-    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
-  },
-  {
     "fingerprint": "INV-STRUCTURE-001:file:session/wiring/provider.ts",
-    "ruleId": "INV-STRUCTURE-001",
-    "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
-  },
-  {
-    "fingerprint": "INV-STRUCTURE-001:file:tool/wiring/provider.ts",
     "ruleId": "INV-STRUCTURE-001",
     "note": "Current domain-local wiring directory remains as migration debt under the stricter harness."
   }

@@ -2,7 +2,7 @@ import type {
   SessionRepository as StorageRepository,
   StoredRun,
 } from "../../session/repo"
-import type { PermissionRepository } from "../../permission/repo"
+import type { PermissionRepository } from "../../permission"
 import {
   buildSessionSnapshot,
   type ServerEventPayload,

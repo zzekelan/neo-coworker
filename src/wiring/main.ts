@@ -9,7 +9,7 @@ import {
   createOpenAICompatibleModelProvider,
   createOpenAIModelProvider,
   type ModelProvider,
-} from "../model/wiring/provider"
+} from "../model"
 
 type ProviderKind = "openai" | "openai-compatible"
 

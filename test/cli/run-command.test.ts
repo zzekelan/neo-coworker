@@ -8,7 +8,7 @@ import {
   type ProviderEvent,
   type ProviderTurnRequest,
 } from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model/wiring/provider"
+import { createModelProvider } from "../../src/model"
 import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
 import { createPermissionRepository } from "../../src/permission/repo"
 import { createAgentServerClient, runCli } from "../../src/orchestration/wiring/cli"

@@ -11,10 +11,10 @@ import {
 import {
   createPermissionRepository,
   type PermissionRepository,
-} from "../../permission/repo"
-import type { PermissionMode, PermissionResponse } from "../../permission/service"
-import { createPermissionRuntimeApi } from "../../permission/runtime/api"
-import { createToolProvider } from "../../tool/wiring/provider"
+} from "../../permission"
+import type { PermissionMode, PermissionResponse } from "../../permission"
+import { createPermissionRuntimeApi } from "../../permission"
+import { createToolProvider } from "../../tool"
 import type { OrchestrationSessionPort } from "../ports/session"
 import type { OrchestrationModelPort } from "../ports/model"
 import type { OrchestrationPermissionPort } from "../ports/permission"

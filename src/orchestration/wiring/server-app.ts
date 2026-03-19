@@ -7,8 +7,8 @@ import type {
   SessionRepository as StorageRepository,
   RunTrigger,
 } from "../../session/repo"
-import type { PermissionRepository } from "../../permission/repo"
-import type { PermissionMode, PermissionResponse } from "../../permission/service"
+import type { PermissionRepository } from "../../permission"
+import type { PermissionMode, PermissionResponse } from "../../permission"
 import { createRuntime } from "./runtime"
 import { buildSessionSnapshot, createServerEventBus } from "./server-events"
 import { createObservedRepository } from "./server-repository-events"

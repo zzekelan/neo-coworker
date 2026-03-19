@@ -3,7 +3,7 @@ import { cp, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createModelRuntimeApi } from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model/wiring/provider"
+import { createModelProvider } from "../../src/model"
 import {
   getDefaultCliStoragePath,
   runCli,

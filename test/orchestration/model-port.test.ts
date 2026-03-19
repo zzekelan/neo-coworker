@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createFakeProvider } from "../../src/model/runtime/fake"
-import { createModelProvider } from "../../src/model/wiring/provider"
+import { createModelProvider } from "../../src/model"
 import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
 
 describe("orchestration model port", () => {

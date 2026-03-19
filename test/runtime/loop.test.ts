@@ -18,7 +18,7 @@ import {
   type ProviderEvent,
   type ProviderTurnRequest,
 } from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model/wiring/provider"
+import { createModelProvider } from "../../src/model"
 import { createRuntime } from "../../src/orchestration/wiring/server"
 
 const tempDirectories: string[] = []

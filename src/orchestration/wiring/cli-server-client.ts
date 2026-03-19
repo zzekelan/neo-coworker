@@ -4,7 +4,7 @@ import {
   createPermissionRepository,
   type PermissionRepository,
   type StoredPermissionRequest,
-} from "../../permission/repo"
+} from "../../permission"
 import type { OrchestrationModelPort } from "../ports/model"
 import { createAgentServer } from "./server"
 import type { ServerEvent } from "./server-events"

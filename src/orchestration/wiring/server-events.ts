@@ -1,5 +1,5 @@
 import { createEventQueue } from "../runtime/stream"
-import type { StoredPermissionRequest } from "../../permission/repo"
+import type { StoredPermissionRequest } from "../../permission"
 import type {
   SessionRepository as StorageRepository,
   StoredMessage,

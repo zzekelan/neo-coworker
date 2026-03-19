@@ -1,6 +1,6 @@
 import { isTerminalRunStatus } from "../../session/service"
 import type { OrchestrationModelPort } from "../ports/model"
-import type { PermissionDecision } from "../../permission/service"
+import type { PermissionDecision } from "../../permission"
 import type { ServerEvent } from "./server-events"
 import type { CliIO } from "./cli-io"
 import { createCliRenderState, renderServerEvent } from "./cli-render"

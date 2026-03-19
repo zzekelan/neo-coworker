@@ -1,8 +1,29 @@
-import { createPermissionRepository, type PermissionDatabase } from "../repo"
-import type { PermissionSessionPort } from "../ports/session"
-import type { PermissionTelemetryPort } from "../ports/telemetry"
-import { createPermissionRuntimeApi } from "../runtime/api"
-import type { PermissionRuntimeApi } from "../runtime/api"
+import type { PermissionSessionPort } from "./ports/session"
+import type { PermissionTelemetryPort } from "./ports/telemetry"
+import { createPermissionRepository, type PermissionDatabase } from "./repo"
+import {
+  createPermissionRuntimeApi,
+  type PermissionRuntimeApi,
+} from "./runtime/api"
+
+export * from "./config/defaults"
+export type { PermissionSessionPort } from "./ports/session"
+export type { PermissionTelemetryPort } from "./ports/telemetry"
+export {
+  PermissionNotFoundError,
+  PermissionRepositoryError,
+  createPermissionRepository,
+  type CreatePermissionRequestInput,
+  type PermissionDatabase,
+  type PermissionRepository,
+  type UpdatePermissionRequestStatusInput,
+} from "./repo"
+export * from "./service"
+export {
+  createPermissionRuntimeApi,
+  type CreatePermissionRuntimeApiInput,
+  type PermissionRuntimeApi,
+} from "./runtime/api"
 
 export type PermissionProvider = PermissionRuntimeApi
 

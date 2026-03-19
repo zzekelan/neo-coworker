@@ -5,12 +5,12 @@ import {
   SessionBusyError,
   StartRunIdentityConflictError,
 } from "../../session/service"
-import { PermissionNotFoundError, type PermissionRepository } from "../../permission/repo"
+import { PermissionNotFoundError, type PermissionRepository } from "../../permission"
 import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
   type PermissionMode,
-} from "../../permission/service"
+} from "../../permission"
 import type { OrchestrationModelPort } from "../ports/model"
 import { PermissionRequestNotAwaitingActiveRuntimeError } from "./runtime"
 import {

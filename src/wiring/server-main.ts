@@ -4,7 +4,7 @@ import {
   openSessionStorage,
 } from "../session/wiring/provider"
 import { createAgentServer } from "../orchestration/wiring/server"
-import { createPermissionStorage } from "../permission/wiring/provider"
+import { createPermissionStorage } from "../permission"
 import { createDefaultProvider } from "./main"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
