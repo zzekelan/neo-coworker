@@ -5,9 +5,7 @@ import type { OrchestrationToolPort, OrchestrationToolPortFactory } from "../por
 import {
   createInMemoryActiveRunRegistry,
   type ActiveRunRegistry,
-  type OrchestrationPermissionPolicy,
-  type RuntimeEvent,
-} from "../repo"
+} from "../repo/active-run-registry"
 import { createOrchestrationStepService } from "./step"
 
 export type {
@@ -43,20 +41,23 @@ export type {
   OrchestrationToolPortFactory,
   RequestOrchestrationToolPermission,
 } from "../ports/tool"
-export { OrchestrationRunSchema, RunSchema, resolvePermissionPolicy } from "../repo"
-export type {
-  OrchestrationPermissionPolicy,
-  OrchestrationPermissionPolicyInput,
-  OrchestrationPermissionPolicyMode,
-  OrchestrationRun,
-  OrchestrationRunHandle,
-  OrchestrationRunPermissionDecision,
-  OrchestrationRunPermissionResponse,
-  OrchestrationRuntimeEvent,
-  Run,
-  RunHandle,
-  RuntimeEvent,
-} from "../repo"
+export { resolvePermissionPolicy } from "../repo/policy"
+const orchestrationRunContracts = await import("../types/run")
+
+export const OrchestrationRunSchema = orchestrationRunContracts.OrchestrationRunSchema
+export const RunSchema = orchestrationRunContracts.RunSchema
+
+export type OrchestrationPermissionPolicyMode = import("../types/permission").OrchestrationPermissionPolicyMode
+export type OrchestrationRunPermissionDecision = import("../types/permission").OrchestrationRunPermissionDecision
+export type OrchestrationRunPermissionResponse = import("../types/permission").OrchestrationRunPermissionResponse
+export type OrchestrationPermissionPolicy = import("../types/permission").OrchestrationPermissionPolicy
+export type OrchestrationPermissionPolicyInput = import("../types/permission").OrchestrationPermissionPolicyInput
+export type OrchestrationRuntimeEvent = import("../types/event").OrchestrationRuntimeEvent
+export type RuntimeEvent = import("../types/event").RuntimeEvent
+export type OrchestrationRunHandle = import("../types/handle").OrchestrationRunHandle
+export type RunHandle = import("../types/handle").RunHandle
+export type OrchestrationRun = import("../types/run").OrchestrationRun
+export type Run = import("../types/run").Run
 
 export type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 
