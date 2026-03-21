@@ -6,7 +6,7 @@ import {
   SEARCH_SKIPPED_DIRECTORIES,
   throwIfToolAborted,
   type ToolDefinition,
-} from "../domain"
+} from "../../domain"
 
 const SearchArgsSchema = z.object({
   query: z.string().trim().min(1, "Query must not be empty"),

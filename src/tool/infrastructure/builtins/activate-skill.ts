@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { type ToolDefinition } from "../domain"
+import { type ToolDefinition } from "../../domain"
 import { discoverSkills } from "./skills/discover"
 import {
   getSkillCatalogPath,

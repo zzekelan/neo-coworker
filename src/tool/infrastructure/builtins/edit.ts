@@ -5,7 +5,7 @@ import {
   throwIfToolAborted,
   type RequestToolPermission,
   type ToolDefinition,
-} from "../domain"
+} from "../../domain"
 import { createToolPermissionDeniedError } from "./errors"
 
 const EditArgsSchema = z.object({

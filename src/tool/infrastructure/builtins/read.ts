@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises"
 import { relative, resolve, sep } from "node:path"
 import { z } from "zod"
-import { throwIfToolAborted, type ToolDefinition } from "../domain"
+import { throwIfToolAborted, type ToolDefinition } from "../../domain"
 
 const ReadArgsSchema = z.object({
   path: z.string(),

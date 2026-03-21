@@ -7,20 +7,20 @@ import {
 import {
   createBuiltinToolRuntime,
   type CreateBuiltinToolRuntimeInput,
-} from "../infrastructure/runner"
+} from "../infrastructure/runtime/create-builtin-runtime"
 
 export * from "../application"
 export {
   createBuiltinToolRuntime,
   type CreateBuiltinToolRuntimeInput,
-} from "../infrastructure/runner"
-export { createActivateSkillTool } from "../infrastructure/activate-skill"
-export { createEditTool } from "../infrastructure/edit"
-export { createReadTool } from "../infrastructure/read"
-export { createSearchTool } from "../infrastructure/search"
-export { createShellTool } from "../infrastructure/shell"
-export { createWriteTool } from "../infrastructure/write"
-export { discoverSkills } from "../infrastructure/skills/discover"
+} from "../infrastructure/runtime/create-builtin-runtime"
+export { createActivateSkillTool } from "../infrastructure/builtins/activate-skill"
+export { createEditTool } from "../infrastructure/builtins/edit"
+export { createReadTool } from "../infrastructure/builtins/read"
+export { createSearchTool } from "../infrastructure/builtins/search"
+export { createShellTool } from "../infrastructure/builtins/shell"
+export { createWriteTool } from "../infrastructure/builtins/write"
+export { discoverSkills } from "../infrastructure/builtins/skills/discover"
 export {
   getSkillCatalogPath,
   getSkillsDirectory,
@@ -32,7 +32,7 @@ export {
   SKILL_FILENAME,
   type ActiveSkill,
   type SkillCatalogEntry,
-} from "../infrastructure/skills/catalog"
+} from "../infrastructure/builtins/skills/catalog"
 
 export function createToolProvider(input: {
   runtime?: ToolRuntimeApi

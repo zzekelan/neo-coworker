@@ -7,7 +7,7 @@ import {
   throwIfToolAborted,
   type RequestToolPermission,
   type ToolDefinition,
-} from "../domain"
+} from "../../domain"
 import { createToolPermissionDeniedError } from "./errors"
 
 const ShellArgsSchema = z.object({

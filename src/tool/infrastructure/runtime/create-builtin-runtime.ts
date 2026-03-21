@@ -1,10 +1,10 @@
-import type { RequestToolPermission } from "../domain"
-import { createToolRuntimeApi } from "../application/runtime-api"
-import { createEditTool } from "./edit"
-import { createReadTool } from "./read"
-import { createSearchTool } from "./search"
-import { createShellTool } from "./shell"
-import { createWriteTool } from "./write"
+import type { RequestToolPermission } from "../../domain"
+import { createToolRuntimeApi } from "../../application/runtime-api"
+import { createEditTool } from "../builtins/edit"
+import { createReadTool } from "../builtins/read"
+import { createSearchTool } from "../builtins/search"
+import { createShellTool } from "../builtins/shell"
+import { createWriteTool } from "../builtins/write"
 
 const denyPermission: RequestToolPermission = async () => ({ decision: "deny" })
 
