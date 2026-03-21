@@ -2,8 +2,8 @@ import {
   isTerminalRunStatus,
   type OrchestrationModelPort,
   type PermissionDecision,
+  type ServerEvent,
 } from "../bootstrap"
-import type { ServerEvent } from "./server-events"
 import type { CliIO } from "./cli-io"
 import { createCliRenderState, renderServerEvent } from "./cli-render"
 import {

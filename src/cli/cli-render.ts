@@ -1,5 +1,4 @@
-import type { ServerEvent } from "./server-events"
-import type { StoredMessage, StoredRun } from "../bootstrap"
+import type { ServerEvent, StoredMessage, StoredRun } from "../bootstrap"
 
 type StoredMessageRole = StoredMessage["role"]
 

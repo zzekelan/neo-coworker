@@ -1,1 +1,0 @@
-export { createObservedRepository } from "../bootstrap"
