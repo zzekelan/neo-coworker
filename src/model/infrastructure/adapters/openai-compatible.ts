@@ -3,9 +3,9 @@ import type { ZodTypeAny } from "zod"
 import {
   type ModelMessage,
   type ModelTool,
-} from "../domain"
-import { createModelRuntimeApi } from "../application/runtime-api"
-import { createOpenAICompatibleEventNormalizer } from "./normalize"
+} from "../../domain"
+import type { Provider } from "../../application/ports/provider"
+import { createOpenAICompatibleEventNormalizer } from "../normalize"
 
 type OpenAICompatibleChunk = OpenAI.Chat.ChatCompletionChunk
 type OpenAICompatibleMessage = OpenAI.Chat.ChatCompletionMessageParam
@@ -168,8 +168,8 @@ function toChatCompletionTool(tool: ModelTool): OpenAI.Chat.ChatCompletionTool {
 export function createOpenAICompatibleProvider(input: {
   model: string
   client: OpenAICompatibleClient
-}) {
-  return createModelRuntimeApi({
+}): Provider {
+  return {
     async *streamTurn(request) {
       const stream = await input.client.chat.completions.create(
         {
@@ -191,5 +191,5 @@ export function createOpenAICompatibleProvider(input: {
 
       yield* normalize.flush()
     },
-  })
+  }
 }

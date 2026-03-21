@@ -1,13 +1,16 @@
-import type { ProviderEvent, ProviderTurnRequest } from "../application/runtime-api"
-import { createModelRuntimeApi } from "../application/runtime-api"
+import type {
+  Provider,
+  ProviderEvent,
+  ProviderTurnRequest,
+} from "../../application/ports/provider"
 
 type FakeProviderInput = {
   events?: Iterable<ProviderEvent>
   onRequest?: (request: ProviderTurnRequest) => void | Promise<void>
 }
 
-export function createFakeProvider(input: FakeProviderInput = {}) {
-  return createModelRuntimeApi({
+export function createFakeProvider(input: FakeProviderInput = {}): Provider {
+  return {
     async *streamTurn(request) {
       await input.onRequest?.(request)
 
@@ -15,5 +18,5 @@ export function createFakeProvider(input: FakeProviderInput = {}) {
         yield event
       }
     },
-  })
+  }
 }

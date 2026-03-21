@@ -1,9 +1,9 @@
 import type OpenAI from "openai"
 import {
   type ModelMessage,
-} from "../domain"
-import { createModelRuntimeApi } from "../application/runtime-api"
-import { createOpenAIEventNormalizer } from "./normalize"
+} from "../../domain"
+import type { Provider } from "../../application/ports/provider"
+import { createOpenAIEventNormalizer } from "../normalize"
 
 type OpenAIStreamEvent = OpenAI.Responses.ResponseStreamEvent
 type OpenAIStreamRequest = Parameters<OpenAI["responses"]["stream"]>[0]
@@ -79,8 +79,8 @@ function toResponseInputs(messages: ModelMessage[]): OpenAIResponseInput {
 export function createOpenAIProvider(input: {
   model: string
   client: OpenAIClient
-}) {
-  return createModelRuntimeApi({
+}): Provider {
+  return {
     async *streamTurn(request) {
       const stream = input.client.responses.stream(
         {
@@ -97,5 +97,5 @@ export function createOpenAIProvider(input: {
         yield* normalize.push(event)
       }
     },
-  })
+  }
 }

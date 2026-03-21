@@ -1,4 +1,9 @@
 export type { ModelTelemetryPort } from "./ports/telemetry"
+export type {
+  Provider,
+  ProviderEvent,
+  ProviderTurnRequest,
+} from "./ports/provider"
 export {
   buildModelTurnInput,
   buildTranscriptMessages,
@@ -11,9 +16,6 @@ export {
   type ModelProvider,
   type ModelProviderRequest,
   type ModelRuntimeApi,
-  type Provider,
-  type ProviderEvent,
-  type ProviderTurnRequest,
 } from "./runtime-api"
 export type {
   ModelEvent,

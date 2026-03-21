@@ -5,19 +5,20 @@ import type { ModelTelemetryPort } from "./ports/telemetry"
 import type {
   ModelEvent,
   ModelProjectionInput,
-  ModelTurnRequest,
 } from "../domain"
+import type {
+  Provider,
+  ProviderTurnRequest,
+} from "./ports/provider"
 
-export type CreateModelRuntimeApiInput = {
-  streamTurn(request: ModelTurnRequest): AsyncIterable<ModelEvent>
-}
+export type CreateModelRuntimeApiInput = Provider
 
 export function createModelRuntimeApi(input: CreateModelRuntimeApiInput) {
   return {
-    projectTurn(request: ModelProjectionInput & Pick<ModelTurnRequest, "signal">) {
+    projectTurn(request: ModelProjectionInput & Pick<ProviderTurnRequest, "signal">) {
       return projectModelTurn(request)
     },
-    streamTurn(request: ModelTurnRequest) {
+    streamTurn(request: ProviderTurnRequest) {
       return input.streamTurn(request)
     },
   }
@@ -25,12 +26,8 @@ export function createModelRuntimeApi(input: CreateModelRuntimeApiInput) {
 
 export type ModelRuntimeApi = ReturnType<typeof createModelRuntimeApi>
 
-export type Provider = ModelRuntimeApi
-export type ProviderEvent = ModelEvent
-export type ProviderTurnRequest = ModelTurnRequest
-
 export type ModelProviderRequest = ModelProjectionInput &
-  Pick<ModelTurnRequest, "signal">
+  Pick<ProviderTurnRequest, "signal">
 
 export type ModelProvider = {
   streamTurn(request: ModelProviderRequest): AsyncIterable<ModelEvent>
