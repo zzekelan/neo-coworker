@@ -89,7 +89,7 @@ describe("architecture structure", () => {
     })
 
     expect(formatFindings(findings).join("\n")).toContain("[ARCH-PUBLIC-001]")
-    expect(formatFindings(findings).join("\n")).toContain("may only re-export src/session/api/*")
+    expect(formatFindings(findings).join("\n")).toContain("may only re-export src/session/public/*")
   })
 
   test("detects a retired public re-export ladder", () => {
@@ -115,7 +115,7 @@ describe("architecture structure", () => {
       directories: ["session"],
       files: [
         "session/index.ts",
-        "session/api/public.ts",
+        "session/public/index.ts",
         "session/application/query.ts",
         "session/domain/run.ts",
         "session/infrastructure/sqlite.ts",
@@ -134,12 +134,33 @@ describe("architecture structure", () => {
     expect(formatFindings(findings).join("\n")).toContain("inside a capability module")
   })
 
+  test("allows the public boundary to expose a stable infrastructure-backed factory", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["session"],
+      files: [
+        "session/index.ts",
+        "session/public/index.ts",
+        "session/infrastructure/sqlite.ts",
+      ],
+      edges: [
+        {
+          from: "session/public/index.ts",
+          to: "session/infrastructure/sqlite.ts",
+          specifier: "../infrastructure/sqlite",
+          kind: "export",
+        },
+      ],
+    })
+
+    expect(findings).toEqual([])
+  })
+
   test("detects a module-internal import routed through its own root index", () => {
     const findings = validateRepositoryGraph({
       directories: ["orchestration"],
       files: [
         "orchestration/index.ts",
-        "orchestration/api/public.ts",
+        "orchestration/public/index.ts",
         "orchestration/application/run.ts",
       ],
       edges: [

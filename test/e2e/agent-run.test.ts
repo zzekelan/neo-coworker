@@ -17,7 +17,7 @@ import { createPermissionRepository } from "../../src/permission/repo"
 import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,
-} from "../../src/session/repo"
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

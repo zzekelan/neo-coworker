@@ -7,7 +7,7 @@ import type {
   StoredPart,
   StoredRun,
   StoredSession,
-} from "./contract"
+} from "../application/ports/repository"
 
 export type SessionRow = {
   id: string

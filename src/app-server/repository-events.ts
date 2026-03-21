@@ -1,7 +1,7 @@
 import type {
   SessionRepository as StorageRepository,
   StoredRun,
-} from "../session/repo"
+} from "../session"
 import type { PermissionRepository } from "../permission"
 import {
   buildSessionSnapshot,

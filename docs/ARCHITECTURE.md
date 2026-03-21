@@ -53,7 +53,7 @@ New code in this refactor must follow module-role-specific layouts instead.
 
 Their target internal layout is:
 
-- `api/`
+- `public/`
 - `application/`
 - `domain/`
 - `infrastructure/`
@@ -69,7 +69,7 @@ It does not use the same template as the capability modules.
 
 Its target internal layout is:
 
-- `api/`
+- `public/`
 - `application/`
 - `infrastructure/`
 - root `index.ts`
@@ -126,16 +126,18 @@ For capability modules, the approved dependency directions are:
 - `application -> application/ports`
 - `infrastructure -> application`
 - `infrastructure -> domain` only when necessary
-- `api -> application`
-- root `index.ts -> api`
+- `public -> application`
+- `public -> infrastructure` only to expose stable module-owned public factories or adapters
+- root `index.ts -> public`
 - same-layer imports when the file role stays within the same layer
 
 Anything else is a layer violation.
 In particular:
 
-- `domain` must not import `application`, `api`, or `infrastructure`
-- `application` must not import `api` or `infrastructure`
-- `api` must not import `domain` or `infrastructure`
+- `domain` must not import `application`, `public`, or `infrastructure`
+- `application` must not import `public` or `infrastructure`
+- `public` must not import `domain` directly
+- `public` must not contain business logic or hidden side-effect initialization
 - module-internal files must not import their own root `index.ts`
 
 ### Coordinator Module Boundaries
@@ -144,15 +146,16 @@ For `orchestration`, the approved dependency directions are:
 
 - `application -> application/ports`
 - `infrastructure -> application`
-- `api -> application`
-- root `index.ts -> api`
+- `public -> application`
+- `public -> infrastructure` only to expose stable module-owned public factories or adapters
+- root `index.ts -> public`
 - same-layer imports when the file role stays within the same layer
 
 Anything else is a layer violation.
 In particular:
 
 - `orchestration/application` must not import `session`, `permission`, `model`, or `tool`
-- `orchestration/api` must not import `infrastructure`
+- `orchestration/public` must not contain business logic or hidden side-effect initialization
 - `orchestration` files must not import outer-shell code
 - module-internal files must not import `src/orchestration/index.ts`
 
@@ -172,7 +175,7 @@ Cross-module imports are tightly constrained:
 - `bootstrap` is the only approved place where multiple module APIs are wired together into a running application graph
 
 The outer shell is not a loophole.
-If composition needs another module's internals, the fix is to export a public API from that module's `api/` layer and wire it together in `bootstrap`.
+If composition needs another module's internals, the fix is to export a public capability from that module's `public/` layer and wire it together in `bootstrap`.
 
 Positive examples:
 
@@ -195,8 +198,9 @@ Architecture ID: `ARCH-PUBLIC-001`
 The public export contract is:
 
 - every capability, coordinator, shell, and kernel module has one public module exit: `src/<module>/index.ts`
-- root `index.ts` re-exports only from `./api` for capability and coordinator modules, and only from `./contracts` for `kernel`
-- `api/` is the only internal layer allowed to define a capability or coordinator module's public surface
+- root `index.ts` re-exports only from `./public` for capability and coordinator modules, and only from `./contracts` for `kernel`
+- `public/` is the only internal layer allowed to define a capability or coordinator module's public surface
+- `public/` may re-export application contracts and stable infrastructure-backed factories or adapters that are intentionally part of the module boundary
 - public surfaces must not rely on multi-hop re-export ladders through retired implementation layers
 - compatibility re-export layers such as `public.ts`, `compat.ts`, or `exports.ts` are forbidden
 
@@ -214,7 +218,7 @@ Use these questions to place code:
 - Is this core business meaning, rule, state transition, or domain-owned error? Put it in `domain/`.
 - Is this a use case, command, query, workflow, or a port the use case needs? Put it in `application/`.
 - Is this a concrete implementation detail such as SQLite, OpenAI, file system, shell, event queue, or in-memory registry? Put it in `infrastructure/`.
-- Is this the module's explicit public boundary or a light boundary projection over application contracts? Put it in `api/`.
+- Is this the module's explicit public boundary, a stable factory or adapter meant for callers, or a light boundary projection over application contracts? Put it in `public/`.
 - Is this a truly global, stable, non-business contract with no single-module owner? Put it in `kernel/contracts/`.
 - Is this cross-module composition or application assembly? Put it in `bootstrap/`.
 - Is this CLI transport behavior? Put it in `cli/`.
@@ -236,7 +240,7 @@ Migration mapping from the old structure should follow ownership, not directory-
 - old `repo/contract.ts` usually becomes `application/ports/*`
 - old `repo/*.ts` concrete storage implementations usually become `infrastructure/*`
 - old `service/*` may split between `domain/*` and `application/*`
-- old `runtime/api.ts` usually becomes `api/*`
+- old `runtime/api.ts` usually becomes `public/*`
 - old runtime helper implementations such as queues, registries, provider adapters, and shell runners usually become `infrastructure/*`
 - old module-local `wiring/*` is migration debt and should move to `bootstrap/*` or a final module-owned layer with clear ownership
 

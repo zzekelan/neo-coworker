@@ -6,12 +6,12 @@ import { join } from "node:path"
 import {
   assertRunStatusTransition,
   createSessionRunService,
-} from "../../src/session/service"
+} from "../../src/session"
 import {
   createSessionRepository,
   openSessionDatabase,
   type SessionRepository,
-} from "../../src/session/repo"
+} from "../../src/session"
 import {
   createPermissionRepository,
   type PermissionRepository,

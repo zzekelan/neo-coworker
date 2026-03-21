@@ -7,7 +7,7 @@ import {
   SESSION_TABLES as STORAGE_TABLES,
   CURRENT_SESSION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
   openSessionDatabase as openStorageDatabase,
-} from "../../src/session/repo"
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

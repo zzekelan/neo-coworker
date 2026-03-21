@@ -1,26 +1,71 @@
-import type {
-  MessageRole,
-  PartKind,
-  RunStatus,
-  RunTrigger,
-  StoredMessage,
-  StoredPart,
-  StoredRun,
-  StoredSession,
-  TranscriptMessage,
-} from "../config/defaults"
+export type MessageRole = "user" | "assistant" | "synthetic"
+export type PartKind =
+  | "text"
+  | "reasoning"
+  | "tool_call"
+  | "tool_result"
+  | "step_start"
+  | "step_finish"
+  | "error"
+  | "patch"
+export type RunTrigger =
+  | "cli"
+  | "prompt"
+  | "command"
+  | "shell"
+  | "retry"
+  | "summarize"
+  | "init"
+export type RunStatus =
+  | "queued"
+  | "running"
+  | "waiting_permission"
+  | "completed"
+  | "failed"
+  | "cancelled"
 
-export type {
-  MessageRole,
-  PartKind,
-  RunStatus,
-  RunTrigger,
-  StoredMessage,
-  StoredPart,
-  StoredRun,
-  StoredSession,
-  TranscriptMessage,
-} from "../config/defaults"
+export type StoredSession = {
+  id: string
+  directory: string
+  workspaceRoot: string
+  createdAt: number
+}
+
+export type StoredRun = {
+  id: string
+  sessionId: string
+  trigger: RunTrigger
+  status: RunStatus
+  createdAt: number
+  startedAt: number | null
+  finishedAt: number | null
+  errorText: string | null
+}
+
+export type StoredMessage = {
+  id: string
+  sessionId: string
+  runId: string
+  role: MessageRole
+  sequence: number
+  createdAt: number
+}
+
+export type StoredPart = {
+  id: string
+  sessionId: string
+  runId: string
+  messageId: string
+  kind: PartKind
+  sequence: number
+  text: string | null
+  data: unknown
+  createdAt: number
+}
+
+export type TranscriptMessage = StoredMessage & {
+  parts: StoredPart[]
+}
 
 type EntityType = "session" | "run" | "message" | "part"
 

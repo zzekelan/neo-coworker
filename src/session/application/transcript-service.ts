@@ -1,4 +1,8 @@
-import type { SessionRepository, StoredRun, TranscriptMessage } from "../repo/contract"
+import type {
+  SessionRepository,
+  StoredRun,
+  TranscriptMessage,
+} from "./ports/repository"
 
 export class RunInitiatingMessageNotFoundError extends Error {
   readonly runId: string

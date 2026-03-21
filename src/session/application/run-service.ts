@@ -1,12 +1,12 @@
 import {
   SessionConflictError,
   SessionNotFoundError,
-  type SessionRepository,
   type RunTrigger,
+  type SessionRepository,
   type StoredRun,
-} from "../repo/contract"
-import { createSessionTranscriptService } from "./transcript"
-import { createRunStateMachine } from "./state-machine"
+} from "./ports/repository"
+import { createRunStateMachine } from "./run-state-machine"
+import { createSessionTranscriptService } from "./transcript-service"
 
 export type SessionActivityStatus = "idle" | "busy"
 

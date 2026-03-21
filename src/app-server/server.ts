@@ -4,7 +4,7 @@ import {
   InvalidRunStatusTransitionError,
   SessionBusyError,
   StartRunIdentityConflictError,
-} from "../session/service"
+} from "../session"
 import { PermissionNotFoundError, type PermissionRepository } from "../permission"
 import {
   PermissionRequestNotPendingError,
@@ -16,7 +16,7 @@ import {
   SessionConflictError as StorageConflictError,
   SessionNotFoundError as StorageNotFoundError,
   type SessionRepository as StorageRepository,
-} from "../session/repo"
+} from "../session"
 import type { ServerEvent } from "./events"
 import { serializeSseEvent } from "./events"
 import {

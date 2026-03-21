@@ -6,7 +6,7 @@ import { join } from "node:path"
 import {
   createSessionRepository,
   openSessionDatabase,
-} from "../../src/session/repo"
+} from "../../src/session"
 import {
   PermissionNotFoundError,
   createPermissionRepository,

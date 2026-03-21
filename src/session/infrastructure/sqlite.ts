@@ -4,31 +4,39 @@ import { dirname, resolve } from "node:path"
 
 import {
   CURRENT_SESSION_SCHEMA_VERSION,
+} from "../application/storage-schema"
+import type {
+  CreateSessionRepositoryInput,
+  SessionEntityIdPrefix,
+  SessionStorageApi,
+} from "../application/storage"
+import { registerSessionStorageApi } from "../application/storage"
+import {
   MESSAGE_ROLES,
   PART_KINDS,
   RUN_STATUSES,
   RUN_TRIGGERS,
-} from "../config/defaults"
+} from "../domain"
 import {
-  SessionConflictError,
-  SessionNotFoundError,
-  SessionOwnershipError,
-  type SessionRepository,
   type CreateAssistantMessageWithFirstPartInput,
   type CreateMessageInput,
   type CreatePartInput,
-  type CreateQueuedRunWithInitiatingMessageInput,
   type CreateQueuedRunWithInitiatingMessageAndPartInput,
+  type CreateQueuedRunWithInitiatingMessageInput,
   type CreateRunInput,
   type CreateSessionInput,
+  SessionConflictError,
+  SessionNotFoundError,
+  SessionOwnershipError,
   type StoredMessage,
   type StoredPart,
+  type SessionRepository,
   type StoredRun,
   type StoredSession,
   type TranscriptMessage,
   type UpdatePartContentInput,
   type UpdateRunStatusInput,
-} from "./contract"
+} from "../application/ports/repository"
 import {
   mapMessageRow,
   mapPartRow,
@@ -40,7 +48,7 @@ import {
   type RunRow,
   type SessionRow,
   type TranscriptRow,
-} from "./mappers"
+} from "./sqlite-mappers"
 
 export type SessionDatabase = Database
 
@@ -179,8 +187,6 @@ const sessionMigrations = [
   },
 ] as const
 
-type IdPrefix = "session" | "run" | "message" | "part"
-
 export function getSessionDatabaseIdentity(database: SessionDatabase) {
   const filename = database.filename
 
@@ -210,18 +216,15 @@ export function openSessionDatabase(filePath: string) {
   }
 }
 
-export function createSessionRepository(input: {
-  database: SessionDatabase
-  now?: () => number
-  createId?: (prefix: IdPrefix) => string
-}): SessionRepository {
+export function createSessionRepository(input: CreateSessionRepositoryInput): SessionRepository {
   const database = input.database
   const storageIdentity = getSessionDatabaseIdentity(database)
   const now = input.now ?? Date.now
   const createId =
-    input.createId ?? ((prefix: IdPrefix) => `${prefix}_${crypto.randomUUID()}`)
+    input.createId ??
+    ((prefix: SessionEntityIdPrefix) => `${prefix}_${crypto.randomUUID()}`)
 
-  function buildId(prefix: IdPrefix, value?: string) {
+  function buildId(prefix: SessionEntityIdPrefix, value?: string) {
     return value ?? createId(prefix)
   }
 
@@ -783,3 +786,9 @@ function wrapSessionSetupError(filePath: string, error: unknown) {
     error instanceof Error ? error.message : typeof error === "string" ? error : "unknown error"
   return new Error(`Failed to initialize storage at ${filePath}: ${message}`)
 }
+
+registerSessionStorageApi({
+  getSessionDatabaseIdentity,
+  openSessionDatabase,
+  createSessionRepository,
+} satisfies SessionStorageApi)

@@ -2,11 +2,11 @@ import type { OrchestrationRuntimeApi } from "../orchestration"
 import {
   assertRunStatusTransition,
   createSessionRunService,
-} from "../session/service"
+} from "../session"
 import type {
   SessionRepository as StorageRepository,
   RunTrigger,
-} from "../session/repo"
+} from "../session"
 import type { PermissionRepository } from "../permission"
 import type { PermissionResponse } from "../permission"
 import { buildSessionSnapshot, createServerEventBus } from "./events"

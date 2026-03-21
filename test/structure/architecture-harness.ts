@@ -50,13 +50,13 @@ export const RETIRED_INTERNAL_DIRECTORIES = new Set([
 ])
 
 const CAPABILITY_TARGET_DIRECTORIES = new Set([
-  "api",
+  "public",
   "application",
   "domain",
   "infrastructure",
 ])
 const COORDINATOR_TARGET_DIRECTORIES = new Set([
-  "api",
+  "public",
   "application",
   "infrastructure",
 ])
@@ -75,14 +75,14 @@ const RULE_DOCS = {
     "docs/dev/QUALITY_INVARIANTS.md#inv-structure-002-shared-kernel-stays-narrow",
 } as const
 const CAPABILITY_ALLOWED_INTERNAL_IMPORTS = {
-  api: new Set(["application"]),
+  public: new Set(["application", "infrastructure"]),
   application: new Set(["application-port", "domain"]),
   "application-port": new Set<string>(),
   domain: new Set<string>(),
   infrastructure: new Set(["application", "application-port", "domain"]),
 } as const
 const COORDINATOR_ALLOWED_INTERNAL_IMPORTS = {
-  api: new Set(["application"]),
+  public: new Set(["application", "infrastructure"]),
   application: new Set(["application-port"]),
   "application-port": new Set<string>(),
   infrastructure: new Set(["application", "application-port"]),
@@ -136,7 +136,7 @@ type ModuleKind =
 
 type SourcePlacement =
   | "module-index"
-  | "api"
+  | "public"
   | "application"
   | "application-port"
   | "domain"
@@ -165,14 +165,14 @@ type ModuleState = {
 }
 
 type CapabilityPlacement =
-  | "api"
+  | "public"
   | "application"
   | "application-port"
   | "domain"
   | "infrastructure"
 
 type CoordinatorPlacement =
-  | "api"
+  | "public"
   | "application"
   | "application-port"
   | "infrastructure"
@@ -355,8 +355,8 @@ function validatePrimaryDirectory(
         summary: `src/${moduleName}/${primaryDir}/ uses a retired internal directory and is migration debt, not approved target structure.`,
         remediation:
           moduleKind === "capability"
-            ? "Move the module toward api/, application/, domain/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary."
-            : "Move the module toward api/, application/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary.",
+            ? "Move the module toward public/, application/, domain/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary."
+            : "Move the module toward public/, application/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary.",
         doc: RULE_DOCS["INV-STRUCTURE-001"],
       })
       return
@@ -369,8 +369,8 @@ function validatePrimaryDirectory(
         summary: `src/${moduleName}/${primaryDir}/ is not an approved directory for a ${moduleKind} module.`,
         remediation:
           moduleKind === "capability"
-            ? "Place capability-module code only under api/, application/, domain/, infrastructure/, or the root index.ts."
-            : "Place coordinator-module code only under api/, application/, infrastructure/, or the root index.ts.",
+            ? "Place capability-module code only under public/, application/, domain/, infrastructure/, or the root index.ts."
+            : "Place coordinator-module code only under public/, application/, infrastructure/, or the root index.ts.",
         doc: RULE_DOCS["INV-STRUCTURE-001"],
       })
     }
@@ -443,13 +443,13 @@ function validateModuleRootEdge(
   to: SourceFileMeta,
 ) {
   if (from.moduleKind === "capability" || from.moduleKind === "coordinator") {
-    if (to.placement !== "api") {
+    if (to.placement !== "public") {
       addFinding(findings, {
         ruleId: "ARCH-PUBLIC-001",
-        fingerprint: `ARCH-PUBLIC-001:root-api-only:${edge.from}->${edge.to}`,
-        summary: `src/${edge.from} may only re-export src/${from.topLevel}/api/*, but references src/${edge.to}.`,
+        fingerprint: `ARCH-PUBLIC-001:root-public-only:${edge.from}->${edge.to}`,
+        summary: `src/${edge.from} may only re-export src/${from.topLevel}/public/*, but references src/${edge.to}.`,
         remediation:
-          "Keep the root index.ts mechanical: move the public surface to api/ and re-export only from that layer.",
+          "Keep the root index.ts mechanical: move the public surface to public/ and re-export only from that layer.",
         doc: RULE_DOCS["ARCH-PUBLIC-001"],
       })
     }
@@ -481,7 +481,7 @@ function validateCapabilityEdge(
       fingerprint: `ARCH-PUBLIC-001:retired-ladder:${edge.from}->${edge.to}`,
       summary: `src/${edge.from} re-exports through retired internal layers by referencing src/${edge.to}.`,
       remediation:
-        "Move the public surface to api/ and stop tunneling exports through retired runtime/service/repo-style barrels.",
+        "Move the public surface to public/ and stop tunneling exports through retired runtime/service/repo-style barrels.",
       doc: RULE_DOCS["ARCH-PUBLIC-001"],
     })
     return
@@ -497,7 +497,7 @@ function validateCapabilityEdge(
       fingerprint: `ARCH-LAYER-002:target-to-retired:${edge.from}->${edge.to}`,
       summary: `src/${edge.from} is in the target capability layout and may not depend on retired layer code such as src/${edge.to}.`,
       remediation:
-        "Continue the migration through api/, application/, domain/, and infrastructure/ instead of routing new-layer code back into retired directories.",
+        "Continue the migration through public/, application/, domain/, and infrastructure/ instead of routing new-layer code back into retired directories.",
       doc: RULE_DOCS["ARCH-LAYER-002"],
     })
     return
@@ -536,7 +536,7 @@ function validateCoordinatorEdge(
       fingerprint: `ARCH-PUBLIC-001:retired-ladder:${edge.from}->${edge.to}`,
       summary: `src/${edge.from} re-exports through retired internal layers by referencing src/${edge.to}.`,
       remediation:
-        "Move the coordinator public surface to api/ and stop tunneling exports through retired runtime/service/repo-style files.",
+        "Move the coordinator public surface to public/ and stop tunneling exports through retired runtime/service/repo-style files.",
       doc: RULE_DOCS["ARCH-PUBLIC-001"],
     })
     return
@@ -552,7 +552,7 @@ function validateCoordinatorEdge(
       fingerprint: `ARCH-LAYER-002:target-to-retired:${edge.from}->${edge.to}`,
       summary: `src/${edge.from} is in the target coordinator layout and may not depend on retired layer code such as src/${edge.to}.`,
       remediation:
-        "Continue the migration through api/, application/, and infrastructure/ instead of routing new-layer code back into retired directories.",
+        "Continue the migration through public/, application/, and infrastructure/ instead of routing new-layer code back into retired directories.",
       doc: RULE_DOCS["ARCH-LAYER-002"],
     })
     return
@@ -775,8 +775,8 @@ function getSourcePlacement(
   }
 
   if (moduleKind === "capability") {
-    if (primaryDir === "api") {
-      return "api"
+    if (primaryDir === "public") {
+      return "public"
     }
 
     if (primaryDir === "application" && secondaryDir === "ports") {
@@ -797,8 +797,8 @@ function getSourcePlacement(
   }
 
   if (moduleKind === "coordinator") {
-    if (primaryDir === "api") {
-      return "api"
+    if (primaryDir === "public") {
+      return "public"
     }
 
     if (primaryDir === "application" && secondaryDir === "ports") {
@@ -855,7 +855,7 @@ function isCapabilityPlacement(
   placement: SourcePlacement,
 ): placement is CapabilityPlacement {
   return (
-    placement === "api" ||
+    placement === "public" ||
     placement === "application" ||
     placement === "application-port" ||
     placement === "domain" ||
@@ -867,7 +867,7 @@ function isCoordinatorPlacement(
   placement: SourcePlacement,
 ): placement is CoordinatorPlacement {
   return (
-    placement === "api" ||
+    placement === "public" ||
     placement === "application" ||
     placement === "application-port" ||
     placement === "infrastructure"

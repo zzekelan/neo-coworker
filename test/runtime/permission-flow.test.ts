@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { access, cp, mkdir, mkdtemp, rm, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createSessionRunService } from "../../src/session/service"
+import { createSessionRunService } from "../../src/session"
 import {
   createModelRuntimeApi,
   type ProviderEvent,
@@ -21,7 +21,7 @@ import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,
   type SessionRepository as StorageRepository,
-} from "../../src/session/repo"
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

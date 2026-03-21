@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createSessionRunService } from "../../src/session/service"
+import { createSessionRunService } from "../../src/session"
 import {
   createPermissionRepository,
   type PermissionRepository,
@@ -11,7 +11,7 @@ import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,
   type SessionRepository as StorageRepository,
-} from "../../src/session/repo"
+} from "../../src/session"
 import { buildTranscriptMessages } from "../../src/model/service/projection"
 import {
   createModelRuntimeApi,

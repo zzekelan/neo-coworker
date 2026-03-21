@@ -1,4 +1,8 @@
-import type { SessionRepository, RunStatus, StoredRun } from "../repo/contract"
+import type {
+  RunStatus,
+  SessionRepository,
+  StoredRun,
+} from "./ports/repository"
 
 export const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_permission"] as const
 export const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const

@@ -6,7 +6,7 @@ import type {
   StoredPart,
   StoredRun,
   StoredSession,
-} from "../session/repo"
+} from "../session"
 
 export type SessionSnapshot = {
   session: StoredSession

@@ -1,8 +1,8 @@
 import {
   createSessionRunService,
-  createSessionTranscriptService,
   type CreateSessionRunServiceInput,
-} from "../service"
+} from "./run-service"
+import { createSessionTranscriptService } from "./transcript-service"
 
 export type SessionRuntimeApiInput = CreateSessionRunServiceInput
 
@@ -30,5 +30,3 @@ export function createSessionRuntimeApi(input: SessionRuntimeApiInput) {
 
 export type SessionRuntimeApi = ReturnType<typeof createSessionRuntimeApi>
 export type SessionProvider = SessionRuntimeApi
-
-export * from "../service"

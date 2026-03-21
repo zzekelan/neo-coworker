@@ -1,1 +1,3 @@
-export * from "./runtime/api"
+import "./infrastructure/sqlite"
+
+export * from "./api"
