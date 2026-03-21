@@ -6,12 +6,9 @@ import {
   FINAL_KERNEL_TOP_LEVELS,
   FINAL_SHELL_TOP_LEVELS,
   STRUCTURE_BASELINE_PATH,
-  TRANSITION_CORE_TOP_LEVELS,
-  TRANSITION_OUTER_SHELL_TOP_LEVELS,
   formatFinding,
   loadRepositoryGraph,
   loadStructureBaseline,
-  partitionFindings,
   validateRepositoryGraph,
 } from "./architecture-harness"
 
@@ -34,12 +31,7 @@ describe("architecture structure", () => {
     expect(toSortedArray(FINAL_KERNEL_TOP_LEVELS)).toEqual(["kernel"])
   })
 
-  test("tracks transition-only names as explicit debt during migration", () => {
-    expect(toSortedArray(TRANSITION_CORE_TOP_LEVELS)).toEqual(["conversation"])
-    expect(toSortedArray(TRANSITION_OUTER_SHELL_TOP_LEVELS)).toEqual([
-      "server",
-      "wiring",
-    ])
+  test("rejects legacy top-level aliases", () => {
     expect(APPROVED_TOP_LEVELS.has("conversation")).toBe(false)
     expect(APPROVED_TOP_LEVELS.has("wiring")).toBe(false)
 
@@ -49,10 +41,10 @@ describe("architecture structure", () => {
       edges: [],
     })
 
-    expect(formatFindings(findings).join("\n")).toContain("transition-only top-level")
+    expect(formatFindings(findings).join("\n")).toContain("legacy top-level directory")
   })
 
-  test("detects retired six-layer directories as migration debt", () => {
+  test("detects retired six-layer directories as forbidden structure", () => {
     const findings = validateRepositoryGraph({
       directories: ["session"],
       files: ["session/runtime/api.ts"],
@@ -281,27 +273,17 @@ describe("architecture structure", () => {
     expect(message).toContain("See docs/ARCHITECTURE.md#cross-module-boundaries.")
   })
 
-  test("repository structure only contains baselined findings", async () => {
+  test("repository structure has zero architecture findings", async () => {
     const graph = await loadRepositoryGraph()
     const findings = validateRepositoryGraph(graph)
-    const baseline = await loadStructureBaseline(STRUCTURE_BASELINE_PATH)
-    const { unbaselined } = partitionFindings(findings, baseline)
 
-    expect(formatFindings(unbaselined)).toEqual([])
+    expect(formatFindings(findings)).toEqual([])
   })
 
-  test("baseline debt file stays in sync with the remaining violations", async () => {
-    const graph = await loadRepositoryGraph()
-    const findings = validateRepositoryGraph(graph)
+  test("baseline debt file stays empty in the final state", async () => {
     const baseline = await loadStructureBaseline(STRUCTURE_BASELINE_PATH)
-    const { staleBaseline } = partitionFindings(findings, baseline)
 
-    expect(
-      staleBaseline.map(
-        (entry) =>
-          `[${entry.ruleId}] ${entry.fingerprint} is no longer present. Remove it from test/structure/baselines/architecture-findings.json.`,
-      ),
-    ).toEqual([])
+    expect(baseline).toEqual([])
   })
 })
 

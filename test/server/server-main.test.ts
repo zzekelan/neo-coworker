@@ -3,11 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { createServer as createNetServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { resolveAgentServerOrigin } from "../../src/bootstrap/provider"
+import { resolveAgentServerOrigin } from "../../src/bootstrap"
 import {
   getDefaultStandaloneServerStoragePath,
   resolveStandaloneServerConfig,
-} from "../../src/app-server/main"
+} from "../../src/app-server"
 import {
   CURRENT_SESSION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
   openSessionDatabase as openStorageDatabase,

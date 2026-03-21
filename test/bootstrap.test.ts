@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { buildCli } from "../src/cli/main"
-import { resolveDefaultProviderConfig } from "../src/bootstrap/provider"
+import { buildCli } from "../src/cli"
+import { resolveDefaultProviderConfig } from "../src/bootstrap"
 
 describe("bootstrap", () => {
   test("parses the run command", () => {

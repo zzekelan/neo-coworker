@@ -26,13 +26,13 @@ Approved top-level modules under `src/` fall into four groups:
 - Shared kernel:
   - `kernel`: truly global, stable, non-business contracts only
 
-Transition-only legacy top-level names may still appear while the migration tasks are in flight:
+Legacy pre-refactor top-level names are not allowed to reappear:
 
-- `conversation`: pre-rename durable-state module name, replaced by `session`
-- `wiring`: pre-split outer-shell composition location, replaced by `bootstrap`, `cli`, and `app-server`
-- `server`: pre-rename HTTP/SSE shell name, replaced by `app-server`
-
-Legacy top-level directories such as `src/providers` and `src/runtime` are not allowed to reappear.
+- `conversation`: replaced by `session`
+- `wiring`: replaced by `bootstrap`, `cli`, and `app-server`
+- `server`: replaced by `app-server`
+- `providers`
+- `runtime`
 
 The current tree does not contain `src/kernel/` yet.
 If a later change introduces it, it must start with `contracts/` plus a root `index.ts`; do not use it as a generic shared-types or shared-utils bucket.
@@ -168,7 +168,8 @@ Cross-module imports are tightly constrained:
 - capability modules may not import another capability module directly
 - capability modules may not import `orchestration`
 - `orchestration` may not import capability modules directly
-- shell modules may import a capability or coordinator module only through `src/<module>/index.ts`
+- `bootstrap` may import capability and coordinator modules only through `src/<module>/index.ts`
+- non-`bootstrap` shell modules may import only `src/bootstrap/index.ts` and `src/kernel/index.ts` across module boundaries
 - capability modules, `orchestration`, and shell modules may import `kernel` only through `src/kernel/index.ts`
 - `kernel` must not import capability modules, `orchestration`, or shell modules
 - capability modules and `orchestration` must not depend on shell code
@@ -188,8 +189,7 @@ Negative examples:
 - `src/model/infrastructure/openai.ts -> src/tool/index.ts`
 - `src/orchestration/application/run.ts -> src/session/index.ts`
 
-The first example is current tracked debt.
-The second and third examples are not legal patterns for new code.
+All three examples are forbidden patterns.
 
 ## Public Export Contract
 
@@ -242,36 +242,11 @@ Migration mapping from the old structure should follow ownership, not directory-
 - old `service/*` may split between `domain/*` and `application/*`
 - old `runtime/api.ts` usually becomes `public/*`
 - old runtime helper implementations such as queues, registries, provider adapters, and shell runners usually become `infrastructure/*`
-- old module-local `wiring/*` is migration debt and should move to `bootstrap/*` or a final module-owned layer with clear ownership
+- old module-local `wiring/*` is retired and should move to `bootstrap/*` or a final module-owned layer with clear ownership
 
 If a change needs a new directory name, a new cross-module shortcut, or a broader `kernel`, stop and update the design docs and structure checks first.
 
-## Transition Rules
+## Enforcement State
 
-The current `2026-03-19-session-bootstrap-app-server-debt-zero` worktree is migrating from the retired six-layer structure to the new module taxonomy.
-
-During that migration:
-
-- existing uses of `types/`, `config/`, `repo/`, `ports/`, `service/`, `runtime/`, and module-local `wiring/` may remain only as explicit tracked debt
-- those retired names are not approved target patterns for new code
-- missing target directories in not-yet-migrated modules are migration debt, not a reason to relax the target taxonomy
-- shell modules must not add new deep imports into capability or coordinator internals, even while baseline debt still exists elsewhere
-- the structure harness must distinguish:
-  - legal target structure
-  - temporary migration debt
-  - forbidden new violations
-
-The no-new-violations ratchet still applies throughout the migration.
-
-## Known Debt
-
-The current no-new-violations baseline is tracked in `test/structure/baselines/architecture-findings.json`.
-
-As of 2026-03-21, the remaining migration debt includes:
-
-- capability and coordinator modules still laid out under the retired six-layer directory vocabulary
-- domain-local composition debt at `src/session/wiring/provider.ts`
-- outer-shell imports in `src/app-server/*` that still reach into `src/session/{repo,service}/*` and `src/orchestration/runtime/stream.ts`
-
-Those findings are tolerated only because they are recorded as migration debt in the structure baseline.
-New occurrences of retired layer names, deep shell imports, or cross-module shortcuts outside that baseline should fail the structure checks immediately.
+The structure baseline at `test/structure/baselines/architecture-findings.json` is expected to remain empty in this final state.
+Any structure finding from `bun run test:structure` is treated as an architecture violation that must be fixed in the same change.

@@ -10,7 +10,7 @@ import {
 import {
   PermissionNotFoundError,
   createPermissionRepository,
-} from "../../src/permission/repo"
+} from "../../src/permission"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

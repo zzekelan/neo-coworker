@@ -2,11 +2,13 @@ import { cp, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
-import { createPermissionCoordinator } from "../../../src/permission/runtime/coordinator"
-import { createToolRuntimeApi } from "../../../src/tool/runtime/api"
-import { createEditTool } from "../../../src/tool/runtime/edit"
-import { createShellTool } from "../../../src/tool/runtime/shell"
-import { createWriteTool } from "../../../src/tool/runtime/write"
+import { createPermissionCoordinator } from "../../../src/permission"
+import {
+  createEditTool,
+  createShellTool,
+  createToolRuntimeApi,
+  createWriteTool,
+} from "../../../src/tool"
 
 async function createWorkspaceCopy() {
   const tempRoot = await mkdtemp(join(tmpdir(), "mutating-tools-"))

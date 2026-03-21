@@ -22,23 +22,20 @@ export const FINAL_SHELL_TOP_LEVELS = new Set([
   "cli",
 ])
 export const FINAL_KERNEL_TOP_LEVELS = new Set(["kernel"])
-export const TRANSITION_CORE_TOP_LEVELS = new Set(["conversation"])
-export const TRANSITION_OUTER_SHELL_TOP_LEVELS = new Set([
-  "server",
-  "wiring",
-])
 export const APPROVED_TOP_LEVELS = new Set([
   ...FINAL_CAPABILITY_TOP_LEVELS,
   ...FINAL_COORDINATOR_TOP_LEVELS,
   ...FINAL_SHELL_TOP_LEVELS,
   ...FINAL_KERNEL_TOP_LEVELS,
 ])
-export const TRANSITION_TOP_LEVELS = new Set([
-  ...TRANSITION_CORE_TOP_LEVELS,
-  ...TRANSITION_OUTER_SHELL_TOP_LEVELS,
+export const ALLOWED_TOP_LEVELS = new Set([...APPROVED_TOP_LEVELS])
+export const LEGACY_TOP_LEVELS = new Set([
+  "conversation",
+  "providers",
+  "runtime",
+  "server",
+  "wiring",
 ])
-export const ALLOWED_TOP_LEVELS = new Set([...APPROVED_TOP_LEVELS, ...TRANSITION_TOP_LEVELS])
-export const LEGACY_TOP_LEVELS = new Set(["providers", "runtime"])
 export const RETIRED_INTERNAL_DIRECTORIES = new Set([
   "config",
   "ports",
@@ -131,7 +128,6 @@ type ModuleKind =
   | "coordinator"
   | "shell"
   | "kernel"
-  | "transition"
   | "unknown"
 
 type SourcePlacement =
@@ -156,7 +152,6 @@ type SourceFileMeta = {
   retiredDir: string | null
   isModuleIndex: boolean
   isFinalModule: boolean
-  isTransitionModule: boolean
 }
 
 type ModuleState = {
@@ -236,16 +231,6 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
       })
     }
 
-    if (TRANSITION_TOP_LEVELS.has(directory)) {
-      addFinding(findings, {
-        ruleId: "ARCH-TOPLEVEL-001",
-        fingerprint: `ARCH-TOPLEVEL-001:transition-top-level:${directory}`,
-        summary: `src/${directory} is a transition-only top-level and must be removed by the end of the migration.`,
-        remediation:
-          "Move code to the final top-level vocabulary and keep this debt tracked only through the migration baseline.",
-        doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
-      })
-    }
   }
 
   for (const [moduleName, state] of moduleState) {
@@ -264,21 +249,6 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
 
     for (const primaryDir of Array.from(state.primaryDirs).sort()) {
       validatePrimaryDirectory(findings, moduleName, moduleKind, primaryDir)
-    }
-  }
-
-  for (const file of graph.files) {
-    const meta = getSourceFileMeta(file)
-
-    if (meta.isTransitionModule) {
-      addFinding(findings, {
-        ruleId: "ARCH-TOPLEVEL-001",
-        fingerprint: `ARCH-TOPLEVEL-001:transition-file:${file}`,
-        summary: `src/${file} is under transition-only top-level src/${meta.topLevel} and must move to final naming.`,
-        remediation:
-          "Migrate this file into the final architecture vocabulary instead of adding more files under transition-only names.",
-        doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
-      })
     }
   }
 
@@ -352,11 +322,11 @@ function validatePrimaryDirectory(
       addFinding(findings, {
         ruleId: "INV-STRUCTURE-001",
         fingerprint: `INV-STRUCTURE-001:directory:${moduleName}/${primaryDir}`,
-        summary: `src/${moduleName}/${primaryDir}/ uses a retired internal directory and is migration debt, not approved target structure.`,
+        summary: `src/${moduleName}/${primaryDir}/ uses a retired internal directory, which is not approved target structure.`,
         remediation:
           moduleKind === "capability"
-            ? "Move the module toward public/, application/, domain/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary."
-            : "Move the module toward public/, application/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary.",
+            ? "Move the module to public/, application/, domain/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary."
+            : "Move the module to public/, application/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary.",
         doc: RULE_DOCS["INV-STRUCTURE-001"],
       })
       return
@@ -497,7 +467,7 @@ function validateCapabilityEdge(
       fingerprint: `ARCH-LAYER-002:target-to-retired:${edge.from}->${edge.to}`,
       summary: `src/${edge.from} is in the target capability layout and may not depend on retired layer code such as src/${edge.to}.`,
       remediation:
-        "Continue the migration through public/, application/, domain/, and infrastructure/ instead of routing new-layer code back into retired directories.",
+        "Keep capability code in public/, application/, domain/, and infrastructure/ instead of routing dependencies through retired directories.",
       doc: RULE_DOCS["ARCH-LAYER-002"],
     })
     return
@@ -552,7 +522,7 @@ function validateCoordinatorEdge(
       fingerprint: `ARCH-LAYER-002:target-to-retired:${edge.from}->${edge.to}`,
       summary: `src/${edge.from} is in the target coordinator layout and may not depend on retired layer code such as src/${edge.to}.`,
       remediation:
-        "Continue the migration through public/, application/, and infrastructure/ instead of routing new-layer code back into retired directories.",
+        "Keep coordinator code in public/, application/, and infrastructure/ instead of routing dependencies through retired directories.",
       doc: RULE_DOCS["ARCH-LAYER-002"],
     })
     return
@@ -730,7 +700,6 @@ function getSourceFileMeta(relPath: string): SourceFileMeta {
     retiredDir,
     isModuleIndex,
     isFinalModule: isFinalModuleKind(moduleKind),
-    isTransitionModule: moduleKind === "transition",
     placement: getSourcePlacement(moduleKind, isModuleIndex, primaryDir, secondaryDir, retiredDir),
   }
 }
@@ -750,10 +719,6 @@ function getModuleKind(topLevel: string): ModuleKind {
 
   if (FINAL_KERNEL_TOP_LEVELS.has(topLevel)) {
     return "kernel"
-  }
-
-  if (TRANSITION_TOP_LEVELS.has(topLevel)) {
-    return "transition"
   }
 
   return "unknown"

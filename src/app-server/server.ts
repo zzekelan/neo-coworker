@@ -1,31 +1,26 @@
 import { createServer as createNetServer } from "node:net"
 import { z, ZodError } from "zod"
 import {
+  createServerApp,
   InvalidRunStatusTransitionError,
-  SessionBusyError,
-  StartRunIdentityConflictError,
-} from "../session"
-import { PermissionNotFoundError, type PermissionRepository } from "../permission"
-import {
+  type CreateServerAppRuntime,
+  PermissionNotFoundError,
+  PermissionRequestNotAwaitingActiveRuntimeError,
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
-} from "../permission"
-import { PermissionRequestNotAwaitingActiveRuntimeError } from "../orchestration"
-import {
   RUN_TRIGGERS,
+  type ServerEvent,
+  ServerShuttingDownError,
+  SessionBusyError,
   SessionConflictError as StorageConflictError,
   SessionNotFoundError as StorageNotFoundError,
+  StartRunIdentityConflictError,
+  type PermissionRepository,
   type SessionRepository as StorageRepository,
-} from "../session"
-import type { ServerEvent } from "./events"
+} from "../bootstrap"
 import { serializeSseEvent } from "./events"
-import {
-  createServerApp,
-  type CreateServerAppRuntime,
-  ServerShuttingDownError,
-} from "./app"
 
-export { PermissionRequestNotAwaitingActiveRuntimeError } from "../orchestration"
+export { PermissionRequestNotAwaitingActiveRuntimeError } from "../bootstrap"
 
 const createSessionBodySchema = z.object({
   directory: z.string().min(1),

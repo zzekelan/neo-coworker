@@ -7,12 +7,12 @@ import {
   createModelRuntimeApi,
   type ProviderEvent,
   type ProviderTurnRequest,
-} from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model"
-import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
-import { createPermissionRepository } from "../../src/permission/repo"
-import { createAgentServer } from "../../src/app-server/server"
-import { createRuntime } from "../../src/bootstrap/runtime"
+  createModelProvider,
+} from "../../src/model"
+import type { OrchestrationModelPort } from "../../src/orchestration"
+import { createPermissionRepository } from "../../src/permission"
+import { createAgentServer } from "../../src/app-server"
+import { createRuntime } from "../../src/bootstrap"
 import {
   type SessionRepository,
   createSessionRepository as createStorageRepository,

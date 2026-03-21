@@ -5,14 +5,15 @@ import {
   parseRunCommand,
   runCli,
 } from "./cli"
-import type { ModelProvider } from "../model"
 import {
   createDefaultProvider,
+  createCliStorageComposition,
+  createRuntime,
   resolveAgentServerOrigin,
   resolveDefaultProviderConfig,
   type DefaultProviderInput,
-} from "../bootstrap/provider"
-import { createCliStorageComposition, createRuntime } from "../bootstrap/runtime"
+  type ModelProvider,
+} from "../bootstrap"
 
 type BuildCliInput = {
   provider?: ModelProvider

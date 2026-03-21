@@ -5,7 +5,7 @@ import {
   getDefaultStandaloneServerStoragePath,
   resolveStandaloneServerConfig,
   type StandaloneServerConfig,
-} from "../bootstrap/server"
+} from "../bootstrap"
 
 export { getDefaultStandaloneServerStoragePath, resolveStandaloneServerConfig, type StandaloneServerConfig }
 

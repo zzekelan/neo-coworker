@@ -1,16 +1,15 @@
 import {
+  createServerApp,
+  type CreateServerAppRuntime,
+  type OrchestrationModelPort,
   type PermissionRepository,
-  type StoredPermissionRequest,
-} from "../permission"
-import type { OrchestrationModelPort } from "../orchestration"
-import { createAgentServer } from "../app-server/server"
-import type { ServerEvent } from "./server-events"
-import {
   type SessionRepository as StorageRepository,
+  type ServerEvent,
   type StoredMessage,
+  type StoredPermissionRequest,
   type StoredRun,
   type StoredSession,
-} from "../session"
+} from "../bootstrap"
 
 type SendRequest = (request: Request) => Promise<Response> | Response
 
@@ -59,7 +58,7 @@ export type CliServerClientHandle = {
   close(): Promise<void>
 }
 
-type LocalServerRuntime = ReturnType<Parameters<typeof createAgentServer>[0]["createRuntimeImpl"]>
+type LocalServerRuntime = ReturnType<CreateServerAppRuntime>
 
 type LocalRuntimeFactory = (input: {
   provider: OrchestrationModelPort
@@ -275,7 +274,7 @@ export async function createLocalCliServerClient(input: {
   createRuntimeImpl: LocalRuntimeFactory
   closeImpl?: () => void | Promise<void>
 }) {
-  const server = createAgentServer({
+  const app = createServerApp({
     createRuntimeImpl(serverInput) {
       return input.createRuntimeImpl({
         provider: input.provider,
@@ -289,14 +288,41 @@ export async function createLocalCliServerClient(input: {
   })
 
   return {
-    client: createAgentServerClient({
-      origin: "http://server.test",
-      send(request) {
-        return server.fetch(request)
+    client: {
+      async createSession(sessionInput) {
+        return app.sessions.create({
+          directory: sessionInput.directory,
+          workspaceRoot: sessionInput.workspaceRoot,
+        })
       },
-    }),
+      async startRun(runInput) {
+        return app.runs.start({
+          sessionId: runInput.sessionId,
+          prompt: runInput.prompt,
+          trigger: runInput.trigger,
+        })
+      },
+      async getRun(runId) {
+        return app.runs.get(runId)
+      },
+      async replyPermission(reply) {
+        return app.permissions.reply(reply)
+      },
+      async cancelRun(runId) {
+        return app.runs.cancel(runId)
+      },
+      async subscribe() {
+        const subscription = app.subscribe()
+        return {
+          events: subscription.events,
+          async close() {
+            subscription.unsubscribe()
+          },
+        } satisfies Subscription
+      },
+    } satisfies AgentServerClient,
     async close() {
-      await server.stop()
+      await app.close()
       await input.closeImpl?.()
     },
   } satisfies CliServerClientHandle

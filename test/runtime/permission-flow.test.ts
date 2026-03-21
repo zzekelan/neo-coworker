@@ -7,16 +7,16 @@ import {
   createModelRuntimeApi,
   type ProviderEvent,
   type ProviderTurnRequest,
-} from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model"
-import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
-import { createRuntime } from "../../src/bootstrap/runtime"
+  createModelProvider,
+} from "../../src/model"
+import type { OrchestrationModelPort } from "../../src/orchestration"
+import { createRuntime } from "../../src/bootstrap"
 import {
   PermissionNotFoundError,
   createPermissionRepository,
   type PermissionRepository,
   type PermissionResponse,
-} from "../../src/permission/repo"
+} from "../../src/permission"
 import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,

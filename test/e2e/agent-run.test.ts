@@ -2,18 +2,17 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { cp, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createModelRuntimeApi } from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model"
+import { createModelProvider, createModelRuntimeApi } from "../../src/model"
 import {
   runCli,
-} from "../../src/cli/cli"
-import { createAgentServer } from "../../src/app-server/server"
+} from "../../src/cli"
+import { createAgentServer } from "../../src/app-server"
 import {
   createCliStorageComposition,
   createRuntime,
   getDefaultCliStoragePath,
-} from "../../src/bootstrap/runtime"
-import { createPermissionRepository } from "../../src/permission/repo"
+} from "../../src/bootstrap"
+import { createPermissionRepository } from "../../src/permission"
 import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,

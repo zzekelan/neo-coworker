@@ -21,14 +21,6 @@ export {
   type UpdateRunStatusInput,
 } from "./ports/repository"
 export {
-  getSessionDatabaseIdentity,
-  openSessionDatabase,
-  createSessionRepository,
-  type CreateSessionRepositoryInput,
-  type SessionDatabase,
-  type SessionEntityIdPrefix,
-} from "./storage"
-export {
   SESSION_TABLES,
   CURRENT_SESSION_SCHEMA_VERSION,
 } from "./storage-schema"

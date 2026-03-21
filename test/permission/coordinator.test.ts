@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createPermissionCoordinator } from "../../src/permission/runtime/coordinator"
+import { createPermissionCoordinator } from "../../src/permission"
 
 describe("permission coordinator", () => {
   test("publishes an ask request as soon as it is queued", async () => {

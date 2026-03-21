@@ -6,20 +6,20 @@ import { createSessionRunService } from "../../src/session"
 import {
   createPermissionRepository,
   type PermissionRepository,
-} from "../../src/permission/repo"
+} from "../../src/permission"
 import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,
   type SessionRepository as StorageRepository,
 } from "../../src/session"
-import { buildTranscriptMessages } from "../../src/model/service/projection"
 import {
+  buildTranscriptMessages,
   createModelRuntimeApi,
   type ProviderEvent,
   type ProviderTurnRequest,
-} from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model"
-import { createRuntime } from "../../src/bootstrap/runtime"
+  createModelProvider,
+} from "../../src/model"
+import { createRuntime } from "../../src/bootstrap"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

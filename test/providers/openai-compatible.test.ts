@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type OpenAI from "openai"
 import { z } from "zod"
-import { createOpenAICompatibleProvider } from "../../src/model/runtime/openai-compatible"
+import { createOpenAICompatibleProvider } from "../../src/model"
 
 describe("openai-compatible provider", () => {
   test("streams text, assembles one tool call, and forwards the abort signal", async () => {

@@ -15,14 +15,14 @@ import {
 import {
   createPermissionRepository,
   type PermissionRepository,
-} from "../../src/permission/repo"
+} from "../../src/permission"
 import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
   createPermissionQueryService,
   createPermissionRequestService,
   createPermissionRespondService,
-} from "../../src/permission/service"
+} from "../../src/permission"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

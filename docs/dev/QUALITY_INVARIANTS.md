@@ -5,7 +5,7 @@ Architecture rules live in `docs/ARCHITECTURE.md`.
 Quality invariants capture the stable naming, boundary, and reliability rules that are specific to this repo's failure modes.
 
 Current blocking structure checks run through `bun run test:structure`.
-During the module-boundary migration, the blocking structure suite must distinguish target architecture, tolerated migration debt, and forbidden new violations.
+The blocking structure suite now enforces the final architecture directly, with an expected empty baseline.
 
 ## Enforcement Levels
 
@@ -21,13 +21,13 @@ During the module-boundary migration, the blocking structure suite must distingu
 - Title: Approved Module Role Layouts
 - Class: `architecture`
 - Scope: `src/**`
-- Rule: `session`, `permission`, `model`, and `tool` are capability modules and may only target `public`, `application`, `domain`, and `infrastructure`, plus a root `index.ts`. `orchestration` is a coordinator module and may only target `public`, `application`, and `infrastructure`, plus a root `index.ts`. `application/ports/` is optional and means outbound dependency contracts only. `kernel` may only target `contracts/` plus a root `index.ts`. Retired directories such as `types`, `config`, `repo`, `ports`, `service`, `runtime`, and module-local `wiring` are migration debt only, not approved target patterns for new code. Defaults and policy values follow semantic owner placement instead of a standalone `config/` layer.
+- Rule: `session`, `permission`, `model`, and `tool` are capability modules and may only target `public`, `application`, `domain`, and `infrastructure`, plus a root `index.ts`. `orchestration` is a coordinator module and may only target `public`, `application`, and `infrastructure`, plus a root `index.ts`. `application/ports/` is optional and means outbound dependency contracts only. `kernel` may only target `contracts/` plus a root `index.ts`. Retired directories such as `types`, `config`, `repo`, `ports`, `service`, `runtime`, and module-local `wiring` are forbidden target patterns for code in this architecture. Defaults and policy values follow semantic owner placement instead of a standalone `config/` layer.
 - Why this repo requires it: this repo depends on predictable module roles so a coding agent can place code, infer ownership, and obey import checks mechanically. Reusing the old six-layer template as a fallback would keep public boundaries muddy and recreate the ladder-export pressure this refactor is removing.
 - Enforcement: `blocking` via `bun run test:structure`
 - Severity: `error`
 - Bad example: `src/session/wiring/provider.ts`
 - Good example: a migrated capability-module file such as `src/session/application/start-run.ts`
-- Remediation: move the file into the approved layout for its module role, place defaults and policies with their semantic owner, and keep retired directories tracked only as explicit migration debt until the module is reframed fully.
+- Remediation: move the file into the approved layout for its module role, place defaults and policies with their semantic owner, and remove retired directories from live module structures.
 - Source: `docs/ARCHITECTURE.md#top-level-map`, `docs/ARCHITECTURE.md#module-layouts`, `docs/ARCHITECTURE.md#placement-guide`, `docs/plans/2026-03-21-module-boundary-reframe-design.md`
 
 ### INV-STRUCTURE-002: Shared Kernel Stays Narrow
@@ -66,13 +66,13 @@ During the module-boundary migration, the blocking structure suite must distingu
 - Title: Public Module Exits And Composition Stay Explicit
 - Class: `boundary`
 - Scope: module root exports, shell imports, and cross-module composition
-- Rule: root `index.ts` is the single public module exit. Capability and coordinator roots re-export only from `public/`, and `kernel` re-exports only from `contracts/`. `public/` is the module-owned public boundary layer and may expose application contracts plus stable infrastructure-backed factories or adapters that are intentionally public. Compatibility bridge barrels such as `public.ts`, `compat.ts`, and multi-hop re-export ladders are forbidden. Shell modules may import capability and coordinator modules only through `src/<module>/index.ts`, and `bootstrap` is the only approved place where multiple module APIs are assembled into a running application graph.
+- Rule: root `index.ts` is the single public module exit. Capability and coordinator roots re-export only from `public/`, and `kernel` re-exports only from `contracts/`. `public/` is the module-owned public boundary layer and may expose application contracts plus stable infrastructure-backed factories or adapters that are intentionally public. Compatibility bridge barrels such as `public.ts`, `compat.ts`, and multi-hop re-export ladders are forbidden. `bootstrap` may import capability and coordinator modules only through `src/<module>/index.ts`; non-`bootstrap` shell modules may import only `src/bootstrap/index.ts` and `src/kernel/index.ts` across module boundaries.
 - Why this repo requires it: this repo is refactoring toward explicit module boundaries. If public exports leak through internal ladders or shell code keeps reaching into internals, the module taxonomy becomes nominal only and later tasks cannot tighten the structure suite without blocking on new ambiguity.
 - Enforcement: `blocking` via `bun run test:structure`
 - Severity: `error`
 - Bad example: `src/app-server/app.ts` importing `src/session/repo/index.ts`
 - Good example: `src/bootstrap/runtime.ts` importing `src/orchestration/index.ts`
-- Remediation: publish the needed capability through the target module's `public/`, import the module through its root `index.ts`, and move cross-module assembly into `bootstrap`.
+- Remediation: publish the needed capability through the target module's `public/`, import it in `bootstrap` through its root `index.ts`, and keep non-`bootstrap` shells dependent on `src/bootstrap/index.ts` plus `src/kernel/index.ts` only.
 - Source: `docs/ARCHITECTURE.md#cross-module-boundaries`, `docs/ARCHITECTURE.md#public-export-contract`, `docs/plans/2026-03-21-module-boundary-reframe-design.md`
 
 ### INV-RELIABILITY-001: Scope-Bearing Config Values Preserve Semantics

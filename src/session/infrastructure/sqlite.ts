@@ -2,15 +2,7 @@ import { Database } from "bun:sqlite"
 import { existsSync, mkdirSync, realpathSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 
-import {
-  CURRENT_SESSION_SCHEMA_VERSION,
-} from "../application/storage-schema"
-import type {
-  CreateSessionRepositoryInput,
-  SessionEntityIdPrefix,
-  SessionStorageApi,
-} from "../application/storage"
-import { registerSessionStorageApi } from "../application/storage"
+import { CURRENT_SESSION_SCHEMA_VERSION } from "../application/storage-schema"
 import {
   MESSAGE_ROLES,
   PART_KINDS,
@@ -51,6 +43,12 @@ import {
 } from "./sqlite-mappers"
 
 export type SessionDatabase = Database
+export type SessionEntityIdPrefix = "session" | "run" | "message" | "part"
+export type CreateSessionRepositoryInput = {
+  database: SessionDatabase
+  now?: () => number
+  createId?: (prefix: SessionEntityIdPrefix) => string
+}
 
 const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_permission"] as const
 const activeRunStatusCheck = ACTIVE_RUN_STATUSES.map((status) => `'${status}'`).join(", ")
@@ -786,9 +784,3 @@ function wrapSessionSetupError(filePath: string, error: unknown) {
     error instanceof Error ? error.message : typeof error === "string" ? error : "unknown error"
   return new Error(`Failed to initialize storage at ${filePath}: ${message}`)
 }
-
-registerSessionStorageApi({
-  getSessionDatabaseIdentity,
-  openSessionDatabase,
-  createSessionRepository,
-} satisfies SessionStorageApi)
