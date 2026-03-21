@@ -1,21 +1,43 @@
+import { createOrchestrationStepService } from "../../application/step-service"
+import type { RuntimeEvent } from "../../application/event"
+import type { OrchestrationRunHandle } from "../../application/handle"
+import type { OrchestrationModelPort } from "../../application/ports/model"
+import type {
+  OrchestrationPermissionPort,
+  OrchestrationPermissionResponse,
+} from "../../application/ports/permission"
+import type { OrchestrationSessionPort } from "../../application/ports/session"
+import type {
+  OrchestrationToolPortFactory,
+} from "../../application/ports/tool"
+import type { OrchestrationPermissionPolicy } from "../../application/permission"
 import {
-  createOrchestrationStepService,
-  type CreateOrchestrationRuntimeApiInput,
-  type OrchestrationRunHandle,
-  type OrchestrationRunInput,
-  type RuntimeEvent,
-} from "../application/runtime-api"
+  type OrchestrationActiveRunRegistry,
+} from "./active-run-registry"
+import { createEventQueue } from "./event-queue"
 import { runOrchestrationLoop } from "./loop"
 import {
   createRunSuspension,
   PermissionRequestNotAwaitingActiveRuntimeError,
 } from "./run-suspension"
-import { createEventQueue } from "./event-queue"
-export { createOrchestrationActiveRunRegistry } from "./active-run-registry"
-
-export { PermissionRequestNotAwaitingActiveRuntimeError }
 
 const DEFAULT_SYSTEM_PROMPT = "You are the agent runtime."
+
+export type CreateOrchestrationRuntimeApiInput = {
+  model: OrchestrationModelPort
+  session: OrchestrationSessionPort
+  permission: OrchestrationPermissionPort
+  tools: OrchestrationToolPortFactory
+  activeRuns: OrchestrationActiveRunRegistry
+  permissionPolicy: OrchestrationPermissionPolicy
+  systemPrompt?: string
+  now?: () => number
+}
+
+export type OrchestrationRunInput = {
+  sessionId: string
+  runId: string
+}
 
 export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeApiInput) {
   const now = input.now ?? Date.now
@@ -138,7 +160,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         cancel() {
           cancelRun(runInput.runId)
         },
-        respondPermission(response) {
+        respondPermission(response: OrchestrationPermissionResponse) {
           respondPermission(response)
         },
       }

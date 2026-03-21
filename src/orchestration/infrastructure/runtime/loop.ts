@@ -1,4 +1,17 @@
-import type { OrchestrationLoopInput } from "../application/runtime-api"
+import type { RuntimeEvent } from "../../application/event"
+import type { OrchestrationToolPort } from "../../application/ports/tool"
+import { createOrchestrationStepService } from "../../application/step-service"
+
+export type OrchestrationLoopInput = {
+  sessionId: string
+  runId: string
+  signal: AbortSignal
+  emit: (event: RuntimeEvent) => void
+  tools: OrchestrationToolPort
+  workspaceRoot: string
+  systemPrompt: string
+  stepService: ReturnType<typeof createOrchestrationStepService>
+}
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)

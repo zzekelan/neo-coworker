@@ -1,17 +1,27 @@
+import type { RuntimeEvent } from "../../application/event"
 import type {
-  CreateOrchestrationRuntimeApiInput,
-  OrchestrationEventEmitter,
-  OrchestrationResolvedPermissionPolicy,
-  OrchestrationRunSuspension,
-} from "../application/runtime-api"
+  OrchestrationPermissionPort,
+  OrchestrationPermissionResponse,
+} from "../../application/ports/permission"
+import type { OrchestrationPermissionPolicy } from "../../application/permission"
+
+export type OrchestrationRunSuspension = {
+  isPending(requestId: string): boolean
+  requestPermission(input: {
+    toolName: string
+    reason: string
+  }): Promise<OrchestrationPermissionResponse>
+  respond(input: OrchestrationPermissionResponse): void
+  cancel(error?: Error): void
+}
 
 type CreateRunSuspensionInput = {
-  permission: CreateOrchestrationRuntimeApiInput["permission"]
+  permission: OrchestrationPermissionPort
   runId: string
   sessionId: string
-  policy: OrchestrationResolvedPermissionPolicy
+  policy: OrchestrationPermissionPolicy
   now: () => number
-  emit: OrchestrationEventEmitter
+  emit: (event: RuntimeEvent) => void
 }
 
 export class PermissionRequestNotAwaitingActiveRuntimeError extends Error {

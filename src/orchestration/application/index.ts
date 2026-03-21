@@ -34,17 +34,6 @@ export type {
 export {
   createOrchestrationStepService,
 } from "./step-service"
-export {
-  type CreateOrchestrationRuntimeApiInput,
-  type OrchestrationActiveRunKey,
-  type OrchestrationActiveRunRecord,
-  type OrchestrationActiveRunRegistry,
-  type OrchestrationEventEmitter,
-  type OrchestrationLoopInput,
-  type OrchestrationResolvedPermissionPolicy,
-  type OrchestrationRunInput,
-  type OrchestrationRunSuspension,
-} from "./runtime-api"
 export type { OrchestrationRunHandle, RunHandle } from "./handle"
 export type {
   OrchestrationPermissionPolicy,
