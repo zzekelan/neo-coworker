@@ -1,18 +1,23 @@
+import type {
+  PermissionMode,
+} from "../../domain"
 import {
   createPermissionQueryService,
   type CreatePermissionQueryServiceInput,
-} from "./query-service"
+} from "../../application/query-service"
 import {
   createPermissionRequestService,
   type CreatePermissionRequestServiceInput,
-} from "./request-service"
+} from "../../application/request-service"
 import {
   createPermissionRespondService,
   type CreatePermissionRespondServiceInput,
-} from "./respond-service"
-import type { PermissionMode } from "../domain"
-import type { PermissionTelemetryPort } from "./ports/telemetry"
-import { createPermissionCoordinator, type PermissionCoordinatorOptions } from "./coordinator"
+} from "../../application/respond-service"
+import type { PermissionTelemetryPort } from "../../application/ports/telemetry"
+import {
+  createPermissionCoordinator,
+  type PermissionCoordinatorOptions,
+} from "./coordinator"
 
 export type CreatePermissionRuntimeApiInput = CreatePermissionRequestServiceInput &
   CreatePermissionRespondServiceInput &

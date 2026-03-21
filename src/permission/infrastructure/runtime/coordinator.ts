@@ -1,9 +1,9 @@
 import type {
   PendingPermissionRequest,
-  PermissionMode,
+  PermissionPolicy,
   PermissionRequest,
   PermissionResponse,
-} from "../domain"
+} from "../../domain"
 
 export type PermissionCoordinatorOptions = {
   onRequest?(request: PendingPermissionRequest): void
@@ -23,7 +23,7 @@ function createPermissionAbortError() {
 }
 
 export function createPermissionCoordinator(
-  policy: Record<string, PermissionMode>,
+  policy: PermissionPolicy,
   options: PermissionCoordinatorOptions = {},
 ): PermissionCoordinator {
   const pending = new Map<
