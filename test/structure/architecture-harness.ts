@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises"
-import { dirname, join, normalize } from "node:path"
+import { basename, dirname, join, normalize } from "node:path"
 
 export const SOURCE_ROOT = join(process.cwd(), "src")
 export const STRUCTURE_BASELINE_PATH = join(
@@ -9,34 +9,29 @@ export const STRUCTURE_BASELINE_PATH = join(
   "baselines",
   "architecture-findings.json",
 )
-export const FINAL_CORE_TOP_LEVELS = new Set([
-  "session",
+export const FINAL_CAPABILITY_TOP_LEVELS = new Set([
   "model",
-  "orchestration",
   "permission",
+  "session",
   "tool",
 ])
-export const TRANSITION_CORE_TOP_LEVELS = new Set(["conversation"])
-export const CORE_TOP_LEVELS = new Set([
-  ...FINAL_CORE_TOP_LEVELS,
-  ...TRANSITION_CORE_TOP_LEVELS,
-])
-export const FINAL_OUTER_SHELL_TOP_LEVELS = new Set([
+export const FINAL_COORDINATOR_TOP_LEVELS = new Set(["orchestration"])
+export const FINAL_SHELL_TOP_LEVELS = new Set([
+  "app-server",
   "bootstrap",
   "cli",
-  "app-server",
 ])
+export const FINAL_KERNEL_TOP_LEVELS = new Set(["kernel"])
+export const TRANSITION_CORE_TOP_LEVELS = new Set(["conversation"])
 export const TRANSITION_OUTER_SHELL_TOP_LEVELS = new Set([
-  "wiring",
   "server",
-])
-export const OUTER_SHELL_TOP_LEVELS = new Set([
-  ...FINAL_OUTER_SHELL_TOP_LEVELS,
-  ...TRANSITION_OUTER_SHELL_TOP_LEVELS,
+  "wiring",
 ])
 export const APPROVED_TOP_LEVELS = new Set([
-  ...FINAL_CORE_TOP_LEVELS,
-  ...FINAL_OUTER_SHELL_TOP_LEVELS,
+  ...FINAL_CAPABILITY_TOP_LEVELS,
+  ...FINAL_COORDINATOR_TOP_LEVELS,
+  ...FINAL_SHELL_TOP_LEVELS,
+  ...FINAL_KERNEL_TOP_LEVELS,
 ])
 export const TRANSITION_TOP_LEVELS = new Set([
   ...TRANSITION_CORE_TOP_LEVELS,
@@ -44,43 +39,71 @@ export const TRANSITION_TOP_LEVELS = new Set([
 ])
 export const ALLOWED_TOP_LEVELS = new Set([...APPROVED_TOP_LEVELS, ...TRANSITION_TOP_LEVELS])
 export const LEGACY_TOP_LEVELS = new Set(["providers", "runtime"])
-export const APPROVED_DOMAIN_LAYERS = new Set([
-  "types",
+export const RETIRED_INTERNAL_DIRECTORIES = new Set([
   "config",
-  "repo",
   "ports",
-  "service",
+  "repo",
   "runtime",
+  "service",
+  "types",
+  "wiring",
 ])
 
-const REQUIRED_DOMAIN_LAYERS = ["types", "config", "repo", "ports", "service", "runtime"] as const
-const ALLOWED_INTERNAL_IMPORTS = {
-  types: new Set<string>(),
-  config: new Set(["types"]),
-  repo: new Set(["config"]),
-  ports: new Set<string>(),
-  service: new Set(["repo", "ports"]),
-  runtime: new Set(["service"]),
-} as const
-const IMPORT_PATTERN = /\b(?:import|export)\b[\s\S]*?\bfrom\s+["']([^"']+)["']/g
+const CAPABILITY_TARGET_DIRECTORIES = new Set([
+  "api",
+  "application",
+  "domain",
+  "infrastructure",
+])
+const COORDINATOR_TARGET_DIRECTORIES = new Set([
+  "api",
+  "application",
+  "infrastructure",
+])
+const KERNEL_TARGET_DIRECTORIES = new Set(["contracts"])
+const IMPORT_EXPORT_PATTERN =
+  /\b(import|export)\b[\s\S]*?\bfrom\s+["']([^"']+)["']/g
 const RULE_DOCS = {
   "ARCH-TOPLEVEL-001": "docs/ARCHITECTURE.md#top-level-map",
-  "ARCH-LAYER-001": "docs/ARCHITECTURE.md#domain-layers",
-  "ARCH-CROSS-001": "docs/ARCHITECTURE.md#cross-domain-boundaries",
+  "ARCH-LAYER-001": "docs/ARCHITECTURE.md#module-layouts",
+  "ARCH-LAYER-002": "docs/ARCHITECTURE.md#internal-module-boundaries",
+  "ARCH-CROSS-001": "docs/ARCHITECTURE.md#cross-module-boundaries",
+  "ARCH-PUBLIC-001": "docs/ARCHITECTURE.md#public-export-contract",
   "INV-STRUCTURE-001":
-    "docs/dev/QUALITY_INVARIANTS.md#inv-structure-001-approved-domain-layer-names",
+    "docs/dev/QUALITY_INVARIANTS.md#inv-structure-001-approved-module-role-layouts",
+  "INV-STRUCTURE-002":
+    "docs/dev/QUALITY_INVARIANTS.md#inv-structure-002-shared-kernel-stays-narrow",
+} as const
+const CAPABILITY_ALLOWED_INTERNAL_IMPORTS = {
+  api: new Set(["application"]),
+  application: new Set(["application-port", "domain"]),
+  "application-port": new Set<string>(),
+  domain: new Set<string>(),
+  infrastructure: new Set(["application", "application-port", "domain"]),
+} as const
+const COORDINATOR_ALLOWED_INTERNAL_IMPORTS = {
+  api: new Set(["application"]),
+  application: new Set(["application-port"]),
+  "application-port": new Set<string>(),
+  infrastructure: new Set(["application", "application-port"]),
 } as const
 
 export type StructureRuleId =
   | "ARCH-TOPLEVEL-001"
   | "ARCH-LAYER-001"
+  | "ARCH-LAYER-002"
   | "ARCH-CROSS-001"
+  | "ARCH-PUBLIC-001"
   | "INV-STRUCTURE-001"
+  | "INV-STRUCTURE-002"
+
+export type EdgeKind = "import" | "export"
 
 export type ImportEdge = {
   from: string
   to: string
   specifier: string
+  kind: EdgeKind
 }
 
 export type RepositoryGraph = {
@@ -103,19 +126,56 @@ export type StructureBaselineEntry = {
   note: string
 }
 
+type ModuleKind =
+  | "capability"
+  | "coordinator"
+  | "shell"
+  | "kernel"
+  | "transition"
+  | "unknown"
+
+type SourcePlacement =
+  | "module-index"
+  | "api"
+  | "application"
+  | "application-port"
+  | "domain"
+  | "infrastructure"
+  | "contracts"
+  | "retired"
+  | "shell-internal"
+  | "unknown"
+
 type SourceFileMeta = {
   relPath: string
   topLevel: string
-  layer: string | null
-  isCoreDomain: boolean
-  isOuterShell: boolean
-  isDomainIndex: boolean
+  moduleKind: ModuleKind
+  primaryDir: string | null
+  secondaryDir: string | null
+  placement: SourcePlacement
+  retiredDir: string | null
+  isModuleIndex: boolean
+  isFinalModule: boolean
+  isTransitionModule: boolean
 }
 
-type DomainState = {
+type ModuleState = {
   hasIndex: boolean
-  layers: Set<string>
+  primaryDirs: Set<string>
 }
+
+type CapabilityPlacement =
+  | "api"
+  | "application"
+  | "application-port"
+  | "domain"
+  | "infrastructure"
+
+type CoordinatorPlacement =
+  | "api"
+  | "application"
+  | "application-port"
+  | "infrastructure"
 
 export async function loadRepositoryGraph(): Promise<RepositoryGraph> {
   const directories = await listTopLevelDirectories(SOURCE_ROOT)
@@ -126,8 +186,8 @@ export async function loadRepositoryGraph(): Promise<RepositoryGraph> {
   for (const file of files) {
     const source = await readFile(join(SOURCE_ROOT, file), "utf8")
 
-    for (const specifier of extractImportSpecifiers(source)) {
-      const resolved = resolveLocalImport(file, specifier, fileSet)
+    for (const statement of extractImportStatements(source)) {
+      const resolved = resolveLocalImport(file, statement.specifier, fileSet)
       if (!resolved) {
         continue
       }
@@ -135,7 +195,8 @@ export async function loadRepositoryGraph(): Promise<RepositoryGraph> {
       edges.push({
         from: file,
         to: resolved,
-        specifier,
+        specifier: statement.specifier,
+        kind: statement.kind,
       })
     }
   }
@@ -149,7 +210,7 @@ export async function loadRepositoryGraph(): Promise<RepositoryGraph> {
 
 export function validateRepositoryGraph(graph: RepositoryGraph) {
   const findings = new Map<string, StructureFinding>()
-  const domainState = collectDomainState(graph)
+  const moduleState = collectModuleState(graph)
 
   for (const directory of graph.directories) {
     if (LEGACY_TOP_LEVELS.has(directory)) {
@@ -158,7 +219,7 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         fingerprint: `ARCH-TOPLEVEL-001:top-level:${directory}`,
         summary: `src/${directory} is a legacy top-level directory and must not reappear.`,
         remediation:
-          "Move the code into one of the approved business domains or into an approved outer-shell top-level.",
+          "Move the code into one of the approved module top-levels and keep retired pre-split names out of new changes.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
       })
       continue
@@ -170,7 +231,7 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         fingerprint: `ARCH-TOPLEVEL-001:top-level:${directory}`,
         summary: `src/${directory} is not an approved top-level module.`,
         remediation:
-          "Place the code under an approved core domain or an approved outer-shell top-level, or update docs/ARCHITECTURE.md and the structure checks in the same change.",
+          "Place the code under an approved capability, coordinator, shell, or kernel top-level, or update docs/ARCHITECTURE.md and the structure checks in the same change.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
       })
     }
@@ -181,70 +242,42 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
         fingerprint: `ARCH-TOPLEVEL-001:transition-top-level:${directory}`,
         summary: `src/${directory} is a transition-only top-level and must be removed by the end of the migration.`,
         remediation:
-          "Move code to the final top-level vocabulary (session, bootstrap, cli, app-server) and keep this debt tracked only through the migration baseline.",
+          "Move code to the final top-level vocabulary and keep this debt tracked only through the migration baseline.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
       })
     }
   }
 
-  for (const domain of graph.directories.filter((directory) => CORE_TOP_LEVELS.has(directory))) {
-    const state = domainState.get(domain)
+  for (const [moduleName, state] of moduleState) {
+    const moduleKind = getModuleKind(moduleName)
 
-    if (!state?.hasIndex) {
+    if (requiresModuleIndex(moduleKind) && !state.hasIndex) {
       addFinding(findings, {
-        ruleId: "ARCH-LAYER-001",
-        fingerprint: `ARCH-LAYER-001:missing-index:${domain}`,
-        summary: `src/${domain} is missing its required root index.ts public entrypoint.`,
+        ruleId: "ARCH-PUBLIC-001",
+        fingerprint: `ARCH-PUBLIC-001:missing-index:${moduleName}`,
+        summary: `src/${moduleName} is missing its required root index.ts public exit.`,
         remediation:
-          `Add src/${domain}/index.ts as the domain's public exit and route outer-shell composition through that file.`,
-        doc: RULE_DOCS["ARCH-LAYER-001"],
+          `Add src/${moduleName}/index.ts as the module's unique public entrypoint before exposing the module to other top-levels.`,
+        doc: RULE_DOCS["ARCH-PUBLIC-001"],
       })
     }
 
-    for (const layer of REQUIRED_DOMAIN_LAYERS) {
-      if (state?.layers.has(layer)) {
-        continue
-      }
-
-      addFinding(findings, {
-        ruleId: "ARCH-LAYER-001",
-        fingerprint: `ARCH-LAYER-001:missing-layer:${domain}/${layer}`,
-        summary: `src/${domain} is missing its required ${layer}/ layer.`,
-        remediation:
-          `Add src/${domain}/${layer}/ and move the domain code into the fixed layer skeleton instead of inventing a domain-specific shape.`,
-        doc: RULE_DOCS["ARCH-LAYER-001"],
-      })
+    for (const primaryDir of Array.from(state.primaryDirs).sort()) {
+      validatePrimaryDirectory(findings, moduleName, moduleKind, primaryDir)
     }
   }
 
   for (const file of graph.files) {
     const meta = getSourceFileMeta(file)
 
-    if (TRANSITION_TOP_LEVELS.has(meta.topLevel)) {
+    if (meta.isTransitionModule) {
       addFinding(findings, {
         ruleId: "ARCH-TOPLEVEL-001",
         fingerprint: `ARCH-TOPLEVEL-001:transition-file:${file}`,
         summary: `src/${file} is under transition-only top-level src/${meta.topLevel} and must move to final naming.`,
         remediation:
-          "Migrate this file into the final architecture vocabulary and remove legacy top-level usage instead of adding more files under transition-only names.",
+          "Migrate this file into the final architecture vocabulary instead of adding more files under transition-only names.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
-      })
-    }
-
-    if (!meta.isCoreDomain || meta.isDomainIndex) {
-      continue
-    }
-
-    if (meta.layer == null || !APPROVED_DOMAIN_LAYERS.has(meta.layer)) {
-      addFinding(findings, {
-        ruleId: "INV-STRUCTURE-001",
-        fingerprint: `INV-STRUCTURE-001:file:${file}`,
-        summary: `src/${file} uses unsupported layer directory "${meta.layer ?? "(missing)"}".`,
-        remediation:
-          meta.layer === "wiring"
-            ? "Move the code into an approved domain layer or relocate true composition code into final outer-shell top-levels: src/bootstrap/*, src/cli/*, or src/app-server/*. src/wiring/* and src/server/* are transition-only."
-            : "Move the file into one of: types, config, repo, ports, service, runtime, or the domain root index.ts.",
-        doc: RULE_DOCS["INV-STRUCTURE-001"],
       })
     }
   }
@@ -261,101 +294,20 @@ export function validateRepositoryGraph(graph: RepositoryGraph) {
       addFinding(findings, {
         ruleId: "ARCH-TOPLEVEL-001",
         fingerprint: `ARCH-TOPLEVEL-001:target:${edge.from}->${edge.to}`,
-        summary: `src/${edge.from} imports src/${edge.to}, which is outside the approved top-level modules.`,
+        summary: `src/${edge.from} references src/${edge.to}, which is outside the approved top-level modules.`,
         remediation:
-          "Import only from approved core domains or outer-shell top-levels, or move the target under an approved top-level module.",
+          "Import only from approved capability, coordinator, shell, or kernel top-levels, or move the target under an approved module boundary.",
         doc: RULE_DOCS["ARCH-TOPLEVEL-001"],
       })
       continue
     }
 
     if (from.topLevel === to.topLevel) {
-      if (from.isDomainIndex) {
-        if (to.isDomainIndex || to.layer !== "runtime") {
-          addFinding(findings, {
-            ruleId: "ARCH-LAYER-001",
-            fingerprint: `ARCH-LAYER-001:domain-root-runtime-only:${edge.from}->${edge.to}`,
-            summary: `src/${edge.from} may only import src/${from.topLevel}/runtime/*, but imports src/${edge.to}.`,
-            remediation:
-              "Keep src/<domain>/index.ts as a thin runtime facade and route public exports through src/<domain>/runtime/* (preferably runtime/api.ts).",
-            doc: RULE_DOCS["ARCH-LAYER-001"],
-          })
-        }
-        continue
-      }
-
-      if (to.isDomainIndex) {
-        addFinding(findings, {
-          ruleId: "ARCH-LAYER-001",
-          fingerprint: `ARCH-LAYER-001:domain-internal-root-import:${edge.from}->${edge.to}`,
-          summary: `src/${edge.from} may not import its own domain root src/${edge.to}.`,
-          remediation:
-            "Import from the next legal domain layer directly instead of routing same-domain dependencies through src/<domain>/index.ts.",
-          doc: RULE_DOCS["ARCH-LAYER-001"],
-        })
-        continue
-      }
-
-      if (from.isOuterShell) {
-        continue
-      }
-
-      if (!isImportCheckedDomainLayer(from.layer) || !isImportCheckedDomainLayer(to.layer)) {
-        continue
-      }
-
-      const isSameLayer = from.layer === to.layer
-      const allowedLayers =
-        ALLOWED_INTERNAL_IMPORTS[from.layer as keyof typeof ALLOWED_INTERNAL_IMPORTS]
-      if (!isSameLayer && !allowedLayers?.has(to.layer)) {
-        addFinding(findings, {
-          ruleId: "ARCH-LAYER-001",
-          fingerprint: `ARCH-LAYER-001:edge:${edge.from}->${edge.to}`,
-          summary: `src/${edge.from} may not import src/${edge.to} inside the same domain.`,
-          remediation:
-            "Follow the fixed layer direction from docs/ARCHITECTURE.md and route the dependency through the next legal layer.",
-          doc: RULE_DOCS["ARCH-LAYER-001"],
-        })
-      }
+      validateSameModuleEdge(findings, edge, from, to)
       continue
     }
 
-    if (from.isOuterShell) {
-      if (to.isCoreDomain && !to.isDomainIndex) {
-        addFinding(findings, {
-          ruleId: "ARCH-CROSS-001",
-          fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
-          summary: `src/${edge.from} may only import a domain through its root index.ts, but imports src/${edge.to}.`,
-          remediation:
-            "Import the target domain through src/<domain>/index.ts instead of reaching into its internal layers from the outer shell.",
-          doc: RULE_DOCS["ARCH-CROSS-001"],
-        })
-      }
-      continue
-    }
-
-    if (from.isCoreDomain && to.isOuterShell) {
-      addFinding(findings, {
-        ruleId: "ARCH-CROSS-001",
-        fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
-        summary: `src/${edge.from} may not depend on outer-shell code such as src/${edge.to}.`,
-        remediation:
-          "Keep domains headless and inject outer-shell behavior from src/bootstrap/*, src/cli/*, or src/app-server/* instead of importing it into a domain.",
-        doc: RULE_DOCS["ARCH-CROSS-001"],
-      })
-      continue
-    }
-
-    if (from.isCoreDomain && to.isCoreDomain) {
-      addFinding(findings, {
-        ruleId: "ARCH-CROSS-001",
-        fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
-        summary: `src/${edge.from} may not import src/${edge.to} across core domains.`,
-        remediation:
-          "Define the external capability in the importing domain's ports/, inject the target domain from an outer-shell top-level, and keep cross-domain imports out of the domains themselves.",
-        doc: RULE_DOCS["ARCH-CROSS-001"],
-      })
-    }
+    validateCrossModuleEdge(findings, edge, from, to)
   }
 
   return [...findings.values()].sort((left, right) =>
@@ -384,6 +336,374 @@ export function partitionFindings(
   }
 }
 
+function validatePrimaryDirectory(
+  findings: Map<string, StructureFinding>,
+  moduleName: string,
+  moduleKind: ModuleKind,
+  primaryDir: string,
+) {
+  if (moduleKind === "capability" || moduleKind === "coordinator") {
+    const approvedPrimaryDirs =
+      moduleKind === "capability"
+        ? CAPABILITY_TARGET_DIRECTORIES
+        : COORDINATOR_TARGET_DIRECTORIES
+
+    if (RETIRED_INTERNAL_DIRECTORIES.has(primaryDir)) {
+      addFinding(findings, {
+        ruleId: "INV-STRUCTURE-001",
+        fingerprint: `INV-STRUCTURE-001:directory:${moduleName}/${primaryDir}`,
+        summary: `src/${moduleName}/${primaryDir}/ uses a retired internal directory and is migration debt, not approved target structure.`,
+        remediation:
+          moduleKind === "capability"
+            ? "Move the module toward api/, application/, domain/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary."
+            : "Move the module toward api/, application/, and infrastructure/ instead of adding more files under the retired six-layer vocabulary.",
+        doc: RULE_DOCS["INV-STRUCTURE-001"],
+      })
+      return
+    }
+
+    if (!approvedPrimaryDirs.has(primaryDir)) {
+      addFinding(findings, {
+        ruleId: "INV-STRUCTURE-001",
+        fingerprint: `INV-STRUCTURE-001:directory:${moduleName}/${primaryDir}`,
+        summary: `src/${moduleName}/${primaryDir}/ is not an approved directory for a ${moduleKind} module.`,
+        remediation:
+          moduleKind === "capability"
+            ? "Place capability-module code only under api/, application/, domain/, infrastructure/, or the root index.ts."
+            : "Place coordinator-module code only under api/, application/, infrastructure/, or the root index.ts.",
+        doc: RULE_DOCS["INV-STRUCTURE-001"],
+      })
+    }
+
+    return
+  }
+
+  if (moduleKind === "kernel" && !KERNEL_TARGET_DIRECTORIES.has(primaryDir)) {
+    addFinding(findings, {
+      ruleId: "INV-STRUCTURE-002",
+      fingerprint: `INV-STRUCTURE-002:directory:${moduleName}/${primaryDir}`,
+      summary: `src/${moduleName}/${primaryDir}/ is not allowed in the shared kernel.`,
+      remediation:
+        "Keep kernel code limited to contracts/ plus the root index.ts, and move module-owned concepts back into their owning module.",
+      doc: RULE_DOCS["INV-STRUCTURE-002"],
+    })
+  }
+}
+
+function validateSameModuleEdge(
+  findings: Map<string, StructureFinding>,
+  edge: ImportEdge,
+  from: SourceFileMeta,
+  to: SourceFileMeta,
+) {
+  if (!from.isFinalModule || !to.isFinalModule) {
+    return
+  }
+
+  if (
+    !from.isModuleIndex &&
+    to.isModuleIndex &&
+    protectsOwnModuleRoot(from.moduleKind)
+  ) {
+    addFinding(findings, {
+      ruleId: "ARCH-LAYER-002",
+      fingerprint: `ARCH-LAYER-002:self-root:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not import its own module root src/${edge.to}.`,
+      remediation:
+        "Import from the next legal internal layer directly instead of routing same-module dependencies through the public module exit.",
+      doc: RULE_DOCS["ARCH-LAYER-002"],
+    })
+    return
+  }
+
+  if (from.isModuleIndex) {
+    validateModuleRootEdge(findings, edge, from, to)
+    return
+  }
+
+  if (from.moduleKind === "capability") {
+    validateCapabilityEdge(findings, edge, from, to)
+    return
+  }
+
+  if (from.moduleKind === "coordinator") {
+    validateCoordinatorEdge(findings, edge, from, to)
+    return
+  }
+
+  if (from.moduleKind === "kernel") {
+    validateKernelEdge(findings, edge, from, to)
+  }
+}
+
+function validateModuleRootEdge(
+  findings: Map<string, StructureFinding>,
+  edge: ImportEdge,
+  from: SourceFileMeta,
+  to: SourceFileMeta,
+) {
+  if (from.moduleKind === "capability" || from.moduleKind === "coordinator") {
+    if (to.placement !== "api") {
+      addFinding(findings, {
+        ruleId: "ARCH-PUBLIC-001",
+        fingerprint: `ARCH-PUBLIC-001:root-api-only:${edge.from}->${edge.to}`,
+        summary: `src/${edge.from} may only re-export src/${from.topLevel}/api/*, but references src/${edge.to}.`,
+        remediation:
+          "Keep the root index.ts mechanical: move the public surface to api/ and re-export only from that layer.",
+        doc: RULE_DOCS["ARCH-PUBLIC-001"],
+      })
+    }
+
+    return
+  }
+
+  if (from.moduleKind === "kernel" && to.placement !== "contracts") {
+    addFinding(findings, {
+      ruleId: "ARCH-PUBLIC-001",
+      fingerprint: `ARCH-PUBLIC-001:root-contracts-only:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may only re-export src/${from.topLevel}/contracts/*, but references src/${edge.to}.`,
+      remediation:
+        "Keep the kernel root mechanical: re-export only contracts/ and move non-kernel concepts back into their owning module.",
+      doc: RULE_DOCS["ARCH-PUBLIC-001"],
+    })
+  }
+}
+
+function validateCapabilityEdge(
+  findings: Map<string, StructureFinding>,
+  edge: ImportEdge,
+  from: SourceFileMeta,
+  to: SourceFileMeta,
+) {
+  if (isRetiredPublicBridgeEdge(edge, from, to)) {
+    addFinding(findings, {
+      ruleId: "ARCH-PUBLIC-001",
+      fingerprint: `ARCH-PUBLIC-001:retired-ladder:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} re-exports through retired internal layers by referencing src/${edge.to}.`,
+      remediation:
+        "Move the public surface to api/ and stop tunneling exports through retired runtime/service/repo-style barrels.",
+      doc: RULE_DOCS["ARCH-PUBLIC-001"],
+    })
+    return
+  }
+
+  if (!isCapabilityPlacement(from.placement)) {
+    return
+  }
+
+  if (to.retiredDir) {
+    addFinding(findings, {
+      ruleId: "ARCH-LAYER-002",
+      fingerprint: `ARCH-LAYER-002:target-to-retired:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} is in the target capability layout and may not depend on retired layer code such as src/${edge.to}.`,
+      remediation:
+        "Continue the migration through api/, application/, domain/, and infrastructure/ instead of routing new-layer code back into retired directories.",
+      doc: RULE_DOCS["ARCH-LAYER-002"],
+    })
+    return
+  }
+
+  if (!isCapabilityPlacement(to.placement)) {
+    return
+  }
+
+  if (from.placement === to.placement) {
+    return
+  }
+
+  const allowedTargets = CAPABILITY_ALLOWED_INTERNAL_IMPORTS[from.placement]
+  if (!allowedTargets.has(to.placement)) {
+    addFinding(findings, {
+      ruleId: "ARCH-LAYER-002",
+      fingerprint: `ARCH-LAYER-002:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not depend on src/${edge.to} inside a capability module.`,
+      remediation:
+        "Follow the capability-module dependency directions from docs/ARCHITECTURE.md and route the dependency through the next legal layer.",
+      doc: RULE_DOCS["ARCH-LAYER-002"],
+    })
+  }
+}
+
+function validateCoordinatorEdge(
+  findings: Map<string, StructureFinding>,
+  edge: ImportEdge,
+  from: SourceFileMeta,
+  to: SourceFileMeta,
+) {
+  if (isRetiredPublicBridgeEdge(edge, from, to)) {
+    addFinding(findings, {
+      ruleId: "ARCH-PUBLIC-001",
+      fingerprint: `ARCH-PUBLIC-001:retired-ladder:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} re-exports through retired internal layers by referencing src/${edge.to}.`,
+      remediation:
+        "Move the coordinator public surface to api/ and stop tunneling exports through retired runtime/service/repo-style files.",
+      doc: RULE_DOCS["ARCH-PUBLIC-001"],
+    })
+    return
+  }
+
+  if (!isCoordinatorPlacement(from.placement)) {
+    return
+  }
+
+  if (to.retiredDir) {
+    addFinding(findings, {
+      ruleId: "ARCH-LAYER-002",
+      fingerprint: `ARCH-LAYER-002:target-to-retired:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} is in the target coordinator layout and may not depend on retired layer code such as src/${edge.to}.`,
+      remediation:
+        "Continue the migration through api/, application/, and infrastructure/ instead of routing new-layer code back into retired directories.",
+      doc: RULE_DOCS["ARCH-LAYER-002"],
+    })
+    return
+  }
+
+  if (!isCoordinatorPlacement(to.placement)) {
+    return
+  }
+
+  if (from.placement === to.placement) {
+    return
+  }
+
+  const allowedTargets = COORDINATOR_ALLOWED_INTERNAL_IMPORTS[from.placement]
+  if (!allowedTargets.has(to.placement)) {
+    addFinding(findings, {
+      ruleId: "ARCH-LAYER-002",
+      fingerprint: `ARCH-LAYER-002:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not depend on src/${edge.to} inside the coordinator module.`,
+      remediation:
+        "Follow the coordinator-module dependency directions from docs/ARCHITECTURE.md and route the dependency through the next legal layer.",
+      doc: RULE_DOCS["ARCH-LAYER-002"],
+    })
+  }
+}
+
+function validateKernelEdge(
+  findings: Map<string, StructureFinding>,
+  edge: ImportEdge,
+  from: SourceFileMeta,
+  to: SourceFileMeta,
+) {
+  if (from.placement !== "contracts") {
+    return
+  }
+
+  if (to.placement === "contracts") {
+    return
+  }
+
+  if (to.retiredDir || to.placement === "unknown") {
+    addFinding(findings, {
+      ruleId: "ARCH-LAYER-002",
+      fingerprint: `ARCH-LAYER-002:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not depend on src/${edge.to} inside the shared kernel.`,
+      remediation:
+        "Keep kernel contracts self-contained and move non-contract code out of src/kernel.",
+      doc: RULE_DOCS["ARCH-LAYER-002"],
+    })
+  }
+}
+
+function validateCrossModuleEdge(
+  findings: Map<string, StructureFinding>,
+  edge: ImportEdge,
+  from: SourceFileMeta,
+  to: SourceFileMeta,
+) {
+  if (to.isFinalModule && !to.isModuleIndex) {
+    addFinding(findings, {
+      ruleId: "ARCH-CROSS-001",
+      fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not import internal file src/${edge.to} across module boundaries.`,
+      remediation:
+        `Import the target module only through src/${to.topLevel}/index.ts and keep cross-module deep imports out of the tree.`,
+      doc: RULE_DOCS["ARCH-CROSS-001"],
+    })
+    return
+  }
+
+  if (!from.isFinalModule || !to.isFinalModule) {
+    return
+  }
+
+  if (from.moduleKind === "shell") {
+    if (from.topLevel === "bootstrap") {
+      if (to.moduleKind === "shell" && to.topLevel !== "bootstrap") {
+        addFinding(findings, {
+          ruleId: "ARCH-CROSS-001",
+          fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
+          summary: `src/${edge.from} may not depend on shell module src/${edge.to} from bootstrap.`,
+          remediation:
+            "Keep bootstrap as the composition root for capability, coordinator, and kernel modules only; operator-facing shell behavior belongs in cli/ or app-server/.",
+          doc: RULE_DOCS["ARCH-CROSS-001"],
+        })
+      }
+
+      return
+    }
+
+    if (
+      (to.moduleKind === "shell" && to.topLevel === "bootstrap") ||
+      to.moduleKind === "kernel"
+    ) {
+      return
+    }
+
+    addFinding(findings, {
+      ruleId: "ARCH-CROSS-001",
+      fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not import src/${edge.to} from a non-bootstrap shell module.`,
+      remediation:
+        "Route cross-module composition through src/bootstrap/index.ts. Non-bootstrap shell modules may depend on bootstrap and kernel only, not on capability or coordinator module roots directly.",
+      doc: RULE_DOCS["ARCH-CROSS-001"],
+    })
+    return
+  }
+
+  if (
+    (from.moduleKind === "capability" || from.moduleKind === "coordinator") &&
+    to.moduleKind === "kernel"
+  ) {
+    return
+  }
+
+  if (from.moduleKind === "capability") {
+    addFinding(findings, {
+      ruleId: "ARCH-CROSS-001",
+      fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not import src/${edge.to} across module boundaries from within a capability module.`,
+      remediation:
+        "Keep capability modules headless: define outbound dependencies in application/ports, inject implementations from bootstrap, and reserve kernel/index.ts for truly global contracts only.",
+      doc: RULE_DOCS["ARCH-CROSS-001"],
+    })
+    return
+  }
+
+  if (from.moduleKind === "coordinator") {
+    addFinding(findings, {
+      ruleId: "ARCH-CROSS-001",
+      fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not import src/${edge.to} across module boundaries from within the coordinator module.`,
+      remediation:
+        "Keep orchestration dependent on its own application/ports, inject capability implementations from bootstrap, and reserve kernel/index.ts for truly global contracts only.",
+      doc: RULE_DOCS["ARCH-CROSS-001"],
+    })
+    return
+  }
+
+  if (from.moduleKind === "kernel") {
+    addFinding(findings, {
+      ruleId: "ARCH-CROSS-001",
+      fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} may not import module-owned code such as src/${edge.to} from the shared kernel.`,
+      remediation:
+        "Keep kernel contracts globally stable and non-business, and move module-specific concepts back into their owning module.",
+      doc: RULE_DOCS["ARCH-CROSS-001"],
+    })
+  }
+}
+
 function addFinding(
   findings: Map<string, StructureFinding>,
   finding: StructureFinding,
@@ -394,47 +714,205 @@ function addFinding(
 function getSourceFileMeta(relPath: string): SourceFileMeta {
   const segments = relPath.split("/")
   const topLevel = segments[0] ?? ""
-  const isCoreDomain = CORE_TOP_LEVELS.has(topLevel)
-  const isOuterShell = OUTER_SHELL_TOP_LEVELS.has(topLevel)
-  const isDomainIndex = isCoreDomain && segments.length === 2 && segments[1] === "index.ts"
-  const layer = isCoreDomain && !isDomainIndex ? (segments[1] ?? null) : null
+  const moduleKind = getModuleKind(topLevel)
+  const isModuleIndex = segments.length === 2 && segments[1] === "index.ts"
+  const primaryDir = !isModuleIndex ? (segments[1] ?? null) : null
+  const secondaryDir = !isModuleIndex ? (segments[2] ?? null) : null
+  const retiredDir =
+    primaryDir && RETIRED_INTERNAL_DIRECTORIES.has(primaryDir) ? primaryDir : null
 
   return {
     relPath,
     topLevel,
-    layer,
-    isCoreDomain,
-    isOuterShell,
-    isDomainIndex,
+    moduleKind,
+    primaryDir,
+    secondaryDir,
+    retiredDir,
+    isModuleIndex,
+    isFinalModule: isFinalModuleKind(moduleKind),
+    isTransitionModule: moduleKind === "transition",
+    placement: getSourcePlacement(moduleKind, isModuleIndex, primaryDir, secondaryDir, retiredDir),
   }
 }
 
-function isImportCheckedDomainLayer(
-  layer: string | null,
-): layer is keyof typeof ALLOWED_INTERNAL_IMPORTS {
+function getModuleKind(topLevel: string): ModuleKind {
+  if (FINAL_CAPABILITY_TOP_LEVELS.has(topLevel)) {
+    return "capability"
+  }
+
+  if (FINAL_COORDINATOR_TOP_LEVELS.has(topLevel)) {
+    return "coordinator"
+  }
+
+  if (FINAL_SHELL_TOP_LEVELS.has(topLevel)) {
+    return "shell"
+  }
+
+  if (FINAL_KERNEL_TOP_LEVELS.has(topLevel)) {
+    return "kernel"
+  }
+
+  if (TRANSITION_TOP_LEVELS.has(topLevel)) {
+    return "transition"
+  }
+
+  return "unknown"
+}
+
+function getSourcePlacement(
+  moduleKind: ModuleKind,
+  isModuleIndex: boolean,
+  primaryDir: string | null,
+  secondaryDir: string | null,
+  retiredDir: string | null,
+): SourcePlacement {
+  if (isModuleIndex) {
+    return "module-index"
+  }
+
+  if (retiredDir) {
+    return "retired"
+  }
+
+  if (moduleKind === "capability") {
+    if (primaryDir === "api") {
+      return "api"
+    }
+
+    if (primaryDir === "application" && secondaryDir === "ports") {
+      return "application-port"
+    }
+
+    if (primaryDir === "application") {
+      return "application"
+    }
+
+    if (primaryDir === "domain") {
+      return "domain"
+    }
+
+    if (primaryDir === "infrastructure") {
+      return "infrastructure"
+    }
+  }
+
+  if (moduleKind === "coordinator") {
+    if (primaryDir === "api") {
+      return "api"
+    }
+
+    if (primaryDir === "application" && secondaryDir === "ports") {
+      return "application-port"
+    }
+
+    if (primaryDir === "application") {
+      return "application"
+    }
+
+    if (primaryDir === "infrastructure") {
+      return "infrastructure"
+    }
+  }
+
+  if (moduleKind === "kernel" && primaryDir === "contracts") {
+    return "contracts"
+  }
+
+  if (moduleKind === "shell") {
+    return "shell-internal"
+  }
+
+  return "unknown"
+}
+
+function isFinalModuleKind(moduleKind: ModuleKind) {
   return (
-    layer === "types" ||
-    layer === "config" ||
-    layer === "repo" ||
-    layer === "ports" ||
-    layer === "service" ||
-    layer === "runtime"
+    moduleKind === "capability" ||
+    moduleKind === "coordinator" ||
+    moduleKind === "shell" ||
+    moduleKind === "kernel"
   )
 }
 
-function extractImportSpecifiers(source: string) {
-  const specifiers: string[] = []
+function requiresModuleIndex(moduleKind: ModuleKind) {
+  return (
+    moduleKind === "capability" ||
+    moduleKind === "coordinator" ||
+    moduleKind === "shell" ||
+    moduleKind === "kernel"
+  )
+}
 
-  for (const match of source.matchAll(IMPORT_PATTERN)) {
-    const specifier = match[1]
-    if (!specifier) {
-      continue
+function protectsOwnModuleRoot(moduleKind: ModuleKind) {
+  return (
+    moduleKind === "capability" ||
+    moduleKind === "coordinator" ||
+    moduleKind === "kernel"
+  )
+}
+
+function isCapabilityPlacement(
+  placement: SourcePlacement,
+): placement is CapabilityPlacement {
+  return (
+    placement === "api" ||
+    placement === "application" ||
+    placement === "application-port" ||
+    placement === "domain" ||
+    placement === "infrastructure"
+  )
+}
+
+function isCoordinatorPlacement(
+  placement: SourcePlacement,
+): placement is CoordinatorPlacement {
+  return (
+    placement === "api" ||
+    placement === "application" ||
+    placement === "application-port" ||
+    placement === "infrastructure"
+  )
+}
+
+function isRetiredPublicBridgeEdge(
+  edge: ImportEdge,
+  from: SourceFileMeta,
+  to: SourceFileMeta,
+) {
+  return (
+    edge.kind === "export" &&
+    from.retiredDir != null &&
+    to.retiredDir != null &&
+    from.retiredDir !== to.retiredDir &&
+    isRetiredPublicBridgeSource(from)
+  )
+}
+
+function isRetiredPublicBridgeSource(meta: SourceFileMeta) {
+  const fileName = basename(meta.relPath)
+
+  return (
+    (meta.retiredDir === "runtime" && fileName === "api.ts") ||
+    (meta.retiredDir === "service" && fileName === "index.ts")
+  )
+}
+
+function extractImportStatements(source: string) {
+  const statements: Array<{ kind: EdgeKind; specifier: string }> = []
+
+  for (const match of source.matchAll(IMPORT_EXPORT_PATTERN)) {
+    const kind = match[1]
+    const specifier = match[2]
+
+    if ((kind === "import" || kind === "export") && specifier) {
+      statements.push({
+        kind,
+        specifier,
+      })
     }
-
-    specifiers.push(specifier)
   }
 
-  return specifiers
+  return statements
 }
 
 function resolveLocalImport(
@@ -443,7 +921,10 @@ function resolveLocalImport(
   knownFiles: Set<string>,
 ) {
   if (specifier.startsWith(".")) {
-    return resolveKnownFile(normalize(join(dirname(fromRelPath), specifier)).replaceAll("\\", "/"), knownFiles)
+    return resolveKnownFile(
+      normalize(join(dirname(fromRelPath), specifier)).replaceAll("\\", "/"),
+      knownFiles,
+    )
   }
 
   if (specifier.startsWith("src/")) {
@@ -458,11 +939,7 @@ function resolveLocalImport(
 }
 
 function resolveKnownFile(normalizedBase: string, knownFiles: Set<string>) {
-  const candidates = [
-    normalizedBase,
-    `${normalizedBase}.ts`,
-    `${normalizedBase}/index.ts`,
-  ]
+  const candidates = [normalizedBase, `${normalizedBase}.ts`, `${normalizedBase}/index.ts`]
 
   for (const candidate of candidates) {
     if (knownFiles.has(candidate)) {
@@ -473,34 +950,40 @@ function resolveKnownFile(normalizedBase: string, knownFiles: Set<string>) {
   return null
 }
 
-function collectDomainState(graph: RepositoryGraph) {
-  const state = new Map<string, DomainState>()
+function collectModuleState(graph: RepositoryGraph) {
+  const state = new Map<string, ModuleState>()
 
-  for (const domain of graph.directories.filter((directory) => CORE_TOP_LEVELS.has(directory))) {
-    state.set(domain, {
+  for (const directory of graph.directories) {
+    const moduleKind = getModuleKind(directory)
+    if (
+      moduleKind !== "capability" &&
+      moduleKind !== "coordinator" &&
+      moduleKind !== "shell" &&
+      moduleKind !== "kernel"
+    ) {
+      continue
+    }
+
+    state.set(directory, {
       hasIndex: false,
-      layers: new Set<string>(),
+      primaryDirs: new Set<string>(),
     })
   }
 
   for (const file of graph.files) {
     const meta = getSourceFileMeta(file)
-    if (!meta.isCoreDomain) {
+    const module = state.get(meta.topLevel)
+    if (!module) {
       continue
     }
 
-    const domain = state.get(meta.topLevel)
-    if (!domain) {
+    if (meta.isModuleIndex) {
+      module.hasIndex = true
       continue
     }
 
-    if (meta.isDomainIndex) {
-      domain.hasIndex = true
-      continue
-    }
-
-    if (meta.layer) {
-      domain.layers.add(meta.layer)
+    if (meta.primaryDir) {
+      module.primaryDirs.add(meta.primaryDir)
     }
   }
 

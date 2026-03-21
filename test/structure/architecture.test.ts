@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import {
   APPROVED_TOP_LEVELS,
-  FINAL_CORE_TOP_LEVELS,
-  FINAL_OUTER_SHELL_TOP_LEVELS,
+  FINAL_CAPABILITY_TOP_LEVELS,
+  FINAL_COORDINATOR_TOP_LEVELS,
+  FINAL_KERNEL_TOP_LEVELS,
+  FINAL_SHELL_TOP_LEVELS,
   STRUCTURE_BASELINE_PATH,
   TRANSITION_CORE_TOP_LEVELS,
   TRANSITION_OUTER_SHELL_TOP_LEVELS,
@@ -15,18 +17,21 @@ import {
 
 describe("architecture structure", () => {
   test("declares the final target vocabulary explicitly", () => {
-    expect(toSortedArray(FINAL_CORE_TOP_LEVELS)).toEqual([
+    expect(toSortedArray(FINAL_CAPABILITY_TOP_LEVELS)).toEqual([
       "model",
-      "orchestration",
       "permission",
       "session",
       "tool",
     ])
-    expect(toSortedArray(FINAL_OUTER_SHELL_TOP_LEVELS)).toEqual([
+    expect(toSortedArray(FINAL_COORDINATOR_TOP_LEVELS)).toEqual([
+      "orchestration",
+    ])
+    expect(toSortedArray(FINAL_SHELL_TOP_LEVELS)).toEqual([
       "app-server",
       "bootstrap",
       "cli",
     ])
+    expect(toSortedArray(FINAL_KERNEL_TOP_LEVELS)).toEqual(["kernel"])
   })
 
   test("tracks transition-only names as explicit debt during migration", () => {
@@ -47,115 +52,138 @@ describe("architecture structure", () => {
     expect(formatFindings(findings).join("\n")).toContain("transition-only top-level")
   })
 
-  test("detects a cross-domain import violation", () => {
+  test("detects retired six-layer directories as migration debt", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(APPROVED_TOP_LEVELS),
-      files: [],
+      directories: ["session"],
+      files: ["session/runtime/api.ts"],
+      edges: [],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[INV-STRUCTURE-001]")
+    expect(formatFindings(findings).join("\n")).toContain("retired internal directory")
+  })
+
+  test("detects an unsupported shared-kernel directory", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["kernel"],
+      files: ["kernel/index.ts", "kernel/types/run-status.ts"],
+      edges: [],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[INV-STRUCTURE-002]")
+    expect(formatFindings(findings).join("\n")).toContain("not allowed in the shared kernel")
+  })
+
+  test("detects a capability root exporting through a retired layer", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["session"],
+      files: ["session/index.ts", "session/runtime/api.ts"],
       edges: [
         {
-          from: "session/service/query.ts",
-          to: "model/index.ts",
-          specifier: "../../model",
+          from: "session/index.ts",
+          to: "session/runtime/api.ts",
+          specifier: "./runtime/api",
+          kind: "export",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-PUBLIC-001]")
+    expect(formatFindings(findings).join("\n")).toContain("may only re-export src/session/api/*")
+  })
+
+  test("detects a retired public re-export ladder", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["session"],
+      files: ["session/runtime/api.ts", "session/service/index.ts"],
+      edges: [
+        {
+          from: "session/runtime/api.ts",
+          to: "session/service/index.ts",
+          specifier: "../service",
+          kind: "export",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-PUBLIC-001]")
+    expect(formatFindings(findings).join("\n")).toContain("re-exports through retired internal layers")
+  })
+
+  test("detects a capability-layer dependency violation in the target layout", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["session"],
+      files: [
+        "session/index.ts",
+        "session/api/public.ts",
+        "session/application/query.ts",
+        "session/domain/run.ts",
+        "session/infrastructure/sqlite.ts",
+      ],
+      edges: [
+        {
+          from: "session/application/query.ts",
+          to: "session/infrastructure/sqlite.ts",
+          specifier: "../infrastructure/sqlite",
+          kind: "import",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-002]")
+    expect(formatFindings(findings).join("\n")).toContain("inside a capability module")
+  })
+
+  test("detects a module-internal import routed through its own root index", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["orchestration"],
+      files: [
+        "orchestration/index.ts",
+        "orchestration/api/public.ts",
+        "orchestration/application/run.ts",
+      ],
+      edges: [
+        {
+          from: "orchestration/application/run.ts",
+          to: "orchestration/index.ts",
+          specifier: "../index",
+          kind: "import",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-002]")
+    expect(formatFindings(findings).join("\n")).toContain("may not import its own module root")
+  })
+
+  test("detects a coordinator importing a capability module directly", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["orchestration", "session"],
+      files: ["orchestration/index.ts", "session/index.ts"],
+      edges: [
+        {
+          from: "orchestration/application/run.ts",
+          to: "session/index.ts",
+          specifier: "../../session",
+          kind: "import",
         },
       ],
     })
 
     expect(formatFindings(findings).join("\n")).toContain("[ARCH-CROSS-001]")
+    expect(formatFindings(findings).join("\n")).toContain("within the coordinator module")
   })
 
-  test("detects a runtime-to-repo import violation", () => {
+  test("allows shell composition to import another module through its root index", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(APPROVED_TOP_LEVELS),
-      files: [],
-      edges: [
-        {
-          from: "model/runtime/api.ts",
-          to: "model/repo/index.ts",
-          specifier: "../repo",
-        },
-      ],
-    })
-
-    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
-  })
-
-  test("detects a domain root index importing a non-runtime layer", () => {
-    const findings = validateRepositoryGraph({
-      directories: Array.from(APPROVED_TOP_LEVELS),
-      files: [],
-      edges: [
-        {
-          from: "session/index.ts",
-          to: "session/service/index.ts",
-          specifier: "./service",
-        },
-      ],
-    })
-
-    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
-    expect(formatFindings(findings).join("\n")).toContain("may only import src/session/runtime/*")
-  })
-
-  test("detects a domain-internal import routed through the same domain root", () => {
-    const findings = validateRepositoryGraph({
-      directories: Array.from(APPROVED_TOP_LEVELS),
-      files: [],
-      edges: [
-        {
-          from: "orchestration/runtime/api.ts",
-          to: "orchestration/index.ts",
-          specifier: "../index",
-        },
-      ],
-    })
-
-    expect(formatFindings(findings).join("\n")).toContain("[ARCH-LAYER-001]")
-    expect(formatFindings(findings).join("\n")).toContain("may not import its own domain root")
-  })
-
-  test("detects a missing required domain layer", () => {
-    const findings = validateRepositoryGraph({
-      directories: ["model"],
-      files: [
-        "model/index.ts",
-        "model/types/event.ts",
-        "model/config/defaults.ts",
-        "model/repo/index.ts",
-        "model/service/index.ts",
-        "model/runtime/api.ts",
-      ],
-      edges: [],
-    })
-
-    expect(formatFindings(findings).join("\n")).toContain("missing its required ports/ layer")
-  })
-
-  test("detects a missing domain root index", () => {
-    const findings = validateRepositoryGraph({
-      directories: ["session"],
-      files: [
-        "session/types/message.ts",
-        "session/config/defaults.ts",
-        "session/repo/index.ts",
-        "session/ports/telemetry.ts",
-        "session/service/index.ts",
-        "session/runtime/api.ts",
-      ],
-      edges: [],
-    })
-
-    expect(formatFindings(findings).join("\n")).toContain("missing its required root index.ts")
-  })
-
-  test("allows outer-shell composition to depend on a domain root index", () => {
-    const findings = validateRepositoryGraph({
-      directories: ["bootstrap"],
-      files: ["orchestration/index.ts"],
+      directories: ["bootstrap", "orchestration"],
+      files: ["bootstrap/index.ts", "orchestration/index.ts"],
       edges: [
         {
           from: "bootstrap/runtime.ts",
           to: "orchestration/index.ts",
           specifier: "../orchestration",
+          kind: "import",
         },
       ],
     })
@@ -163,41 +191,64 @@ describe("architecture structure", () => {
     expect(findings).toEqual([])
   })
 
-  test("detects outer-shell composition importing a domain internal file", () => {
+  test("detects a non-bootstrap shell importing a module root directly", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(APPROVED_TOP_LEVELS),
-      files: [],
+      directories: ["app-server", "bootstrap", "session"],
+      files: ["app-server/index.ts", "bootstrap/index.ts", "session/index.ts"],
       edges: [
         {
-          from: "bootstrap/runtime.ts",
-          to: "session/repo/index.ts",
-          specifier: "../session/repo",
+          from: "app-server/app.ts",
+          to: "session/index.ts",
+          specifier: "../session",
+          kind: "import",
         },
       ],
     })
 
     expect(formatFindings(findings).join("\n")).toContain("[ARCH-CROSS-001]")
+    expect(formatFindings(findings).join("\n")).toContain("non-bootstrap shell module")
+    expect(formatFindings(findings).join("\n")).toContain("src/bootstrap/index.ts")
   })
 
-  test("detects an unsupported layer directory", () => {
+  test("detects a missing shell root index", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(APPROVED_TOP_LEVELS),
-      files: ["session/wiring/provider.ts"],
+      directories: ["app-server"],
+      files: ["app-server/main.ts"],
       edges: [],
     })
 
-    expect(formatFindings(findings).join("\n")).toContain("[INV-STRUCTURE-001]")
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-PUBLIC-001]")
+    expect(formatFindings(findings).join("\n")).toContain("missing its required root index.ts public exit")
+  })
+
+  test("detects a deep cross-module import into internals", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["bootstrap", "session"],
+      files: ["bootstrap/index.ts", "session/index.ts", "session/repo/index.ts"],
+      edges: [
+        {
+          from: "bootstrap/runtime.ts",
+          to: "session/repo/index.ts",
+          specifier: "../session/repo",
+          kind: "import",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-CROSS-001]")
+    expect(formatFindings(findings).join("\n")).toContain("may not import internal file")
   })
 
   test("formats findings with a stable id and remediation text", () => {
     const findings = validateRepositoryGraph({
-      directories: Array.from(APPROVED_TOP_LEVELS),
-      files: [],
+      directories: ["app-server", "session"],
+      files: ["app-server/index.ts", "session/index.ts", "session/repo/index.ts"],
       edges: [
         {
-          from: "session/service/query.ts",
-          to: "model/runtime/api.ts",
-          specifier: "../../model/runtime/api",
+          from: "app-server/app.ts",
+          to: "session/repo/index.ts",
+          specifier: "../session/repo",
+          kind: "import",
         },
       ],
     })
@@ -205,8 +256,8 @@ describe("architecture structure", () => {
     const message = formatFindings(findings)[0]
 
     expect(message).toContain("[ARCH-CROSS-001]")
-    expect(message).toContain("Define the external capability in the importing domain's ports/")
-    expect(message).toContain("See docs/ARCHITECTURE.md#cross-domain-boundaries.")
+    expect(message).toContain("src/session/index.ts")
+    expect(message).toContain("See docs/ARCHITECTURE.md#cross-module-boundaries.")
   })
 
   test("repository structure only contains baselined findings", async () => {
