@@ -2,8 +2,9 @@ import { join } from "node:path"
 import {
   assertRunStatusTransition,
   createSessionRepository as createStorageRepository,
-  createSessionRunService,
+  createSessionRuntimeApi,
   openSessionDatabase as openStorageDatabase,
+  type SessionProvider,
   type SessionRepository as StorageRepository,
 } from "../session"
 import {
@@ -59,7 +60,7 @@ export { PermissionRequestNotAwaitingActiveRuntimeError }
 
 export function createRuntime(input: RuntimeInput) {
   const now = input.now ?? Date.now
-  const sessionRuns = createSessionRunService({
+  const sessionProvider = createSessionRuntimeApi({
     repository: input.repository,
     now,
   })
@@ -68,13 +69,13 @@ export function createRuntime(input: RuntimeInput) {
     model: input.provider,
     session: createSessionPort({
       repository: input.repository,
-      sessionRuns,
+      session: sessionProvider.runs,
     }),
     permission: createPermissionPort({
       repository: input.permissionRepository,
       session: createPermissionSessionPort({
         repository: input.repository,
-        sessionRuns,
+        session: sessionProvider.runs,
       }),
       now,
     }),
@@ -151,7 +152,7 @@ export function createCliRuntime(input: CliRuntimeInput) {
       })
       const repository = storage.repository
       const permissionRepository = storage.permissionRepository
-      const sessionRuns = createSessionRunService({
+      const sessionProvider = createSessionRuntimeApi({
         repository,
         now,
       })
@@ -163,20 +164,20 @@ export function createCliRuntime(input: CliRuntimeInput) {
       })
 
       try {
-        const session = repository.sessions.create({
+        const storedSession = repository.sessions.create({
           directory: runInput.cwd,
           workspaceRoot: runInput.workspaceRoot,
           createdAt: now(),
         })
-        const started = sessionRuns.startRun({
-          sessionId: session.id,
+        const started = sessionProvider.runs.start({
+          sessionId: storedSession.id,
           trigger: "cli",
           createdAt: now(),
           messageCreatedAt: now(),
         })
 
         repository.parts.create({
-          sessionId: session.id,
+          sessionId: storedSession.id,
           runId: started.run.id,
           messageId: started.message.id,
           kind: "text",
@@ -186,7 +187,7 @@ export function createCliRuntime(input: CliRuntimeInput) {
         })
 
         const handle = await runtime.run({
-          sessionId: session.id,
+          sessionId: storedSession.id,
           runId: started.run.id,
         })
 
@@ -201,10 +202,7 @@ export function createCliRuntime(input: CliRuntimeInput) {
 
 function createSessionPort(input: {
   repository: StorageRepository
-  sessionRuns: Pick<
-    ReturnType<typeof createSessionRunService>,
-    "transitionRunToRunning" | "completeRun" | "failRun" | "cancelRun"
-  >
+  session: Pick<SessionProvider["runs"], "transitionToRunning" | "complete" | "fail" | "cancel">
 }): OrchestrationSessionPort {
   return {
     storageIdentity: input.repository.storageIdentity,
@@ -242,16 +240,16 @@ function createSessionPort(input: {
       return input.repository.parts.updateContent(update)
     },
     transitionRunToRunning(runId) {
-      return input.sessionRuns.transitionRunToRunning(runId)
+      return input.session.transitionToRunning(runId)
     },
     completeRun(runId) {
-      return input.sessionRuns.completeRun(runId)
+      return input.session.complete(runId)
     },
     failRun(run) {
-      return input.sessionRuns.failRun(run)
+      return input.session.fail(run)
     },
     cancelRun(runId) {
-      return input.sessionRuns.cancelRun(runId)
+      return input.session.cancel(runId)
     },
   }
 }
@@ -290,7 +288,7 @@ function createToolPortFactory(): OrchestrationToolPortFactory {
 
 function createPermissionSessionPort(input: {
   repository: StorageRepository
-  sessionRuns: Pick<ReturnType<typeof createSessionRunService>, "transitionRunToRunning">
+  session: Pick<SessionProvider["runs"], "transitionToRunning">
 }) {
   return {
     getRun(runId: string) {
@@ -305,7 +303,7 @@ function createPermissionSessionPort(input: {
       })
     },
     transitionRunToRunning(runId: string) {
-      return input.sessionRuns.transitionRunToRunning(runId)
+      return input.session.transitionToRunning(runId)
     },
   }
 }

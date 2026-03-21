@@ -1,6 +1,6 @@
 import {
   assertRunStatusTransition,
-  createSessionRunService,
+  createSessionRuntimeApi,
   type RunTrigger,
   type SessionRepository as StorageRepository,
   type StoredMessage,
@@ -403,7 +403,7 @@ export function createServerApp(input: {
   })
   const repository = observed.repository
   const permissionRepository = observed.permissionRepository
-  const sessionRuns = createSessionRunService({
+  const sessionProvider = createSessionRuntimeApi({
     repository,
     now,
   })
@@ -434,7 +434,7 @@ export function createServerApp(input: {
 
     const createdAt = now()
     const messageCreatedAt = now()
-    const started = sessionRuns.startRun({
+    const started = sessionProvider.runs.start({
       sessionId: runInput.sessionId,
       trigger: runInput.trigger ?? "prompt",
       runId: runInput.runId,
@@ -484,7 +484,7 @@ export function createServerApp(input: {
         return buildSessionSnapshot(repository, sessionId)
       },
       transcript(sessionId: string) {
-        return repository.messages.listSessionTranscript(sessionId)
+        return sessionProvider.transcript.listSessionTranscript(sessionId)
       },
     },
     runs: {
