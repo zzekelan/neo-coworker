@@ -79,6 +79,35 @@ Its target internal layout is:
 `orchestration` does not gain a mandatory `domain/` directory in this round.
 If future work reveals durable, reusable orchestration-owned business rules that deserve a `domain/`, that must come from a later design change, not from ad hoc implementation drift.
 
+### Infrastructure Subroles
+
+`infrastructure` remains the technical implementation layer.
+It owns how a module's behavior is realized with concrete technology and module-local runtime control mechanisms.
+It is not a fallback bucket for contracts with unclear ownership.
+
+`infrastructure` may own:
+
+- provider, database, file-system, shell, and network integrations
+- event queues, registries, pending maps, suspension controllers, and loop drivers
+- module-local runtime assembly helpers that connect application use cases to technical machinery
+- other technical implementation details that are neither public-boundary contracts nor business-semantic rules
+
+`infrastructure` does not own:
+
+- business rules or status-transition meaning
+- the module's public boundary
+- cross-module composition
+
+Modules do not need to create a fixed set of infrastructure subroles.
+Use only the subroles that match real ownership in that module.
+This vocabulary does not apply to shell modules.
+
+- `infrastructure/adapters/` is the strict port-implementation subrole.
+  Files here implement precise application-owned outbound dependency contracts.
+- `infrastructure/runtime/` is the machinery subrole.
+  Files here own queues, registries, pending maps, suspension controllers, loop drivers, and runtime-only assembly.
+- other infrastructure subroles such as `infrastructure/builtins/` are allowed when they express a real technical owner inside the generic infrastructure boundary
+
 ### Shell Modules
 
 `bootstrap`, `cli`, and `app-server` are shell modules.
@@ -131,6 +160,12 @@ For capability modules, the approved dependency directions are:
 - root `index.ts -> public`
 - same-layer imports when the file role stays within the same layer
 
+Inside `infrastructure`, subroles tighten placement further:
+
+- `infrastructure/adapters/**/*` may import only precise `application/ports/*` contracts, necessary `domain/*` contracts, `src/kernel/index.ts`, same-layer infrastructure helpers, and external/platform APIs
+- `infrastructure/runtime/**/*` may import precise `application/*` contracts when the machinery needs them
+- machinery-only contracts must stay with the owning runtime machinery instead of being parked in `application`
+
 Anything else is a layer violation.
 In particular:
 
@@ -150,6 +185,12 @@ For `orchestration`, the approved dependency directions are:
 - `public -> infrastructure` only to expose stable module-owned public factories or adapters
 - root `index.ts -> public`
 - same-layer imports when the file role stays within the same layer
+
+Inside `infrastructure`, subroles tighten placement further:
+
+- `infrastructure/adapters/**/*` may import only precise `application/ports/*` contracts, `src/kernel/index.ts`, same-layer infrastructure helpers, and external/platform APIs
+- `infrastructure/runtime/**/*` may import precise `application/*` contracts when the machinery needs them
+- machinery-only contracts must stay with the owning runtime machinery instead of being parked in `application`
 
 Anything else is a layer violation.
 In particular:
@@ -218,6 +259,10 @@ Use these questions to place code:
 - Is this core business meaning, rule, state transition, or domain-owned error? Put it in `domain/`.
 - Is this a use case, command, query, workflow, or a port the use case needs? Put it in `application/`.
 - Is this a concrete implementation detail such as SQLite, OpenAI, file system, shell, event queue, or in-memory registry? Put it in `infrastructure/`.
+- Is this specifically a port implementation over a precise application-owned contract? Put it in `infrastructure/adapters/`.
+- Is this queue, registry, pending map, suspension handle, loop driver, or other machinery-only control contract? Put it in `infrastructure/runtime/`.
+- Is this a module-specific technical owner such as builtin tool definitions? Put it in a precise infrastructure subrole such as `infrastructure/builtins/` instead of inventing a fake public or application owner.
+- If no precise owner is obvious, stop and re-evaluate the boundary instead of treating `infrastructure/` as a generic catch-all.
 - Is this the module's explicit public boundary, a stable factory or adapter meant for callers, or a light boundary projection over application contracts? Put it in `public/`.
 - Is this a truly global, stable, non-business contract with no single-module owner? Put it in `kernel/contracts/`.
 - Is this cross-module composition or application assembly? Put it in `bootstrap/`.

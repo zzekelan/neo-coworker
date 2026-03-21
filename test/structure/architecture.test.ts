@@ -126,6 +126,87 @@ describe("architecture structure", () => {
     expect(formatFindings(findings).join("\n")).toContain("inside a capability module")
   })
 
+  test("allows infrastructure subroles without forcing a uniform template", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["model", "orchestration", "tool"],
+      files: [
+        "model/index.ts",
+        "model/public/index.ts",
+        "model/application/ports/provider.ts",
+        "model/infrastructure/adapters/openai.ts",
+        "orchestration/index.ts",
+        "orchestration/public/index.ts",
+        "orchestration/application/run.ts",
+        "orchestration/infrastructure/runtime/loop.ts",
+        "tool/index.ts",
+        "tool/public/index.ts",
+        "tool/infrastructure/builtins/read.ts",
+      ],
+      edges: [
+        {
+          from: "model/infrastructure/adapters/openai.ts",
+          to: "model/application/ports/provider.ts",
+          specifier: "../../application/ports/provider",
+          kind: "import",
+        },
+        {
+          from: "orchestration/infrastructure/runtime/loop.ts",
+          to: "orchestration/application/run.ts",
+          specifier: "../../application/run",
+          kind: "import",
+        },
+      ],
+    })
+
+    expect(findings).toEqual([])
+  })
+
+  test("detects an adapter importing application workflow instead of a precise port", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["model"],
+      files: [
+        "model/index.ts",
+        "model/public/index.ts",
+        "model/application/runtime-api.ts",
+        "model/infrastructure/adapters/openai.ts",
+      ],
+      edges: [
+        {
+          from: "model/infrastructure/adapters/openai.ts",
+          to: "model/application/runtime-api.ts",
+          specifier: "../../application/runtime-api",
+          kind: "import",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[INV-BOUNDARY-003]")
+    expect(formatFindings(findings).join("\n")).toContain("adapter subrole file")
+  })
+
+  test("detects a coordinator adapter importing application workflow instead of a precise port", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["orchestration"],
+      files: [
+        "orchestration/index.ts",
+        "orchestration/public/index.ts",
+        "orchestration/application/runtime-api.ts",
+        "orchestration/infrastructure/adapters/loop-driver.ts",
+      ],
+      edges: [
+        {
+          from: "orchestration/infrastructure/adapters/loop-driver.ts",
+          to: "orchestration/application/runtime-api.ts",
+          specifier: "../../application/runtime-api",
+          kind: "import",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[INV-BOUNDARY-003]")
+    expect(formatFindings(findings).join("\n")).toContain("adapter subrole file")
+  })
+
   test("allows the public boundary to expose a stable infrastructure-backed factory", () => {
     const findings = validateRepositoryGraph({
       directories: ["session"],

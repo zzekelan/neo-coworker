@@ -70,6 +70,8 @@ const RULE_DOCS = {
     "docs/dev/QUALITY_INVARIANTS.md#inv-structure-001-approved-module-role-layouts",
   "INV-STRUCTURE-002":
     "docs/dev/QUALITY_INVARIANTS.md#inv-structure-002-shared-kernel-stays-narrow",
+  "INV-BOUNDARY-003":
+    "docs/dev/QUALITY_INVARIANTS.md#inv-boundary-003-adapter-subroles-depend-on-precise-ports",
 } as const
 const CAPABILITY_ALLOWED_INTERNAL_IMPORTS = {
   public: new Set(["application", "infrastructure"]),
@@ -93,6 +95,7 @@ export type StructureRuleId =
   | "ARCH-PUBLIC-001"
   | "INV-STRUCTURE-001"
   | "INV-STRUCTURE-002"
+  | "INV-BOUNDARY-003"
 
 export type EdgeKind = "import" | "export"
 
@@ -481,6 +484,18 @@ function validateCapabilityEdge(
     return
   }
 
+  if (isInfrastructureAdapter(from) && to.placement === "application") {
+    addFinding(findings, {
+      ruleId: "INV-BOUNDARY-003",
+      fingerprint: `INV-BOUNDARY-003:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} is an adapter subrole file and may not depend on application workflow file src/${edge.to}.`,
+      remediation:
+        "Import a precise application/ports contract instead of a mixed application barrel or workflow implementation, and keep runtime assembly outside infrastructure/adapters/.",
+      doc: RULE_DOCS["INV-BOUNDARY-003"],
+    })
+    return
+  }
+
   const allowedTargets = CAPABILITY_ALLOWED_INTERNAL_IMPORTS[from.placement]
   if (!allowedTargets.has(to.placement)) {
     addFinding(findings, {
@@ -533,6 +548,18 @@ function validateCoordinatorEdge(
   }
 
   if (from.placement === to.placement) {
+    return
+  }
+
+  if (isInfrastructureAdapter(from) && to.placement === "application") {
+    addFinding(findings, {
+      ruleId: "INV-BOUNDARY-003",
+      fingerprint: `INV-BOUNDARY-003:edge:${edge.from}->${edge.to}`,
+      summary: `src/${edge.from} is an adapter subrole file and may not depend on application workflow file src/${edge.to}.`,
+      remediation:
+        "Import a precise application/ports contract instead of a mixed application barrel or workflow implementation, and keep runtime assembly outside infrastructure/adapters/.",
+      doc: RULE_DOCS["INV-BOUNDARY-003"],
+    })
     return
   }
 
@@ -836,6 +863,13 @@ function isCoordinatorPlacement(
     placement === "application" ||
     placement === "application-port" ||
     placement === "infrastructure"
+  )
+}
+
+function isInfrastructureAdapter(meta: SourceFileMeta) {
+  return (
+    meta.primaryDir === "infrastructure" &&
+    meta.secondaryDir === "adapters"
   )
 }
 
