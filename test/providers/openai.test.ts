@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type OpenAI from "openai"
-import { createOpenAIProvider } from "../../src/model/runtime/openai"
+import { createOpenAIProvider } from "../../src/model"
 
 describe("openai provider", () => {
   test("emits one complete tool call after multi-chunk arguments finish", async () => {

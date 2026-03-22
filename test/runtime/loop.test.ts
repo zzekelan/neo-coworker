@@ -2,24 +2,24 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createConversationRunService as createSessionRunService } from "../../src/conversation/service"
+import { createSessionRunService } from "../../src/session"
 import {
   createPermissionRepository,
   type PermissionRepository,
-} from "../../src/permission/repo"
+} from "../../src/permission"
 import {
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-  type ConversationRepository as StorageRepository,
-} from "../../src/conversation/repo"
-import { buildTranscriptMessages } from "../../src/model/service/projection"
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+  type SessionRepository as StorageRepository,
+} from "../../src/session"
 import {
+  buildTranscriptMessages,
   createModelRuntimeApi,
   type ProviderEvent,
   type ProviderTurnRequest,
-} from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model/wiring/provider"
-import { createRuntime } from "../../src/orchestration/wiring/server"
+  createModelProvider,
+} from "../../src/model"
+import { createRuntime } from "../../src/bootstrap"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

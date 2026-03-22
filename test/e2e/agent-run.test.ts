@@ -2,18 +2,21 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { cp, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createModelRuntimeApi } from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model/wiring/provider"
+import { createModelProvider, createModelRuntimeApi } from "../../src/model"
 import {
-  getDefaultCliStoragePath,
   runCli,
-} from "../../src/orchestration/wiring/cli"
-import { createAgentServer } from "../../src/orchestration/wiring/server"
-import { createPermissionRepository } from "../../src/permission/repo"
+} from "../../src/cli"
+import { createAgentServer } from "../../src/app-server"
 import {
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-} from "../../src/conversation/repo"
+  createCliStorageComposition,
+  createRuntime,
+  getDefaultCliStoragePath,
+} from "../../src/bootstrap"
+import { createPermissionRepository } from "../../src/permission"
+import {
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -52,35 +55,53 @@ describe("agent run e2e", () => {
 
     let turn = 0
 
+    const provider = createModelProvider({
+      runtime: createModelRuntimeApi({
+        async *streamTurn() {
+          turn += 1
+
+          if (turn === 1) {
+            yield { type: "text.delta", text: "Opening README.md\n" }
+            yield {
+              type: "tool.call",
+              callId: "call_1",
+              name: "read",
+              inputText: '{"path":"README.md"}',
+            }
+            return
+          }
+
+          if (turn === 2) {
+            yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
+            return
+          }
+
+          throw new Error(`Unexpected provider turn ${turn}`)
+        },
+      }),
+    })
+
     await runCli({
       argv: ["run", "Read README.md and summarize it"],
       cwd: workspaceRoot,
       workspaceRoot,
-      provider: createModelProvider({
-        runtime: createModelRuntimeApi({
-          async *streamTurn() {
-            turn += 1
+      provider,
+      createLocalRuntimeImpl(input) {
+        return createRuntime(input)
+      },
+      createLocalStorageImpl(workspaceRoot) {
+        const storage = createCliStorageComposition({
+          workspaceRoot,
+        })
 
-            if (turn === 1) {
-              yield { type: "text.delta", text: "Opening README.md\n" }
-              yield {
-                type: "tool.call",
-                callId: "call_1",
-                name: "read",
-                inputText: '{"path":"README.md"}',
-              }
-              return
-            }
-
-            if (turn === 2) {
-              yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
-              return
-            }
-
-            throw new Error(`Unexpected provider turn ${turn}`)
+        return {
+          repository: storage.repository,
+          permissionRepository: storage.permissionRepository,
+          closeImpl() {
+            storage.close()
           },
-        }),
-      }),
+        }
+      },
       io: {
         write(text: string) {
           output.push(text)
@@ -124,41 +145,48 @@ describe("agent run e2e", () => {
     const database = trackDatabase(openStorageDatabase(join(directory, "server.sqlite")))
     const repository = createStorageRepository({ database })
     const permissionRepository = createPermissionRepository({ database })
-    const server = createAgentServer({
-      provider: createModelProvider({
-        runtime: createModelRuntimeApi({
-          async *streamTurn() {
-            if (!("turn" in serverState)) {
-              serverState.turn = 0
-            }
-            serverState.turn += 1
+    const serverState: { turn?: number } = {}
+    const provider = createModelProvider({
+      runtime: createModelRuntimeApi({
+        async *streamTurn() {
+          if (!("turn" in serverState)) {
+            serverState.turn = 0
+          }
+          serverState.turn += 1
 
-            if (serverState.turn === 1) {
-              yield { type: "text.delta", text: "Opening README.md\n" }
-              yield {
-                type: "tool.call",
-                callId: "call_1",
-                name: "read",
-                inputText: '{"path":"README.md"}',
-              }
-              return
+          if (serverState.turn === 1) {
+            yield { type: "text.delta", text: "Opening README.md\n" }
+            yield {
+              type: "tool.call",
+              callId: "call_1",
+              name: "read",
+              inputText: '{"path":"README.md"}',
             }
+            return
+          }
 
-            if (serverState.turn === 2) {
-              yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
-              return
-            }
+          if (serverState.turn === 2) {
+            yield { type: "text.delta", text: "Summary: concise fixture summary.\n" }
+            return
+          }
 
-            throw new Error(`Unexpected provider turn ${serverState.turn}`)
-          },
-        }),
+          throw new Error(`Unexpected provider turn ${serverState.turn}`)
+        },
       }),
+    })
+    const server = createAgentServer({
+      createRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          now: runtimeInput.now,
+        })
+      },
       repository,
       permissionRepository,
     })
     activeServers.push(server)
-
-    const serverState: { turn?: number } = {}
     await server.start({
       hostname: "127.0.0.1",
     })
@@ -167,7 +195,7 @@ describe("agent run e2e", () => {
       cmd: [
         "bun",
         "run",
-        join(globalThis.process.cwd(), "src/wiring/main.ts"),
+        join(globalThis.process.cwd(), "src/cli/main.ts"),
         "run",
         "Read README.md and summarize it",
       ],

@@ -1,0 +1,340 @@
+import { join } from "node:path"
+import {
+  assertRunStatusTransition,
+  createSessionRepository as createStorageRepository,
+  createSessionRuntimeApi,
+  openSessionDatabase as openStorageDatabase,
+  type SessionProvider,
+  type SessionRepository as StorageRepository,
+} from "../session"
+import {
+  createPermissionRepository,
+  createPermissionRuntimeApi,
+  type PermissionMode,
+  type PermissionResponse,
+  type PermissionRepository,
+} from "../permission"
+import { createToolProvider } from "../tool"
+import type {
+  OrchestrationModelPort,
+  OrchestrationPermissionPort,
+  OrchestrationSessionPort,
+  OrchestrationToolPortFactory,
+} from "../orchestration"
+import {
+  createOrchestrationActiveRunRegistry,
+  createOrchestrationRuntimeApi,
+  resolvePermissionPolicy,
+  type OrchestrationActiveRunRegistry,
+  type RunHandle,
+  PermissionRequestNotAwaitingActiveRuntimeError,
+} from "../orchestration"
+
+type RuntimeInput = {
+  provider: OrchestrationModelPort
+  repository: StorageRepository
+  permissionRepository: PermissionRepository
+  permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
+  activeRuns?: OrchestrationActiveRunRegistry
+  systemPrompt?: string
+  now?: () => number
+}
+
+type CliRuntimeInput = Omit<RuntimeInput, "repository" | "permissionRepository"> & {
+  createStorageRepositoryImpl?: typeof createStorageRepository
+  createPermissionRepositoryImpl?: typeof createPermissionRepository
+  openStorageDatabaseImpl?: typeof openStorageDatabase
+  repository?: StorageRepository
+  permissionRepository?: PermissionRepository
+}
+
+type CliRunInput = {
+  prompt: string
+  cwd: string
+  workspaceRoot: string
+}
+
+const defaultActiveRuns = createOrchestrationActiveRunRegistry()
+
+export { PermissionRequestNotAwaitingActiveRuntimeError }
+
+export function createRuntime(input: RuntimeInput) {
+  const now = input.now ?? Date.now
+  const sessionProvider = createSessionRuntimeApi({
+    repository: input.repository,
+    now,
+  })
+
+  return createOrchestrationRuntimeApi({
+    model: input.provider,
+    session: createSessionPort({
+      repository: input.repository,
+      session: sessionProvider.runs,
+    }),
+    permission: createPermissionPort({
+      repository: input.permissionRepository,
+      session: createPermissionSessionPort({
+        repository: input.repository,
+        session: sessionProvider.runs,
+      }),
+      now,
+    }),
+    tools: createToolPortFactory(),
+    activeRuns: input.activeRuns ?? defaultActiveRuns,
+    permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
+    systemPrompt: input.systemPrompt,
+    now,
+  })
+}
+
+export function getDefaultCliStoragePath(workspaceRoot: string) {
+  return join(workspaceRoot, ".agents", "agent.sqlite")
+}
+
+export function createCliStorageComposition(input: {
+  workspaceRoot: string
+  now?: () => number
+  createStorageRepositoryImpl?: typeof createStorageRepository
+  createPermissionRepositoryImpl?: typeof createPermissionRepository
+  openStorageDatabaseImpl?: typeof openStorageDatabase
+  repository?: StorageRepository
+  permissionRepository?: PermissionRepository
+}) {
+  const now = input.now ?? Date.now
+  const database =
+    input.repository == null
+      ? (input.openStorageDatabaseImpl ?? openStorageDatabase)(
+          getDefaultCliStoragePath(input.workspaceRoot),
+        )
+      : null
+  if (input.repository && !input.permissionRepository) {
+    throw new Error("permissionRepository is required when repository is provided")
+  }
+  const repository =
+    input.repository ??
+    (input.createStorageRepositoryImpl ?? createStorageRepository)({
+      database: database!,
+      now,
+    })
+  const permissionRepository =
+    input.permissionRepository ??
+    (input.createPermissionRepositoryImpl ?? createPermissionRepository)({
+      database: database!,
+      now,
+    })
+
+  return {
+    repository,
+    permissionRepository,
+    close() {
+      database?.close(false)
+    },
+  } satisfies {
+    repository: StorageRepository
+    permissionRepository: PermissionRepository
+    close(): void
+  }
+}
+
+export function createCliRuntime(input: CliRuntimeInput) {
+  const now = input.now ?? Date.now
+
+  return {
+    async run(runInput: CliRunInput): Promise<RunHandle> {
+      const storage = createCliStorageComposition({
+        workspaceRoot: runInput.workspaceRoot,
+        now,
+        repository: input.repository,
+        permissionRepository: input.permissionRepository,
+        openStorageDatabaseImpl: input.openStorageDatabaseImpl,
+        createStorageRepositoryImpl: input.createStorageRepositoryImpl,
+        createPermissionRepositoryImpl: input.createPermissionRepositoryImpl,
+      })
+      const repository = storage.repository
+      const permissionRepository = storage.permissionRepository
+      const sessionProvider = createSessionRuntimeApi({
+        repository,
+        now,
+      })
+      const runtime = createRuntime({
+        ...input,
+        repository,
+        permissionRepository,
+        now,
+      })
+
+      try {
+        const storedSession = repository.sessions.create({
+          directory: runInput.cwd,
+          workspaceRoot: runInput.workspaceRoot,
+          createdAt: now(),
+        })
+        const started = sessionProvider.runs.start({
+          sessionId: storedSession.id,
+          trigger: "cli",
+          createdAt: now(),
+          messageCreatedAt: now(),
+        })
+
+        repository.parts.create({
+          sessionId: storedSession.id,
+          runId: started.run.id,
+          messageId: started.message.id,
+          kind: "text",
+          sequence: 0,
+          text: runInput.prompt,
+          createdAt: now(),
+        })
+
+        const handle = await runtime.run({
+          sessionId: storedSession.id,
+          runId: started.run.id,
+        })
+
+        return input.repository ? handle : withDatabaseCleanup(handle, () => storage.close())
+      } catch (error) {
+        storage.close()
+        throw error
+      }
+    },
+  }
+}
+
+function createSessionPort(input: {
+  repository: StorageRepository
+  session: Pick<SessionProvider["runs"], "transitionToRunning" | "complete" | "fail" | "cancel">
+}): OrchestrationSessionPort {
+  return {
+    storageIdentity: input.repository.storageIdentity,
+    getSession(sessionId) {
+      return input.repository.sessions.get(sessionId)
+    },
+    getRun(runId) {
+      return input.repository.runs.get(runId)
+    },
+    listTranscript(sessionId) {
+      return input.repository.messages.listSessionTranscript(sessionId)
+    },
+    createAssistantMessage(message) {
+      return input.repository.messages.create({
+        sessionId: message.sessionId,
+        runId: message.runId,
+        role: "assistant",
+        sequence: message.sequence,
+        createdAt: message.createdAt,
+      })
+    },
+    createMessagePart(part) {
+      return input.repository.parts.create({
+        sessionId: part.sessionId,
+        runId: part.runId,
+        messageId: part.messageId,
+        kind: part.kind as never,
+        sequence: part.sequence,
+        text: part.text,
+        data: part.data,
+        createdAt: part.createdAt,
+      })
+    },
+    updateMessagePart(update) {
+      return input.repository.parts.updateContent(update)
+    },
+    transitionRunToRunning(runId) {
+      return input.session.transitionToRunning(runId)
+    },
+    completeRun(runId) {
+      return input.session.complete(runId)
+    },
+    failRun(run) {
+      return input.session.fail(run)
+    },
+    cancelRun(runId) {
+      return input.session.cancel(runId)
+    },
+  }
+}
+
+function createPermissionPort(input: {
+  repository: PermissionRepository
+  session: ReturnType<typeof createPermissionSessionPort>
+  now: () => number
+}): OrchestrationPermissionPort {
+  const permissionsApi = createPermissionRuntimeApi({
+    repository: input.repository,
+    session: input.session,
+    now: input.now,
+  })
+
+  return {
+    createCoordinator: permissionsApi.createCoordinator,
+    getPermissionRequest: permissionsApi.getPermissionRequest,
+    requestPermission: permissionsApi.requestPermission,
+    respondPermission: permissionsApi.respondPermission,
+    cancelPendingRequestsByRun: permissionsApi.cancelPendingRequestsByRun,
+  }
+}
+
+function createToolPortFactory(): OrchestrationToolPortFactory {
+  return {
+    create(input) {
+      return createToolProvider({
+        requestPermission(request) {
+          return input.requestPermission(request)
+        },
+      })
+    },
+  }
+}
+
+function createPermissionSessionPort(input: {
+  repository: StorageRepository
+  session: Pick<SessionProvider["runs"], "transitionToRunning">
+}) {
+  return {
+    getRun(runId: string) {
+      return input.repository.runs.get(runId)
+    },
+    transitionRunToWaitingPermission(runId: string) {
+      const run = input.repository.runs.get(runId)
+      assertRunStatusTransition(run, "waiting_permission")
+      return input.repository.runs.updateStatus({
+        runId,
+        status: "waiting_permission",
+      })
+    },
+    transitionRunToRunning(runId: string) {
+      return input.session.transitionToRunning(runId)
+    },
+  }
+}
+
+function withDatabaseCleanup(handle: RunHandle, cleanup: () => void): RunHandle {
+  let cleaned = false
+
+  function close() {
+    if (cleaned) {
+      return
+    }
+
+    cleaned = true
+    cleanup()
+  }
+
+  return {
+    events: (async function* () {
+      try {
+        for await (const event of handle.events) {
+          yield event
+        }
+      } finally {
+        close()
+      }
+    })(),
+    cancel() {
+      handle.cancel()
+    },
+    respondPermission(response: PermissionResponse) {
+      handle.respondPermission(response)
+    },
+  }
+}

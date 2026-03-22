@@ -4,13 +4,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
-  createConversationRepository,
-  openConversationDatabase,
-} from "../../src/conversation/repo"
+  createSessionRepository,
+  openSessionDatabase,
+} from "../../src/session"
 import {
   PermissionNotFoundError,
   createPermissionRepository,
-} from "../../src/permission/repo"
+} from "../../src/permission"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -110,11 +110,11 @@ describe("permission repository", () => {
 })
 
 function createTestSubject(prefix: string) {
-  const database = openConversationDatabase(createDatabasePath(prefix))
+  const database = openSessionDatabase(createDatabasePath(prefix))
   trackDatabase(database)
 
   return {
-    conversationRepository: createConversationRepository({ database }),
+    conversationRepository: createSessionRepository({ database }),
     permissionRepository: createPermissionRepository({ database }),
   }
 }

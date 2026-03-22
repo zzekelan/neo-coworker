@@ -3,15 +3,15 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { createServer as createNetServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { resolveAgentServerOrigin } from "../../src/wiring/main"
+import { resolveAgentServerOrigin } from "../../src/bootstrap"
 import {
   getDefaultStandaloneServerStoragePath,
   resolveStandaloneServerConfig,
-} from "../../src/wiring/server-main"
+} from "../../src/app-server"
 import {
-  CURRENT_CONVERSATION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
-  openConversationDatabase as openStorageDatabase,
-} from "../../src/conversation/repo"
+  CURRENT_SESSION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
+  openSessionDatabase as openStorageDatabase,
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const activeProcesses: Bun.Subprocess[] = []
@@ -147,7 +147,7 @@ describe("server main entrypoint", () => {
 
 function spawnServerMain(overrides: Record<string, string>) {
   const subprocess = Bun.spawn({
-    cmd: ["bun", "run", "src/wiring/server-main.ts"],
+    cmd: ["bun", "run", "src/app-server/main.ts"],
     cwd: globalThis.process.cwd(),
     env: buildLoopbackEnv(overrides),
     stdout: "pipe",

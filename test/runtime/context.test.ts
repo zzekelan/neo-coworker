@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildModelTurnInput, buildTranscriptMessages } from "../../src/model/service/projection"
+import { buildModelTurnInput, buildTranscriptMessages } from "../../src/model"
 
 describe("context builder", () => {
   test("injects system prompt, active skills, tool names, and transcript", () => {

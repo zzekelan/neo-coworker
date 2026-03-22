@@ -2,26 +2,26 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { access, cp, mkdir, mkdtemp, rm, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createConversationRunService as createSessionRunService } from "../../src/conversation/service"
+import { createSessionRunService } from "../../src/session"
 import {
   createModelRuntimeApi,
   type ProviderEvent,
   type ProviderTurnRequest,
-} from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model/wiring/provider"
-import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
-import { createRuntime } from "../../src/orchestration/wiring/server"
+  createModelProvider,
+} from "../../src/model"
+import type { OrchestrationModelPort } from "../../src/orchestration"
+import { createRuntime } from "../../src/bootstrap"
 import {
   PermissionNotFoundError,
   createPermissionRepository,
   type PermissionRepository,
   type PermissionResponse,
-} from "../../src/permission/repo"
+} from "../../src/permission"
 import {
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-  type ConversationRepository as StorageRepository,
-} from "../../src/conversation/repo"
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+  type SessionRepository as StorageRepository,
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

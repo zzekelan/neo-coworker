@@ -5,6 +5,7 @@ Architecture rules live in `docs/ARCHITECTURE.md`.
 Quality invariants capture the stable naming, boundary, and reliability rules that are specific to this repo's failure modes.
 
 Current blocking structure checks run through `bun run test:structure`.
+The blocking structure suite now enforces the final architecture directly, with an expected empty baseline.
 
 ## Enforcement Levels
 
@@ -14,20 +15,35 @@ Current blocking structure checks run through `bun run test:structure`.
 
 ## Invariants
 
-### INV-STRUCTURE-001: Approved Domain Layer Names
+### INV-STRUCTURE-001: Approved Module Role Layouts
 
 - ID: `INV-STRUCTURE-001`
-- Title: Approved Domain Layer Names
+- Title: Approved Module Role Layouts
 - Class: `architecture`
-- Scope: `src/<domain>/**`
-- Rule: Core domain code may only live under `types`, `config`, `repo`, `ports`, `service`, or `runtime`, plus a root `index.ts`. Domain-local `wiring/*` is tracked debt, not an approved target pattern for new code.
-- Why this repo requires it: this repo depends on predictable directory roles and a single public exit per domain so a coding agent can navigate, place code, and obey import checks mechanically. Ad-hoc layer names or domain-local assembly layers hide intent and create new side doors around the architecture map.
+- Scope: `src/**`
+- Rule: `session`, `permission`, `model`, and `tool` are capability modules and may only target `public`, `application`, `domain`, and `infrastructure`, plus a root `index.ts`. `orchestration` is a coordinator module and may only target `public`, `application`, and `infrastructure`, plus a root `index.ts`. `application/ports/` is optional and means outbound dependency contracts only. `kernel` may only target `contracts/` plus a root `index.ts`. Infrastructure may contain semantically-owned subroles such as `adapters`, `runtime`, or module-specific technical subroles like `builtins`, but modules are not forced to create a fixed infrastructure template. Retired directories such as `types`, `config`, `repo`, `ports`, `service`, `runtime`, and module-local `wiring` are forbidden target patterns for code in this architecture. Defaults and policy values follow semantic owner placement instead of a standalone `config/` layer.
+- Why this repo requires it: this repo depends on predictable module roles so a coding agent can place code, infer ownership, and obey import checks mechanically. Reusing the old six-layer template as a fallback would keep public boundaries muddy and recreate the ladder-export pressure this refactor is removing.
 - Enforcement: `blocking` via `bun run test:structure`
 - Severity: `error`
-- Bad example: `src/conversation/wiring/provider.ts`
-- Good example: `src/conversation/service/run.ts`
-- Remediation: move the file into an approved layer, add the missing root `index.ts` when a domain lacks one, or relocate true composition code into an outer-shell top-level. Update `docs/ARCHITECTURE.md`, this file, and the structure checks in the same change only if the architecture has genuinely changed.
-- Source: `docs/ARCHITECTURE.md#domain-layers`, `docs/plans/2026-03-17-agent-collaboration-harness-design.md`
+- Bad example: `src/session/wiring/provider.ts`
+- Good example: a migrated capability-module file such as `src/session/application/start-run.ts`
+- Remediation: move the file into the approved layout for its module role, place defaults and policies with their semantic owner, and remove retired directories from live module structures.
+- Source: `docs/ARCHITECTURE.md#top-level-map`, `docs/ARCHITECTURE.md#module-layouts`, `docs/ARCHITECTURE.md#placement-guide`, `docs/plans/2026-03-21-module-boundary-reframe-design.md`, `docs/plans/2026-03-22-infrastructure-semantics-reframe-design.md`
+
+### INV-STRUCTURE-002: Shared Kernel Stays Narrow
+
+- ID: `INV-STRUCTURE-002`
+- Title: Shared Kernel Stays Narrow
+- Class: `architecture`
+- Scope: `src/kernel/**`
+- Rule: `kernel` may expose only truly global, stable, non-business contracts under `contracts/` and its root `index.ts`. It must not become a shared-types bucket for module-owned business types, runtime events, defaults, or policies.
+- Why this repo requires it: once a generic shared bucket appears, ownership erodes quickly and capability boundaries stop being mechanically enforceable. The shared kernel is allowed only as a narrow exception for contracts that genuinely have no single-module owner.
+- Enforcement: `blocking` via `bun run test:structure`
+- Severity: `error`
+- Bad example: `src/kernel/contracts/run-status.ts`
+- Good example: `src/kernel/contracts/clock.ts`
+- Remediation: move module-owned concepts back into the owning capability or coordinator module and keep `kernel` limited to small global contracts.
+- Source: `docs/ARCHITECTURE.md#top-level-map`, `docs/ARCHITECTURE.md#module-layouts`, `docs/plans/2026-03-21-module-boundary-reframe-design.md`
 
 ### INV-BOUNDARY-001: Public Adapters Map Explicit Errors
 
@@ -44,6 +60,51 @@ Current blocking structure checks run through `bun run test:structure`.
 - Remediation: classify the failure at the adapter boundary and map it to the adapter contract before the error crosses the transport.
 - Source: `docs/project-rules/coworker-coding-rules.md` rule 7, `test/server/http-api-and-sse.test.ts`
 
+### INV-BOUNDARY-002: Public Module Exits And Composition Stay Explicit
+
+- ID: `INV-BOUNDARY-002`
+- Title: Public Module Exits And Composition Stay Explicit
+- Class: `boundary`
+- Scope: module root exports, shell imports, and cross-module composition
+- Rule: root `index.ts` is the single public module exit. Capability and coordinator roots re-export only from `public/`, and `kernel` re-exports only from `contracts/`. `public/` is the module-owned public boundary layer and may expose application contracts plus stable infrastructure-backed factories or adapters that are intentionally public. Compatibility bridge barrels such as `public.ts`, `compat.ts`, and multi-hop re-export ladders are forbidden. `bootstrap` may import capability and coordinator modules only through `src/<module>/index.ts`; non-`bootstrap` shell modules may import only `src/bootstrap/index.ts` and `src/kernel/index.ts` across module boundaries.
+- Why this repo requires it: this repo is refactoring toward explicit module boundaries. If public exports leak through internal ladders or shell code keeps reaching into internals, the module taxonomy becomes nominal only and later tasks cannot tighten the structure suite without blocking on new ambiguity.
+- Enforcement: `blocking` via `bun run test:structure`
+- Severity: `error`
+- Bad example: `src/app-server/app.ts` importing `src/session/repo/index.ts`
+- Good example: `src/bootstrap/runtime.ts` importing `src/orchestration/index.ts`
+- Remediation: publish the needed capability through the target module's `public/`, import it in `bootstrap` through its root `index.ts`, and keep non-`bootstrap` shells dependent on `src/bootstrap/index.ts` plus `src/kernel/index.ts` only.
+- Source: `docs/ARCHITECTURE.md#cross-module-boundaries`, `docs/ARCHITECTURE.md#public-export-contract`, `docs/plans/2026-03-21-module-boundary-reframe-design.md`
+
+### INV-BOUNDARY-003: Adapter Subroles Depend On Precise Ports
+
+- ID: `INV-BOUNDARY-003`
+- Title: Adapter Subroles Depend On Precise Ports
+- Class: `architecture`
+- Scope: `src/**/infrastructure/adapters/**/*`
+- Rule: files under `infrastructure/adapters/` implement precise application-owned outbound dependency contracts. They may depend on `application/ports/*`, necessary module-owned `domain/*` contracts, `src/kernel/index.ts`, same-layer infrastructure helpers, and external/platform APIs. They must not depend directly on application workflows, mixed application barrels, or public-boundary files.
+- Why this repo requires it: this repo uses `infrastructure` for both strict adapters and runtime machinery. Without a stricter rule for true adapters, mixed application barrels become catch-all contract sources and later migrations cannot make semantic ownership mechanical.
+- Enforcement: `blocking` via `bun run test:structure` for direct application-workflow imports, plus `review-required` for helper semantics that are too transitive for a cheap structure check.
+- Severity: `error`
+- Bad example: `src/model/infrastructure/adapters/openai.ts` importing `../application/runtime-api`
+- Good example: `src/model/infrastructure/adapters/openai.ts` importing `../application/ports/provider`
+- Remediation: define or use a precise application port, keep runtime assembly outside the adapter file, and stop routing adapter contracts through mixed application barrels.
+- Source: `docs/ARCHITECTURE.md#module-layouts`, `docs/ARCHITECTURE.md#internal-module-boundaries`, `docs/plans/2026-03-22-infrastructure-semantics-reframe-design.md`
+
+### INV-BOUNDARY-004: Runtime Machinery Contracts Stay With Runtime Owners
+
+- ID: `INV-BOUNDARY-004`
+- Title: Runtime Machinery Contracts Stay With Runtime Owners
+- Class: `architecture`
+- Scope: `src/**/application/**`, `src/**/infrastructure/runtime/**`
+- Rule: machinery-only contracts such as queue handles, active registries, pending maps, suspension controllers, and loop-driver inputs belong with the owning `infrastructure/runtime/` machinery rather than in `application`. `application` keeps use-case semantics, policies, ports, and application-owned handles/contracts.
+- Why this repo requires it: the current failure mode in this repo is not only illegal import direction; it is mixed ownership inside legal directions. If machinery contracts stay in `application`, files like `application/runtime-api.ts` keep turning into catch-all barrels and later boundary tightening cannot stay stable.
+- Enforcement: `review-required`
+- Severity: `error`
+- Bad example: `src/orchestration/application/runtime-api.ts` exporting active-run registry or suspension machinery contracts
+- Good example: `src/orchestration/infrastructure/runtime/active-run-registry.ts`
+- Remediation: move the contract next to the runtime machinery that owns it, or define a smaller application-owned contract if application semantics genuinely need a stable handle.
+- Source: `docs/ARCHITECTURE.md#module-layouts`, `docs/ARCHITECTURE.md#internal-module-boundaries`, `docs/plans/2026-03-22-infrastructure-semantics-reframe-design.md`
+
 ### INV-RELIABILITY-001: Scope-Bearing Config Values Preserve Semantics
 
 - ID: `INV-RELIABILITY-001`
@@ -55,7 +116,7 @@ Current blocking structure checks run through `bun run test:structure`.
 - Enforcement: `test` plus `review-required`
 - Severity: `error`
 - Bad example: accepting `AGENT_SERVER_URL=http://host/prefix` and silently discarding `/prefix`
-- Good example: `src/wiring/main.ts` rejects `AGENT_SERVER_URL` values that include path, query, or hash
+- Good example: `src/bootstrap/provider.ts` rejects `AGENT_SERVER_URL` values that include path, query, or hash
 - Remediation: either carry the scope-bearing value through the full contract or fail fast with an explicit setup error.
 - Source: `docs/project-rules/coworker-coding-rules.md` rule 8, `test/server/server-main.test.ts`
 

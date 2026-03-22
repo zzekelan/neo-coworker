@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run src/wiring/main.ts",
-    "server": "bun run src/wiring/server-main.ts",
+    "dev": "bun run src/cli/main.ts",
+    "server": "bun run src/app-server/main.ts",
     "test:structure": "bun test test/structure",
     "test": "bun test"
   },

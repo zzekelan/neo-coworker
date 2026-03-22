@@ -4,10 +4,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
-  CONVERSATION_TABLES as STORAGE_TABLES,
-  CURRENT_CONVERSATION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
-  openConversationDatabase as openStorageDatabase,
-} from "../../src/conversation/repo"
+  SESSION_TABLES as STORAGE_TABLES,
+  CURRENT_SESSION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
+  openSessionDatabase as openStorageDatabase,
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

@@ -6,12 +6,12 @@ import { join } from "node:path"
 import {
   InvalidRunStatusTransitionError,
   SessionBusyError,
-  createConversationRunService as createSessionRunService,
-} from "../../src/conversation/service"
+  createSessionRunService,
+} from "../../src/session"
 import {
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-} from "../../src/conversation/repo"
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []

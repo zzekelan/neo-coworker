@@ -7,16 +7,17 @@ import {
   createModelRuntimeApi,
   type ProviderEvent,
   type ProviderTurnRequest,
-} from "../../src/model/runtime/api"
-import { createModelProvider } from "../../src/model/wiring/provider"
-import type { OrchestrationModelPort } from "../../src/orchestration/ports/model"
-import { createPermissionRepository } from "../../src/permission/repo"
-import { createAgentServerClient, runCli } from "../../src/orchestration/wiring/cli"
-import { createAgentServer } from "../../src/orchestration/wiring/server"
+  createModelProvider,
+} from "../../src/model"
+import type { OrchestrationModelPort } from "../../src/orchestration"
+import { createPermissionRepository } from "../../src/permission"
+import { createAgentServerClient, runCli } from "../../src/cli"
+import { createAgentServer } from "../../src/app-server"
+import { createRuntime } from "../../src/bootstrap"
 import {
-  createConversationRepository as createStorageRepository,
-  openConversationDatabase as openStorageDatabase,
-} from "../../src/conversation/repo"
+  createSessionRepository as createStorageRepository,
+  openSessionDatabase as openStorageDatabase,
+} from "../../src/session"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -667,11 +668,18 @@ async function createHarness(
     database,
   })
   const server = createAgentServer({
-    provider,
+    createRuntimeImpl(runtimeInput) {
+      return createRuntime({
+        provider,
+        repository: runtimeInput.repository,
+        permissionRepository: runtimeInput.permissionRepository,
+        permissionPolicy: options.permissionPolicy,
+        now: runtimeInput.now,
+      })
+    },
     repository,
     permissionRepository,
     heartbeatIntervalMs: 15,
-    permissionPolicy: options.permissionPolicy,
   })
   activeServers.push(server)
 
