@@ -85,6 +85,9 @@ export async function createStandaloneServerComposition(input: {
       repository,
       permissionRepository,
       observabilityRepository,
+      exportRunTrace(runId: string) {
+        return observability.exportRunTrace(runId)
+      },
       createRuntimeImpl(runtimeInput: {
         repository: SessionRepository
         permissionRepository: PermissionRepository
@@ -107,6 +110,7 @@ export async function createStandaloneServerComposition(input: {
       repository: SessionRepository
       permissionRepository: PermissionRepository
       observabilityRepository: ObservabilityRepository
+      exportRunTrace(runId: string): ReturnType<typeof observability.exportRunTrace>
       createRuntimeImpl(input: {
         repository: SessionRepository
         permissionRepository: PermissionRepository

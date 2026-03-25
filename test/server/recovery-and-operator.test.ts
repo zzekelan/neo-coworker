@@ -12,7 +12,11 @@ import {
 import type { OrchestrationModelPort } from "../../src/orchestration"
 import { createPermissionRepository } from "../../src/permission"
 import { createAgentServer } from "../../src/app-server"
-import { createRuntime } from "../../src/bootstrap"
+import {
+  createObservabilityRepository,
+  createObservabilityRuntimeApi,
+  createRuntime,
+} from "../../src/bootstrap"
 import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,
@@ -137,6 +141,18 @@ describe("server recovery and operator errors", () => {
       status: "failed",
       errorText: "provider exploded after restart coverage",
     })
+
+    const completedTrace = await requestJson(harness.server, "GET", `/runs/${firstRunId}/trace`)
+    expect(completedTrace.status).toBe(200)
+    expect(
+      completedTrace.body.data.trace.events.map((event: { eventType: string }) => event.eventType),
+    ).toEqual(expect.arrayContaining(["run.started", "run.completed"]))
+
+    const failedTrace = await requestJson(harness.server, "GET", `/runs/${secondRunId}/trace`)
+    expect(failedTrace.status).toBe(200)
+    expect(
+      failedTrace.body.data.trace.events.map((event: { eventType: string }) => event.eventType),
+    ).toEqual(expect.arrayContaining(["run.started", "run.failed"]))
   })
 
   test("restart keeps a cancelled run cancelled instead of surfacing it as completed", async () => {
@@ -199,6 +215,12 @@ describe("server recovery and operator errors", () => {
         parts: [{ kind: "text", text: "Partial output before cancel." }],
       },
     ])
+
+    const cancelledTrace = await requestJson(harness.server, "GET", `/runs/${runId}/trace`)
+    expect(cancelledTrace.status).toBe(200)
+    expect(
+      cancelledTrace.body.data.trace.events.map((event: { eventType: string }) => event.eventType),
+    ).toEqual(expect.arrayContaining(["run.started", "run.cancelled"]))
   })
 
   test("stop cancels an active run before shutdown closes storage", async () => {
@@ -474,18 +496,28 @@ async function createHarness(
     database: connection,
     now,
   })
+  const observabilityRepository = createObservabilityRepository({
+    database: connection,
+    now,
+  })
+  const observability = createObservabilityRuntimeApi({
+    repository: observabilityRepository,
+    now,
+  })
   const server = createAgentServer({
     createRuntimeImpl(runtimeInput) {
       return createRuntime({
         provider,
         repository: runtimeInput.repository,
         permissionRepository: runtimeInput.permissionRepository,
+        observability,
         permissionPolicy: options.permissionPolicy,
         now: runtimeInput.now,
       })
     },
     repository,
     permissionRepository,
+    exportRunTraceImpl: observability.exportRunTrace,
     now,
   })
   activeServers.push(server)
@@ -520,6 +552,14 @@ async function restartHarness(harness: {
     database: reopenedConnection,
     now: harness.now,
   })
+  const reopenedObservabilityRepository = createObservabilityRepository({
+    database: reopenedConnection,
+    now: harness.now,
+  })
+  const reopenedObservability = createObservabilityRuntimeApi({
+    repository: reopenedObservabilityRepository,
+    now: harness.now,
+  })
   const provider = createTurnProvider([])
   const reopenedServer = createAgentServer({
     createRuntimeImpl(runtimeInput) {
@@ -527,11 +567,13 @@ async function restartHarness(harness: {
         provider,
         repository: runtimeInput.repository,
         permissionRepository: runtimeInput.permissionRepository,
+        observability: reopenedObservability,
         now: runtimeInput.now,
       })
     },
     repository: reopenedRepository,
     permissionRepository: reopenedPermissionRepository,
+    exportRunTraceImpl: reopenedObservability.exportRunTrace,
     now: harness.now,
   })
   activeServers.push(reopenedServer)

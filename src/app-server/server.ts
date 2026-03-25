@@ -16,6 +16,7 @@ import {
   SessionNotFoundError as StorageNotFoundError,
   StartRunIdentityConflictError,
   type PermissionRepository,
+  RunTraceNotFoundError,
   type SessionRepository as StorageRepository,
 } from "../bootstrap"
 import { serializeSseEvent } from "./events"
@@ -45,6 +46,7 @@ export function createAgentServer(input: {
   createRuntimeImpl: CreateServerAppRuntime
   repository: StorageRepository
   permissionRepository: PermissionRepository
+  exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
   now?: () => number
   heartbeatIntervalMs?: number
 }) {
@@ -54,6 +56,7 @@ export function createAgentServer(input: {
     createRuntimeImpl: input.createRuntimeImpl,
     repository: input.repository,
     permissionRepository: input.permissionRepository,
+    exportRunTraceImpl: input.exportRunTraceImpl,
     now,
   })
   let server: ServerInstance | null = null
@@ -140,6 +143,15 @@ export function createAgentServer(input: {
       if (request.method === "GET" && runMatch) {
         return jsonResponse(200, {
           data: app.runs.get(runMatch.runId),
+        })
+      }
+
+      const runTraceMatch = matchPath(path, ["runs", ":runId", "trace"])
+      if (request.method === "GET" && runTraceMatch) {
+        return jsonResponse(200, {
+          data: {
+            trace: app.runs.trace(runTraceMatch.runId),
+          },
         })
       }
 
@@ -346,7 +358,11 @@ function errorResponse(status: number, code: string, message: string) {
 }
 
 function mapHttpError(error: unknown) {
-  if (error instanceof StorageNotFoundError || error instanceof PermissionNotFoundError) {
+  if (
+    error instanceof StorageNotFoundError ||
+    error instanceof PermissionNotFoundError ||
+    error instanceof RunTraceNotFoundError
+  ) {
     return {
       status: 404,
       code: "not_found",

@@ -9,6 +9,7 @@ import {
   type StoredSession,
 } from "../session"
 import { type OrchestrationRuntimeApi } from "../orchestration"
+import type { ExportedRunTrace } from "../observability"
 import type {
   PermissionRepository,
   PermissionResponse,
@@ -386,10 +387,18 @@ export class ServerShuttingDownError extends Error {
   }
 }
 
+export class RunTraceNotFoundError extends Error {
+  constructor(runId: string) {
+    super(`Run trace ${runId} was not found`)
+    this.name = "RunTraceNotFoundError"
+  }
+}
+
 export function createServerApp(input: {
   repository: StorageRepository
   permissionRepository: PermissionRepository
   createRuntimeImpl: CreateServerAppRuntime
+  exportRunTraceImpl?: (runId: string) => ExportedRunTrace | null
   now?: () => number
 }) {
   const now = input.now ?? Date.now
@@ -504,6 +513,16 @@ export function createServerApp(input: {
         assertRunStatusTransition(run, "cancelled")
         runtime.cancelRun(runId)
         return repository.runs.get(runId)
+      },
+      trace(runId: string) {
+        repository.runs.get(runId)
+        const trace = input.exportRunTraceImpl?.(runId) ?? null
+
+        if (!trace) {
+          throw new RunTraceNotFoundError(runId)
+        }
+
+        return trace
       },
     },
     permissions: {

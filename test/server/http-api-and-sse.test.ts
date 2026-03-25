@@ -12,7 +12,11 @@ import {
 import type { OrchestrationModelPort } from "../../src/orchestration"
 import { createPermissionRepository } from "../../src/permission"
 import { createAgentServer } from "../../src/app-server"
-import { createRuntime } from "../../src/bootstrap"
+import {
+  createObservabilityRepository,
+  createObservabilityRuntimeApi,
+  createRuntime,
+} from "../../src/bootstrap"
 import {
   type SessionRepository,
   createSessionRepository as createStorageRepository,
@@ -119,6 +123,51 @@ describe("server HTTP API and SSE", () => {
         parts: [{ kind: "text", text: "Server says hi." }],
       },
     ])
+  })
+
+  test("exports a completed run trace over HTTP", async () => {
+    const harness = await createHarness("server-http-trace", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_read",
+          name: "read",
+          inputText: '{"path":"placeholder.txt"}',
+        }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Trace export ready." }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Read placeholder.txt",
+      },
+    )
+    const runId = startedRun.body.data.run.id as string
+
+    await waitForRunStatus(harness.server, runId, "completed")
+
+    const exportedTrace = await requestJson(harness.server, "GET", `/runs/${runId}/trace`)
+    expect(exportedTrace.status).toBe(200)
+    expect(exportedTrace.body.data.trace).toMatchObject({
+      sessionId,
+      runId,
+    })
+    expect(
+      exportedTrace.body.data.trace.events.map((event: { eventType: string }) => event.eventType),
+    ).toEqual(
+      expect.arrayContaining(["run.started", "tool.call.completed", "run.completed"]),
+    )
   })
 
   test("failed prompt persistence does not leave the session busy", async () => {
@@ -608,18 +657,28 @@ async function createHarness(
     database,
     now,
   })
+  const observabilityRepository = createObservabilityRepository({
+    database,
+    now,
+  })
+  const observability = createObservabilityRuntimeApi({
+    repository: observabilityRepository,
+    now,
+  })
   const server = createAgentServer({
     createRuntimeImpl(runtimeInput) {
       return createRuntime({
         provider,
         repository: runtimeInput.repository,
         permissionRepository: runtimeInput.permissionRepository,
+        observability,
         permissionPolicy: options.permissionPolicy,
         now: runtimeInput.now,
       })
     },
     repository,
     permissionRepository,
+    exportRunTraceImpl: observability.exportRunTrace,
     now,
     heartbeatIntervalMs: 15,
   })
