@@ -1,0 +1,37 @@
+{
+  "id": "regression/cancel-after-output",
+  "scenario": "cancel-after-output",
+  "prompt": "Start responding, then cancel the run",
+  "workspaceFixture": "fixtures/workspaces/basic",
+  "control": {
+    "cancelOnRuntimeEventType": "message.delta"
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "run.cancelled"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "cancelled"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "message.delta",
+      "run.cancelled"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.completed",
+      "run.failed"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "read",
+      "write",
+      "edit",
+      "shell"
+    ]
+  }
+}

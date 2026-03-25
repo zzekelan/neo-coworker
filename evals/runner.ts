@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rm } from "node:fs/promises"
+import { cp, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import type { ModelObserverPort, ModelProvider } from "../src/model"
@@ -12,16 +12,27 @@ import {
 } from "../src/bootstrap"
 import { createSessionRuntimeApi } from "../src/session"
 import { EvalRunArtifactSchema, type EvalRunArtifact } from "./schemas/artifact"
+import { gradeOutcomeExpectation, type EvalOutcomeGrade } from "./graders/outcome"
+import { gradeProtocolExpectation, type EvalProtocolGrade } from "./graders/protocol"
 import { gradeTraceExpectation, type EvalTraceGrade } from "./graders/trace"
+import { gradeToolPolicyExpectation, type EvalToolPolicyGrade } from "./graders/tool-policy"
 import { EvalTaskSchema, type EvalTask } from "./schemas/task"
 
 export type EvalProviderFactory = (input: {
   modelObserver?: ModelObserverPort
 }) => ModelProvider
 
+export type EvalRunGrades = {
+  outcome: EvalOutcomeGrade
+  protocol: EvalProtocolGrade
+  toolPolicy: EvalToolPolicyGrade
+  trace: EvalTraceGrade
+}
+
 export type EvalRunResult = {
   artifact: EvalRunArtifact
-  traceGrade: EvalTraceGrade
+  grades: EvalRunGrades
+  pass: boolean
 }
 
 export async function runEvalTask(input: {
@@ -100,11 +111,21 @@ export async function runEvalTask(input: {
     try {
       const runtimeEvents = await collectRuntimeEvents(handle.events, {
         autoReplyPermission: task.autoReplyPermission,
+        cancelOnRuntimeEventType: task.control.cancelOnRuntimeEventType,
+        cancelRun() {
+          handle.cancel()
+        },
         respondPermission(inputValue) {
           handle.respondPermission(inputValue)
         },
       })
       const run = storage.repository.runs.get(started.run.id)
+      const trace = observability?.exportRunTrace(run.id) ?? null
+      const outcome = await buildOutcome({
+        task,
+        workspaceRoot,
+        run,
+      })
 
       const artifact = EvalRunArtifactSchema.parse({
         taskId: task.id,
@@ -114,15 +135,33 @@ export async function runEvalTask(input: {
         runStatus: run.status,
         runtimeEvents,
         transcript: storage.repository.messages.listSessionTranscript(session.id),
-        trace: observability?.exportRunTrace(run.id) ?? null,
+        trace,
+        outcome,
+        metrics: deriveMetrics(trace),
       })
-
-      return {
-        artifact,
-        traceGrade: gradeTraceExpectation({
+      const grades: EvalRunGrades = {
+        outcome: gradeOutcomeExpectation({
+          artifact,
+          expectation: task.outcomeExpectation,
+        }),
+        protocol: gradeProtocolExpectation({
+          artifact,
+          expectation: task.protocolExpectation,
+        }),
+        toolPolicy: gradeToolPolicyExpectation({
+          artifact,
+          expectation: task.toolPolicyExpectation,
+        }),
+        trace: gradeTraceExpectation({
           artifact,
           expectation: task.traceExpectation,
         }),
+      }
+
+      return {
+        artifact,
+        grades,
+        pass: Object.values(grades).every((grade) => grade.pass),
       }
     } catch (error) {
       await cancelEvalRun({
@@ -159,10 +198,13 @@ async function collectRuntimeEvents(
   events: AsyncIterable<unknown>,
   input: {
     autoReplyPermission?: "allow" | "deny"
+    cancelOnRuntimeEventType?: string
+    cancelRun?(): void
     respondPermission(input: { requestId: string; decision: "allow" | "deny" }): void
   },
 ) {
   const collected: Array<{ type: string }> = []
+  let cancelRequested = false
 
   for await (const rawEvent of events) {
     if (
@@ -174,6 +216,15 @@ async function collectRuntimeEvents(
       collected.push({
         type: rawEvent.type,
       })
+
+      if (
+        !cancelRequested &&
+        input.cancelOnRuntimeEventType &&
+        rawEvent.type === input.cancelOnRuntimeEventType
+      ) {
+        cancelRequested = true
+        input.cancelRun?.()
+      }
 
       if (
         rawEvent.type === "permission.requested" &&
@@ -218,5 +269,73 @@ async function cancelEvalRun(input: {
     }
 
     await Bun.sleep(0)
+  }
+}
+
+async function buildOutcome(input: {
+  task: EvalTask
+  workspaceRoot: string
+  run: {
+    status: EvalRunArtifact["runStatus"]
+    errorText: string | null
+  }
+}) {
+  return {
+    runStatus: input.run.status,
+    errorText: input.run.errorText,
+    watchedFiles: await Promise.all(
+      input.task.outcomeExpectation.watchedFiles.map(async (fileExpectation) =>
+        readObservedFile(input.workspaceRoot, fileExpectation.path),
+      ),
+    ),
+  }
+}
+
+async function readObservedFile(workspaceRoot: string, relativePath: string) {
+  try {
+    return {
+      path: relativePath,
+      exists: true,
+      content: await readFile(join(workspaceRoot, relativePath), "utf8"),
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        path: relativePath,
+        exists: false,
+        content: null,
+      }
+    }
+
+    throw error
+  }
+}
+
+function deriveMetrics(trace: EvalRunArtifact["trace"]) {
+  const events = trace?.events ?? []
+  const terminalEvent = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.eventType === "run.completed" ||
+        event.eventType === "run.failed" ||
+        event.eventType === "run.cancelled",
+    )
+
+  return {
+    totalRunDurationMs:
+      events.length > 0
+        ? Math.max(events[events.length - 1]!.createdAt - events[0]!.createdAt, 0)
+        : null,
+    modelTurnCount: events.filter((event) => event.eventType === "model.turn.requested").length,
+    toolCallCount: events.filter((event) => event.eventType === "tool.call.completed").length,
+    permissionWaitCount: events.filter((event) => event.eventType === "permission.requested").length,
+    retryCount: events.filter((event) => event.eventType === "model.turn.retrying").length,
+    terminalEventType:
+      terminalEvent?.eventType === "run.completed" ||
+      terminalEvent?.eventType === "run.failed" ||
+      terminalEvent?.eventType === "run.cancelled"
+        ? terminalEvent.eventType
+        : null,
   }
 }

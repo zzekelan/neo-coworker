@@ -1,0 +1,36 @@
+{
+  "id": "regression/retry-recovery",
+  "scenario": "retry-recovery",
+  "prompt": "Recover from a transient provider failure",
+  "workspaceFixture": "fixtures/workspaces/basic",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "model.turn.retrying",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "model.turn.retrying",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "permission.requested",
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "read",
+      "write",
+      "edit",
+      "shell"
+    ]
+  }
+}

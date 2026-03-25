@@ -12,6 +12,11 @@ export type OrchestrationRuntimeEvent =
       text: string
     }
   | {
+      type: "model.turn.retrying"
+      attempt: number
+      error: string
+    }
+  | {
       type: "permission.requested"
       requestId: string
       toolName: string

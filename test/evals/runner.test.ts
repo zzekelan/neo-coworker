@@ -34,6 +34,22 @@ describe("eval runner", () => {
         id: "read-summary",
         prompt: "Read README.md and summarize it",
         workspaceRoot: "test/fixtures/workspaces/read-search",
+        outcomeExpectation: {
+          runStatus: "completed",
+          watchedFiles: [],
+        },
+        protocolExpectation: {
+          requiredRuntimeEventTypes: [
+            "run.started",
+            "tool.call.completed",
+            "run.completed",
+          ],
+          forbiddenRuntimeEventTypes: ["permission.requested", "run.failed", "run.cancelled"],
+        },
+        toolPolicyExpectation: {
+          requiredToolNames: ["read"],
+          forbiddenToolNames: ["write", "edit", "shell"],
+        },
         traceExpectation: {
           requiredEventTypes: [
             "run.started",
@@ -58,10 +74,23 @@ describe("eval runner", () => {
     })
 
     expect(result.artifact.runStatus).toBe("completed")
+    expect(result.artifact.outcome).toMatchObject({
+      runStatus: "completed",
+      errorText: null,
+      watchedFiles: [],
+    })
+    expect(result.artifact.metrics).toMatchObject({
+      modelTurnCount: 2,
+      toolCallCount: 1,
+      permissionWaitCount: 0,
+      retryCount: 0,
+      terminalEventType: "run.completed",
+    })
     expect(result.artifact.trace?.events.map((event) => event.eventType)).toContain(
       "model.turn.requested",
     )
-    expect(result.traceGrade).toEqual({
+    expect(result.pass).toBe(true)
+    expect(result.grades.trace).toEqual({
       pass: true,
       requiredEventTypes: [
         "run.started",
@@ -75,6 +104,9 @@ describe("eval runner", () => {
       ]),
       missingEventTypes: [],
     })
+    expect(result.grades.outcome.pass).toBe(true)
+    expect(result.grades.protocol.pass).toBe(true)
+    expect(result.grades.toolPolicy.pass).toBe(true)
   })
 
   test("cancels the active run when permission requests are not auto-replied", async () => {

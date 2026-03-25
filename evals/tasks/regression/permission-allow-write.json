@@ -1,0 +1,48 @@
+{
+  "id": "regression/permission-allow-write",
+  "scenario": "permission-allow-write",
+  "prompt": "Write notes.txt after permission approval",
+  "workspaceFixture": "fixtures/workspaces/basic",
+  "permissionPolicy": {
+    "write": "ask"
+  },
+  "autoReplyPermission": "allow",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "permission.requested",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed",
+    "watchedFiles": [
+      {
+        "path": "notes.txt",
+        "shouldExist": true,
+        "contentIncludes": "hello from eval allow"
+      }
+    ]
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "permission.requested",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "write"
+    ],
+    "forbiddenToolNames": [
+      "shell"
+    ]
+  }
+}

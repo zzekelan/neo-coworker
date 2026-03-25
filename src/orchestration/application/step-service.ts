@@ -244,6 +244,11 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           void iterator?.return?.()
 
           if (shouldRetryModelRequest({ attempt, sawProviderOutput })) {
+            stepInput.emit({
+              type: "model.turn.retrying",
+              attempt,
+              error: getErrorMessage(error),
+            })
             continue
           }
 

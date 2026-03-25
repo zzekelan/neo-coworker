@@ -1,0 +1,46 @@
+{
+  "id": "regression/permission-deny-write",
+  "scenario": "permission-deny-write",
+  "prompt": "Try to write notes.txt but deny permission",
+  "workspaceFixture": "fixtures/workspaces/basic",
+  "permissionPolicy": {
+    "write": "ask"
+  },
+  "autoReplyPermission": "deny",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "permission.requested",
+      "run.cancelled"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "cancelled",
+    "watchedFiles": [
+      {
+        "path": "notes.txt",
+        "shouldExist": false
+      }
+    ]
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "permission.requested",
+      "run.cancelled"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "tool.call.completed",
+      "run.completed",
+      "run.failed"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "write"
+    ],
+    "forbiddenToolNames": [
+      "shell"
+    ]
+  }
+}

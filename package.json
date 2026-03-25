@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "bun run src/cli/main.ts",
     "server": "bun run src/app-server/main.ts",
+    "eval": "bun run evals/main.ts",
     "test:structure": "bun test test/structure",
     "test": "bun test"
   },

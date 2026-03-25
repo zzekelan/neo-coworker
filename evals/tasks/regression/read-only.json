@@ -1,0 +1,38 @@
+{
+  "id": "regression/read-only",
+  "scenario": "read-only",
+  "prompt": "Read README.md and summarize it",
+  "workspaceFixture": "fixtures/workspaces/basic",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "permission.requested",
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "read"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  }
+}

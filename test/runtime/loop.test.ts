@@ -491,6 +491,7 @@ describe("agent loop", () => {
     expect(activeRunMessages[1]?.parts).toMatchObject([
       { kind: "text", text: "Recovered after retry." },
     ])
+    expect(events.filter((event) => event.type === "model.turn.retrying")).toHaveLength(2)
     expect(events.at(-1)).toMatchObject({
       type: "run.completed",
       runId: started.run.id,
@@ -539,6 +540,7 @@ describe("agent loop", () => {
       text: "provider exploded",
       data: { source: "provider" },
     })
+    expect(events.filter((event) => event.type === "model.turn.retrying")).toHaveLength(2)
     expect(events.at(-1)).toMatchObject({
       type: "run.failed",
       runId: started.run.id,
