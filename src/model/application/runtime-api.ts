@@ -1,7 +1,7 @@
 import {
   projectModelTurn,
 } from "./projection"
-import type { ModelTelemetryPort } from "./ports/telemetry"
+import type { ModelObserverPort } from "./ports/model-observer"
 import type {
   ModelEvent,
   ModelProjectionInput,
@@ -27,7 +27,10 @@ export function createModelRuntimeApi(input: CreateModelRuntimeApiInput) {
 export type ModelRuntimeApi = ReturnType<typeof createModelRuntimeApi>
 
 export type ModelProviderRequest = ModelProjectionInput &
-  Pick<ProviderTurnRequest, "signal">
+  Pick<ProviderTurnRequest, "signal"> & {
+    sessionId?: string
+    runId?: string
+  }
 
 export type ModelProvider = {
   streamTurn(request: ModelProviderRequest): AsyncIterable<ModelEvent>
@@ -35,11 +38,21 @@ export type ModelProvider = {
 
 export function createModelProvider(input: {
   runtime: ModelRuntimeApi
-  telemetry?: ModelTelemetryPort
+  observer?: ModelObserverPort
 }): ModelProvider {
   return {
     streamTurn(request) {
-      input.telemetry?.recordModelEvent?.("model.turn.requested")
+      if (request.sessionId && request.runId) {
+        try {
+          input.observer?.recordModelEvent?.({
+            type: "model.turn.requested",
+            sessionId: request.sessionId,
+            runId: request.runId,
+          })
+        } catch {
+          // Observability must not alter the model request path.
+        }
+      }
       const projected = input.runtime.projectTurn({
         systemPrompt: request.systemPrompt,
         activeSkillInstructions: request.activeSkillInstructions,

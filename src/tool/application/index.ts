@@ -1,4 +1,7 @@
-export type { ToolTelemetryPort } from "./ports/telemetry"
+export type {
+  ToolObserverEvent,
+  ToolObserverPort,
+} from "./ports/tool-observer"
 export {
   SEARCH_MAX_MATCHES,
   SEARCH_SKIPPED_DIRECTORIES,
@@ -25,6 +28,7 @@ export {
 export {
   createToolProviderFromRuntime,
   createToolRuntimeApi,
+  type CreateToolProviderScope,
   type CreateToolProviderFromRuntimeInput,
   type CreateToolRuntimeApiInput,
   type ToolProvider,

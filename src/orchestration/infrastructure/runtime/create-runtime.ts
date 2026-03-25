@@ -10,6 +10,7 @@ import type { OrchestrationSessionPort } from "../../application/ports/session"
 import type {
   OrchestrationToolPortFactory,
 } from "../../application/ports/tool"
+import type { OrchestrationRuntimeObserverPort } from "../../application/ports/runtime-observer"
 import type { OrchestrationPermissionPolicy } from "../../application/permission"
 import {
   type OrchestrationActiveRunRegistry,
@@ -32,6 +33,7 @@ export type CreateOrchestrationRuntimeApiInput = {
   permissionPolicy: OrchestrationPermissionPolicy
   systemPrompt?: string
   now?: () => number
+  runtimeObserver?: OrchestrationRuntimeObserverPort
 }
 
 export type OrchestrationRunInput = {
@@ -118,6 +120,16 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       const queue = createEventQueue<RuntimeEvent>()
       const emit = (event: RuntimeEvent) => {
         queue.push(event)
+        try {
+          input.runtimeObserver?.recordRuntimeEvent?.({
+            sessionId: session.id,
+            runId: runInput.runId,
+            event,
+            occurredAt: now(),
+          })
+        } catch {
+          // Observability must not alter the live event stream.
+        }
       }
       const suspend = createRunSuspension({
         permission: input.permission,
@@ -138,6 +150,8 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         requestPermission(request) {
           return suspend.requestPermission(request)
         },
+        sessionId: session.id,
+        runId: runInput.runId,
       })
 
       void runOrchestrationLoop({

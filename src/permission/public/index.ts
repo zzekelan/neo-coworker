@@ -48,6 +48,7 @@ export function createPermissionRuntimeProvider(input: {
   database: PermissionDatabase
   session: PermissionSessionPort
   now?: () => number
+  observer?: import("../application").PermissionObserverPort
 }) {
   const repository = createPermissionRepository({
     database: input.database,
@@ -57,6 +58,7 @@ export function createPermissionRuntimeProvider(input: {
     repository,
     session: input.session,
     now: input.now,
+    observer: input.observer,
   })
 
   return {

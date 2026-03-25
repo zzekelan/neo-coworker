@@ -15,6 +15,13 @@ import {
   type PermissionRepository,
 } from "../permission"
 import { createToolProvider } from "../tool"
+import {
+  createNoopObservabilityRuntimeApi,
+  createObservabilityRepository,
+  createObservabilityRuntimeApi,
+  type ObservabilityRepository,
+  type ObservabilityRuntimeApi,
+} from "../observability"
 import type {
   OrchestrationModelPort,
   OrchestrationPermissionPort,
@@ -34,6 +41,10 @@ type RuntimeInput = {
   provider: OrchestrationModelPort
   repository: StorageRepository
   permissionRepository: PermissionRepository
+  observability?: Pick<
+    ObservabilityRuntimeApi,
+    "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver"
+  >
   permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
   activeRuns?: OrchestrationActiveRunRegistry
   systemPrompt?: string
@@ -43,9 +54,11 @@ type RuntimeInput = {
 type CliRuntimeInput = Omit<RuntimeInput, "repository" | "permissionRepository"> & {
   createStorageRepositoryImpl?: typeof createStorageRepository
   createPermissionRepositoryImpl?: typeof createPermissionRepository
+  createObservabilityRepositoryImpl?: typeof createObservabilityRepository
   openStorageDatabaseImpl?: typeof openStorageDatabase
   repository?: StorageRepository
   permissionRepository?: PermissionRepository
+  observabilityRepository?: ObservabilityRepository
 }
 
 type CliRunInput = {
@@ -60,6 +73,7 @@ export { PermissionRequestNotAwaitingActiveRuntimeError }
 
 export function createRuntime(input: RuntimeInput) {
   const now = input.now ?? Date.now
+  const observability = input.observability ?? createNoopObservabilityRuntimeApi()
   const sessionProvider = createSessionRuntimeApi({
     repository: input.repository,
     now,
@@ -77,13 +91,17 @@ export function createRuntime(input: RuntimeInput) {
         repository: input.repository,
         session: sessionProvider.runs,
       }),
+      observer: observability.permissionObserver,
       now,
     }),
-    tools: createToolPortFactory(),
+    tools: createToolPortFactory({
+      observer: observability.toolObserver,
+    }),
     activeRuns: input.activeRuns ?? defaultActiveRuns,
     permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
     systemPrompt: input.systemPrompt,
     now,
+    runtimeObserver: observability.runtimeObserver,
   })
 }
 
@@ -96,9 +114,11 @@ export function createCliStorageComposition(input: {
   now?: () => number
   createStorageRepositoryImpl?: typeof createStorageRepository
   createPermissionRepositoryImpl?: typeof createPermissionRepository
+  createObservabilityRepositoryImpl?: typeof createObservabilityRepository
   openStorageDatabaseImpl?: typeof openStorageDatabase
   repository?: StorageRepository
   permissionRepository?: PermissionRepository
+  observabilityRepository?: ObservabilityRepository
 }) {
   const now = input.now ?? Date.now
   const database =
@@ -122,16 +142,26 @@ export function createCliStorageComposition(input: {
       database: database!,
       now,
     })
+  const observabilityRepository =
+    input.observabilityRepository ??
+    (database
+      ? (input.createObservabilityRepositoryImpl ?? createObservabilityRepository)({
+          database,
+          now,
+        })
+      : undefined)
 
   return {
     repository,
     permissionRepository,
+    observabilityRepository,
     close() {
       database?.close(false)
     },
   } satisfies {
     repository: StorageRepository
     permissionRepository: PermissionRepository
+    observabilityRepository?: ObservabilityRepository
     close(): void
   }
 }
@@ -152,6 +182,12 @@ export function createCliRuntime(input: CliRuntimeInput) {
       })
       const repository = storage.repository
       const permissionRepository = storage.permissionRepository
+      const observability = storage.observabilityRepository
+        ? createObservabilityRuntimeApi({
+            repository: storage.observabilityRepository,
+            now,
+          })
+        : undefined
       const sessionProvider = createSessionRuntimeApi({
         repository,
         now,
@@ -160,6 +196,7 @@ export function createCliRuntime(input: CliRuntimeInput) {
         ...input,
         repository,
         permissionRepository,
+        observability,
         now,
       })
 
@@ -257,11 +294,13 @@ function createSessionPort(input: {
 function createPermissionPort(input: {
   repository: PermissionRepository
   session: ReturnType<typeof createPermissionSessionPort>
+  observer?: Pick<ObservabilityRuntimeApi, "permissionObserver">["permissionObserver"]
   now: () => number
 }): OrchestrationPermissionPort {
   const permissionsApi = createPermissionRuntimeApi({
     repository: input.repository,
     session: input.session,
+    observer: input.observer,
     now: input.now,
   })
 
@@ -274,12 +313,19 @@ function createPermissionPort(input: {
   }
 }
 
-function createToolPortFactory(): OrchestrationToolPortFactory {
+function createToolPortFactory(config: {
+  observer?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
+}): OrchestrationToolPortFactory {
   return {
     create(input) {
       return createToolProvider({
         requestPermission(request) {
           return input.requestPermission(request)
+        },
+        observer: config.observer,
+        scope: {
+          sessionId: input.sessionId,
+          runId: input.runId,
         },
       })
     },

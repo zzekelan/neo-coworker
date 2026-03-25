@@ -31,6 +31,10 @@ export type {
   OrchestrationToolPortFactory,
   RequestOrchestrationToolPermission,
 } from "./ports/tool"
+export type {
+  OrchestrationRuntimeObserverPort,
+  RuntimeObserverEvent,
+} from "./ports/runtime-observer"
 export {
   createOrchestrationStepService,
 } from "./step-service"

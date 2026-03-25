@@ -1,4 +1,7 @@
-export type { ModelTelemetryPort } from "./ports/telemetry"
+export type {
+  ModelObserverEvent,
+  ModelObserverPort,
+} from "./ports/model-observer"
 export type {
   Provider,
   ProviderEvent,

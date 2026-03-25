@@ -7,6 +7,7 @@ import {
 } from "./cli"
 import {
   createDefaultProvider,
+  createObservabilityRuntimeApi,
   createCliStorageComposition,
   createRuntime,
   resolveAgentServerOrigin,
@@ -48,37 +49,60 @@ export function buildCli(input: BuildCliInput = {}) {
         return
       }
 
-      const provider =
-        input.provider ??
-        (await createDefaultProvider({
-          env: input.env,
-          createClient: input.createClient,
-          createOpenAIProviderImpl: input.createOpenAIProviderImpl,
-          createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
-        }))
+      let observability:
+        | ReturnType<typeof createObservabilityRuntimeApi>
+        | undefined
 
-      await runCliImpl({
-        argv,
-        io: input.createIo?.() ?? createStdioCliIo(),
-        provider,
-        createLocalCliServerClientImpl: createLocalCliServerClient,
-        createLocalRuntimeImpl(runtimeInput) {
-          return createRuntime(runtimeInput)
-        },
-        createLocalStorageImpl(workspaceRoot) {
-          const storage = createCliStorageComposition({
-            workspaceRoot,
-          })
+      function getLocalStorage(workspaceRoot: string) {
+        const storage = createCliStorageComposition({
+          workspaceRoot,
+        })
+        observability =
+          observability ??
+          (storage.observabilityRepository
+            ? createObservabilityRuntimeApi({
+                repository: storage.observabilityRepository,
+              })
+            : undefined)
+        return storage
+      }
 
-          return {
-            repository: storage.repository,
-            permissionRepository: storage.permissionRepository,
-            closeImpl() {
-              storage.close()
-            },
-          }
-        },
-      })
+      try {
+        const provider =
+          input.provider ??
+          (await createDefaultProvider({
+            env: input.env,
+            createClient: input.createClient,
+            createOpenAIProviderImpl: input.createOpenAIProviderImpl,
+            createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
+          }))
+
+        await runCliImpl({
+          argv,
+          io: input.createIo?.() ?? createStdioCliIo(),
+          provider,
+          createLocalCliServerClientImpl: createLocalCliServerClient,
+          createLocalRuntimeImpl(runtimeInput) {
+            return createRuntime({
+              ...runtimeInput,
+              observability,
+            })
+          },
+          createLocalStorageImpl(workspaceRoot) {
+            const storage = getLocalStorage(workspaceRoot)
+
+            return {
+              repository: storage.repository,
+              permissionRepository: storage.permissionRepository,
+              closeImpl() {
+                storage.close()
+              },
+            }
+          },
+        })
+      } catch (error) {
+        throw error
+      }
     },
   }
 }

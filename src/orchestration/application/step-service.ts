@@ -194,6 +194,8 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             activeSkillInstructions: [],
             tools: stepInput.tools.list(),
             transcript,
+            sessionId: stepInput.sessionId,
+            runId: stepInput.runId,
             signal: stepInput.signal,
           })
           iterator = modelEvents[Symbol.asyncIterator]()

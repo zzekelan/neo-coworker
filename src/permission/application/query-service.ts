@@ -1,8 +1,11 @@
+import { observePermissionEvent } from "./observe"
+import type { PermissionObserverPort } from "./ports/permission-observer"
 import type { PermissionRepository } from "./ports/repository"
 
 export type CreatePermissionQueryServiceInput = {
   repository: PermissionRepository
   now?: () => number
+  observer?: PermissionObserverPort
 }
 
 export function createPermissionQueryService(input: CreatePermissionQueryServiceInput) {
@@ -17,7 +20,7 @@ export function createPermissionQueryService(input: CreatePermissionQueryService
       return repository.requests.listByRun(runId)
     },
     cancelPendingRequestsByRun(runId: string, resolvedAt: number = now()) {
-      return repository.requests
+      const cancelled = repository.requests
         .listByRun(runId)
         .filter((request) => request.status === "pending")
         .map((request) =>
@@ -27,6 +30,17 @@ export function createPermissionQueryService(input: CreatePermissionQueryService
             resolvedAt,
           }),
         )
+
+      for (const request of cancelled) {
+        observePermissionEvent(input.observer, {
+          type: "permission.cancelled",
+          sessionId: request.sessionId,
+          runId: request.runId,
+          requestId: request.id,
+        })
+      }
+
+      return cancelled
     },
   }
 }

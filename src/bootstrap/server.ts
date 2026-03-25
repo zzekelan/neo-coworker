@@ -5,6 +5,11 @@ import {
   type SessionRepository,
 } from "../session"
 import { createPermissionRepository, type PermissionRepository } from "../permission"
+import {
+  createObservabilityRepository,
+  createObservabilityRuntimeApi,
+  type ObservabilityRepository,
+} from "../observability"
 import { createDefaultProvider } from "./provider"
 import { createRuntime } from "./runtime"
 
@@ -41,14 +46,12 @@ export async function createStandaloneServerComposition(input: {
   openSessionDatabaseImpl?: typeof openSessionDatabase
   createSessionRepositoryImpl?: typeof createSessionRepository
   createPermissionRepositoryImpl?: typeof createPermissionRepository
+  createObservabilityRepositoryImpl?: typeof createObservabilityRepository
   createRuntimeImpl?: typeof createRuntime
 } = {}) {
   const env = input.env ?? process.env
   const now = input.now ?? Date.now
   const config = resolveStandaloneServerConfig(env, input.cwd)
-  const provider = await (input.createDefaultProviderImpl ?? createDefaultProvider)({
-    env,
-  })
   const database = (input.openSessionDatabaseImpl ?? openSessionDatabase)(config.databasePath)
 
   try {
@@ -61,6 +64,19 @@ export async function createStandaloneServerComposition(input: {
         database,
         now,
       })
+    const observabilityRepository =
+      (input.createObservabilityRepositoryImpl ?? createObservabilityRepository)({
+        database,
+        now,
+      })
+    const observability = createObservabilityRuntimeApi({
+      repository: observabilityRepository,
+      now,
+    })
+    const provider = await (input.createDefaultProviderImpl ?? createDefaultProvider)({
+      env,
+      modelObserver: observability.modelObserver,
+    })
     const createRuntimeImpl = input.createRuntimeImpl ?? createRuntime
 
     return {
@@ -68,6 +84,7 @@ export async function createStandaloneServerComposition(input: {
       provider,
       repository,
       permissionRepository,
+      observabilityRepository,
       createRuntimeImpl(runtimeInput: {
         repository: SessionRepository
         permissionRepository: PermissionRepository
@@ -77,6 +94,7 @@ export async function createStandaloneServerComposition(input: {
           provider,
           repository: runtimeInput.repository,
           permissionRepository: runtimeInput.permissionRepository,
+          observability,
           now: runtimeInput.now,
         })
       },
@@ -88,6 +106,7 @@ export async function createStandaloneServerComposition(input: {
       provider: Awaited<ReturnType<typeof createDefaultProvider>>
       repository: SessionRepository
       permissionRepository: PermissionRepository
+      observabilityRepository: ObservabilityRepository
       createRuntimeImpl(input: {
         repository: SessionRepository
         permissionRepository: PermissionRepository

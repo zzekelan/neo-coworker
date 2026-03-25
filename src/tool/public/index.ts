@@ -1,6 +1,7 @@
 import {
+  type CreateToolProviderScope,
+  type ToolObserverPort,
   createToolProviderFromRuntime,
-  type ToolTelemetryPort,
   type ToolProvider,
   type ToolRuntimeApi,
 } from "../application"
@@ -37,7 +38,8 @@ export {
 export function createToolProvider(input: {
   runtime?: ToolRuntimeApi
   requestPermission?: CreateBuiltinToolRuntimeInput["requestPermission"]
-  telemetry?: ToolTelemetryPort
+  observer?: ToolObserverPort
+  scope?: CreateToolProviderScope
 }): ToolProvider {
   const runtime =
     input.runtime ??
@@ -47,6 +49,7 @@ export function createToolProvider(input: {
 
   return createToolProviderFromRuntime({
     runtime,
-    telemetry: input.telemetry,
+    observer: input.observer,
+    scope: input.scope,
   })
 }

@@ -13,7 +13,6 @@ import {
   createPermissionRespondService,
   type CreatePermissionRespondServiceInput,
 } from "../../application/respond-service"
-import type { PermissionTelemetryPort } from "../../application/ports/telemetry"
 import {
   createPermissionCoordinator,
   type PermissionCoordinatorOptions,
@@ -49,8 +48,6 @@ export type PermissionProvider = PermissionRuntimeApi
 
 export function createPermissionProvider(input: {
   runtime: PermissionRuntimeApi
-  telemetry?: PermissionTelemetryPort
 }) {
-  input.telemetry?.recordPermissionEvent?.("permission.provider.created")
   return input.runtime
 }

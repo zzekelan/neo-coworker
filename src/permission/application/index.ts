@@ -1,5 +1,8 @@
 export type { PermissionSessionPort } from "./ports/session"
-export type { PermissionTelemetryPort } from "./ports/telemetry"
+export type {
+  PermissionObserverEvent,
+  PermissionObserverPort,
+} from "./ports/permission-observer"
 export {
   PermissionNotFoundError,
   PermissionRepositoryError,

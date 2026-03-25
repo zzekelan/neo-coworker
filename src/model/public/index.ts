@@ -1,4 +1,5 @@
 import type OpenAI from "openai"
+import type { ModelObserverPort } from "../application"
 import { createModelProvider, createModelRuntimeApi } from "../application/runtime-api"
 import {
   createFakeAdapter,
@@ -36,17 +37,21 @@ export function createOpenAICompatibleProvider(input: {
 export function createOpenAIModelProvider(input: {
   model: string
   client: OpenAI
+  observer?: ModelObserverPort
 }) {
   return createModelProvider({
     runtime: createOpenAIProvider(input),
+    observer: input.observer,
   })
 }
 
 export function createOpenAICompatibleModelProvider(input: {
   model: string
   client: OpenAI
+  observer?: ModelObserverPort
 }) {
   return createModelProvider({
     runtime: createOpenAICompatibleProvider(input),
+    observer: input.observer,
   })
 }

@@ -2,6 +2,7 @@ import OpenAI from "openai"
 import {
   createOpenAICompatibleModelProvider,
   createOpenAIModelProvider,
+  type ModelObserverPort,
   type ModelProvider,
 } from "../model"
 
@@ -19,10 +20,12 @@ type OpenAIClientConfig = Pick<ProviderConfig, "apiKey" | "baseURL" | "timeout">
 type ModelProviderFactory = (input: {
   model: string
   client: OpenAI
+  observer?: ModelObserverPort
 }) => ModelProvider
 
 export type DefaultProviderInput = {
   env?: Record<string, string | undefined>
+  modelObserver?: ModelObserverPort
   createClient?: (config: OpenAIClientConfig) => OpenAI
   createOpenAIProviderImpl?: ModelProviderFactory
   createOpenAICompatibleProviderImpl?: ModelProviderFactory
@@ -145,6 +148,7 @@ export async function createDefaultProvider(
     return createProvider({
       model: config.model,
       client,
+      observer: input.modelObserver,
     })
   }
 
@@ -153,5 +157,6 @@ export async function createDefaultProvider(
   return createProvider({
     model: config.model,
     client,
+    observer: input.modelObserver,
   })
 }

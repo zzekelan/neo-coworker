@@ -6,6 +6,7 @@ export type {
   RunEventSource,
   StoredRunEvent,
 } from "./ports/repository"
+export { RUN_EVENT_SOURCES } from "./ports/repository"
 export {
   createObservabilityRuntimeApi,
   createNoopObservabilityRuntimeApi,

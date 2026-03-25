@@ -1,9 +1,12 @@
+import { observePermissionEvent } from "./observe"
+import type { PermissionObserverPort } from "./ports/permission-observer"
 import type { PermissionSessionPort } from "./ports/session"
 import type { PermissionRepository } from "./ports/repository"
 
 export type CreatePermissionRequestServiceInput = {
   repository: PermissionRepository
   session: PermissionSessionPort
+  observer?: PermissionObserverPort
 }
 
 export function createPermissionRequestService(input: CreatePermissionRequestServiceInput) {
@@ -31,6 +34,14 @@ export function createPermissionRequestService(input: CreatePermissionRequestSer
           createdAt: inputValue.permissionRequest.createdAt,
           status: "pending",
           resolvedAt: null,
+        })
+        observePermissionEvent(input.observer, {
+          type: "permission.requested",
+          sessionId: run.sessionId,
+          runId: run.id,
+          requestId: permissionRequest.id,
+          toolName: permissionRequest.toolName,
+          reason: permissionRequest.reason,
         })
 
         return {

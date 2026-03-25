@@ -6,6 +6,8 @@ export type OrchestrationModelTurnRequest = {
   activeSkillInstructions: string[]
   tools: OrchestrationTool[]
   transcript: OrchestrationTranscriptMessage[]
+  sessionId?: string
+  runId?: string
   signal: AbortSignal
 }
 

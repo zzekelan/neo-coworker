@@ -35,5 +35,7 @@ export type RequestOrchestrationToolPermission = (input: {
 export type OrchestrationToolPortFactory = {
   create(input: {
     requestPermission: RequestOrchestrationToolPermission
+    sessionId: string
+    runId: string
   }): OrchestrationToolPort
 }
