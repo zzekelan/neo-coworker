@@ -2,7 +2,7 @@
   "id": "regression/read-only",
   "scenario": "read-only",
   "prompt": "Read README.md and summarize it",
-  "workspaceFixture": "fixtures/workspaces/basic",
+  "workspaceFixture": "workspaces/basic",
   "traceExpectation": {
     "requiredEventTypes": [
       "run.started",

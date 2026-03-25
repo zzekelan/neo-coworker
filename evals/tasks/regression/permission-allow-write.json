@@ -2,7 +2,7 @@
   "id": "regression/permission-allow-write",
   "scenario": "permission-allow-write",
   "prompt": "Write notes.txt after permission approval",
-  "workspaceFixture": "fixtures/workspaces/basic",
+  "workspaceFixture": "workspaces/basic",
   "permissionPolicy": {
     "write": "ask"
   },

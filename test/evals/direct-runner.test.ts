@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadEvalTasks, runDiscoveredEvalTasks } from "../../evals"
@@ -74,5 +74,51 @@ describe("direct eval runner", () => {
         },
       },
     })
+  })
+
+  test("rejects task workspace fixtures that escape evals/fixtures", async () => {
+    const tasksRoot = await mkdtemp(join(tmpdir(), "eval-task-escape-"))
+    tempDirectories.push(tasksRoot)
+    await mkdir(join(tasksRoot, "regression"), { recursive: true })
+    await writeFile(
+      join(tasksRoot, "regression", "escape.json"),
+      JSON.stringify({
+        id: "regression/escape-fixture",
+        scenario: "read-only",
+        prompt: "escape fixture",
+        workspaceFixture: "../outside",
+      }),
+      "utf8",
+    )
+
+    await expect(
+      loadEvalTasks({
+        tasksRoot,
+      }),
+    ).rejects.toThrow("must stay inside")
+  })
+
+  test("rejects task ids that would escape the artifact output root", async () => {
+    const tasksRoot = await mkdtemp(join(tmpdir(), "eval-task-id-escape-"))
+    const outputRoot = await mkdtemp(join(tmpdir(), "eval-output-escape-"))
+    tempDirectories.push(tasksRoot, outputRoot)
+    await mkdir(join(tasksRoot, "regression"), { recursive: true })
+    await writeFile(
+      join(tasksRoot, "regression", "escape.json"),
+      JSON.stringify({
+        id: "../escape-output",
+        scenario: "read-only",
+        prompt: "escape output",
+        workspaceFixture: "workspaces/basic",
+      }),
+      "utf8",
+    )
+
+    await expect(
+      runDiscoveredEvalTasks({
+        tasksRoot,
+        outputRoot,
+      }),
+    ).rejects.toThrow("unsafe path segment")
   })
 })

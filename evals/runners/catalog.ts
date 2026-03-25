@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises"
-import { resolve, join } from "node:path"
+import { isAbsolute, resolve, join, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
 import { EvalTaskSchema, type EvalTask } from "../schemas/task"
@@ -24,6 +24,10 @@ export function getDefaultEvalTasksRoot() {
   return join(getEvalsRoot(), "tasks")
 }
 
+export function getDefaultEvalFixturesRoot() {
+  return join(getEvalsRoot(), "fixtures")
+}
+
 export function getDefaultEvalOutputRoot(cwd: string = process.cwd()) {
   return join(cwd, ".agents", "evals")
 }
@@ -40,7 +44,7 @@ export async function loadEvalTasks(input: {
       return EvalTaskSchema.parse({
         ...parsed,
         scenario: parsed.scenario,
-        workspaceRoot: resolve(getEvalsRoot(), parsed.workspaceFixture),
+        workspaceRoot: resolveEvalFixturePath(parsed.workspaceFixture),
       }) as DiscoveredEvalTask
     }),
   )
@@ -68,4 +72,19 @@ async function listTaskFiles(root: string): Promise<string[]> {
   }
 
   return files.sort((left, right) => left.localeCompare(right))
+}
+
+function resolveEvalFixturePath(workspaceFixture: string) {
+  if (isAbsolute(workspaceFixture)) {
+    throw new Error("Eval workspaceFixture must be relative to evals/fixtures")
+  }
+
+  const fixturesRoot = resolve(getDefaultEvalFixturesRoot())
+  const fixturePath = resolve(fixturesRoot, workspaceFixture)
+
+  if (fixturePath !== fixturesRoot && !fixturePath.startsWith(`${fixturesRoot}${sep}`)) {
+    throw new Error(`Eval workspaceFixture must stay inside ${fixturesRoot}`)
+  }
+
+  return fixturePath
 }

@@ -2,7 +2,7 @@
   "id": "regression/cancel-after-output",
   "scenario": "cancel-after-output",
   "prompt": "Start responding, then cancel the run",
-  "workspaceFixture": "fixtures/workspaces/basic",
+  "workspaceFixture": "workspaces/basic",
   "control": {
     "cancelOnRuntimeEventType": "message.delta"
   },

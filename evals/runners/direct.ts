@@ -36,6 +36,7 @@ export async function runDiscoveredEvalTasks(input: {
   await mkdir(outputRoot, { recursive: true })
 
   for (const task of selectedTasks) {
+    assertSafeTaskId(task.id)
     const result = await runEvalTask({
       task,
       createProvider: createScriptedEvalProviderFactory(task.scenario),
@@ -166,8 +167,20 @@ function summarizeFailures(result: EvalRunResult) {
 function resolveTaskArtifactDirectory(outputRoot: string, taskId: string) {
   return join(
     outputRoot,
-    ...taskId.split("/").map((segment) => segment.replace(/[^a-zA-Z0-9._-]+/g, "_")),
+    ...taskId
+      .split("/")
+      .map((segment) => {
+        if (!segment || segment === "." || segment === "..") {
+          throw new Error(`Eval task id contains an unsafe path segment: ${taskId}`)
+        }
+
+        return segment.replace(/[^a-zA-Z0-9._-]+/g, "_")
+      }),
   )
+}
+
+function assertSafeTaskId(taskId: string) {
+  resolveTaskArtifactDirectory("_", taskId)
 }
 
 function createRunStamp(now: Date = new Date()) {

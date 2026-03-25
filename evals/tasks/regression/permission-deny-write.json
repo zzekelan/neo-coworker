@@ -2,7 +2,7 @@
   "id": "regression/permission-deny-write",
   "scenario": "permission-deny-write",
   "prompt": "Try to write notes.txt but deny permission",
-  "workspaceFixture": "fixtures/workspaces/basic",
+  "workspaceFixture": "workspaces/basic",
   "permissionPolicy": {
     "write": "ask"
   },

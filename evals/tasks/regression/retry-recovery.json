@@ -2,7 +2,7 @@
   "id": "regression/retry-recovery",
   "scenario": "retry-recovery",
   "prompt": "Recover from a transient provider failure",
-  "workspaceFixture": "fixtures/workspaces/basic",
+  "workspaceFixture": "workspaces/basic",
   "traceExpectation": {
     "requiredEventTypes": [
       "run.started",
