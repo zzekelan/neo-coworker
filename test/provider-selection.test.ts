@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type OpenAI from "openai"
 import { buildCli } from "../src/cli"
+import { getDefaultCliStoragePath, openSessionDatabase } from "../src/bootstrap"
+import {
+  createModelProvider,
+  createModelRuntimeApi,
+} from "../src/model"
+import { createObservabilityRepository } from "../src/observability"
 
 describe("provider selection", () => {
   test("buildCli wires LLM_PROVIDER=openai through the responses adapter", async () => {
@@ -124,5 +133,71 @@ describe("provider selection", () => {
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal: expect.any(AbortSignal) })
+  })
+
+  test("buildCli records local default-provider model events after local storage opens", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "provider-observability-"))
+
+    try {
+      await buildCli({
+        env: {
+          LLM_PROVIDER: "openai",
+          LLM_API_KEY: "test-key",
+          LLM_MODEL: "gpt-5",
+        },
+        createClient() {
+          return {} as OpenAI
+        },
+        createOpenAIProviderImpl(input) {
+          return createModelProvider({
+            observer: input.observer,
+            runtime: createModelRuntimeApi({
+              async *streamTurn() {},
+            }),
+          })
+        },
+        createIo() {
+          return { write() {}, prompt: async () => "y", onSigint() {} }
+        },
+        async runCliImpl(input) {
+          const localStorage = await input.createLocalStorageImpl(workspaceRoot)
+
+          try {
+            for await (const _event of input.provider.streamTurn({
+              systemPrompt: "system",
+              activeSkillInstructions: [],
+              tools: [],
+              transcript: [],
+              signal: new AbortController().signal,
+              sessionId: "session_local_provider",
+              runId: "run_local_provider",
+            })) {
+              // The custom provider emits no model events.
+            }
+          } finally {
+            await localStorage.closeImpl()
+          }
+        },
+      }).run(["run", "hello provider"])
+
+      const database = openSessionDatabase(getDefaultCliStoragePath(workspaceRoot))
+
+      try {
+        const observabilityRepository = createObservabilityRepository({
+          database,
+          now: () => 100,
+        })
+
+        expect(
+          observabilityRepository.runEvents
+            .listByRun("run_local_provider")
+            .map((event) => event.eventType),
+        ).toEqual(["model.turn.requested"])
+      } finally {
+        database.close(false)
+      }
+    } finally {
+      await rm(workspaceRoot, { force: true, recursive: true })
+    }
   })
 })

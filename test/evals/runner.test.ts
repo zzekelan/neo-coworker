@@ -1,8 +1,16 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   runEvalTask,
   type EvalProviderFactory,
 } from "../../evals"
+import {
+  createOrchestrationActiveRunRegistry,
+  createSessionRepository,
+  openSessionDatabase,
+} from "../../src/bootstrap"
 import {
   createModelProvider,
   createModelRuntimeApi,
@@ -10,6 +18,14 @@ import {
   type ProviderEvent,
   type ProviderTurnRequest,
 } from "../../src/model"
+
+const tempDirectories: string[] = []
+
+afterEach(async () => {
+  while (tempDirectories.length > 0) {
+    await rm(tempDirectories.pop()!, { force: true, recursive: true })
+  }
+})
 
 describe("eval runner", () => {
   test("runs the real runtime path and grades exported trace artifacts", async () => {
@@ -59,6 +75,62 @@ describe("eval runner", () => {
       ]),
       missingEventTypes: [],
     })
+  })
+
+  test("cancels the active run when permission requests are not auto-replied", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "eval-runner-permission-"))
+    tempDirectories.push(workspaceRoot)
+    await mkdir(join(workspaceRoot, "src"), { recursive: true })
+
+    const activeRuns = createOrchestrationActiveRunRegistry()
+    let started:
+      | {
+          storageIdentity: string
+          sessionId: string
+          runId: string
+        }
+      | undefined
+
+    await expect(
+      runEvalTask({
+        task: {
+          id: "permission-missing",
+          prompt: "Run pwd",
+          workspaceRoot,
+          copyWorkspace: false,
+        },
+        createProvider: createProviderFactory([
+          async function* () {
+            yield {
+              type: "tool.call",
+              callId: "call_shell",
+              name: "shell",
+              inputText: '{"command":"pwd"}',
+            }
+          },
+        ]),
+        activeRuns,
+        onRunStarted(input) {
+          started = input
+        },
+      }),
+    ).rejects.toThrow("without autoReplyPermission")
+
+    expect(started).toBeDefined()
+    expect(activeRuns.has(started!)).toBe(false)
+
+    const database = openSessionDatabase(started!.storageIdentity)
+
+    try {
+      const repository = createSessionRepository({
+        database,
+        now: () => 100,
+      })
+
+      expect(repository.runs.get(started!.runId).status).toBe("cancelled")
+    } finally {
+      database.close(false)
+    }
   })
 })
 

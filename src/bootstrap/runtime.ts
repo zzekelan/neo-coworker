@@ -176,9 +176,11 @@ export function createCliRuntime(input: CliRuntimeInput) {
         now,
         repository: input.repository,
         permissionRepository: input.permissionRepository,
+        observabilityRepository: input.observabilityRepository,
         openStorageDatabaseImpl: input.openStorageDatabaseImpl,
         createStorageRepositoryImpl: input.createStorageRepositoryImpl,
         createPermissionRepositoryImpl: input.createPermissionRepositoryImpl,
+        createObservabilityRepositoryImpl: input.createObservabilityRepositoryImpl,
       })
       const repository = storage.repository
       const permissionRepository = storage.permissionRepository

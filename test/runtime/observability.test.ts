@@ -153,6 +153,87 @@ describe("runtime observability", () => {
       "permission.responded",
     )
   })
+
+  test("exports persisted traces after reopening the same storage file", async () => {
+    const harness = await createHarness("trace-reopen", true)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_reopen",
+      messageId: "message_trace_reopen",
+      prompt: "Read README.md and summarize it",
+    })
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            yield {
+              type: "tool.call",
+              callId: "call_read_reopen",
+              name: "read",
+              inputText: '{"path":"README.md"}',
+            }
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Summary after reopen." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const initialTrace = harness.observability.exportRunTrace(started.run.id)
+    expect(initialTrace?.events.map((event) => event.eventType)).toEqual([
+      "run.started",
+      "tool.listed",
+      "model.turn.requested",
+      "message.started",
+      "tool.executed",
+      "tool.call.completed",
+      "tool.listed",
+      "model.turn.requested",
+      "message.started",
+      "message.delta",
+      "run.completed",
+    ])
+
+    closeTrackedDatabase(harness.database)
+
+    const reopenedDatabase = openSessionDatabase(harness.databasePath)
+
+    try {
+      const reopenedRepository = createSessionRepository({
+        database: reopenedDatabase,
+        now: harness.now,
+      })
+      const reopenedObservabilityRepository = createObservabilityRepository({
+        database: reopenedDatabase,
+        now: harness.now,
+      })
+      const reopenedObservability = createObservabilityRuntimeApi({
+        repository: reopenedObservabilityRepository,
+        now: harness.now,
+      })
+
+      expect(reopenedRepository.runs.get(started.run.id).status).toBe("completed")
+      expect(
+        reopenedObservability.exportRunTrace(started.run.id)?.events.map((event) => event.eventType),
+      ).toEqual(initialTrace?.events.map((event) => event.eventType))
+    } finally {
+      reopenedDatabase.close(false)
+    }
+  })
 })
 
 async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
@@ -160,6 +241,7 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
   tempDirectories.push(directory)
 
   const workspaceRoot = join(directory, "workspace")
+  const databasePath = join(directory, "agent.sqlite")
   if (withFixtureWorkspace) {
     await cp("test/fixtures/workspaces/read-search", workspaceRoot, { recursive: true })
   } else {
@@ -168,7 +250,7 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
   }
 
   const now = createMonotonicClock()
-  const database = openSessionDatabase(join(directory, "agent.sqlite"))
+  const database = openSessionDatabase(databasePath)
   openDatabases.push(database)
   const repository = createSessionRepository({
     database,
@@ -198,6 +280,8 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
   })
 
   return {
+    database,
+    databasePath,
     repository,
     permissionRepository,
     observabilityRepository,
@@ -206,6 +290,15 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
     session,
     now,
   }
+}
+
+function closeTrackedDatabase(database: Database) {
+  const index = openDatabases.indexOf(database)
+  if (index !== -1) {
+    openDatabases.splice(index, 1)
+  }
+
+  database.close(false)
 }
 
 function startPromptRun(input: {

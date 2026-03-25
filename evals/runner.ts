@@ -5,7 +5,10 @@ import type { ModelObserverPort, ModelProvider } from "../src/model"
 import {
   createCliStorageComposition,
   createObservabilityRuntimeApi,
+  createOrchestrationActiveRunRegistry,
   createRuntime,
+  type OrchestrationActiveRunRegistry,
+  type RunHandle,
 } from "../src/bootstrap"
 import { createSessionRuntimeApi } from "../src/session"
 import { EvalRunArtifactSchema, type EvalRunArtifact } from "./schemas/artifact"
@@ -24,11 +27,18 @@ export type EvalRunResult = {
 export async function runEvalTask(input: {
   task: EvalTask
   createProvider: EvalProviderFactory
+  activeRuns?: OrchestrationActiveRunRegistry
+  onRunStarted?(input: {
+    storageIdentity: string
+    sessionId: string
+    runId: string
+  }): void
   now?: () => number
 }): Promise<EvalRunResult> {
   const task = EvalTaskSchema.parse(input.task)
   const now = input.now ?? Date.now
   const workspaceRoot = await prepareWorkspace(task)
+  const activeRuns = input.activeRuns ?? createOrchestrationActiveRunRegistry()
   const storage = createCliStorageComposition({
     workspaceRoot,
     now,
@@ -51,6 +61,7 @@ export async function runEvalTask(input: {
     repository: storage.repository,
     permissionRepository: storage.permissionRepository,
     observability,
+    activeRuns,
     permissionPolicy: task.permissionPolicy,
     now,
   })
@@ -76,36 +87,52 @@ export async function runEvalTask(input: {
       text: task.prompt,
       createdAt: now(),
     })
+    input.onRunStarted?.({
+      storageIdentity: storage.repository.storageIdentity,
+      sessionId: session.id,
+      runId: started.run.id,
+    })
 
     const handle = await runtime.run({
       sessionId: session.id,
       runId: started.run.id,
     })
-    const runtimeEvents = await collectRuntimeEvents(handle.events, {
-      autoReplyPermission: task.autoReplyPermission,
-      respondPermission(inputValue) {
-        handle.respondPermission(inputValue)
-      },
-    })
-    const run = storage.repository.runs.get(started.run.id)
+    try {
+      const runtimeEvents = await collectRuntimeEvents(handle.events, {
+        autoReplyPermission: task.autoReplyPermission,
+        respondPermission(inputValue) {
+          handle.respondPermission(inputValue)
+        },
+      })
+      const run = storage.repository.runs.get(started.run.id)
 
-    const artifact = EvalRunArtifactSchema.parse({
-      taskId: task.id,
-      workspaceRoot,
-      sessionId: session.id,
-      runId: run.id,
-      runStatus: run.status,
-      runtimeEvents,
-      transcript: storage.repository.messages.listSessionTranscript(session.id),
-      trace: observability?.exportRunTrace(run.id) ?? null,
-    })
+      const artifact = EvalRunArtifactSchema.parse({
+        taskId: task.id,
+        workspaceRoot,
+        sessionId: session.id,
+        runId: run.id,
+        runStatus: run.status,
+        runtimeEvents,
+        transcript: storage.repository.messages.listSessionTranscript(session.id),
+        trace: observability?.exportRunTrace(run.id) ?? null,
+      })
 
-    return {
-      artifact,
-      traceGrade: gradeTraceExpectation({
+      return {
         artifact,
-        expectation: task.traceExpectation,
-      }),
+        traceGrade: gradeTraceExpectation({
+          artifact,
+          expectation: task.traceExpectation,
+        }),
+      }
+    } catch (error) {
+      await cancelEvalRun({
+        handle,
+        activeRuns,
+        storageIdentity: storage.repository.storageIdentity,
+        sessionId: session.id,
+        runId: started.run.id,
+      })
+      throw error
     }
   } finally {
     storage.close()
@@ -168,4 +195,28 @@ async function collectRuntimeEvents(
   }
 
   return collected
+}
+
+async function cancelEvalRun(input: {
+  handle: RunHandle
+  activeRuns: OrchestrationActiveRunRegistry
+  storageIdentity: string
+  sessionId: string
+  runId: string
+}) {
+  input.handle.cancel()
+
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (
+      !input.activeRuns.has({
+        storageIdentity: input.storageIdentity,
+        sessionId: input.sessionId,
+        runId: input.runId,
+      })
+    ) {
+      return
+    }
+
+    await Bun.sleep(0)
+  }
 }

@@ -13,6 +13,7 @@ import {
   resolveAgentServerOrigin,
   resolveDefaultProviderConfig,
   type DefaultProviderInput,
+  type ModelObserverPort,
   type ModelProvider,
 } from "../bootstrap"
 
@@ -52,6 +53,15 @@ export function buildCli(input: BuildCliInput = {}) {
       let observability:
         | ReturnType<typeof createObservabilityRuntimeApi>
         | undefined
+      const deferredModelObserver: ModelObserverPort = {
+        recordModelEvent(event) {
+          try {
+            observability?.modelObserver.recordModelEvent(event)
+          } catch {
+            // Observability must not alter the CLI provider path.
+          }
+        },
+      }
 
       function getLocalStorage(workspaceRoot: string) {
         const storage = createCliStorageComposition({
@@ -72,6 +82,7 @@ export function buildCli(input: BuildCliInput = {}) {
           input.provider ??
           (await createDefaultProvider({
             env: input.env,
+            modelObserver: deferredModelObserver,
             createClient: input.createClient,
             createOpenAIProviderImpl: input.createOpenAIProviderImpl,
             createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
