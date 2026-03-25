@@ -13,6 +13,7 @@ Architecture ID: `ARCH-TOPLEVEL-001`
 Approved top-level modules under `src/` fall into four groups:
 
 - Capability modules:
+  - `observability`: runtime telemetry, trace export policy, and durable run-event records
   - `session`: durable session, run, message, and transcript state
   - `permission`: durable permission-request state and decision flow
   - `model`: model-provider integration and transcript projection
@@ -49,7 +50,7 @@ New code in this refactor must follow module-role-specific layouts instead.
 
 ### Capability Modules
 
-`session`, `permission`, `model`, and `tool` are capability modules.
+`observability`, `session`, `permission`, `model`, and `tool` are capability modules.
 
 Their target internal layout is:
 
@@ -74,7 +75,7 @@ Its target internal layout is:
 - `infrastructure/`
 - root `index.ts`
 
-`orchestration/application/ports/` defines the capability contracts that `orchestration` needs from `session`, `permission`, `model`, and `tool`.
+`orchestration/application/ports/` defines the capability contracts that `orchestration` needs from `observability`, `session`, `permission`, `model`, and `tool`.
 
 `orchestration` does not gain a mandatory `domain/` directory in this round.
 If future work reveals durable, reusable orchestration-owned business rules that deserve a `domain/`, that must come from a later design change, not from ad hoc implementation drift.
