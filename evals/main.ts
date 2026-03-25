@@ -1,5 +1,5 @@
 import { runDiscoveredEvalTasks, formatEvalTaskSummary, loadEvalTasks } from "./index"
-import { EvalProviderModeSchema, type EvalProviderMode } from "./schemas/task"
+import type { EvalProviderMode } from "./schemas/task"
 
 type EvalCommand = {
   listOnly: boolean
@@ -32,7 +32,7 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
         throw new Error("--mode requires a value")
       }
 
-      providerMode = EvalProviderModeSchema.parse(value)
+      providerMode = parseProviderMode(value)
       index += 1
       continue
     }
@@ -43,7 +43,7 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
         throw new Error("--mode requires a value")
       }
 
-      providerMode = EvalProviderModeSchema.parse(value)
+      providerMode = parseProviderMode(value)
       continue
     }
 
@@ -98,6 +98,14 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
     outputRoot,
     taskIds,
   }
+}
+
+function parseProviderMode(value: string): EvalProviderMode {
+  if (value === "scripted" || value === "live") {
+    return value
+  }
+
+  throw new Error("--mode must be one of: scripted, live")
 }
 
 export async function runEvalCommand(argv: string[]) {

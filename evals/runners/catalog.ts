@@ -35,21 +35,28 @@ export async function loadEvalTasks(input: {
   const tasksRoot = input.tasksRoot ?? getDefaultEvalTasksRoot()
   const providerMode = input.providerMode ?? "scripted"
   const taskFiles = await listTaskFiles(tasksRoot)
-  const tasks = await Promise.all(
-    taskFiles.map(async (taskFile) => {
-      const parsed = EvalTaskDocumentSchema.parse(JSON.parse(await readFile(taskFile, "utf8")))
+  const tasks: DiscoveredEvalTask[] = []
 
-      return EvalTaskSchema.parse({
-        ...parsed,
-        scenario: parsed.scenario,
-        workspaceRoot: resolveEvalFixturePath(parsed.workspaceFixture),
-      }) as DiscoveredEvalTask
-    }),
-  )
+  for (const taskFile of taskFiles) {
+    const documentText = await readFile(taskFile, "utf8")
 
-  return tasks
-    .filter((task) => task.providerMode === providerMode)
-    .sort((left, right) => left.id.localeCompare(right.id))
+    if (!shouldLoadTaskFile(documentText, taskFile, tasksRoot, providerMode)) {
+      continue
+    }
+
+    const parsed = EvalTaskDocumentSchema.parse(JSON.parse(documentText))
+    const task = EvalTaskSchema.parse({
+      ...parsed,
+      scenario: parsed.scenario,
+      workspaceRoot: resolveEvalFixturePath(parsed.workspaceFixture),
+    }) as DiscoveredEvalTask
+
+    if (task.providerMode === providerMode) {
+      tasks.push(task)
+    }
+  }
+
+  return tasks.sort((left, right) => left.id.localeCompare(right.id))
 }
 
 async function listTaskFiles(root: string): Promise<string[]> {
@@ -72,6 +79,30 @@ async function listTaskFiles(root: string): Promise<string[]> {
   }
 
   return files.sort((left, right) => left.localeCompare(right))
+}
+
+function shouldLoadTaskFile(
+  documentText: string,
+  taskFile: string,
+  tasksRoot: string,
+  providerMode: EvalProviderMode,
+) {
+  return inferTaskProviderMode(documentText, taskFile, tasksRoot) === providerMode
+}
+
+function inferTaskProviderMode(
+  documentText: string,
+  taskFile: string,
+  tasksRoot: string,
+): EvalProviderMode {
+  const relativePath = taskFile.slice(`${resolve(tasksRoot)}${sep}`.length)
+  const topLevelDirectory = relativePath.split(sep, 1)[0]
+
+  if (topLevelDirectory === "live") {
+    return "live"
+  }
+
+  return /"providerMode"\s*:\s*"live"/.test(documentText) ? "live" : "scripted"
 }
 
 function resolveEvalFixturePath(workspaceFixture: string) {

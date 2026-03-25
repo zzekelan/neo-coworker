@@ -167,6 +167,39 @@ describe("direct eval runner", () => {
     ).rejects.toThrow("must stay inside")
   })
 
+  test("ignores malformed live task documents when loading the default scripted lane", async () => {
+    const tasksRoot = await mkdtemp(join(tmpdir(), "eval-live-skip-"))
+    tempDirectories.push(tasksRoot)
+    await mkdir(join(tasksRoot, "regression"), { recursive: true })
+    await mkdir(join(tasksRoot, "live"), { recursive: true })
+    await writeFile(
+      join(tasksRoot, "regression", "read-only.json"),
+      JSON.stringify({
+        id: "regression/read-only",
+        scenario: "read-only",
+        prompt: "read only",
+        workspaceFixture: "workspaces/basic",
+      }),
+      "utf8",
+    )
+    await writeFile(
+      join(tasksRoot, "live", "broken.json"),
+      '{ "id": "live/broken", "providerMode": "live", ',
+      "utf8",
+    )
+
+    await expect(
+      loadEvalTasks({
+        tasksRoot,
+      }),
+    ).resolves.toMatchObject([
+      {
+        id: "regression/read-only",
+        providerMode: "scripted",
+      },
+    ])
+  })
+
   test("rejects task ids that would escape the artifact output root", async () => {
     const tasksRoot = await mkdtemp(join(tmpdir(), "eval-task-id-escape-"))
     const outputRoot = await mkdtemp(join(tmpdir(), "eval-output-escape-"))

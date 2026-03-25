@@ -90,6 +90,19 @@ describe("eval main entrypoint", () => {
     expect(stdout.trim()).toBe("")
     expect(stderr).toContain("Live eval provider setup failed: LLM_PROVIDER is required")
   })
+
+  test("surfaces invalid provider modes through an explicit CLI error", async () => {
+    const process = spawnEvalMain(["--mode", "nope", "--list"])
+
+    expect(await process.exited).toBe(1)
+
+    const stdout = await readProcessStream(process.stdout)
+    const stderr = await readProcessStream(process.stderr)
+
+    expect(stdout.trim()).toBe("")
+    expect(stderr).toContain("--mode must be one of: scripted, live")
+    expect(stderr).not.toContain("ZodError")
+  })
 })
 
 function spawnEvalMain(argv: string[], env: Record<string, string> = {}) {
