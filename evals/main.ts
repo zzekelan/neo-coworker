@@ -1,7 +1,9 @@
 import { runDiscoveredEvalTasks, formatEvalTaskSummary, loadEvalTasks } from "./index"
+import { EvalProviderModeSchema, type EvalProviderMode } from "./schemas/task"
 
 type EvalCommand = {
   listOnly: boolean
+  providerMode: EvalProviderMode
   outputRoot?: string
   taskIds: string[]
 }
@@ -9,6 +11,7 @@ type EvalCommand = {
 export function parseEvalCommand(argv: string[]): EvalCommand {
   const taskIds: string[] = []
   let listOnly = false
+  let providerMode: EvalProviderMode = "scripted"
   let outputRoot: string | undefined
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -20,6 +23,27 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
 
     if (argument === "--list") {
       listOnly = true
+      continue
+    }
+
+    if (argument === "--mode") {
+      const value = argv[index + 1]
+      if (!value) {
+        throw new Error("--mode requires a value")
+      }
+
+      providerMode = EvalProviderModeSchema.parse(value)
+      index += 1
+      continue
+    }
+
+    if (argument.startsWith("--mode=")) {
+      const value = argument.slice("--mode=".length)
+      if (!value) {
+        throw new Error("--mode requires a value")
+      }
+
+      providerMode = EvalProviderModeSchema.parse(value)
       continue
     }
 
@@ -70,6 +94,7 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
 
   return {
     listOnly,
+    providerMode,
     outputRoot,
     taskIds,
   }
@@ -79,7 +104,9 @@ export async function runEvalCommand(argv: string[]) {
   const command = parseEvalCommand(argv)
 
   if (command.listOnly) {
-    const tasks = await loadEvalTasks()
+    const tasks = await loadEvalTasks({
+      providerMode: command.providerMode,
+    })
 
     for (const task of tasks) {
       console.log(`eval.task ${task.id}`)
@@ -91,6 +118,7 @@ export async function runEvalCommand(argv: string[]) {
   }
 
   const suite = await runDiscoveredEvalTasks({
+    providerMode: command.providerMode,
     taskIds: command.taskIds,
     outputRoot: command.outputRoot,
   })
@@ -99,7 +127,9 @@ export async function runEvalCommand(argv: string[]) {
     console.log(formatEvalTaskSummary(result))
   }
 
-  console.log(`eval.suite ${suite.pass ? "pass" : "fail"} ${suite.results.length}`)
+  console.log(
+    `eval.suite ${suite.pass ? "pass" : "fail"} ${suite.results.length} provider.mode ${suite.providerMode}`,
+  )
 
   return suite
 }

@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { EvalRunStatusSchema } from "./task"
+import { EvalProviderModeSchema, EvalRunStatusSchema } from "./task"
 
 export const EvalRunTraceEventSchema = z.object({
   sequence: z.number().int().nonnegative(),
@@ -17,6 +17,12 @@ export const EvalObservedFileSchema = z.object({
   path: z.string(),
   exists: z.boolean(),
   content: z.string().nullable(),
+})
+
+export const EvalProviderInfoSchema = z.object({
+  mode: EvalProviderModeSchema,
+  kind: z.string(),
+  model: z.string().nullable(),
 })
 
 export const EvalOutcomeSchema = z.object({
@@ -39,6 +45,7 @@ export const EvalRunArtifactSchema = z.object({
   workspaceRoot: z.string(),
   sessionId: z.string(),
   runId: z.string(),
+  provider: EvalProviderInfoSchema,
   runStatus: EvalRunStatusSchema,
   runtimeEvents: z.array(EvalRuntimeEventSchema),
   transcript: z.array(z.unknown()),
@@ -54,3 +61,4 @@ export const EvalRunArtifactSchema = z.object({
 })
 
 export type EvalRunArtifact = z.infer<typeof EvalRunArtifactSchema>
+export type EvalProviderInfo = z.infer<typeof EvalProviderInfoSchema>

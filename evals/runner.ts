@@ -11,7 +11,11 @@ import {
   type RunHandle,
 } from "../src/bootstrap"
 import { createSessionRuntimeApi } from "../src/session"
-import { EvalRunArtifactSchema, type EvalRunArtifact } from "./schemas/artifact"
+import {
+  EvalRunArtifactSchema,
+  type EvalProviderInfo,
+  type EvalRunArtifact,
+} from "./schemas/artifact"
 import { gradeOutcomeExpectation, type EvalOutcomeGrade } from "./graders/outcome"
 import { gradeProtocolExpectation, type EvalProtocolGrade } from "./graders/protocol"
 import { gradeTraceExpectation, type EvalTraceGrade } from "./graders/trace"
@@ -20,7 +24,7 @@ import { EvalTaskSchema, type EvalTask } from "./schemas/task"
 
 export type EvalProviderFactory = (input: {
   modelObserver?: ModelObserverPort
-}) => ModelProvider
+}) => Promise<ModelProvider> | ModelProvider
 
 export type EvalRunGrades = {
   outcome: EvalOutcomeGrade
@@ -37,6 +41,7 @@ export type EvalRunResult = {
 
 export async function runEvalTask(input: {
   task: EvalTask
+  providerInfo: EvalProviderInfo
   createProvider: EvalProviderFactory
   activeRuns?: OrchestrationActiveRunRegistry
   onRunStarted?(input: {
@@ -60,7 +65,7 @@ export async function runEvalTask(input: {
         now,
       })
     : undefined
-  const provider = input.createProvider({
+  const provider = await input.createProvider({
     modelObserver: observability?.modelObserver,
   })
   const sessionProvider = createSessionRuntimeApi({
@@ -132,6 +137,7 @@ export async function runEvalTask(input: {
         workspaceRoot,
         sessionId: session.id,
         runId: run.id,
+        provider: input.providerInfo,
         runStatus: run.status,
         runtimeEvents,
         transcript: storage.repository.messages.listSessionTranscript(session.id),

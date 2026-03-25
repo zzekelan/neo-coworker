@@ -2,19 +2,15 @@ import { readdir, readFile } from "node:fs/promises"
 import { isAbsolute, resolve, join, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
-import { EvalTaskSchema, type EvalTask } from "../schemas/task"
+import { EvalTaskSchema, type EvalProviderMode, type EvalTask } from "../schemas/task"
 
 const EvalTaskDocumentSchema = EvalTaskSchema.omit({
   workspaceRoot: true,
-  scenario: true,
 }).extend({
-  scenario: z.string().min(1),
   workspaceFixture: z.string().min(1),
 })
 
-export type DiscoveredEvalTask = EvalTask & {
-  scenario: string
-}
+export type DiscoveredEvalTask = EvalTask
 
 export function getEvalsRoot() {
   return resolve(fileURLToPath(new URL("..", import.meta.url)))
@@ -34,8 +30,10 @@ export function getDefaultEvalOutputRoot(cwd: string = process.cwd()) {
 
 export async function loadEvalTasks(input: {
   tasksRoot?: string
+  providerMode?: EvalProviderMode
 } = {}): Promise<DiscoveredEvalTask[]> {
   const tasksRoot = input.tasksRoot ?? getDefaultEvalTasksRoot()
+  const providerMode = input.providerMode ?? "scripted"
   const taskFiles = await listTaskFiles(tasksRoot)
   const tasks = await Promise.all(
     taskFiles.map(async (taskFile) => {
@@ -49,7 +47,9 @@ export async function loadEvalTasks(input: {
     }),
   )
 
-  return tasks.sort((left, right) => left.id.localeCompare(right.id))
+  return tasks
+    .filter((task) => task.providerMode === providerMode)
+    .sort((left, right) => left.id.localeCompare(right.id))
 }
 
 async function listTaskFiles(root: string): Promise<string[]> {

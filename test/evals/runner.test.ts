@@ -58,6 +58,11 @@ describe("eval runner", () => {
           ],
         },
       },
+      providerInfo: {
+        mode: "scripted",
+        kind: "scripted",
+        model: null,
+      },
       createProvider: createProviderFactory([
         async function* () {
           yield {
@@ -74,6 +79,11 @@ describe("eval runner", () => {
     })
 
     expect(result.artifact.runStatus).toBe("completed")
+    expect(result.artifact.provider).toEqual({
+      mode: "scripted",
+      kind: "scripted",
+      model: null,
+    })
     expect(result.artifact.outcome).toMatchObject({
       runStatus: "completed",
       errorText: null,
@@ -130,6 +140,11 @@ describe("eval runner", () => {
           prompt: "Run pwd",
           workspaceRoot,
           copyWorkspace: false,
+        },
+        providerInfo: {
+          mode: "scripted",
+          kind: "scripted",
+          model: null,
         },
         createProvider: createProviderFactory([
           async function* () {
@@ -189,6 +204,11 @@ describe("eval runner", () => {
             ],
           },
         },
+        providerInfo: {
+          mode: "scripted",
+          kind: "scripted",
+          model: null,
+        },
         createProvider: createProviderFactory([
           async function* () {
             yield { type: "text.delta", text: "done" }
@@ -224,6 +244,11 @@ describe("eval runner", () => {
               },
             ],
           },
+        },
+        providerInfo: {
+          mode: "scripted",
+          kind: "scripted",
+          model: null,
         },
         createProvider: createProviderFactory([
           async function* () {

@@ -1,12 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import type { DefaultProviderInput } from "../../src/bootstrap"
 import { runEvalTask, type EvalRunResult } from "../runner"
 import {
   getDefaultEvalOutputRoot,
   loadEvalTasks,
   type DiscoveredEvalTask,
 } from "./catalog"
-import { createScriptedEvalProviderFactory } from "./scripted-provider"
+import { resolveEvalTaskProvider } from "./provider-factory"
+import type { EvalProviderMode } from "../schemas/task"
 
 export type EvalSuiteTaskResult = {
   task: DiscoveredEvalTask
@@ -16,20 +18,27 @@ export type EvalSuiteTaskResult = {
 
 export type EvalSuiteResult = {
   outputRoot: string
+  providerMode: EvalProviderMode
   results: EvalSuiteTaskResult[]
   pass: boolean
 }
 
 export async function runDiscoveredEvalTasks(input: {
+  providerMode?: EvalProviderMode
   taskIds?: string[]
   tasksRoot?: string
   outputRoot?: string
   now?: () => number
-} = {}): Promise<EvalSuiteResult> {
+} & Pick<
+  DefaultProviderInput,
+  "env" | "createClient" | "createOpenAIProviderImpl" | "createOpenAICompatibleProviderImpl"
+> = {}): Promise<EvalSuiteResult> {
+  const providerMode = input.providerMode ?? "scripted"
   const tasks = await loadEvalTasks({
     tasksRoot: input.tasksRoot,
+    providerMode,
   })
-  const selectedTasks = selectTasks(tasks, input.taskIds)
+  const selectedTasks = selectTasks(tasks, input.taskIds, providerMode)
   const outputRoot = input.outputRoot ?? join(getDefaultEvalOutputRoot(), createRunStamp())
   const results: EvalSuiteTaskResult[] = []
 
@@ -37,9 +46,18 @@ export async function runDiscoveredEvalTasks(input: {
 
   for (const task of selectedTasks) {
     assertSafeTaskId(task.id)
-    const result = await runEvalTask({
+    const provider = resolveProviderOrThrow({
       task,
-      createProvider: createScriptedEvalProviderFactory(task.scenario),
+      providerMode,
+      env: input.env,
+      createClient: input.createClient,
+      createOpenAIProviderImpl: input.createOpenAIProviderImpl,
+      createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
+    })
+    const result = await runTaskOrThrow({
+      task,
+      providerMode,
+      provider,
       now: input.now,
     })
     const artifactDir = await persistEvalArtifacts({
@@ -57,6 +75,7 @@ export async function runDiscoveredEvalTasks(input: {
 
   return {
     outputRoot,
+    providerMode,
     results,
     pass: results.every((entry) => entry.result.pass),
   }
@@ -67,6 +86,11 @@ export function formatEvalTaskSummary(input: EvalSuiteTaskResult) {
 
   return [
     `eval.task ${input.task.id}`,
+    `provider.mode ${input.result.artifact.provider.mode}`,
+    `provider.kind ${input.result.artifact.provider.kind}`,
+    input.result.artifact.provider.model
+      ? `provider.model ${input.result.artifact.provider.model}`
+      : null,
     `run.status ${input.result.artifact.outcome.runStatus}`,
     `grader.outcome ${formatPass(input.result.grades.outcome.pass)}`,
     `grader.protocol ${formatPass(input.result.grades.protocol.pass)}`,
@@ -105,7 +129,11 @@ async function writeJsonFile(path: string, value: unknown) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8")
 }
 
-function selectTasks(tasks: DiscoveredEvalTask[], taskIds: string[] | undefined) {
+function selectTasks(
+  tasks: DiscoveredEvalTask[],
+  taskIds: string[] | undefined,
+  providerMode: EvalProviderMode,
+) {
   if (!taskIds || taskIds.length === 0) {
     return tasks
   }
@@ -114,10 +142,58 @@ function selectTasks(tasks: DiscoveredEvalTask[], taskIds: string[] | undefined)
   const missingTaskIds = taskIds.filter((taskId) => !selected.some((task) => task.id === taskId))
 
   if (missingTaskIds.length > 0) {
-    throw new Error(`Unknown eval task ids: ${missingTaskIds.join(", ")}`)
+    throw new Error(
+      `Unknown eval task ids for provider mode ${providerMode}: ${missingTaskIds.join(", ")}`,
+    )
   }
 
   return selected
+}
+
+function resolveProviderOrThrow(input: {
+  task: DiscoveredEvalTask
+  providerMode: EvalProviderMode
+} & Pick<
+  DefaultProviderInput,
+  "env" | "createClient" | "createOpenAIProviderImpl" | "createOpenAICompatibleProviderImpl"
+>) {
+  try {
+    return resolveEvalTaskProvider(input)
+  } catch (error) {
+    if (input.providerMode === "live") {
+      throw new Error(`Live eval provider setup failed: ${describeError(error)}`)
+    }
+
+    throw error
+  }
+}
+
+async function runTaskOrThrow(input: {
+  task: DiscoveredEvalTask
+  providerMode: EvalProviderMode
+  provider: ReturnType<typeof resolveEvalTaskProvider>
+  now?: () => number
+}) {
+  try {
+    return await runEvalTask({
+      task: input.task,
+      providerInfo: input.provider.providerInfo,
+      createProvider: input.provider.createProvider,
+      now: input.now,
+    })
+  } catch (error) {
+    if (input.providerMode === "live") {
+      throw new Error(
+        `Live eval provider execution failed for ${input.task.id}: ${describeError(error)}`,
+      )
+    }
+
+    throw error
+  }
+}
+
+function describeError(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function summarizeFailures(result: EvalRunResult) {

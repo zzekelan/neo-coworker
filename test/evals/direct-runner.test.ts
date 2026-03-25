@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type OpenAI from "openai"
 import { loadEvalTasks, runDiscoveredEvalTasks } from "../../evals"
+import { createModelProvider, createModelRuntimeApi } from "../../src/model"
 
 const tempDirectories: string[] = []
 
@@ -31,6 +33,7 @@ describe("direct eval runner", () => {
     })
 
     expect(suite.pass).toBe(true)
+    expect(suite.providerMode).toBe("scripted")
     expect(suite.results).toHaveLength(5)
 
     const resultsById = new Map(suite.results.map((entry) => [entry.task.id, entry]))
@@ -74,6 +77,72 @@ describe("direct eval runner", () => {
         },
       },
     })
+  })
+
+  test("loads and runs the live eval catalog through the default provider assembly path", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "eval-live-direct-"))
+    tempDirectories.push(outputRoot)
+    const openAIConfigs: unknown[] = []
+
+    const tasks = await loadEvalTasks({
+      providerMode: "live",
+    })
+    expect(tasks.map((task) => task.id)).toEqual(["live/read-only"])
+
+    const suite = await runDiscoveredEvalTasks({
+      providerMode: "live",
+      taskIds: ["live/read-only"],
+      outputRoot,
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "gpt-5",
+      },
+      createClient(config) {
+        openAIConfigs.push(config)
+        return {} as OpenAI
+      },
+      createOpenAIProviderImpl(input) {
+        return createModelProvider({
+          observer: input.observer,
+          runtime: createModelRuntimeApi({
+            async *streamTurn() {
+              yield { type: "text.delta", text: "live summary" }
+            },
+          }),
+        })
+      },
+    })
+
+    expect(openAIConfigs).toEqual([{ apiKey: "test-key", baseURL: undefined, timeout: undefined }])
+    expect(suite.pass).toBe(true)
+    expect(suite.providerMode).toBe("live")
+    expect(suite.results).toHaveLength(1)
+    expect(suite.results[0]?.result.artifact.provider).toEqual({
+      mode: "live",
+      kind: "openai",
+      model: "gpt-5",
+    })
+  })
+
+  test("surfaces live provider execution failures with an explicit operator message", async () => {
+    await expect(
+      runDiscoveredEvalTasks({
+        providerMode: "live",
+        taskIds: ["live/read-only"],
+        env: {
+          LLM_PROVIDER: "openai",
+          LLM_API_KEY: "test-key",
+          LLM_MODEL: "gpt-5",
+        },
+        createClient() {
+          return {} as OpenAI
+        },
+        createOpenAIProviderImpl() {
+          throw new Error("upstream unavailable")
+        },
+      }),
+    ).rejects.toThrow("Live eval provider execution failed for live/read-only: upstream unavailable")
   })
 
   test("rejects task workspace fixtures that escape evals/fixtures", async () => {

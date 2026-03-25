@@ -2,6 +2,7 @@ import { z } from "zod"
 
 export const EvalPermissionDecisionSchema = z.enum(["allow", "deny"])
 export const EvalPermissionModeSchema = z.enum(["allow", "deny", "ask"])
+export const EvalProviderModeSchema = z.enum(["scripted", "live"])
 export const EvalRunStatusSchema = z.enum([
   "queued",
   "running",
@@ -46,6 +47,7 @@ export const EvalTaskSchema = z.object({
   prompt: z.string().min(1),
   workspaceRoot: z.string().min(1),
   copyWorkspace: z.boolean().default(true),
+  providerMode: EvalProviderModeSchema.default("scripted"),
   scenario: z.string().min(1).optional(),
   permissionPolicy: z
     .object({
@@ -74,6 +76,7 @@ export const EvalTaskSchema = z.object({
 })
 
 export type EvalTask = z.infer<typeof EvalTaskSchema>
+export type EvalProviderMode = z.infer<typeof EvalProviderModeSchema>
 export type EvalTraceExpectation = z.infer<typeof EvalTraceExpectationSchema>
 export type EvalOutcomeExpectation = z.infer<typeof EvalOutcomeExpectationSchema>
 export type EvalProtocolExpectation = z.infer<typeof EvalProtocolExpectationSchema>

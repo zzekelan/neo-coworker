@@ -34,10 +34,12 @@ describe("eval main entrypoint", () => {
     const stderr = await readProcessStream(process.stderr)
 
     expect(stdout).toContain("eval.task regression/read-only")
+    expect(stdout).toContain("provider.mode scripted")
+    expect(stdout).toContain("provider.kind scripted")
     expect(stdout).toContain("run.status completed")
     expect(stdout).toContain("grader.trace pass")
     expect(stdout).toContain(`artifact.dir ${join(outputRoot, "regression", "read-only")}`)
-    expect(stdout).toContain("eval.suite pass 1")
+    expect(stdout).toContain("eval.suite pass 1 provider.mode scripted")
     expect(stderr).not.toContain("Unknown eval task ids")
     expect(
       await Bun.file(join(outputRoot, "regression", "read-only", "metrics.json")).json(),
@@ -55,14 +57,49 @@ describe("eval main entrypoint", () => {
     const stderr = await readProcessStream(process.stderr)
 
     expect(stdout.trim()).toBe("")
-    expect(stderr).toContain("Unknown eval task ids: regression/missing-task")
+    expect(stderr).toContain(
+      "Unknown eval task ids for provider mode scripted: regression/missing-task",
+    )
+  })
+
+  test("lists live eval tasks for the selected provider mode", async () => {
+    const process = spawnEvalMain(["--list", "--mode", "live"])
+
+    expect(await process.exited).toBe(0)
+
+    const stdout = await readProcessStream(process.stdout)
+    const stderr = await readProcessStream(process.stderr)
+
+    expect(stdout).toContain("eval.task live/read-only")
+    expect(stderr).not.toContain("error:")
+  })
+
+  test("surfaces live provider setup failures as explicit operator-facing errors", async () => {
+    const process = spawnEvalMain(["--mode", "live", "--task", "live/read-only"], {
+      LLM_PROVIDER: "",
+      LLM_API_KEY: "",
+      LLM_MODEL: "",
+      LLM_BASE_URL: "",
+    })
+
+    expect(await process.exited).toBe(1)
+
+    const stdout = await readProcessStream(process.stdout)
+    const stderr = await readProcessStream(process.stderr)
+
+    expect(stdout.trim()).toBe("")
+    expect(stderr).toContain("Live eval provider setup failed: LLM_PROVIDER is required")
   })
 })
 
-function spawnEvalMain(argv: string[]) {
+function spawnEvalMain(argv: string[], env: Record<string, string> = {}) {
   const subprocess = Bun.spawn({
     cmd: ["bun", "run", "eval", ...argv],
     cwd: globalThis.process.cwd(),
+    env: {
+      ...process.env,
+      ...env,
+    },
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",

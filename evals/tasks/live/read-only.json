@@ -1,0 +1,33 @@
+{
+  "id": "live/read-only",
+  "providerMode": "live",
+  "prompt": "Read README.md and summarize it briefly. Do not modify any files.",
+  "workspaceFixture": "workspaces/basic",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "permission.requested",
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  }
+}
