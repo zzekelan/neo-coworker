@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdir, mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -163,6 +163,75 @@ describe("eval runner", () => {
     } finally {
       database.close(false)
     }
+  })
+
+  test("rejects watched files that escape the workspace root", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "eval-runner-watched-path-"))
+    tempDirectories.push(directory)
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(directory, "secret.txt"), "secret")
+
+    await expect(
+      runEvalTask({
+        task: {
+          id: "watched-path-escape",
+          prompt: "Say hi",
+          workspaceRoot,
+          copyWorkspace: false,
+          outcomeExpectation: {
+            runStatus: "completed",
+            watchedFiles: [
+              {
+                path: "../secret.txt",
+                shouldExist: true,
+              },
+            ],
+          },
+        },
+        createProvider: createProviderFactory([
+          async function* () {
+            yield { type: "text.delta", text: "done" }
+          },
+        ]),
+      }),
+    ).rejects.toThrow("must stay inside workspace")
+  })
+
+  test("rejects watched files that escape through a symlinked parent", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "eval-runner-watched-symlink-"))
+    tempDirectories.push(directory)
+    const workspaceRoot = join(directory, "workspace")
+    const outsideRoot = join(directory, "outside")
+    await mkdir(workspaceRoot, { recursive: true })
+    await mkdir(outsideRoot, { recursive: true })
+    await Bun.write(join(outsideRoot, "secret.txt"), "secret")
+    await symlink(outsideRoot, join(workspaceRoot, "escape"))
+
+    await expect(
+      runEvalTask({
+        task: {
+          id: "watched-symlink-escape",
+          prompt: "Say hi",
+          workspaceRoot,
+          copyWorkspace: false,
+          outcomeExpectation: {
+            runStatus: "completed",
+            watchedFiles: [
+              {
+                path: "escape/secret.txt",
+                shouldExist: true,
+              },
+            ],
+          },
+        },
+        createProvider: createProviderFactory([
+          async function* () {
+            yield { type: "text.delta", text: "done" }
+          },
+        ]),
+      }),
+    ).rejects.toThrow("must stay inside workspace")
   })
 })
 

@@ -1,6 +1,6 @@
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises"
+import { cp, mkdtemp, readFile, realpath, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { basename, dirname, join } from "node:path"
+import { basename, dirname, join, resolve, sep } from "node:path"
 import type { ModelObserverPort, ModelProvider } from "../src/model"
 import {
   createCliStorageComposition,
@@ -292,22 +292,20 @@ async function buildOutcome(input: {
 }
 
 async function readObservedFile(workspaceRoot: string, relativePath: string) {
-  try {
+  const target = await resolveObservedFilePath(workspaceRoot, relativePath)
+
+  if (!target.exists) {
     return {
       path: relativePath,
-      exists: true,
-      content: await readFile(join(workspaceRoot, relativePath), "utf8"),
+      exists: false,
+      content: null,
     }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return {
-        path: relativePath,
-        exists: false,
-        content: null,
-      }
-    }
+  }
 
-    throw error
+  return {
+    path: relativePath,
+    exists: true,
+    content: await readFile(target.path, "utf8"),
   }
 }
 
@@ -338,4 +336,78 @@ function deriveMetrics(trace: EvalRunArtifact["trace"]) {
         ? terminalEvent.eventType
         : null,
   }
+}
+
+async function resolveObservedFilePath(workspaceRoot: string, relativePath: string) {
+  const root = await realpath(resolve(workspaceRoot))
+  const target = resolve(root, relativePath)
+
+  assertPathInsideWorkspace({
+    root,
+    target,
+    relativePath,
+  })
+
+  try {
+    const resolvedTarget = await realpath(target)
+    assertPathInsideWorkspace({
+      root,
+      target: resolvedTarget,
+      relativePath,
+    })
+
+    return {
+      exists: true,
+      path: resolvedTarget,
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error
+    }
+
+    const existingParent = await resolveExistingParent(target)
+    assertPathInsideWorkspace({
+      root,
+      target: existingParent,
+      relativePath,
+    })
+
+    return {
+      exists: false,
+      path: target,
+    }
+  }
+}
+
+async function resolveExistingParent(target: string) {
+  let current = dirname(target)
+
+  while (true) {
+    try {
+      return await realpath(current)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error
+      }
+
+      const next = dirname(current)
+      if (next === current) {
+        throw error
+      }
+
+      current = next
+    }
+  }
+}
+
+function assertPathInsideWorkspace(input: {
+  root: string
+  target: string
+  relativePath: string
+}) {
+  if (input.target === input.root || input.target.startsWith(`${input.root}${sep}`)) {
+    return
+  }
+
+  throw new Error(`Eval watched file path must stay inside workspace: ${input.relativePath}`)
 }
