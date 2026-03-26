@@ -301,6 +301,7 @@ export async function createLocalCliServerClient(input: {
     },
     repository: input.repository,
     permissionRepository: input.permissionRepository,
+    allowDetachedPermissionRecovery: true,
   })
 
   return {

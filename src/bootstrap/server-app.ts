@@ -8,7 +8,10 @@ import {
   type StoredRun,
   type StoredSession,
 } from "../session"
-import { type OrchestrationRuntimeApi } from "../orchestration"
+import {
+  PermissionRequestNotAwaitingActiveRuntimeError,
+  type OrchestrationRuntimeApi,
+} from "../orchestration"
 import type { ExportedRunTrace } from "../observability"
 import type {
   PermissionRepository,
@@ -371,7 +374,7 @@ export function createObservedRepository(input: {
 
 export type ServerAppRuntime = Pick<
   OrchestrationRuntimeApi,
-  "run" | "cancelRun" | "respondPermission"
+  "run" | "cancelRun" | "respondPermission" | "resumeDetachedPermission"
 >
 
 export type CreateServerAppRuntime = (input: {
@@ -399,6 +402,7 @@ export function createServerApp(input: {
   permissionRepository: PermissionRepository
   createRuntimeImpl: CreateServerAppRuntime
   exportRunTraceImpl?: (runId: string) => ExportedRunTrace | null
+  allowDetachedPermissionRecovery?: boolean
   now?: () => number
 }) {
   const now = input.now ?? Date.now
@@ -527,7 +531,19 @@ export function createServerApp(input: {
     },
     permissions: {
       reply(response: PermissionResponse) {
-        runtime.respondPermission(response)
+        try {
+          runtime.respondPermission(response)
+        } catch (error) {
+          if (
+            !input.allowDetachedPermissionRecovery ||
+            !(error instanceof PermissionRequestNotAwaitingActiveRuntimeError)
+          ) {
+            throw error
+          }
+
+          runtime.resumeDetachedPermission(response)
+        }
+
         const permissionRequest = permissionRepository.requests.get(response.requestId)
         return {
           permissionRequest,
@@ -541,7 +557,16 @@ export function createServerApp(input: {
     async close() {
       if (!closing) {
         closing = (async () => {
-          const runsToStop = Array.from(activeRuns.values())
+          const runsToStop = Array.from(activeRuns.entries()).flatMap(([runId, activeRun]) => {
+            if (
+              input.allowDetachedPermissionRecovery &&
+              repository.runs.get(runId).status === "waiting_permission"
+            ) {
+              return []
+            }
+
+            return [activeRun]
+          })
 
           for (const activeRun of runsToStop) {
             activeRun.cancel()

@@ -67,8 +67,6 @@ type CliRunInput = {
   workspaceRoot: string
 }
 
-const defaultActiveRuns = createOrchestrationActiveRunRegistry()
-
 export { PermissionRequestNotAwaitingActiveRuntimeError }
 
 export function createRuntime(input: RuntimeInput) {
@@ -97,7 +95,7 @@ export function createRuntime(input: RuntimeInput) {
     tools: createToolPortFactory({
       observer: observability.toolObserver,
     }),
-    activeRuns: input.activeRuns ?? defaultActiveRuns,
+    activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
     permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
     systemPrompt: input.systemPrompt,
     now,

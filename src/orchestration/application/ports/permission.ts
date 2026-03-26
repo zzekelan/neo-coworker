@@ -18,6 +18,7 @@ export type OrchestrationPermissionRequestRecord = {
   sessionId: string
   runId: string
   toolName: string
+  reason: string
   status: OrchestrationPermissionStatus
 }
 
