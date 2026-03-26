@@ -447,56 +447,156 @@ describe("server HTTP API and SSE", () => {
     )
   })
 
-  test("permission reply returns invalid_state when the request is pending but no active runtime is waiting", async () => {
-    const harness = await createHarness("server-permission-stale", createTurnProvider([]))
-    const session = harness.repository.sessions.create({
-      id: "session_stale_permission",
+  test("permission reply recovers a detached pending request after server restart", async () => {
+    const harness = await createHarness("server-permission-restart-allow", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_write",
+          name: "write",
+          inputText: '{"path":"notes.txt","content":"hello after restart"}',
+        }
+      },
+    ]), {
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
       directory: harness.workspaceRoot,
-      workspaceRoot: harness.workspaceRoot,
-      createdAt: harness.now(),
     })
-    const run = harness.repository.runs.create({
-      id: "run_stale_permission",
-      sessionId: session.id,
-      trigger: "prompt",
-      status: "waiting_permission",
-      createdAt: harness.now(),
-      startedAt: harness.now(),
-    })
-    const permissionRequest = harness.permissionRepository.requests.create({
-      id: "permission_stale",
-      sessionId: session.id,
-      runId: run.id,
-      toolName: "write",
-      reason: "write notes.txt",
-      status: "pending",
-      createdAt: harness.now(),
-    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Write notes.txt after restart",
+      },
+    )
+    const runId = startedRun.body.data.run.id as string
+
+    const waitingRun = await waitForRunStatus(harness.server, runId, "waiting_permission")
+    const permissionId = waitingRun.permissionRequests[0].id as string
+
+    await restartHarness(
+      harness,
+      createTurnProvider([
+        async function* () {
+          yield { type: "text.delta", text: "Write finished after restart." }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          write: "ask",
+        },
+      },
+    )
 
     const response = await requestJson(
       harness.server,
       "POST",
-      `/permissions/${permissionRequest.id}/reply`,
+      `/permissions/${permissionId}/reply`,
       {
         decision: "allow",
       },
     )
 
-    expect(response.status).toBe(409)
-    expect(response.body).toMatchObject({
-      error: {
-        code: "invalid_state",
-        message: expect.stringContaining("not awaiting a reply in the active runtime"),
+    expect(response.status).toBe(200)
+    expect(response.body.data).toMatchObject({
+      run: {
+        id: runId,
+        status: "running",
+      },
+      permissionRequest: {
+        id: permissionId,
+        status: "approved",
       },
     })
-    expect(harness.permissionRepository.requests.get(permissionRequest.id)).toMatchObject({
-      id: permissionRequest.id,
-      status: "pending",
+
+    const completedRun = await waitForRunStatus(harness.server, runId, "completed")
+    expect(completedRun.permissionRequests).toMatchObject([
+      {
+        id: permissionId,
+        status: "approved",
+      },
+    ])
+    expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe(
+      "hello after restart",
+    )
+  })
+
+  test("permission denial recovers a detached pending request after server restart", async () => {
+    const harness = await createHarness("server-permission-restart-deny", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_write",
+          name: "write",
+          inputText: '{"path":"notes.txt","content":"should not exist"}',
+        }
+      },
+    ]), {
+      permissionPolicy: {
+        write: "ask",
+      },
     })
-    expect(harness.repository.runs.get(run.id)).toMatchObject({
-      id: run.id,
-      status: "waiting_permission",
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
     })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Try to write notes.txt after restart",
+      },
+    )
+    const runId = startedRun.body.data.run.id as string
+
+    const waitingRun = await waitForRunStatus(harness.server, runId, "waiting_permission")
+    const permissionId = waitingRun.permissionRequests[0].id as string
+
+    await restartHarness(harness, createTurnProvider([]), {
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+
+    const response = await requestJson(
+      harness.server,
+      "POST",
+      `/permissions/${permissionId}/reply`,
+      {
+        decision: "deny",
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.body.data).toMatchObject({
+      run: {
+        id: runId,
+        status: "running",
+      },
+      permissionRequest: {
+        id: permissionId,
+        status: "denied",
+      },
+    })
+
+    const cancelledRun = await waitForRunStatus(harness.server, runId, "cancelled")
+    expect(cancelledRun.permissionRequests).toMatchObject([
+      {
+        id: permissionId,
+        status: "denied",
+      },
+    ])
+    await expect(readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).rejects.toThrow()
   })
 
   test("returns explicit HTTP errors for invalid-state cancel and unknown permission reply", async () => {
@@ -660,7 +760,8 @@ async function createHarness(
   await mkdir(workspaceRoot, { recursive: true })
   await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
 
-  const database = openStorageDatabase(join(directory, "agent.sqlite"))
+  const databasePath = join(directory, "agent.sqlite")
+  const database = openStorageDatabase(databasePath)
   openDatabases.push(database)
 
   const now = createMonotonicClock()
@@ -703,12 +804,73 @@ async function createHarness(
   activeServers.push(server)
 
   return {
+    databasePath,
     workspaceRoot,
     server,
     repository,
     permissionRepository,
     now,
   }
+}
+
+async function restartHarness(
+  harness: {
+    databasePath: string
+    now: () => number
+    server: { stop(): Promise<void> | void }
+    repository: SessionRepository
+    permissionRepository: ReturnType<typeof createPermissionRepository>
+  },
+  provider: OrchestrationModelPort,
+  options: {
+    permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
+  } = {},
+) {
+  await harness.server.stop()
+  activeServers.pop()
+  openDatabases.pop()?.close(false)
+
+  const reopenedDatabase = openStorageDatabase(harness.databasePath)
+  openDatabases.push(reopenedDatabase)
+
+  const reopenedRepository = createStorageRepository({
+    database: reopenedDatabase,
+    now: harness.now,
+  })
+  const reopenedPermissionRepository = createPermissionRepository({
+    database: reopenedDatabase,
+    now: harness.now,
+  })
+  const reopenedObservabilityRepository = createObservabilityRepository({
+    database: reopenedDatabase,
+    now: harness.now,
+  })
+  const reopenedObservability = createObservabilityRuntimeApi({
+    repository: reopenedObservabilityRepository,
+    now: harness.now,
+  })
+  const reopenedServer = createAgentServer({
+    createRuntimeImpl(runtimeInput) {
+      return createRuntime({
+        provider,
+        repository: runtimeInput.repository,
+        permissionRepository: runtimeInput.permissionRepository,
+        observability: reopenedObservability,
+        permissionPolicy: options.permissionPolicy,
+        now: runtimeInput.now,
+      })
+    },
+    repository: reopenedRepository,
+    permissionRepository: reopenedPermissionRepository,
+    exportRunTraceImpl: reopenedObservability.exportRunTrace,
+    now: harness.now,
+    heartbeatIntervalMs: 15,
+  })
+  activeServers.push(reopenedServer)
+
+  harness.server = reopenedServer
+  harness.repository = reopenedRepository
+  harness.permissionRepository = reopenedPermissionRepository
 }
 
 async function requestJson(

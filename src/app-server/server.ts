@@ -49,6 +49,7 @@ export function createAgentServer(input: {
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
   now?: () => number
   heartbeatIntervalMs?: number
+  allowDetachedPermissionRecovery?: boolean
 }) {
   const now = input.now ?? Date.now
   const heartbeatIntervalMs = input.heartbeatIntervalMs ?? DEFAULT_SSE_HEARTBEAT_INTERVAL_MS
@@ -57,6 +58,7 @@ export function createAgentServer(input: {
     repository: input.repository,
     permissionRepository: input.permissionRepository,
     exportRunTraceImpl: input.exportRunTraceImpl,
+    allowDetachedPermissionRecovery: input.allowDetachedPermissionRecovery ?? true,
     now,
   })
   let server: ServerInstance | null = null
