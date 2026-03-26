@@ -12,13 +12,17 @@ type ReadActivity = {
   files: string[]
 }
 
+type ThinkingActivity = {
+  kind: "thinking"
+}
+
 type ToolActivity = {
   kind: "tool"
   toolName: string
   detail: string | null
 }
 
-type Activity = ReadActivity | ToolActivity
+type Activity = ReadActivity | ThinkingActivity | ToolActivity
 
 export type CliChatRenderState = {
   renderedRunStatuses: Map<string, Set<StoredRun["status"]>>
@@ -133,6 +137,11 @@ export function createCliChatRenderer(input: {
       return
     }
 
+    if (activity.kind === "thinking") {
+      finishStatus("thinking")
+      return
+    }
+
     finishStatus(describeToolActivity(activity.toolName, activity.detail, resultText, "final"))
   }
 
@@ -227,6 +236,17 @@ export function createCliChatRenderer(input: {
 
     renderedStatuses.add(run.status)
 
+    if (run.status === "running") {
+      if (!state.activeActivity && !state.assistantLineOpen) {
+        state.activeActivity = {
+          kind: "thinking",
+        }
+        state.activeActivityVisible = true
+        startStatus("thinking")
+      }
+      return
+    }
+
     if (run.status === "completed") {
       finalizeActivity()
       closeAssistantLine()
@@ -262,6 +282,55 @@ export function createCliChatRenderer(input: {
         }
 
         state.renderedPartIds.add(part.id)
+      }
+    }
+  }
+
+  function replayTranscriptHistory(inputValue: {
+    transcript: TranscriptMessage[]
+    omittedAssistantMessageIds: Set<string>
+  }) {
+    for (const message of inputValue.transcript) {
+      if (message.role === "user") {
+        const text = message.parts
+          .filter((part) => part.kind === "text")
+          .map((part) => part.text ?? "")
+          .join("")
+          .trim()
+
+        if (text) {
+          write(`you> ${text}\n`)
+        }
+
+        continue
+      }
+
+      if (message.role !== "assistant" || inputValue.omittedAssistantMessageIds.has(message.id)) {
+        continue
+      }
+
+      let assistantText = ""
+
+      for (const part of message.parts) {
+        if (part.kind === "text" && part.text) {
+          assistantText += part.text
+          continue
+        }
+
+        if (part.kind !== "error") {
+          continue
+        }
+
+        if (assistantText) {
+          write(`assistant> ${assistantText}\n`)
+          assistantText = ""
+        }
+
+        write(`error> ${part.text ?? "unknown error"}\n`)
+      }
+
+      if (assistantText) {
+        write(`assistant> ${assistantText}\n`)
       }
     }
   }
@@ -352,6 +421,14 @@ export function createCliChatRenderer(input: {
     }
 
     if (!resumedActivity) {
+      if (!resumedText && inputValue.renderLiveActivity) {
+        state.activeActivity = {
+          kind: "thinking",
+        }
+        state.activeActivityVisible = true
+        startStatus("thinking")
+      }
+
       return
     }
 
@@ -378,6 +455,25 @@ export function createCliChatRenderer(input: {
       renderLiveActivity?: boolean
     }) {
       seedTranscriptState(inputValue.transcript)
+      const omittedAssistantMessageIds = new Set<string>()
+
+      if (inputValue.activeRunId) {
+        const lastActiveAssistantMessage = [...inputValue.transcript]
+          .reverse()
+          .find(
+            (message) =>
+              message.runId === inputValue.activeRunId && message.role === "assistant",
+          )
+
+        if (lastActiveAssistantMessage) {
+          omittedAssistantMessageIds.add(lastActiveAssistantMessage.id)
+        }
+      }
+
+      replayTranscriptHistory({
+        transcript: inputValue.transcript,
+        omittedAssistantMessageIds,
+      })
 
       if (!inputValue.activeRunId) {
         return

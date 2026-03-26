@@ -475,6 +475,7 @@ async function runChatCli(input: {
   clientHandle: CliServerClientHandle
 }) {
   let currentSessionId = input.command.sessionId ?? null
+  let shouldRestoreSession = currentSessionId != null
   let activeRunId: string | null = null
   let activePermissionPrompt: PendingPermissionReply | null = null
   let cancelDispatched = false
@@ -519,7 +520,7 @@ async function runChatCli(input: {
 
   try {
     while (!exitRequested) {
-      if (currentSessionId) {
+      if (currentSessionId && shouldRestoreSession) {
         const resumeResult = await resumeExistingChatSession({
           sessionId: currentSessionId,
           client: input.clientHandle.client,
@@ -542,6 +543,7 @@ async function runChatCli(input: {
 
         activePermissionPrompt = null
         activeRunId = null
+        shouldRestoreSession = false
 
         if (cancelError) {
           throw cancelError
@@ -591,6 +593,7 @@ async function runChatCli(input: {
 
         if (selectedSession) {
           currentSessionId = selectedSession.id
+          shouldRestoreSession = true
           input.io.write(`session> ${selectedSession.title}\n`)
         }
 
@@ -609,6 +612,7 @@ async function runChatCli(input: {
             workspaceRoot: input.workspaceRoot,
           })
         ).id
+        shouldRestoreSession = false
       }
 
       const runResult = await runChatTurn({
@@ -717,6 +721,16 @@ async function resumeExistingChatSession(input: {
   const activeRun = snapshot.activeRun
 
   if (!activeRun) {
+    const transcript = await input.client.listSessionTranscript(input.sessionId)
+    const renderer = createCliChatRenderer({
+      io: input.io,
+      workspaceRoot: input.workspaceRoot,
+    })
+
+    renderer.hydrateTranscript({
+      transcript,
+    })
+    renderer.finish()
     return "continue" as const
   }
 

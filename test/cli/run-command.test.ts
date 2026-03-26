@@ -745,6 +745,38 @@ describe("chat command", () => {
     expect(output.join("")).toContain("session> Older session")
   })
 
+  test("replays prior visible dialogue when entering an idle session", async () => {
+    const harness = await createHarness("cli-chat-resume-idle", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "First reply." }
+      },
+    ]))
+
+    await runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo([], ["First prompt", "/exit"]),
+    })
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const output: string[] = []
+
+    await runCli({
+      argv: ["chat", "--session", sessionId],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["/exit"]),
+    })
+
+    const rendered = output.join("")
+
+    expect(countOccurrences(rendered, "you> First prompt")).toBe(1)
+    expect(countOccurrences(rendered, "assistant> First reply.")).toBe(1)
+  })
+
   test("preserves a permission-blocked session across exit and later /resume", async () => {
     const harness = await createHarness(
       "cli-chat-resume-permission",
@@ -907,6 +939,32 @@ describe("chat command", () => {
     await chat
 
     expect(output.join("")).toContain("assistant> Hello again.")
+  })
+
+  test("shows a thinking status before assistant text when no tool activity is visible", async () => {
+    const harness = await createHarness("cli-chat-thinking-status", createTurnProvider([
+      async function* () {
+        await Bun.sleep(40)
+        yield { type: "text.delta", text: "After thinking." }
+      },
+    ]))
+    const output: string[] = []
+
+    await runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["Think first", "/exit"]),
+    })
+
+    const rendered = output.join("")
+
+    expect(rendered).toContain("| thinking")
+    expect(rendered).toContain("✓ thinking")
+    expect(rendered).toContain("assistant> After thinking.")
+    expect(rendered.indexOf("| thinking")).toBeLessThan(rendered.indexOf("assistant> After thinking."))
+    expect(rendered.indexOf("✓ thinking")).toBeLessThan(rendered.indexOf("assistant> After thinking."))
   })
 
   test("ignores stale queued text snapshots when hydrating a resumed active run", async () => {
