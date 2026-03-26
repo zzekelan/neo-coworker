@@ -458,12 +458,17 @@ function getTextDelta(state: CliChatRenderState, partId: string, text: string | 
   }
 
   const previousText = state.printedTextByPartId.get(partId) ?? ""
-  state.printedTextByPartId.set(partId, text)
 
   if (text.startsWith(previousText)) {
+    state.printedTextByPartId.set(partId, text)
     return text.slice(previousText.length)
   }
 
+  if (previousText.startsWith(text)) {
+    return ""
+  }
+
+  state.printedTextByPartId.set(partId, text)
   return text
 }
 

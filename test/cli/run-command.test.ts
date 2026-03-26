@@ -909,6 +909,71 @@ describe("chat command", () => {
     expect(output.join("")).toContain("assistant> Hello again.")
   })
 
+  test("ignores stale queued text snapshots when hydrating a resumed active run", async () => {
+    let releaseFirstDelta!: () => void
+    const allowFirstDelta = new Promise<void>((resolve) => {
+      releaseFirstDelta = resolve
+    })
+    let releaseSecondDelta!: () => void
+    const allowSecondDelta = new Promise<void>((resolve) => {
+      releaseSecondDelta = resolve
+    })
+    let markFirstDeltaEmitted!: () => void
+    const firstDeltaEmitted = new Promise<void>((resolve) => {
+      markFirstDeltaEmitted = resolve
+    })
+    let markSecondDeltaEmitted!: () => void
+    const secondDeltaEmitted = new Promise<void>((resolve) => {
+      markSecondDeltaEmitted = resolve
+    })
+    const harness = await createHarness("cli-chat-resume-stale-delta", createTurnProvider([
+      async function* () {
+        await allowFirstDelta
+        yield { type: "text.delta", text: "Hello " }
+        markFirstDeltaEmitted()
+        await allowSecondDelta
+        yield { type: "text.delta", text: "again." }
+        markSecondDeltaEmitted()
+      },
+    ]))
+    const session = await harness.client.createSession({
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+    })
+
+    await harness.client.startRun({
+      sessionId: session.id,
+      prompt: "Say hello",
+      trigger: "cli",
+    })
+
+    const output: string[] = []
+    const client = {
+      ...harness.client,
+      async subscribe() {
+        const subscription = await harness.client.subscribe()
+        releaseFirstDelta()
+        await firstDeltaEmitted
+        return subscription
+      },
+      async listSessionTranscript(sessionId: string) {
+        releaseSecondDelta()
+        await secondDeltaEmitted
+        return harness.client.listSessionTranscript(sessionId)
+      },
+    }
+
+    await runCli({
+      argv: ["chat", "--session", session.id],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client,
+      io: createIo(output, ["/exit"]),
+    })
+
+    expect(countOccurrences(output.join(""), "assistant> Hello again.")).toBe(1)
+  })
+
   test("aggregates consecutive read calls into one preserved activity history", async () => {
     const harness = await createHarness("cli-chat-read-aggregation", createTurnProvider([
       async function* () {
