@@ -2,7 +2,7 @@ import {
   createAgentServerClient,
   createLocalCliServerClient,
   createStdioCliIo,
-  parseRunCommand,
+  parseCliCommand,
   runCli,
 } from "./cli"
 import {
@@ -32,10 +32,10 @@ export { createDefaultProvider, resolveAgentServerOrigin, resolveDefaultProvider
 export function buildCli(input: BuildCliInput = {}) {
   return {
     parse(argv: string[]) {
-      return parseRunCommand(argv)
+      return parseCliCommand(argv)
     },
     async run(argv: string[]) {
-      parseRunCommand(argv)
+      parseCliCommand(argv)
       const runCliImpl = input.runCliImpl ?? runCli
       const serverOrigin = resolveAgentServerOrigin(input.env)
 

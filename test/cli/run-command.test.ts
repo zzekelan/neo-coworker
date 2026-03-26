@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 
 import {
   createModelRuntimeApi,
@@ -644,6 +644,310 @@ describe("run command", () => {
   })
 })
 
+describe("chat command", () => {
+  test("keeps the process alive across multiple turns and exits on /exit", async () => {
+    const harness = await createHarness("cli-chat-multi-turn", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "First reply." }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Second reply." }
+      },
+    ]))
+    const output: string[] = []
+
+    await runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["First prompt", "Second prompt", "/exit"]),
+    })
+
+    const sessions = harness.repository.sessions.list()
+    const runs = harness.repository.runs.listBySession(sessions[0]!.id)
+
+    expect(sessions).toHaveLength(1)
+    expect(runs).toHaveLength(2)
+    expect(runs.map((run) => run.status)).toEqual(["completed", "completed"])
+    expect(
+      harness.repository.messages.listSessionTranscript(sessions[0]!.id)
+        .filter((message) => message.role === "user")
+        .map((message) => message.parts[0]?.text),
+    ).toEqual(["First prompt", "Second prompt"])
+    expect(output.join("")).toContain("you> First prompt")
+    expect(output.join("")).toContain("assistant> First reply.")
+    expect(output.join("")).toContain("you> Second prompt")
+    expect(output.join("")).toContain("assistant> Second reply.")
+  })
+
+  test("/resume only lists sessions in the current workspace and sorts by recent activity", async () => {
+    const harness = await createHarness("cli-chat-resume-list", createTurnProvider([]))
+    const otherWorkspaceRoot = join(dirname(harness.workspaceRoot), "other-workspace")
+    await mkdir(otherWorkspaceRoot, { recursive: true })
+
+    harness.repository.sessions.create({
+      id: "session_old",
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: 1,
+      title: "Older session",
+      updatedAt: 10,
+      latestUserMessagePreview: "older preview",
+    })
+    harness.repository.sessions.create({
+      id: "session_new",
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: 2,
+      title: "Newer session",
+      updatedAt: 20,
+      latestUserMessagePreview: "newer preview",
+    })
+    harness.repository.sessions.create({
+      id: "session_other",
+      directory: otherWorkspaceRoot,
+      workspaceRoot: otherWorkspaceRoot,
+      createdAt: 3,
+      title: "Other workspace",
+      updatedAt: 30,
+      latestUserMessagePreview: "should be filtered",
+    })
+
+    const output: string[] = []
+    let itemsSeen: Array<{ label: string; description?: string }> = []
+
+    await runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["/resume", "/exit"], {
+        async select(_message, items) {
+          itemsSeen = items
+          return 1
+        },
+      }),
+    })
+
+    expect(itemsSeen).toEqual([
+      {
+        label: "Newer session",
+        description: expect.stringContaining("newer preview"),
+      },
+      {
+        label: "Older session",
+        description: expect.stringContaining("older preview"),
+      },
+    ])
+    expect(output.join("")).toContain("session> Older session")
+  })
+
+  test("preserves a permission-blocked session across exit and later /resume", async () => {
+    const harness = await createHarness(
+      "cli-chat-resume-permission",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello from chat"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Write finished." }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          write: "ask",
+        },
+      },
+    )
+    const firstOutput: string[] = []
+    let sigintHandler: (() => void) | undefined
+    let releasePermissionPrompt!: () => void
+    const permissionPromptVisible = new Promise<void>((resolve) => {
+      releasePermissionPrompt = resolve
+    })
+
+    const firstChat = runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(firstOutput, ["Write notes.txt"], {
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        async prompt(message, options) {
+          if (message.startsWith("permission>")) {
+            releasePermissionPrompt()
+            return new Promise<string>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(Object.assign(new Error("Operation aborted"), { name: "AbortError" })),
+                { once: true },
+              )
+            })
+          }
+
+          return "Write notes.txt"
+        },
+      }),
+    })
+
+    await permissionPromptVisible
+    sigintHandler?.()
+    await firstChat
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const firstRun = harness.repository.runs.listBySession(sessionId)[0]!
+
+    expect(firstRun.status).toBe("waiting_permission")
+    expect(harness.permissionRepository.requests.listByRun(firstRun.id)).toMatchObject([
+      {
+        status: "pending",
+        toolName: "write",
+      },
+    ])
+    expect(firstOutput.join("")).not.toContain("status> cancelled")
+
+    const secondOutput: string[] = []
+    const secondAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(secondOutput, ["/resume", "/exit"], {
+        async prompt(message) {
+          if (message.startsWith("permission>")) {
+            secondOutput.push(`${message}y\n`)
+            return "y"
+          }
+
+          const answer = secondAnswers.shift() ?? "/exit"
+          secondOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    expect(harness.repository.runs.get(firstRun.id).status).toBe("completed")
+    expect(harness.permissionRepository.requests.listByRun(firstRun.id)).toMatchObject([
+      {
+        status: "approved",
+      },
+    ])
+    expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe("hello from chat")
+    expect(secondOutput.join("")).toContain("assistant> Write finished.")
+  })
+
+  test("aggregates consecutive read calls into one preserved activity history", async () => {
+    const harness = await createHarness("cli-chat-read-aggregation", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_read_one",
+          name: "read",
+          inputText: '{"path":"placeholder.txt"}',
+        }
+      },
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_read_two",
+          name: "read",
+          inputText: '{"path":"second.txt"}',
+        }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Done reading." }
+      },
+    ]))
+    await Bun.write(join(harness.workspaceRoot, "second.txt"), "second file")
+    const output: string[] = []
+
+    await runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["Summarize the files", "/exit"]),
+    })
+
+    expect(output.join("")).toContain("| reading 1 file: placeholder.txt")
+    expect(output.join("")).toContain("| reading 2 files: placeholder.txt | second.txt")
+    expect(output.join("")).toContain("✓ read 2 files: placeholder.txt | second.txt")
+    expect(output.join("")).toContain("assistant> Done reading.")
+  })
+
+  test("supports chat through the local runtime composition", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cli-chat-local-"))
+    tempDirectories.push(directory)
+
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+
+    const database = openStorageDatabase(join(directory, "agent.sqlite"))
+    openDatabases.push(database)
+
+    const repository = createStorageRepository({
+      database,
+    })
+    const permissionRepository = createPermissionRepository({
+      database,
+    })
+    const output: string[] = []
+
+    await runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([
+        async function* () {
+          yield { type: "text.delta", text: "Local hello." }
+        },
+      ]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl() {
+        return {
+          repository,
+          permissionRepository,
+          closeImpl() {},
+        }
+      },
+      io: createIo(output, ["Hello local", "/exit"]),
+    })
+
+    const sessions = repository.sessions.list()
+    const runs = repository.runs.listBySession(sessions[0]!.id)
+
+    expect(sessions).toHaveLength(1)
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toMatchObject({
+      status: "completed",
+      trigger: "cli",
+    })
+    expect(output.join("")).toContain("you> Hello local")
+    expect(output.join("")).toContain("assistant> Local hello.")
+  })
+})
+
 async function createHarness(
   prefix: string,
   provider: OrchestrationModelPort,
@@ -702,7 +1006,14 @@ function createIo(
   hooks: {
     onWrite?(text: string): void
     onSigint?(listener: () => void): void
+    select?(
+      message: string,
+      items: Array<{ label: string; description?: string }>,
+    ): Promise<number | null> | number | null
     prompt?(message: string, options?: { signal?: AbortSignal }): Promise<string>
+    startStatus?(text: string): void
+    updateStatus?(text: string): void
+    finishStatus?(text: string): void
   } = {},
 ) {
   return {
@@ -715,7 +1026,41 @@ function createIo(
         return hooks.prompt(message, options)
       }
 
-      return promptAnswers.shift() ?? "y"
+      const answer = promptAnswers.shift() ?? "y"
+      output.push(`${message}${answer}\n`)
+      return answer
+    },
+    async select(message: string, items: Array<{ label: string; description?: string }>) {
+      if (hooks.select) {
+        return hooks.select(message, items)
+      }
+
+      output.push(`${message}\n`)
+      return items.length > 0 ? 0 : null
+    },
+    startStatus(text: string) {
+      if (hooks.startStatus) {
+        hooks.startStatus(text)
+        return
+      }
+
+      output.push(`| ${text}\n`)
+    },
+    updateStatus(text: string) {
+      if (hooks.updateStatus) {
+        hooks.updateStatus(text)
+        return
+      }
+
+      output.push(`| ${text}\n`)
+    },
+    finishStatus(text: string) {
+      if (hooks.finishStatus) {
+        hooks.finishStatus(text)
+        return
+      }
+
+      output.push(`✓ ${text}\n`)
     },
     onSigint(listener: () => void) {
       hooks.onSigint?.(listener)

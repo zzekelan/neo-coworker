@@ -36,10 +36,25 @@ describe("bootstrap", () => {
     })
   })
 
+  test("parses the chat command", () => {
+    const cli = buildCli()
+    expect(cli.parse(["chat"])).toEqual({
+      command: "chat",
+    })
+  })
+
+  test("parses an existing session target for the chat command", () => {
+    const cli = buildCli()
+    expect(cli.parse(["chat", "--session", "session_123"])).toEqual({
+      command: "chat",
+      sessionId: "session_123",
+    })
+  })
+
   test("validates argv before requiring default provider configuration", async () => {
     const cli = buildCli()
 
-    await expect(cli.run(["status"])).rejects.toThrow("Only `run` is supported in MVP")
+    await expect(cli.run(["status"])).rejects.toThrow("Only `run` and `chat` are supported")
   })
 
   test("reads default provider configuration from LLM_* variables", () => {
