@@ -4,10 +4,14 @@ import { dirname, resolve } from "node:path"
 
 import { CURRENT_SESSION_SCHEMA_VERSION } from "../application/storage-schema"
 import {
+  DEFAULT_SESSION_TITLE,
   MESSAGE_ROLES,
   PART_KINDS,
   RUN_STATUSES,
   RUN_TRIGGERS,
+  buildDefaultSessionTitle,
+  buildSessionPreviewFromUserPrompt,
+  buildSessionTitleFromUserPrompt,
 } from "../domain"
 import {
   type CreateAssistantMessageWithFirstPartInput,
@@ -28,6 +32,7 @@ import {
   type TranscriptMessage,
   type UpdatePartContentInput,
   type UpdateRunStatusInput,
+  type UpdateSessionInput,
 } from "../application/ports/repository"
 import {
   mapMessageRow,
@@ -183,6 +188,32 @@ const sessionMigrations = [
       `,
     ],
   },
+  {
+    version: 3,
+    statements: [
+      `
+        ALTER TABLE session
+        ADD COLUMN title TEXT NOT NULL DEFAULT 'New session'
+      `,
+      `
+        ALTER TABLE session
+        ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0
+      `,
+      `
+        ALTER TABLE session
+        ADD COLUMN latest_user_message_preview TEXT
+      `,
+      `
+        UPDATE session
+        SET
+          title = COALESCE(NULLIF(title, ''), 'New session'),
+          updated_at = CASE
+            WHEN updated_at <= 0 THEN created_at
+            ELSE updated_at
+          END
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {
@@ -228,7 +259,20 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
 
   function getSessionRow(sessionId: string) {
     return database
-      .query("SELECT id, directory, workspace_root, created_at FROM session WHERE id = ?")
+      .query(
+        `
+          SELECT
+            id,
+            directory,
+            workspace_root,
+            created_at,
+            title,
+            updated_at,
+            latest_user_message_preview
+          FROM session
+          WHERE id = ?
+        `,
+      )
       .get(sessionId) as SessionRow | null
   }
 
@@ -236,7 +280,14 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     return database
       .query(
         `
-          SELECT id, directory, workspace_root, created_at
+          SELECT
+            id,
+            directory,
+            workspace_root,
+            created_at,
+            title,
+            updated_at,
+            latest_user_message_preview
           FROM session
           ORDER BY created_at ASC, id ASC
         `,
@@ -374,18 +425,40 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
 
   const sessions: SessionRepository["sessions"] = {
     create(session: CreateSessionInput): StoredSession {
+      const createdAt = session.createdAt ?? now()
       const record: StoredSession = {
         id: buildId("session", session.id),
         directory: session.directory,
         workspaceRoot: session.workspaceRoot,
-        createdAt: session.createdAt ?? now(),
+        createdAt,
+        title: session.title ?? buildDefaultSessionTitle(),
+        updatedAt: session.updatedAt ?? createdAt,
+        latestUserMessagePreview: session.latestUserMessagePreview ?? null,
       }
 
       database
         .query(
-          "INSERT INTO session (id, directory, workspace_root, created_at) VALUES (?, ?, ?, ?)",
+          `
+            INSERT INTO session (
+              id,
+              directory,
+              workspace_root,
+              created_at,
+              title,
+              updated_at,
+              latest_user_message_preview
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `,
         )
-        .run(record.id, record.directory, record.workspaceRoot, record.createdAt)
+        .run(
+          record.id,
+          record.directory,
+          record.workspaceRoot,
+          record.createdAt,
+          record.title,
+          record.updatedAt,
+          record.latestUserMessagePreview,
+        )
 
       return record
     },
@@ -394,6 +467,38 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     },
     get(sessionId: string) {
       return requireSession(sessionId)
+    },
+    update(session: UpdateSessionInput) {
+      const current = requireSession(session.sessionId)
+      const record: StoredSession = {
+        ...current,
+        title: session.title === undefined ? current.title : session.title,
+        updatedAt:
+          session.updatedAt === undefined
+            ? current.updatedAt
+            : Math.max(current.updatedAt, session.updatedAt),
+        latestUserMessagePreview:
+          session.latestUserMessagePreview === undefined
+            ? current.latestUserMessagePreview
+            : session.latestUserMessagePreview,
+      }
+
+      database
+        .query(
+          `
+            UPDATE session
+            SET title = ?, updated_at = ?, latest_user_message_preview = ?
+            WHERE id = ?
+          `,
+        )
+        .run(
+          record.title,
+          record.updatedAt,
+          record.latestUserMessagePreview,
+          record.id,
+        )
+
+      return record
     },
   }
 
@@ -478,6 +583,11 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           record.errorText,
           record.id,
         )
+
+      sessions.update({
+        sessionId: record.sessionId,
+        updatedAt: now(),
+      })
 
       return record
     },
@@ -599,7 +709,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     create(part: CreatePartInput): StoredPart {
       requireSession(part.sessionId)
       requireRunOwnership(part.runId, part.sessionId)
-      requireMessageOwnership(part.messageId, part.runId, part.sessionId)
+      const message = requireMessageOwnership(part.messageId, part.runId, part.sessionId)
 
       const record: StoredPart = {
         id: buildId("part", part.id),
@@ -640,6 +750,10 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           serializeJson(record.data),
           record.createdAt,
         )
+
+      if (shouldRefreshSessionMetadataFromUserPart(message, record)) {
+        refreshSessionMetadataFromUserPrompt(record.sessionId, record.text, record.createdAt)
+      }
 
       return record
     },
@@ -718,6 +832,37 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       return { message, part }
     },
   )
+
+  function shouldRefreshSessionMetadataFromUserPart(
+    message: StoredMessage,
+    part: StoredPart,
+  ) {
+    return message.role === "user" && message.sequence === 0 && part.kind === "text"
+  }
+
+  function refreshSessionMetadataFromUserPrompt(
+    sessionId: string,
+    promptText: string | null,
+    updatedAt: number,
+  ) {
+    if (!promptText) {
+      return
+    }
+
+    const current = sessions.get(sessionId)
+    const latestUserMessagePreview = buildSessionPreviewFromUserPrompt(promptText)
+    const nextTitle =
+      current.title === DEFAULT_SESSION_TITLE
+        ? buildSessionTitleFromUserPrompt(promptText) || buildDefaultSessionTitle()
+        : current.title
+
+    sessions.update({
+      sessionId,
+      title: nextTitle,
+      updatedAt,
+      latestUserMessagePreview: latestUserMessagePreview || null,
+    })
+  }
 
   return {
     storageIdentity,

@@ -3,6 +3,7 @@ import {
   type CreateServerAppRuntime,
   type OrchestrationModelPort,
   type PermissionRepository,
+  type SessionSnapshot,
   type SessionRepository as StorageRepository,
   type ServerEvent,
   type StoredMessage,
@@ -26,10 +27,12 @@ type Subscription = {
 }
 
 export type AgentServerClient = {
+  listSessions(): Promise<StoredSession[]>
   createSession(input: {
     directory: string
     workspaceRoot: string
   }): Promise<StoredSession>
+  getSession(sessionId: string): Promise<SessionSnapshot>
   startRun(input: {
     sessionId: string
     prompt: string
@@ -118,6 +121,9 @@ export function createAgentServerClient(input: {
   }
 
   return {
+    listSessions() {
+      return requestJson<{ sessions: StoredSession[] }>("/sessions").then((data) => data.sessions)
+    },
     createSession(inputValue) {
       return requestJson<{ session: StoredSession }>("/sessions", {
         method: "POST",
@@ -126,6 +132,9 @@ export function createAgentServerClient(input: {
         },
         body: JSON.stringify(inputValue),
       }).then((data) => data.session)
+    },
+    getSession(sessionId) {
+      return requestJson<SessionSnapshot>(`/sessions/${encodeURIComponent(sessionId)}`)
     },
     startRun(inputValue) {
       return requestJson<{
@@ -289,11 +298,17 @@ export async function createLocalCliServerClient(input: {
 
   return {
     client: {
+      async listSessions() {
+        return app.sessions.list()
+      },
       async createSession(sessionInput) {
         return app.sessions.create({
           directory: sessionInput.directory,
           workspaceRoot: sessionInput.workspaceRoot,
         })
+      },
+      async getSession(sessionId) {
+        return app.sessions.get(sessionId)
       },
       async startRun(runInput) {
         return app.runs.start({

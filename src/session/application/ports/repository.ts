@@ -29,6 +29,9 @@ export type StoredSession = {
   directory: string
   workspaceRoot: string
   createdAt: number
+  title: string
+  updatedAt: number
+  latestUserMessagePreview: string | null
 }
 
 export type StoredRun = {
@@ -74,6 +77,16 @@ export type CreateSessionInput = {
   directory: string
   workspaceRoot: string
   createdAt?: number
+  title?: string
+  updatedAt?: number
+  latestUserMessagePreview?: string | null
+}
+
+export type UpdateSessionInput = {
+  sessionId: string
+  title?: string
+  updatedAt?: number
+  latestUserMessagePreview?: string | null
 }
 
 export type CreateRunInput = {
@@ -180,6 +193,7 @@ export type SessionRepository = {
     create(session: CreateSessionInput): StoredSession
     list(): StoredSession[]
     get(sessionId: string): StoredSession
+    update(session: UpdateSessionInput): StoredSession
   }
   runs: {
     create(run: CreateRunInput): StoredRun

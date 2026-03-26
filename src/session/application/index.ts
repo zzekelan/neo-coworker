@@ -19,6 +19,7 @@ export {
   type TranscriptMessage,
   type UpdatePartContentInput,
   type UpdateRunStatusInput,
+  type UpdateSessionInput,
 } from "./ports/repository"
 export {
   SESSION_TABLES,
@@ -59,10 +60,16 @@ export {
   type SessionRuntimeApiInput,
 } from "./runtime-api"
 export {
+  DEFAULT_SESSION_TITLE,
   MESSAGE_ROLES,
   PART_KINDS,
   RUN_STATUSES,
   RUN_TRIGGERS,
+  SESSION_PREVIEW_MAX_LENGTH,
+  SESSION_TITLE_MAX_LENGTH,
+  buildDefaultSessionTitle,
+  buildSessionPreviewFromUserPrompt,
+  buildSessionTitleFromUserPrompt,
   type MessageRole,
   type PartKind,
   type RunStatus,

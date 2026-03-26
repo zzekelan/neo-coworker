@@ -63,6 +63,9 @@ describe("server HTTP API and SSE", () => {
         id: sessionId,
         directory: harness.workspaceRoot,
         workspaceRoot: harness.workspaceRoot,
+        title: "New session",
+        latestUserMessagePreview: null,
+        updatedAt: expect.any(Number),
       }),
     ])
 
@@ -91,6 +94,9 @@ describe("server HTTP API and SSE", () => {
     expect(sessionState.body.data).toMatchObject({
       session: {
         id: sessionId,
+        title: "Say hi from the server",
+        latestUserMessagePreview: "Say hi from the server",
+        updatedAt: expect.any(Number),
       },
       latestRun: {
         id: runId,
@@ -99,6 +105,17 @@ describe("server HTTP API and SSE", () => {
       activeRun: null,
       status: "idle",
     })
+
+    const listedSessionsAfterRun = await requestJson(harness.server, "GET", "/sessions")
+    expect(listedSessionsAfterRun.status).toBe(200)
+    expect(listedSessionsAfterRun.body.data.sessions).toEqual([
+      expect.objectContaining({
+        id: sessionId,
+        title: "Say hi from the server",
+        latestUserMessagePreview: "Say hi from the server",
+        updatedAt: expect.any(Number),
+      }),
+    ])
 
     const listedRuns = await requestJson(harness.server, "GET", `/sessions/${sessionId}/runs`)
     expect(listedRuns.status).toBe(200)
@@ -217,6 +234,7 @@ describe("server HTTP API and SSE", () => {
         message: "disk full",
       },
     })
+
     expect(harness.repository.runs.listBySession(sessionId)).toEqual([])
 
     const sessionStateAfterFailure = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)

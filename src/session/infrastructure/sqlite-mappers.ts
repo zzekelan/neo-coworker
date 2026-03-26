@@ -14,6 +14,9 @@ export type SessionRow = {
   directory: string
   workspace_root: string
   created_at: number
+  title: string
+  updated_at: number
+  latest_user_message_preview: string | null
 }
 
 export type RunRow = {
@@ -73,6 +76,9 @@ export function mapSessionRow(row: SessionRow): StoredSession {
     directory: row.directory,
     workspaceRoot: row.workspace_root,
     createdAt: row.created_at,
+    title: row.title,
+    updatedAt: row.updated_at,
+    latestUserMessagePreview: row.latest_user_message_preview,
   }
 }
 

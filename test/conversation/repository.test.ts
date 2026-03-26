@@ -343,6 +343,121 @@ describe("storage repository", () => {
     ).toThrow(StorageOwnershipError)
   })
 
+  test("persists resume-facing session metadata from user prompts and preserves custom titles", () => {
+    const { repository } = createTestRepository("session-metadata")
+
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    expect(session).toMatchObject({
+      title: "New session",
+      updatedAt: 1,
+      latestUserMessagePreview: null,
+    })
+
+    repository.runs.create({
+      id: "run_1",
+      sessionId: session.id,
+      trigger: "cli",
+      status: "completed",
+      createdAt: 2,
+    })
+    repository.messages.create({
+      id: "message_1",
+      sessionId: session.id,
+      runId: "run_1",
+      role: "user",
+      sequence: 0,
+      createdAt: 3,
+    })
+    repository.parts.create({
+      id: "part_1",
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      kind: "text",
+      sequence: 0,
+      text: "Investigate failing chat resume flow",
+      createdAt: 4,
+    })
+
+    expect(repository.sessions.get(session.id)).toMatchObject({
+      title: "Investigate failing chat resume flow",
+      updatedAt: 4,
+      latestUserMessagePreview: "Investigate failing chat resume flow",
+    })
+
+    repository.sessions.update({
+      sessionId: session.id,
+      title: "Manual title",
+    })
+    repository.runs.create({
+      id: "run_2",
+      sessionId: session.id,
+      trigger: "cli",
+      status: "completed",
+      createdAt: 5,
+    })
+    repository.messages.create({
+      id: "message_2",
+      sessionId: session.id,
+      runId: "run_2",
+      role: "user",
+      sequence: 0,
+      createdAt: 6,
+    })
+    repository.parts.create({
+      id: "part_2",
+      sessionId: session.id,
+      runId: "run_2",
+      messageId: "message_2",
+      kind: "text",
+      sequence: 0,
+      text: "Second prompt should only refresh the preview",
+      createdAt: 7,
+    })
+
+    expect(repository.sessions.get(session.id)).toMatchObject({
+      title: "Manual title",
+      updatedAt: 7,
+      latestUserMessagePreview: "Second prompt should only refresh the preview",
+    })
+  })
+
+  test("touches session updatedAt when run status changes", () => {
+    const { repository } = createTestRepository("session-activity-touch", {
+      now: () => 50,
+    })
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "running",
+      createdAt: 2,
+    })
+
+    repository.runs.updateStatus({
+      runId: "run_1",
+      status: "completed",
+      finishedAt: 9,
+    })
+
+    expect(repository.sessions.get("session_1")).toMatchObject({
+      updatedAt: 50,
+    })
+  })
+
   test("surfaces explicit not-found errors for reads and updates", () => {
     const { repository } = createTestRepository("not-found")
 
@@ -481,13 +596,16 @@ describe("storage repository", () => {
   })
 })
 
-function createTestRepository(prefix: string) {
+function createTestRepository(prefix: string, options: { now?: () => number } = {}) {
   const database = openStorageDatabase(createDatabasePath(prefix))
   trackDatabase(database)
 
   return {
     database,
-    repository: createStorageRepository({ database }),
+    repository: createStorageRepository({
+      database,
+      now: options.now,
+    }),
   }
 }
 
