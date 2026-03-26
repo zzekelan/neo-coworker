@@ -354,7 +354,13 @@ export function createCliChatRenderer(input: {
             assistantText = ""
           }
 
-          replayedActivity = buildHydratedToolActivity(part, replayedActivity)
+          const nextActivity = buildHydratedToolActivity(part, replayedActivity)
+
+          if (replayedActivity?.kind === "read" && nextActivity.kind !== "read") {
+            flushReplayedActivity()
+          }
+
+          replayedActivity = nextActivity
           continue
         }
 

@@ -1569,6 +1569,168 @@ describe("chat command", () => {
     expect(rendered).toContain("✓ write: Wrote notes.txt")
   })
 
+  test("replays completed read history before a later recovered tool activity on resume", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cli-chat-local-permission-read-history-"))
+    tempDirectories.push(directory)
+
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+
+    let sigintHandler: (() => void) | undefined
+    let releasePermissionPrompt!: () => void
+    const permissionPromptVisible = new Promise<void>((resolve) => {
+      releasePermissionPrompt = resolve
+    })
+
+    const firstChat = runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_read_before_write",
+            name: "read",
+            inputText: '{"path":"placeholder.txt"}',
+          }
+        },
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write_after_read",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello after read"}',
+          }
+        },
+        async function* () {},
+      ]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo([], ["先读再写"], {
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        async prompt(message, options) {
+          if (message.startsWith("permission>")) {
+            releasePermissionPrompt()
+            return new Promise<string>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(Object.assign(new Error("Operation aborted"), { name: "AbortError" })),
+                { once: true },
+              )
+            })
+          }
+
+          return "先读再写"
+        },
+      }),
+    })
+
+    await permissionPromptVisible
+    sigintHandler?.()
+    await firstChat
+
+    const secondOutput: string[] = []
+    const secondAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([
+        async function* () {},
+      ]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo(secondOutput, [], {
+        async prompt(message) {
+          if (message.startsWith("permission>")) {
+            secondOutput.push(`${message}y\n`)
+            return "y"
+          }
+
+          const answer = secondAnswers.shift() ?? "/exit"
+          secondOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    expect(secondOutput.join("")).toContain("✓ write: Wrote notes.txt")
+
+    const thirdOutput: string[] = []
+    const thirdAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo(thirdOutput, [], {
+        async prompt(message) {
+          const answer = thirdAnswers.shift() ?? "/exit"
+          thirdOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    const rendered = thirdOutput.join("")
+    expect(rendered).toContain("you> 先读再写")
+    expect(rendered).toContain("✓ read 1 file: placeholder.txt")
+    expect(rendered).toContain("✓ write: Wrote notes.txt")
+    expect(rendered.indexOf("✓ read 1 file: placeholder.txt")).toBeLessThan(
+      rendered.indexOf("✓ write: Wrote notes.txt"),
+    )
+  })
+
   test("cancels a permission-blocked local chat session on deny after a fresh entrypoint", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cli-chat-local-permission-deny-"))
     tempDirectories.push(directory)
