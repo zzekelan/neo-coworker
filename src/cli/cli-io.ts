@@ -200,6 +200,7 @@ export function createStdioCliIo(): CliIO {
 
           stdin.on("keypress", onKeypress)
           stdin.once("end", onEnd)
+          stdin.resume()
         })
       } finally {
         if (stdin.isTTY) {
