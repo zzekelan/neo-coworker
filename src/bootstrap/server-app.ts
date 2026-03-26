@@ -374,7 +374,7 @@ export function createObservedRepository(input: {
 
 export type ServerAppRuntime = Pick<
   OrchestrationRuntimeApi,
-  "run" | "cancelRun" | "respondPermission" | "resumeDetachedPermission"
+  "run" | "cancelRun" | "detachRun" | "respondPermission" | "resumeDetachedPermission"
 >
 
 export type CreateServerAppRuntime = (input: {
@@ -429,6 +429,7 @@ export function createServerApp(input: {
     string,
     {
       cancel(): void
+      detach(): void
       drained: Promise<void>
     }
   >()
@@ -470,6 +471,9 @@ export function createServerApp(input: {
     activeRuns.set(started.run.id, {
       cancel() {
         handle.cancel()
+      },
+      detach() {
+        runtime.detachRun(started.run.id)
       },
       drained,
     })
@@ -557,22 +561,20 @@ export function createServerApp(input: {
     async close() {
       if (!closing) {
         closing = (async () => {
-          const runsToStop = Array.from(activeRuns.entries()).flatMap(([runId, activeRun]) => {
+          const runsToDrain = Array.from(activeRuns.entries()).map(([runId, activeRun]) => {
             if (
               input.allowDetachedPermissionRecovery &&
               repository.runs.get(runId).status === "waiting_permission"
             ) {
-              return []
+              activeRun.detach()
+              return activeRun
             }
 
-            return [activeRun]
+            activeRun.cancel()
+            return activeRun
           })
 
-          for (const activeRun of runsToStop) {
-            activeRun.cancel()
-          }
-
-          await Promise.allSettled(runsToStop.map((activeRun) => activeRun.drained))
+          await Promise.allSettled(runsToDrain.map((activeRun) => activeRun.drained))
           eventBus.close()
         })()
       }

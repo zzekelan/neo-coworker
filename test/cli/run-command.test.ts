@@ -1250,6 +1250,140 @@ describe("chat command", () => {
     expect(secondOutput.join("")).toContain("assistant> Write finished.")
   })
 
+  test("cancels a permission-blocked local chat session on deny after a fresh entrypoint", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cli-chat-local-permission-deny-"))
+    tempDirectories.push(directory)
+
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+
+    let sigintHandler: (() => void) | undefined
+    let releasePermissionPrompt!: () => void
+    const permissionPromptVisible = new Promise<void>((resolve) => {
+      releasePermissionPrompt = resolve
+    })
+
+    const firstChat = runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_write_local_deny",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"should not be written"}',
+          }
+        },
+      ]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo([], ["Write notes.txt"], {
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        async prompt(message, options) {
+          if (message.startsWith("permission>")) {
+            releasePermissionPrompt()
+            return new Promise<string>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(Object.assign(new Error("Operation aborted"), { name: "AbortError" })),
+                { once: true },
+              )
+            })
+          }
+
+          return "Write notes.txt"
+        },
+      }),
+    })
+
+    await permissionPromptVisible
+    sigintHandler?.()
+    await firstChat
+
+    const initialStorage = createCliStorageComposition({
+      workspaceRoot,
+    })
+    const sessionId = initialStorage.repository.sessions.list()[0]!.id
+    const blockedRun = initialStorage.repository.runs.listBySession(sessionId)[0]!
+    expect(blockedRun.status).toBe("waiting_permission")
+    initialStorage.close()
+
+    const secondOutput: string[] = []
+    const secondAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo(secondOutput, [], {
+        async prompt(message) {
+          if (message.startsWith("permission>")) {
+            secondOutput.push(`${message}n\n`)
+            return "n"
+          }
+
+          const answer = secondAnswers.shift() ?? "/exit"
+          secondOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    const finalStorage = createCliStorageComposition({
+      workspaceRoot,
+    })
+
+    try {
+      expect(finalStorage.repository.runs.get(blockedRun.id).status).toBe("cancelled")
+      expect(finalStorage.permissionRepository.requests.listByRun(blockedRun.id)).toMatchObject([
+        {
+          status: "denied",
+        },
+      ])
+    } finally {
+      finalStorage.close()
+    }
+
+    await expect(readFile(join(workspaceRoot, "notes.txt"), "utf8")).rejects.toThrow()
+    expect(secondOutput.join("")).toContain("error> Tool write failed: Permission denied")
+    expect(secondOutput.join("")).toContain("status> cancelled")
+  })
+
   test("supports chat through the local runtime composition", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cli-chat-local-"))
     tempDirectories.push(directory)

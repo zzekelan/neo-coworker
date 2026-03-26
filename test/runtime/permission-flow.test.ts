@@ -28,7 +28,9 @@ const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
 
 type RuntimeController = ReturnType<typeof createRuntime> & {
   respondPermission(input: PermissionResponse): void
+  resumeDetachedPermission(input: PermissionResponse): void
   cancelRun(runId: string): void
+  detachRun(runId: string): void
 }
 
 afterEach(async () => {
@@ -386,7 +388,7 @@ describe("runtime permission flow", () => {
     ])
   })
 
-  test("a fresh runtime instance can reply to a pending request from the same sqlite state", async () => {
+  test("a fresh runtime instance can recover and reply to a detached pending request", async () => {
     const harness = await createHarness("permission-reopen-reply", false)
     const firstRuntime = createPermissionRuntime({
       provider: createTurnProvider([], [
@@ -423,6 +425,9 @@ describe("runtime permission flow", () => {
     const iterator = handle.events[Symbol.asyncIterator]()
     const permissionEvent = await waitForPermissionRequest(iterator)
 
+    firstRuntime.detachRun(started.run.id)
+    await collectEvents(iterator)
+
     const reopenedDatabase = trackDatabase(openStorageDatabase(harness.databasePath))
     const reopenedRepository = createStorageRepository({
       database: reopenedDatabase,
@@ -433,7 +438,11 @@ describe("runtime permission flow", () => {
       now: harness.now,
     })
     const secondRuntime = createRuntime({
-      provider: createTurnProvider([], []),
+      provider: createTurnProvider([], [
+        async function* () {
+          yield { type: "text.delta", text: "Write finished." }
+        },
+      ]),
       repository: reopenedRepository,
       permissionRepository: reopenedPermissionRepository,
       now: harness.now,
@@ -442,18 +451,15 @@ describe("runtime permission flow", () => {
       },
     }) as RuntimeController
 
-    secondRuntime.respondPermission({
+    secondRuntime.resumeDetachedPermission({
       requestId: permissionEvent.requestId,
       decision: "allow",
     })
 
-    const remainingEvents = await collectEvents(iterator)
+    await waitForRunStatus(() => reopenedRepository.runs.get(started.run.id).status, "completed")
 
     expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe("hello")
-    expect(remainingEvents.at(-1)).toMatchObject({
-      type: "run.completed",
-      runId: started.run.id,
-    })
+    expect(reopenedRepository.runs.get(started.run.id).status).toBe("completed")
     expect(reopenedPermissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
       status: "approved",
@@ -739,6 +745,20 @@ async function fileExists(path: string) {
   } catch {
     return false
   }
+}
+
+async function waitForRunStatus(readStatus: () => string, expectedStatus: string) {
+  const deadline = Date.now() + 2_000
+
+  while (Date.now() < deadline) {
+    if (readStatus() === expectedStatus) {
+      return
+    }
+
+    await Bun.sleep(10)
+  }
+
+  throw new Error(`Expected run status ${expectedStatus}`)
 }
 
 function createMonotonicClock(start = 1) {

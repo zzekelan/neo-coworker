@@ -46,6 +46,10 @@ function isAbortError(error: unknown, signal: AbortSignal) {
   return signal.aborted || (error instanceof Error && error.name === "AbortError")
 }
 
+function isDetachedError(error: unknown) {
+  return error instanceof Error && error.name === "RunDetachedError"
+}
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
@@ -108,6 +112,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
   return {
     isAbortError,
+    isDetachedError,
     getErrorMessage,
     initializeRun(runInput: {
       sessionId: string
@@ -241,6 +246,10 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             throw error
           }
 
+          if (isDetachedError(error)) {
+            throw error
+          }
+
           void iterator?.return?.()
 
           if (shouldRetryModelRequest({ attempt, sawProviderOutput })) {
@@ -329,6 +338,10 @@ async function executeToolCall(input: {
     return "continue"
   } catch (error) {
     if (isAbortError(error, input.signal)) {
+      throw error
+    }
+
+    if (isDetachedError(error)) {
       throw error
     }
 

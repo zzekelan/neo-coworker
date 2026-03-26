@@ -451,6 +451,17 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     activeRun.suspend.cancel()
   }
 
+  function detachRun(runId: string) {
+    const run = input.session.getRun(runId)
+    const activeRun = activeRuns.get(buildActiveRunKey(run.sessionId, runId))
+
+    if (!activeRun || run.status !== "waiting_permission") {
+      return
+    }
+
+    activeRun.suspend.detach()
+  }
+
   return {
     async run(runInput: OrchestrationRunInput): Promise<OrchestrationRunHandle> {
       const execution = createActiveRunExecution({
@@ -481,6 +492,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         },
       }
     },
+    detachRun,
     resumeDetachedPermission,
     respondPermission,
     cancelRun,

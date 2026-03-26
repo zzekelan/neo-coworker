@@ -72,6 +72,10 @@ export async function runOrchestrationLoop(input: OrchestrationLoopInput) {
       return
     }
   } catch (error) {
+    if (input.stepService.isDetachedError(error)) {
+      return
+    }
+
     if (input.stepService.isAbortError(error, input.signal)) {
       input.stepService.cancelRun({
         runId: input.runId,
