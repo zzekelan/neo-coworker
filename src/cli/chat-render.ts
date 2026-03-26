@@ -1,9 +1,11 @@
 import { relative, resolve } from "node:path"
 
-import type { ServerEvent, StoredMessage, StoredRun } from "../bootstrap"
+import type { ServerEvent, StoredMessage, StoredRun, TranscriptMessage } from "../bootstrap"
 import type { CliIO } from "./cli-io"
 
 type StoredMessageRole = StoredMessage["role"]
+type TranscriptPart = TranscriptMessage["parts"][number]
+const READ_ACTIVITY_IDLE_MS = 150
 
 type ReadActivity = {
   kind: "read"
@@ -25,6 +27,8 @@ export type CliChatRenderState = {
   renderedPartIds: Set<string>
   assistantLineOpen: boolean
   activeActivity: Activity | null
+  activeActivityVisible: boolean
+  readActivityTimeout: ReturnType<typeof setTimeout> | null
 }
 
 export function createCliChatRenderState(): CliChatRenderState {
@@ -35,6 +39,8 @@ export function createCliChatRenderState(): CliChatRenderState {
     renderedPartIds: new Set<string>(),
     assistantLineOpen: false,
     activeActivity: null,
+    activeActivityVisible: false,
+    readActivityTimeout: null,
   }
 }
 
@@ -46,6 +52,15 @@ export function createCliChatRenderer(input: {
 
   function write(text: string) {
     input.io.write(text)
+  }
+
+  function clearReadActivityTimeout() {
+    if (!state.readActivityTimeout) {
+      return
+    }
+
+    clearTimeout(state.readActivityTimeout)
+    state.readActivityTimeout = null
   }
 
   function startStatus(text: string) {
@@ -81,13 +96,37 @@ export function createCliChatRenderer(input: {
     state.assistantLineOpen = false
   }
 
+  function scheduleReadActivityFlush() {
+    clearReadActivityTimeout()
+
+    if (!state.activeActivityVisible || state.activeActivity?.kind !== "read") {
+      return
+    }
+
+    state.readActivityTimeout = setTimeout(() => {
+      if (state.activeActivity?.kind !== "read") {
+        return
+      }
+
+      finalizeActivity()
+    }, READ_ACTIVITY_IDLE_MS)
+  }
+
   function finalizeActivity(resultText?: string | null) {
     if (!state.activeActivity) {
       return
     }
 
+    clearReadActivityTimeout()
+
     const activity = state.activeActivity
+    const visible = state.activeActivityVisible
     state.activeActivity = null
+    state.activeActivityVisible = false
+
+    if (!visible) {
+      return
+    }
 
     if (activity.kind === "read") {
       finishStatus(describeReadActivity(activity.files, "final"))
@@ -132,7 +171,10 @@ export function createCliChatRenderer(input: {
           state.activeActivity.files.push(filePath)
         }
 
-        updateStatus(describeReadActivity(state.activeActivity.files, "live"))
+        if (state.activeActivityVisible) {
+          updateStatus(describeReadActivity(state.activeActivity.files, "live"))
+        }
+        scheduleReadActivityFlush()
         return
       }
 
@@ -141,7 +183,9 @@ export function createCliChatRenderer(input: {
         kind: "read",
         files: [filePath],
       }
+      state.activeActivityVisible = true
       startStatus(describeReadActivity(state.activeActivity.files, "live"))
+      scheduleReadActivityFlush()
       return
     }
 
@@ -152,6 +196,7 @@ export function createCliChatRenderer(input: {
       toolName,
       detail,
     }
+    state.activeActivityVisible = true
     startStatus(describeToolActivity(toolName, detail, null, "live"))
   }
 
@@ -202,11 +247,147 @@ export function createCliChatRenderer(input: {
     }
   }
 
+  function seedTranscriptState(transcript: TranscriptMessage[]) {
+    for (const message of transcript) {
+      state.messageRoles.set(message.id, message.role)
+
+      if (message.role !== "assistant") {
+        continue
+      }
+
+      for (const part of message.parts) {
+        if (part.kind === "text") {
+          state.printedTextByPartId.set(part.id, part.text ?? "")
+          continue
+        }
+
+        state.renderedPartIds.add(part.id)
+      }
+    }
+  }
+
+  function buildHydratedToolActivity(
+    part: TranscriptPart,
+    currentActivity: Activity | null,
+  ): Activity {
+    const toolName = getObjectStringValue(part.data, "toolName") ?? "unknown"
+    const inputText = getObjectStringValue(part.data, "inputText") ?? part.text ?? ""
+
+    if (toolName === "read") {
+      const filePath = formatWorkspacePath(
+        input.workspaceRoot,
+        extractToolDetail(toolName, inputText) ?? "<unknown>",
+      )
+
+      if (currentActivity?.kind === "read") {
+        if (!currentActivity.files.includes(filePath)) {
+          currentActivity.files.push(filePath)
+        }
+
+        return currentActivity
+      }
+
+      return {
+        kind: "read",
+        files: [filePath],
+      }
+    }
+
+    return {
+      kind: "tool",
+      toolName,
+      detail: extractToolDetail(toolName, inputText),
+    }
+  }
+
+  function replayActiveRunSnapshot(inputValue: {
+    transcript: TranscriptMessage[]
+    runId: string
+    renderLiveActivity: boolean
+  }) {
+    let resumedText: string | null = null
+    let resumedActivity: Activity | null = null
+
+    for (const message of inputValue.transcript) {
+      if (message.runId !== inputValue.runId || message.role !== "assistant") {
+        continue
+      }
+
+      for (const part of message.parts) {
+        switch (part.kind) {
+          case "text":
+            resumedText = part.text ?? ""
+            resumedActivity = null
+            continue
+          case "tool_call":
+            resumedText = null
+            resumedActivity = buildHydratedToolActivity(part, resumedActivity)
+            continue
+          case "tool_result":
+            if (
+              resumedActivity?.kind === "tool" &&
+              resumedActivity.toolName === (getObjectStringValue(part.data, "toolName") ?? "unknown")
+            ) {
+              resumedActivity = null
+            }
+
+            resumedText = null
+            continue
+          case "error":
+            resumedText = null
+            resumedActivity = null
+            continue
+          case "reasoning":
+          case "step_start":
+          case "step_finish":
+          case "patch":
+            continue
+        }
+      }
+    }
+
+    if (resumedText) {
+      write(`assistant> ${resumedText}`)
+      state.assistantLineOpen = true
+    }
+
+    if (!resumedActivity) {
+      return
+    }
+
+    state.activeActivity = resumedActivity
+    state.activeActivityVisible = inputValue.renderLiveActivity
+
+    if (!inputValue.renderLiveActivity) {
+      return
+    }
+
+    if (resumedActivity.kind === "read") {
+      startStatus(describeReadActivity(resumedActivity.files, "live"))
+      scheduleReadActivityFlush()
+      return
+    }
+
+    startStatus(describeToolActivity(resumedActivity.toolName, resumedActivity.detail, null, "live"))
+  }
+
   return {
-    renderUserPrompt(prompt: string) {
-      finalizeActivity()
-      closeAssistantLine()
-      write(`you> ${prompt}\n`)
+    hydrateTranscript(inputValue: {
+      transcript: TranscriptMessage[]
+      activeRunId?: string
+      renderLiveActivity?: boolean
+    }) {
+      seedTranscriptState(inputValue.transcript)
+
+      if (!inputValue.activeRunId) {
+        return
+      }
+
+      replayActiveRunSnapshot({
+        transcript: inputValue.transcript,
+        runId: inputValue.activeRunId,
+        renderLiveActivity: inputValue.renderLiveActivity ?? false,
+      })
     },
     renderEvent(event: ServerEvent) {
       switch (event.type) {
@@ -264,6 +445,7 @@ export function createCliChatRenderer(input: {
       }
     },
     finish() {
+      clearReadActivityTimeout()
       finalizeActivity()
       closeAssistantLine()
     },

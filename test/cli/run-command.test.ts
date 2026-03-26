@@ -675,10 +675,12 @@ describe("chat command", () => {
         .filter((message) => message.role === "user")
         .map((message) => message.parts[0]?.text),
     ).toEqual(["First prompt", "Second prompt"])
-    expect(output.join("")).toContain("you> First prompt")
-    expect(output.join("")).toContain("assistant> First reply.")
-    expect(output.join("")).toContain("you> Second prompt")
-    expect(output.join("")).toContain("assistant> Second reply.")
+    const rendered = output.join("")
+
+    expect(countOccurrences(rendered, "you> First prompt")).toBe(1)
+    expect(rendered).toContain("assistant> First reply.")
+    expect(countOccurrences(rendered, "you> Second prompt")).toBe(1)
+    expect(rendered).toContain("assistant> Second reply.")
   })
 
   test("/resume only lists sessions in the current workspace and sorts by recent activity", async () => {
@@ -849,6 +851,64 @@ describe("chat command", () => {
     expect(secondOutput.join("")).toContain("assistant> Write finished.")
   })
 
+  test("resumes an already-running session after assistant output has started", async () => {
+    let releaseFirstDelta!: () => void
+    const firstDeltaEmitted = new Promise<void>((resolve) => {
+      releaseFirstDelta = resolve
+    })
+    let releaseContinuation!: () => void
+    const continueRun = new Promise<void>((resolve) => {
+      releaseContinuation = resolve
+    })
+    const harness = await createHarness("cli-chat-resume-active-run", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "Hello " }
+        releaseFirstDelta()
+        await continueRun
+        yield { type: "text.delta", text: "again." }
+      },
+    ]))
+    const session = await harness.client.createSession({
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+    })
+
+    await harness.client.startRun({
+      sessionId: session.id,
+      prompt: "Say hello",
+      trigger: "cli",
+    })
+    await firstDeltaEmitted
+
+    const output: string[] = []
+    let releaseSubscribed!: () => void
+    const subscribed = new Promise<void>((resolve) => {
+      releaseSubscribed = resolve
+    })
+    const client = {
+      ...harness.client,
+      async subscribe() {
+        const subscription = await harness.client.subscribe()
+        releaseSubscribed()
+        return subscription
+      },
+    }
+
+    const chat = runCli({
+      argv: ["chat", "--session", session.id],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client,
+      io: createIo(output, ["/exit"]),
+    })
+
+    await subscribed
+    releaseContinuation()
+    await chat
+
+    expect(output.join("")).toContain("assistant> Hello again.")
+  })
+
   test("aggregates consecutive read calls into one preserved activity history", async () => {
     const harness = await createHarness("cli-chat-read-aggregation", createTurnProvider([
       async function* () {
@@ -886,6 +946,39 @@ describe("chat command", () => {
     expect(output.join("")).toContain("| reading 2 files: placeholder.txt | second.txt")
     expect(output.join("")).toContain("✓ read 2 files: placeholder.txt | second.txt")
     expect(output.join("")).toContain("assistant> Done reading.")
+  })
+
+  test("flushes a read activity group after inactivity before assistant text resumes", async () => {
+    const harness = await createHarness("cli-chat-read-timeout", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_read_timeout",
+          name: "read",
+          inputText: '{"path":"placeholder.txt"}',
+        }
+        await Bun.sleep(220)
+        yield { type: "text.delta", text: "Timeout flushed." }
+      },
+    ]))
+    const output: string[] = []
+
+    await runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["Summarize the file", "/exit"]),
+    })
+
+    const rendered = output.join("")
+
+    expect(rendered).toContain("| reading 1 file: placeholder.txt")
+    expect(rendered).toContain("✓ read 1 file: placeholder.txt")
+    expect(rendered).toContain("assistant> Timeout flushed.")
+    expect(rendered.indexOf("✓ read 1 file: placeholder.txt")).toBeLessThan(
+      rendered.indexOf("assistant> Timeout flushed."),
+    )
   })
 
   test("supports chat through the local runtime composition", async () => {

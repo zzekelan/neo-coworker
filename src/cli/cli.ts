@@ -662,7 +662,6 @@ async function runChatTurn(input: {
     io: input.io,
     workspaceRoot: input.workspaceRoot,
   })
-  renderer.renderUserPrompt(input.prompt)
 
   const subscription = await input.client.subscribe()
 
@@ -738,6 +737,12 @@ async function resumeExistingChatSession(input: {
   })
 
   try {
+    const transcript = await input.client.listSessionTranscript(input.sessionId)
+    renderer.hydrateTranscript({
+      transcript,
+      activeRunId: activeRun.id,
+      renderLiveActivity: activeRun.status === "running",
+    })
     input.setActiveRunId(activeRun.id)
 
     const watched = await watchChatRun({
