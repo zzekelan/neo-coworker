@@ -1250,6 +1250,325 @@ describe("chat command", () => {
     expect(secondOutput.join("")).toContain("assistant> Write finished.")
   })
 
+  test("replays assistant output produced after detached permission recovery on a later resume", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cli-chat-local-permission-replay-"))
+    tempDirectories.push(directory)
+
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+
+    let sigintHandler: (() => void) | undefined
+    let releasePermissionPrompt!: () => void
+    const permissionPromptVisible = new Promise<void>((resolve) => {
+      releasePermissionPrompt = resolve
+    })
+
+    const firstChat = runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([
+        async function* () {
+          yield { type: "text.delta", text: "让我先写入这个文件。" }
+          yield {
+            type: "tool.call",
+            callId: "call_write_local_replay",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello from replay test"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "已经写好了。" }
+        },
+      ]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo([], ["写入 notes.txt"], {
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        async prompt(message, options) {
+          if (message.startsWith("permission>")) {
+            releasePermissionPrompt()
+            return new Promise<string>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(Object.assign(new Error("Operation aborted"), { name: "AbortError" })),
+                { once: true },
+              )
+            })
+          }
+
+          return "写入 notes.txt"
+        },
+      }),
+    })
+
+    await permissionPromptVisible
+    sigintHandler?.()
+    await firstChat
+
+    const secondOutput: string[] = []
+    const secondAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([
+        async function* () {
+          yield { type: "text.delta", text: "已经写好了。" }
+        },
+      ]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo(secondOutput, [], {
+        async prompt(message) {
+          if (message.startsWith("permission>")) {
+            secondOutput.push(`${message}y\n`)
+            return "y"
+          }
+
+          const answer = secondAnswers.shift() ?? "/exit"
+          secondOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    const transcriptStorage = createCliStorageComposition({
+      workspaceRoot,
+    })
+    const sessionId = transcriptStorage.repository.sessions.list()[0]!.id
+    const transcript = transcriptStorage.repository.messages.listSessionTranscript(sessionId)
+    transcriptStorage.close()
+
+    expect(transcript.some(
+      (message) =>
+        message.role === "assistant" &&
+        message.parts.some((part) => part.kind === "text" && part.text?.includes("已经写好了。")),
+    )).toBe(true)
+    expect(secondOutput.join("")).toContain("assistant> 已经写好了。")
+
+    const thirdOutput: string[] = []
+    const thirdAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo(thirdOutput, [], {
+        async prompt(message) {
+          const answer = thirdAnswers.shift() ?? "/exit"
+          thirdOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    const rendered = thirdOutput.join("")
+    expect(rendered).toContain("you> 写入 notes.txt")
+    expect(rendered).toContain("assistant> 让我先写入这个文件。")
+    expect(rendered).toContain("assistant> 已经写好了。")
+  })
+
+  test("replays completed tool activity from a detached permission recovery on a later resume", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cli-chat-local-permission-tool-history-"))
+    tempDirectories.push(directory)
+
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+
+    let sigintHandler: (() => void) | undefined
+    let releasePermissionPrompt!: () => void
+    const permissionPromptVisible = new Promise<void>((resolve) => {
+      releasePermissionPrompt = resolve
+    })
+
+    const firstChat = runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([
+        async function* () {
+          yield { type: "text.delta", text: "我来写入这个文件。" }
+          yield {
+            type: "tool.call",
+            callId: "call_write_local_tool_history",
+            name: "write",
+            inputText: '{"path":"notes.txt","content":"hello from tool history"}',
+          }
+        },
+      ]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo([], ["写入 notes.txt"], {
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        async prompt(message, options) {
+          if (message.startsWith("permission>")) {
+            releasePermissionPrompt()
+            return new Promise<string>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(Object.assign(new Error("Operation aborted"), { name: "AbortError" })),
+                { once: true },
+              )
+            })
+          }
+
+          return "写入 notes.txt"
+        },
+      }),
+    })
+
+    await permissionPromptVisible
+    sigintHandler?.()
+    await firstChat
+
+    const secondOutput: string[] = []
+    const secondAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([
+        async function* () {},
+      ]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo(secondOutput, [], {
+        async prompt(message) {
+          if (message.startsWith("permission>")) {
+            secondOutput.push(`${message}y\n`)
+            return "y"
+          }
+
+          const answer = secondAnswers.shift() ?? "/exit"
+          secondOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    expect(secondOutput.join("")).toContain("✓ write: Wrote notes.txt")
+
+    const thirdOutput: string[] = []
+    const thirdAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: workspaceRoot,
+      workspaceRoot,
+      provider: createTurnProvider([]),
+      createLocalRuntimeImpl(runtimeInput) {
+        return createRuntime({
+          provider: runtimeInput.provider,
+          repository: runtimeInput.repository,
+          permissionRepository: runtimeInput.permissionRepository,
+          permissionPolicy: {
+            write: "ask",
+          },
+          now: runtimeInput.now,
+        })
+      },
+      createLocalStorageImpl(root) {
+        return createLocalCliStorage(root)
+      },
+      io: createIo(thirdOutput, [], {
+        async prompt(message) {
+          const answer = thirdAnswers.shift() ?? "/exit"
+          thirdOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    const rendered = thirdOutput.join("")
+    expect(rendered).toContain("you> 写入 notes.txt")
+    expect(rendered).toContain("assistant> 我来写入这个文件。")
+    expect(rendered).toContain("✓ write: Wrote notes.txt")
+  })
+
   test("cancels a permission-blocked local chat session on deny after a fresh entrypoint", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cli-chat-local-permission-deny-"))
     tempDirectories.push(directory)

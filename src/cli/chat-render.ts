@@ -32,6 +32,7 @@ export type CliChatRenderState = {
   assistantLineOpen: boolean
   activeActivity: Activity | null
   activeActivityVisible: boolean
+  activeActivityRevealOnComplete: boolean
   readActivityTimeout: ReturnType<typeof setTimeout> | null
 }
 
@@ -44,6 +45,7 @@ export function createCliChatRenderState(): CliChatRenderState {
     assistantLineOpen: false,
     activeActivity: null,
     activeActivityVisible: false,
+    activeActivityRevealOnComplete: false,
     readActivityTimeout: null,
   }
 }
@@ -124,9 +126,10 @@ export function createCliChatRenderer(input: {
     clearReadActivityTimeout()
 
     const activity = state.activeActivity
-    const visible = state.activeActivityVisible
+    const visible = state.activeActivityVisible || (state.activeActivityRevealOnComplete && resultText != null)
     state.activeActivity = null
     state.activeActivityVisible = false
+    state.activeActivityRevealOnComplete = false
 
     if (!visible) {
       return
@@ -193,6 +196,7 @@ export function createCliChatRenderer(input: {
         files: [filePath],
       }
       state.activeActivityVisible = true
+      state.activeActivityRevealOnComplete = false
       startStatus(describeReadActivity(state.activeActivity.files, "live"))
       scheduleReadActivityFlush()
       return
@@ -206,6 +210,7 @@ export function createCliChatRenderer(input: {
       detail,
     }
     state.activeActivityVisible = true
+    state.activeActivityRevealOnComplete = false
     startStatus(describeToolActivity(toolName, detail, null, "live"))
   }
 
@@ -290,8 +295,33 @@ export function createCliChatRenderer(input: {
     transcript: TranscriptMessage[]
     omittedAssistantMessageIds: Set<string>
   }) {
+    let replayedActivity: Activity | null = null
+
+    function flushReplayedActivity(resultText?: string | null) {
+      if (!replayedActivity) {
+        return
+      }
+
+      if (replayedActivity.kind === "read") {
+        finishStatus(describeReadActivity(replayedActivity.files, "final"))
+        replayedActivity = null
+        return
+      }
+
+      if (resultText == null) {
+        replayedActivity = null
+        return
+      }
+
+      finishStatus(
+        describeToolActivity(replayedActivity.toolName, replayedActivity.detail, resultText, "final"),
+      )
+      replayedActivity = null
+    }
+
     for (const message of inputValue.transcript) {
       if (message.role === "user") {
+        flushReplayedActivity()
         const text = message.parts
           .filter((part) => part.kind === "text")
           .map((part) => part.text ?? "")
@@ -313,7 +343,41 @@ export function createCliChatRenderer(input: {
 
       for (const part of message.parts) {
         if (part.kind === "text" && part.text) {
+          flushReplayedActivity()
           assistantText += part.text
+          continue
+        }
+
+        if (part.kind === "tool_call") {
+          if (assistantText) {
+            write(`assistant> ${assistantText}\n`)
+            assistantText = ""
+          }
+
+          replayedActivity = buildHydratedToolActivity(part, replayedActivity)
+          continue
+        }
+
+        if (part.kind === "tool_result") {
+          if (assistantText) {
+            write(`assistant> ${assistantText}\n`)
+            assistantText = ""
+          }
+
+          const toolName = getObjectStringValue(part.data, "toolName") ?? "unknown"
+
+          if (
+            replayedActivity?.kind === "tool" &&
+            replayedActivity.toolName === toolName
+          ) {
+            flushReplayedActivity(part.text)
+            continue
+          }
+
+          if (replayedActivity?.kind === "read") {
+            continue
+          }
+
           continue
         }
 
@@ -326,12 +390,17 @@ export function createCliChatRenderer(input: {
           assistantText = ""
         }
 
+        flushReplayedActivity()
         write(`error> ${part.text ?? "unknown error"}\n`)
       }
 
       if (assistantText) {
         write(`assistant> ${assistantText}\n`)
       }
+    }
+
+    if (replayedActivity?.kind === "read") {
+      flushReplayedActivity()
     }
   }
 
@@ -434,6 +503,7 @@ export function createCliChatRenderer(input: {
 
     state.activeActivity = resumedActivity
     state.activeActivityVisible = inputValue.renderLiveActivity
+    state.activeActivityRevealOnComplete = !inputValue.renderLiveActivity
 
     if (!inputValue.renderLiveActivity) {
       return
