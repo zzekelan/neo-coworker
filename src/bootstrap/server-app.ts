@@ -8,6 +8,10 @@ import {
   type StoredRun,
   type StoredSession,
 } from "../session"
+import type {
+  StoredKnowledgeAsset,
+  StoredKnowledgeCandidate,
+} from "../knowledge"
 import {
   PermissionRequestNotAwaitingActiveRuntimeError,
   type OrchestrationRuntimeApi,
@@ -18,6 +22,7 @@ import type {
   PermissionResponse,
   StoredPermissionRequest,
 } from "../permission"
+import type { BuiltinResearchToolCallbacks } from "../tool"
 
 export type SessionSnapshot = {
   session: StoredSession
@@ -50,6 +55,14 @@ export type ServerEventPayload =
   | {
       type: "permission.updated"
       permissionRequest: StoredPermissionRequest
+    }
+  | {
+      type: "knowledge.candidate.created" | "knowledge.candidate.updated"
+      candidate: StoredKnowledgeCandidate
+    }
+  | {
+      type: "knowledge.asset.created" | "knowledge.asset.updated"
+      asset: StoredKnowledgeAsset
     }
   | {
       type: "runtime.error"
@@ -381,6 +394,8 @@ export type CreateServerAppRuntime = (input: {
   repository: StorageRepository
   permissionRepository: PermissionRepository
   now: () => number
+  publishEvent(payload: ServerEventPayload): void
+  researchTools?: BuiltinResearchToolCallbacks
 }) => ServerAppRuntime
 
 export class ServerShuttingDownError extends Error {
@@ -424,6 +439,9 @@ export function createServerApp(input: {
     repository,
     permissionRepository,
     now,
+    publishEvent(payload) {
+      eventBus.publish(payload)
+    },
   })
   const activeRuns = new Map<
     string,
@@ -487,10 +505,12 @@ export function createServerApp(input: {
       create(sessionInput: {
         directory: string
         workspaceRoot?: string
+        title?: string
       }) {
         return repository.sessions.create({
           directory: sessionInput.directory,
           workspaceRoot: sessionInput.workspaceRoot ?? sessionInput.directory,
+          title: sessionInput.title,
           createdAt: now(),
         })
       },

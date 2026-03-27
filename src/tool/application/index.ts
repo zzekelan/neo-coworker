@@ -2,6 +2,14 @@ export type {
   ToolObserverEvent,
   ToolObserverPort,
 } from "./ports/tool-observer"
+export type {
+  BuiltinResearchToolCallbacks,
+  ExternalContentDocument,
+  ResearchToolAssetDocument,
+  ResearchToolAssetSummary,
+  ResearchToolCandidateSummary,
+  ResearchToolSearchMatch,
+} from "./ports/research"
 export {
   SEARCH_MAX_MATCHES,
   SEARCH_SKIPPED_DIRECTORIES,

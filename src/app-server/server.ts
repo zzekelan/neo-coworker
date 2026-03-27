@@ -1,6 +1,9 @@
 import { createServer as createNetServer } from "node:net"
+import { mkdir, realpath, stat } from "node:fs/promises"
+import { basename, resolve } from "node:path"
 import { z, ZodError } from "zod"
 import {
+  createResearchToolCallbacks,
   createServerApp,
   InvalidRunStatusTransitionError,
   type CreateServerAppRuntime,
@@ -26,6 +29,7 @@ export { PermissionRequestNotAwaitingActiveRuntimeError } from "../bootstrap"
 const createSessionBodySchema = z.object({
   directory: z.string().min(1),
   workspaceRoot: z.string().min(1).optional(),
+  title: z.string().trim().min(1).max(60).optional(),
 })
 
 const startRunBodySchema = z.object({
@@ -39,22 +43,74 @@ const replyPermissionBodySchema = z.object({
   decision: z.enum(["allow", "deny"]),
 })
 
+const openProjectBodySchema = z.object({
+  directory: z.string().trim().min(1),
+  create: z.boolean().optional(),
+})
+
+const createProjectThreadBodySchema = z.object({
+  workspaceRoot: z.string().trim().min(1),
+  title: z.string().trim().min(1).max(60).optional(),
+})
+
+const saveCandidateBodySchema = z.object({
+  title: z.string().trim().min(1).optional(),
+})
+
+const workspaceRootQuerySchema = z.object({
+  workspaceRoot: z.string().trim().min(1),
+})
+
 type ServerInstance = ReturnType<typeof Bun.serve>
 const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 5_000
+
+type SessionSummary = {
+  id: string
+  workspaceRoot: string
+  title: string
+  updatedAt: number
+  latestUserMessagePreview: string | null
+}
+
+type KnowledgeRuntime = Parameters<typeof createResearchToolCallbacks>[0]["knowledge"]
 
 export function createAgentServer(input: {
   createRuntimeImpl: CreateServerAppRuntime
   repository: StorageRepository
   permissionRepository: PermissionRepository
+  knowledge?: KnowledgeRuntime
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
   now?: () => number
   heartbeatIntervalMs?: number
   allowDetachedPermissionRecovery?: boolean
+  fetchExternalContent?: Parameters<typeof createResearchToolCallbacks>[0]["fetchExternalContent"]
 }) {
   const now = input.now ?? Date.now
   const heartbeatIntervalMs = input.heartbeatIntervalMs ?? DEFAULT_SSE_HEARTBEAT_INTERVAL_MS
   const app = createServerApp({
-    createRuntimeImpl: input.createRuntimeImpl,
+    createRuntimeImpl(runtimeInput) {
+      return input.createRuntimeImpl({
+        ...runtimeInput,
+        researchTools: input.knowledge
+          ? createResearchToolCallbacks({
+              knowledge: input.knowledge,
+              fetchExternalContent: input.fetchExternalContent,
+              onCandidateStaged(candidate) {
+                runtimeInput.publishEvent({
+                  type: "knowledge.candidate.created",
+                  candidate,
+                })
+              },
+              onAssetCreated(asset) {
+                runtimeInput.publishEvent({
+                  type: "knowledge.asset.created",
+                  asset,
+                })
+              },
+            })
+          : runtimeInput.researchTools,
+      })
+    },
     repository: input.repository,
     permissionRepository: input.permissionRepository,
     exportRunTraceImpl: input.exportRunTraceImpl,
@@ -97,6 +153,83 @@ export function createAgentServer(input: {
         return jsonResponse(201, {
           data: {
             session,
+          },
+        })
+      }
+
+      if (request.method === "GET" && path === "projects") {
+        return jsonResponse(200, {
+          data: {
+            projects: listProjects({
+              repository: app.sessions.list(),
+              knowledge: input.knowledge,
+            }),
+          },
+        })
+      }
+
+      if (request.method === "POST" && path === "projects/open") {
+        const body = await readJsonBody(request, openProjectBodySchema)
+        const workspaceRoot = await resolveProjectDirectory(body.directory, body.create ?? false)
+
+        return jsonResponse(200, {
+          data: {
+            project: buildProjectSummary({
+              workspaceRoot,
+              sessions: app.sessions.list(),
+              knowledge: input.knowledge,
+            }),
+          },
+        })
+      }
+
+      if (request.method === "GET" && path === "project") {
+        const query = workspaceRootQuerySchema.parse(readQuery(url))
+        return jsonResponse(200, {
+          data: {
+            project: buildProjectSummary({
+              workspaceRoot: query.workspaceRoot,
+              sessions: app.sessions.list(),
+              knowledge: input.knowledge,
+            }),
+          },
+        })
+      }
+
+      if (request.method === "GET" && path === "project/threads") {
+        const query = workspaceRootQuerySchema.parse(readQuery(url))
+        return jsonResponse(200, {
+          data: {
+            threads: app.sessions
+              .list()
+              .filter((session) => session.workspaceRoot === query.workspaceRoot)
+              .sort((left, right) => right.updatedAt - left.updatedAt),
+          },
+        })
+      }
+
+      if (request.method === "POST" && path === "project/threads") {
+        const body = await readJsonBody(request, createProjectThreadBodySchema)
+        const workspaceRoot = await resolveProjectDirectory(body.workspaceRoot, true)
+        const session = app.sessions.create({
+          directory: workspaceRoot,
+          workspaceRoot,
+          title: body.title,
+        })
+
+        return jsonResponse(201, {
+          data: {
+            thread: session,
+          },
+        })
+      }
+
+      if (request.method === "GET" && path === "project/knowledge") {
+        const query = workspaceRootQuerySchema.parse(readQuery(url))
+        return jsonResponse(200, {
+          data: {
+            candidates: input.knowledge?.candidates.list(query.workspaceRoot) ?? [],
+            assets: input.knowledge?.assets.list(query.workspaceRoot) ?? [],
           },
         })
       }
@@ -174,6 +307,42 @@ export function createAgentServer(input: {
             requestId: permissionReplyMatch.requestId,
             decision: body.decision,
           }),
+        })
+      }
+
+      const candidateSaveMatch = matchPath(path, ["project", "candidates", ":candidateId", "save"])
+      if (request.method === "POST" && candidateSaveMatch) {
+        if (!input.knowledge) {
+          return errorResponse(404, "not_found", "Knowledge runtime is not configured")
+        }
+
+        const body = await readJsonBody(request, saveCandidateBodySchema)
+        const saved = await input.knowledge.candidates.saveAsSource({
+          candidateId: candidateSaveMatch.candidateId,
+          title: body.title,
+        })
+        app.events.publish({
+          type: "knowledge.candidate.updated",
+          candidate: saved.candidate,
+        })
+        app.events.publish({
+          type: "knowledge.asset.created",
+          asset: saved.asset,
+        })
+
+        return jsonResponse(201, {
+          data: saved,
+        })
+      }
+
+      const assetMatch = matchPath(path, ["project", "assets", ":assetId"])
+      if (request.method === "GET" && assetMatch) {
+        if (!input.knowledge) {
+          return errorResponse(404, "not_found", "Knowledge runtime is not configured")
+        }
+
+        return jsonResponse(200, {
+          data: await input.knowledge.assets.read(assetMatch.assetId),
         })
       }
 
@@ -281,7 +450,7 @@ export function createAgentServer(input: {
       server = Bun.serve({
         hostname,
         port,
-        fetch: (request, activeServer) => handleRequest(request, activeServer),
+        fetch: (request: Request, activeServer: ServerInstance) => handleRequest(request, activeServer),
       })
       baseUrl = `http://${hostname}:${server.port}`
     },
@@ -310,6 +479,10 @@ async function readJsonBody<T extends z.ZodTypeAny>(request: Request, schema: T)
 
 function trimSlashes(pathname: string) {
   return pathname.replace(/^\/+|\/+$/g, "")
+}
+
+function readQuery(url: URL) {
+  return Object.fromEntries(url.searchParams.entries())
 }
 
 function matchPath(pathname: string, pattern: string[]) {
@@ -363,7 +536,8 @@ function mapHttpError(error: unknown) {
   if (
     error instanceof StorageNotFoundError ||
     error instanceof PermissionNotFoundError ||
-    error instanceof RunTraceNotFoundError
+    error instanceof RunTraceNotFoundError ||
+    error instanceof ProjectDirectoryNotFoundError
   ) {
     return {
       status: 404,
@@ -372,7 +546,11 @@ function mapHttpError(error: unknown) {
     }
   }
 
-  if (error instanceof ZodError || isJsonBodyError(error)) {
+  if (
+    error instanceof ZodError ||
+    isJsonBodyError(error) ||
+    error instanceof ProjectDirectoryValidationError
+  ) {
     return {
       status: 400,
       code: "validation_error",
@@ -450,4 +628,97 @@ async function resolveListenPort(hostname: string, port: number | undefined) {
       })
     })
   })
+}
+
+async function resolveProjectDirectory(directory: string, createIfMissing: boolean) {
+  const resolved = resolve(directory)
+
+  if (createIfMissing) {
+    await mkdir(resolved, { recursive: true })
+  }
+
+  try {
+    const metadata = await stat(resolved)
+    if (!metadata.isDirectory()) {
+      throw new ProjectDirectoryValidationError(`${directory} is not a directory`)
+    }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === "ENOENT") {
+      throw new ProjectDirectoryNotFoundError(directory)
+    }
+
+    throw error
+  }
+
+  return realpath(resolved)
+}
+
+function listProjects(input: {
+  repository: SessionSummary[]
+  knowledge?: KnowledgeRuntime
+}) {
+  const workspaceRoots = new Set<string>()
+
+  for (const session of input.repository) {
+    workspaceRoots.add(session.workspaceRoot)
+  }
+
+  return [...workspaceRoots]
+    .map((workspaceRoot) =>
+      buildProjectSummary({
+        workspaceRoot,
+        sessions: input.repository,
+        knowledge: input.knowledge,
+      }),
+    )
+    .sort((left, right) => right.latestActivityAt - left.latestActivityAt)
+}
+
+function buildProjectSummary(input: {
+  workspaceRoot: string
+  sessions: SessionSummary[]
+  knowledge?: KnowledgeRuntime
+}) {
+  const threads = input.sessions
+    .filter((session) => session.workspaceRoot === input.workspaceRoot)
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+  const candidates = input.knowledge?.candidates.list(input.workspaceRoot) ?? []
+  const assets = input.knowledge?.assets.list(input.workspaceRoot) ?? []
+  const assetCounts = {
+    source: assets.filter((asset) => asset.kind === "source").length,
+    note: assets.filter((asset) => asset.kind === "note").length,
+    finding: assets.filter((asset) => asset.kind === "finding").length,
+    artifact: assets.filter((asset) => asset.kind === "artifact").length,
+  }
+  const latestActivityAt = Math.max(
+    0,
+    ...threads.map((thread) => thread.updatedAt),
+    ...candidates.map((candidate) => candidate.createdAt),
+    ...assets.map((asset) => asset.updatedAt),
+  )
+
+  return {
+    workspaceRoot: input.workspaceRoot,
+    name: basename(input.workspaceRoot),
+    latestActivityAt,
+    threadCount: threads.length,
+    pendingCandidateCount: candidates.filter((candidate) => candidate.status === "candidate").length,
+    assetCounts,
+    threads: threads.slice(0, 6),
+  }
+}
+
+class ProjectDirectoryNotFoundError extends Error {
+  constructor(directory: string) {
+    super(`Project directory does not exist: ${directory}`)
+    this.name = "ProjectDirectoryNotFoundError"
+  }
+}
+
+class ProjectDirectoryValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "ProjectDirectoryValidationError"
+  }
 }
