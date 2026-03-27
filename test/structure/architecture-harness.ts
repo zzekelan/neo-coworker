@@ -22,6 +22,7 @@ export const FINAL_SHELL_TOP_LEVELS = new Set([
   "app-server",
   "bootstrap",
   "cli",
+  "desktop",
 ])
 export const FINAL_KERNEL_TOP_LEVELS = new Set(["kernel"])
 export const APPROVED_TOP_LEVELS = new Set([
@@ -634,7 +635,7 @@ function validateCrossModuleEdge(
           fingerprint: `ARCH-CROSS-001:edge:${edge.from}->${edge.to}`,
           summary: `src/${edge.from} may not depend on shell module src/${edge.to} from bootstrap.`,
           remediation:
-            "Keep bootstrap as the composition root for capability, coordinator, and kernel modules only; operator-facing shell behavior belongs in cli/ or app-server/.",
+            "Keep bootstrap as the composition root for capability, coordinator, and kernel modules only; operator-facing shell behavior belongs in cli/, app-server/, or desktop/.",
           doc: RULE_DOCS["ARCH-CROSS-001"],
         })
       }

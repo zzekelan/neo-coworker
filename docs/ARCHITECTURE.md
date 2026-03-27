@@ -25,13 +25,14 @@ Approved top-level modules under `src/` fall into four groups:
   - `bootstrap`: shared composition root and cross-module assembly
   - `cli`: CLI adapter and entrypoint
   - `app-server`: HTTP/SSE adapter and entrypoint
+  - `desktop`: desktop product surface, entrypoint, and local UI shell
 - Shared kernel:
   - `kernel`: truly global, stable, non-business contracts only
 
 Legacy pre-refactor top-level names are not allowed to reappear:
 
 - `conversation`: replaced by `session`
-- `wiring`: replaced by `bootstrap`, `cli`, and `app-server`
+- `wiring`: replaced by `bootstrap`, `cli`, `app-server`, and `desktop`
 - `server`: replaced by `app-server`
 - `providers`
 - `runtime`
@@ -112,7 +113,7 @@ This vocabulary does not apply to shell modules.
 
 ### Shell Modules
 
-`bootstrap`, `cli`, and `app-server` are shell modules.
+`bootstrap`, `cli`, `app-server`, and `desktop` are shell modules.
 
 Shell modules do not share a fixed subdirectory vocabulary in this round.
 They own transport, adapter, entrypoint, and composition behavior according to their role:
@@ -120,6 +121,7 @@ They own transport, adapter, entrypoint, and composition behavior according to t
 - `bootstrap` owns cross-module assembly
 - `cli` owns CLI transport behavior
 - `app-server` owns HTTP and SSE transport behavior
+- `desktop` owns the desktop product surface, local UI shell, and desktop-specific operator behavior
 
 ### Shared Kernel
 
@@ -225,6 +227,7 @@ Positive examples:
 
 - Target pattern: `src/bootstrap/runtime.ts -> src/orchestration/index.ts`
 - Target pattern: `src/app-server/app.ts -> src/bootstrap/index.ts`
+- Target pattern: `src/desktop/app.ts -> src/bootstrap/index.ts`
 
 Negative examples:
 
@@ -270,6 +273,7 @@ Use these questions to place code:
 - Is this cross-module composition or application assembly? Put it in `bootstrap/`.
 - Is this CLI transport behavior? Put it in `cli/`.
 - Is this HTTP or SSE transport behavior? Put it in `app-server/`.
+- Is this desktop product-surface or local UI shell behavior? Put it in `desktop/`.
 
 Defaults, constants, and policy values no longer go into a standalone `config/` layer.
 They follow the owner that is responsible for interpreting them:

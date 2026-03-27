@@ -29,6 +29,7 @@ describe("architecture structure", () => {
       "app-server",
       "bootstrap",
       "cli",
+      "desktop",
     ])
     expect(toSortedArray(FINAL_KERNEL_TOP_LEVELS)).toEqual(["kernel"])
   })
@@ -315,6 +316,25 @@ describe("architecture structure", () => {
 
     expect(formatFindings(findings).join("\n")).toContain("[ARCH-PUBLIC-001]")
     expect(formatFindings(findings).join("\n")).toContain("missing its required root index.ts public exit")
+  })
+
+  test("treats desktop as a non-bootstrap shell for cross-module imports", () => {
+    const findings = validateRepositoryGraph({
+      directories: ["bootstrap", "desktop", "session"],
+      files: ["bootstrap/index.ts", "desktop/index.ts", "session/index.ts"],
+      edges: [
+        {
+          from: "desktop/app.ts",
+          to: "session/index.ts",
+          specifier: "../session",
+          kind: "import",
+        },
+      ],
+    })
+
+    expect(formatFindings(findings).join("\n")).toContain("[ARCH-CROSS-001]")
+    expect(formatFindings(findings).join("\n")).toContain("non-bootstrap shell module")
+    expect(formatFindings(findings).join("\n")).toContain("src/bootstrap/index.ts")
   })
 
   test("detects a deep cross-module import into internals", () => {
