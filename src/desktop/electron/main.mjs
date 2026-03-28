@@ -1,0 +1,574 @@
+import { spawn } from "node:child_process"
+import { accessSync, appendFileSync, constants as fsConstants } from "node:fs"
+import { createServer as createNetServer } from "node:net"
+import { homedir } from "node:os"
+import { delimiter, dirname, join, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+import http from "node:http"
+import https from "node:https"
+import { app, BrowserWindow, ipcMain } from "electron"
+import { createQuitCoordinator, waitForManagedChildStartup } from "./lifecycle.mjs"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const desktopRoot = resolve(__dirname, "..")
+const repositoryRoot = resolve(__dirname, "..", "..", "..")
+const preloadPath = resolve(__dirname, "preload.mjs")
+const workspaceRoot = process.env.DESKTOP_WORKSPACE_ROOT || repositoryRoot
+const bunBin = resolveBunExecutable()
+const bootstrapLogPath = process.env.DESKTOP_BOOTSTRAP_LOG?.trim() || null
+
+let appServerHandle = null
+let uiServerHandle = null
+let eventBridgeHandle = null
+let runtimeCleanupPromise = null
+
+app.disableHardwareAcceleration()
+
+app.on("window-all-closed", () => {
+  app.quit()
+})
+
+const quitCoordinator = createQuitCoordinator({
+  cleanup: closeRuntimeHandles,
+  quit() {
+    app.quit()
+  },
+})
+
+app.on("before-quit", (event) => {
+  quitCoordinator.handleBeforeQuit(event)
+})
+
+app.whenReady().then(startDesktop).catch((error) => {
+  console.error(error instanceof Error ? error.stack ?? error.message : String(error))
+  void quitCoordinator.cleanupNow().finally(() => {
+    app.exit(1)
+  })
+})
+
+async function startDesktop() {
+  logBootstrap("ready")
+  const serverOrigin = await resolveServerOrigin()
+  const uiOrigin = await startUiServer()
+  const window = createWindow({
+    defaultWorkspaceRoot: workspaceRoot,
+  })
+
+  ipcMain.handle("neo-coworker:request-json", async (_event, input) => {
+    return requestJson(serverOrigin, input)
+  })
+
+  eventBridgeHandle = createEventBridge({
+    serverOrigin,
+    window,
+  })
+  eventBridgeHandle.start()
+
+  await window.loadURL(uiOrigin)
+  logBootstrap(`window.loaded ${uiOrigin}`)
+}
+
+function createWindow(input) {
+  const window = new BrowserWindow({
+    width: 1440,
+    height: 960,
+    minWidth: 1080,
+    minHeight: 720,
+    autoHideMenuBar: true,
+    backgroundColor: "#ffffff",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: preloadPath,
+      additionalArguments: [
+        `--neo-coworker-default-workspace-root=${encodeURIComponent(input.defaultWorkspaceRoot)}`,
+        `--neo-coworker-platform=${encodeURIComponent(process.platform)}`,
+      ],
+    },
+  })
+
+  window.on("ready-to-show", () => {
+    logBootstrap("window.ready")
+  })
+
+  return window
+}
+
+function closeRuntimeHandles() {
+  if (runtimeCleanupPromise) {
+    return runtimeCleanupPromise
+  }
+
+  runtimeCleanupPromise = Promise.allSettled([
+    eventBridgeHandle?.close?.(),
+    appServerHandle?.close?.(),
+    uiServerHandle?.close?.(),
+  ]).then((results) => {
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error(result.reason)
+      }
+    }
+  })
+
+  return runtimeCleanupPromise
+}
+
+async function resolveServerOrigin() {
+  const configuredOrigin = readConfiguredServerOrigin(process.env.AGENT_SERVER_URL)
+  if (configuredOrigin) {
+    logBootstrap(`server.external ${configuredOrigin}`)
+    return configuredOrigin
+  }
+
+  if (process.env.DESKTOP_DISABLE_LOCAL_SERVER === "1") {
+    throw new Error("AGENT_SERVER_URL is required when DESKTOP_DISABLE_LOCAL_SERVER=1")
+  }
+
+  const port = await allocateLoopbackPort()
+  const env = buildLoopbackEnv({
+    AGENT_SERVER_HOST: "127.0.0.1",
+    AGENT_SERVER_PORT: String(port),
+  })
+  logBootstrap(`server.local.start ${port}`)
+  const child = spawn(bunBin, ["run", "src/app-server/main.ts"], {
+    cwd: repositoryRoot,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+  const startedOrigin = await waitForManagedChildStartup({
+    child,
+    assignHandle(handle) {
+      appServerHandle = handle
+    },
+    waitUntilReady() {
+      return waitForServerStarted(child, `http://127.0.0.1:${port}`)
+    },
+  })
+  logBootstrap(`server.local.ready ${startedOrigin}`)
+  return startedOrigin
+}
+
+async function startUiServer() {
+  const configuredUiOrigin = process.env.DESKTOP_UI_URL?.trim()
+  if (configuredUiOrigin) {
+    logBootstrap(`ui.external ${configuredUiOrigin}`)
+    return configuredUiOrigin
+  }
+
+  const port = await allocateLoopbackPort()
+  const viteBin = resolve(desktopRoot, "node_modules", ".bin", "vite")
+  logBootstrap(`ui.local.start ${port}`)
+  const child = spawn(viteBin, ["--host", "127.0.0.1", "--port", String(port), "--strictPort"], {
+    cwd: desktopRoot,
+    env: buildLoopbackEnv({}),
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+  const origin = `http://127.0.0.1:${port}`
+  await waitForManagedChildStartup({
+    child,
+    assignHandle(handle) {
+      uiServerHandle = handle
+    },
+    waitUntilReady() {
+      return waitForChildReady(child, `Vite dev server (${origin})`, waitForHttpReady(`${origin}/`))
+    },
+  })
+  logBootstrap(`ui.local.ready ${origin}`)
+  return origin
+}
+
+function createEventBridge(input) {
+  let closed = false
+  let activeRequest = null
+  let reconnectTimer = null
+
+  function start() {
+    connect()
+  }
+
+  async function close() {
+    closed = true
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    if (activeRequest) {
+      activeRequest.destroy()
+      activeRequest = null
+    }
+  }
+
+  function scheduleReconnect() {
+    if (closed || reconnectTimer) {
+      return
+    }
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      connect()
+    }, 1000)
+  }
+
+  function connect() {
+    if (closed) {
+      return
+    }
+
+    const url = new URL("/events", input.serverOrigin)
+    const client = url.protocol === "https:" ? https : http
+    const request = client.request(url, { method: "GET" })
+    activeRequest = request
+
+    request.on("response", (response) => {
+      if (response.statusCode !== 200) {
+        input.window.webContents.send("neo-coworker:event-error", {
+          status: response.statusCode ?? 0,
+        })
+        response.resume()
+        scheduleReconnect()
+        return
+      }
+
+      let buffer = ""
+
+      response.on("data", (chunk) => {
+        buffer += chunk.toString("utf8")
+        while (true) {
+          const boundary = buffer.indexOf("\n\n")
+          if (boundary === -1) {
+            break
+          }
+
+          const rawEvent = buffer.slice(0, boundary)
+          buffer = buffer.slice(boundary + 2)
+          const parsed = parseSseEvent(rawEvent)
+          if (!parsed) {
+            continue
+          }
+
+          input.window.webContents.send("neo-coworker:event", parsed)
+        }
+      })
+
+      response.on("end", () => {
+        if (!closed) {
+          input.window.webContents.send("neo-coworker:event-error", { reason: "stream-ended" })
+          scheduleReconnect()
+        }
+      })
+
+      response.on("error", (error) => {
+        if (!closed) {
+          input.window.webContents.send("neo-coworker:event-error", { reason: error.message })
+          scheduleReconnect()
+        }
+      })
+    })
+
+    request.on("error", (error) => {
+      if (!closed) {
+        input.window.webContents.send("neo-coworker:event-error", { reason: error.message })
+        scheduleReconnect()
+      }
+    })
+
+    request.end()
+  }
+
+  return {
+    start,
+    close,
+  }
+}
+
+async function requestJson(origin, input) {
+  const url = new URL(input.path, origin)
+  const body = input.body === undefined ? undefined : JSON.stringify(input.body)
+  const response = await requestUrl(url, {
+    method: input.method ?? (body === undefined ? "GET" : "POST"),
+    headers: body === undefined ? {} : { "content-type": "application/json" },
+    body,
+  })
+
+  return {
+    ok: response.status >= 200 && response.status < 300,
+    status: response.status,
+    body: response.body,
+  }
+}
+
+function requestUrl(url, input) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const client = url.protocol === "https:" ? https : http
+    const request = client.request(
+      url,
+      {
+        method: input.method,
+        headers: input.headers,
+      },
+      (response) => {
+        let payload = ""
+
+        response.on("data", (chunk) => {
+          payload += chunk.toString("utf8")
+        })
+
+        response.on("end", () => {
+          resolvePromise({
+            status: response.statusCode ?? 500,
+            body: parseJsonBody(payload),
+          })
+        })
+      },
+    )
+
+    request.on("error", rejectPromise)
+
+    if (input.body !== undefined) {
+      request.write(input.body)
+    }
+
+    request.end()
+  })
+}
+
+async function waitForServerStarted(child, fallbackOrigin) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    let stderr = ""
+    let settled = false
+
+    const timeout = setTimeout(() => {
+      settled = true
+      child.kill("SIGTERM")
+      rejectPromise(new Error("Timed out waiting for the local app-server to start"))
+    }, 20_000)
+
+    child.stdout.setEncoding("utf8")
+    child.stdout.on("data", (chunk) => {
+      const text = String(chunk)
+      if (!bootstrapLogPath) {
+        process.stdout.write(text)
+      }
+      const lines = text.split(/\r?\n/)
+      for (const line of lines) {
+        if (!line.startsWith("server.started ")) {
+          continue
+        }
+
+        settled = true
+        clearTimeout(timeout)
+        resolvePromise(line.slice("server.started ".length).trim() || fallbackOrigin)
+      }
+    })
+
+    child.stderr.setEncoding("utf8")
+    child.stderr.on("data", (chunk) => {
+      const text = String(chunk)
+      stderr += text
+      if (!bootstrapLogPath) {
+        process.stderr.write(text)
+      }
+    })
+
+    child.once("error", (error) => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      clearTimeout(timeout)
+      rejectPromise(new Error(`Failed to start local app-server: ${error.message}`))
+    })
+
+    child.once("exit", (code) => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      clearTimeout(timeout)
+      rejectPromise(new Error(stderr || `Local app-server exited with code ${code ?? 0}`))
+    })
+  })
+}
+
+async function waitForChildReady(child, label, readyPromise) {
+  await Promise.race([
+    readyPromise,
+    new Promise((_, rejectPromise) => {
+      child.once("error", (error) => {
+        rejectPromise(new Error(`Failed to start ${label}: ${error.message}`))
+      })
+
+      child.once("exit", (code) => {
+        rejectPromise(new Error(`${label} exited before it became ready (code ${code ?? 0})`))
+      })
+    }),
+  ])
+}
+
+async function waitForHttpReady(url) {
+  const deadline = Date.now() + 20_000
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await requestUrl(new URL(url), {
+        method: "GET",
+        headers: {},
+      })
+      if (response.status >= 200 && response.status < 500) {
+        return
+      }
+    } catch {
+      // Server is still starting.
+    }
+
+    await delay(200)
+  }
+
+  throw new Error(`Timed out waiting for ${url}`)
+}
+
+function allocateLoopbackPort() {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const server = createNetServer()
+    server.once("error", rejectPromise)
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address()
+      if (!address || typeof address === "string") {
+        server.close(() => rejectPromise(new Error("Failed to allocate a loopback port")))
+        return
+      }
+
+      server.close((error) => {
+        if (error) {
+          rejectPromise(error)
+          return
+        }
+
+        resolvePromise(address.port)
+      })
+    })
+  })
+}
+
+function resolveBunExecutable() {
+  const candidates = []
+
+  if (process.env.BUN) {
+    candidates.push(process.env.BUN)
+  }
+
+  if (process.env.BUN_BIN) {
+    candidates.push(process.env.BUN_BIN)
+  }
+
+  if (process.env.PATH) {
+    for (const entry of process.env.PATH.split(delimiter)) {
+      if (!entry) {
+        continue
+      }
+
+      candidates.push(join(entry, "bun"))
+    }
+  }
+
+  candidates.push(join(homedir(), ".bun", "bin", "bun"))
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue
+    }
+
+    try {
+      accessSync(candidate, fsConstants.X_OK)
+      return candidate
+    } catch {
+      // Keep searching.
+    }
+  }
+
+  throw new Error("Unable to locate bun. Set BUN_BIN to the bun executable path before launching Electron.")
+}
+
+function readConfiguredServerOrigin(value) {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  const url = new URL(trimmed)
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("AGENT_SERVER_URL must use http or https")
+  }
+
+  if (url.pathname !== "/" || url.search || url.hash) {
+    throw new Error("AGENT_SERVER_URL must not include a path, query, or hash")
+  }
+
+  return url.origin
+}
+
+function buildLoopbackEnv(overrides) {
+  const env = { ...process.env }
+  delete env.HTTP_PROXY
+  delete env.HTTPS_PROXY
+  delete env.ALL_PROXY
+  delete env.http_proxy
+  delete env.https_proxy
+  delete env.all_proxy
+  env.NO_PROXY = "127.0.0.1,localhost"
+  env.no_proxy = "127.0.0.1,localhost"
+  return {
+    ...env,
+    ...overrides,
+  }
+}
+
+function parseSseEvent(rawEvent) {
+  const dataLines = []
+  for (const line of rawEvent.split(/\r?\n/)) {
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart())
+    }
+  }
+
+  if (dataLines.length === 0) {
+    return null
+  }
+
+  return JSON.parse(dataLines.join("\n"))
+}
+
+function parseJsonBody(payload) {
+  if (!payload) {
+    return null
+  }
+
+  try {
+    return JSON.parse(payload)
+  } catch {
+    return {
+      error: {
+        message: payload,
+      },
+    }
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms)
+  })
+}
+
+function logBootstrap(message) {
+  const line = `desktop.bootstrap ${message}`
+  if (bootstrapLogPath) {
+    appendFileSync(bootstrapLogPath, `${line}\n`)
+    return
+  }
+
+  console.log(line)
+}
