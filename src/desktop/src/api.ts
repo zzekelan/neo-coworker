@@ -37,6 +37,23 @@ export function getDesktopBridge() {
   return window.neoCoworkerDesktop ?? {}
 }
 
+export async function pickDirectory() {
+  const bridge = getDesktopBridge()
+  return bridge.pickDirectory ? bridge.pickDirectory() : null
+}
+
+export async function persistDesktopSelection(input: {
+  activeProjectRoot: string | null
+  activeSessionId: string | null
+}) {
+  const bridge = getDesktopBridge()
+  if (!bridge.persistSelection) {
+    return false
+  }
+
+  return bridge.persistSelection(input)
+}
+
 export async function requestApi<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const bridge = getDesktopBridge()
 
@@ -127,6 +144,13 @@ export function subscribeToEvents(input: {
 
 export async function loadProjects() {
   return requestApi<{ projects: DesktopProject[] }>("/projects")
+}
+
+export async function openWorkspace(input: { directory: string; create?: boolean }) {
+  return requestApi<{ project: DesktopProject }>("/projects/open", {
+    method: "POST",
+    body: input,
+  })
 }
 
 export async function loadThreads(workspaceRoot: string) {

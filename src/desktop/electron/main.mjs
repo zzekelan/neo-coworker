@@ -6,14 +6,20 @@ import { delimiter, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import http from "node:http"
 import https from "node:https"
-import { app, BrowserWindow, ipcMain } from "electron"
+import { app, BrowserWindow, dialog, ipcMain } from "electron"
 import { createQuitCoordinator, waitForManagedChildStartup } from "./lifecycle.mjs"
+import {
+  readDesktopSelectionState,
+  writeDesktopSelectionState,
+} from "./selection-state.mjs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const desktopRoot = resolve(__dirname, "..")
 const repositoryRoot = resolve(__dirname, "..", "..", "..")
-const preloadPath = resolve(__dirname, "preload.mjs")
-const workspaceRoot = process.env.DESKTOP_WORKSPACE_ROOT || repositoryRoot
+const preloadPath = resolve(__dirname, "preload.cjs")
+const workspaceRoot = process.env.DESKTOP_WORKSPACE_ROOT || resolve(repositoryRoot, ".agents", "workspace")
+const desktopSelectionStatePath = resolve(repositoryRoot, ".agents", "desktop-state.json")
+const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
 const bunBin = resolveBunExecutable()
 const bootstrapLogPath = process.env.DESKTOP_BOOTSTRAP_LOG?.trim() || null
 
@@ -52,10 +58,23 @@ async function startDesktop() {
   const uiOrigin = await startUiServer()
   const window = createWindow({
     defaultWorkspaceRoot: workspaceRoot,
+    persistedProjectRoot: persistedSelection?.activeProjectRoot ?? null,
+    persistedSessionId: persistedSelection?.activeSessionId ?? null,
   })
 
   ipcMain.handle("neo-coworker:request-json", async (_event, input) => {
     return requestJson(serverOrigin, input)
+  })
+  ipcMain.handle("neo-coworker:pick-directory", async () => {
+    const result = await dialog.showOpenDialog(window, {
+      properties: ["openDirectory"],
+    })
+
+    return result.canceled ? null : result.filePaths[0] ?? null
+  })
+  ipcMain.handle("neo-coworker:persist-selection", async (_event, selection) => {
+    writeDesktopSelectionState(desktopSelectionStatePath, selection)
+    return true
   })
 
   eventBridgeHandle = createEventBridge({
@@ -83,6 +102,12 @@ function createWindow(input) {
       additionalArguments: [
         `--neo-coworker-default-workspace-root=${encodeURIComponent(input.defaultWorkspaceRoot)}`,
         `--neo-coworker-platform=${encodeURIComponent(process.platform)}`,
+        ...(input.persistedProjectRoot
+          ? [`--neo-coworker-persisted-project-root=${encodeURIComponent(input.persistedProjectRoot)}`]
+          : []),
+        ...(input.persistedSessionId
+          ? [`--neo-coworker-persisted-session-id=${encodeURIComponent(input.persistedSessionId)}`]
+          : []),
       ],
     },
   })

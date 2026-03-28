@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react"
+import { useEffect, useEffectEvent, useRef, useState } from "react"
 import {
   cancelRun,
   createThread,
@@ -8,10 +8,18 @@ import {
   loadSession,
   loadThreads,
   loadTranscript,
+  openWorkspace,
+  pickDirectory,
+  persistDesktopSelection,
   replyPermission,
   startRun,
   subscribeToEvents,
 } from "./api"
+import {
+  normalizeTranscript,
+  upsertTranscriptMessage,
+  upsertTranscriptMessagePart,
+} from "./transcript-state"
 import type {
   ConnectionStatus,
   DesktopMessage,
@@ -34,6 +42,7 @@ type AppState = {
   connection: ConnectionStatus
   isLoading: boolean
   isSending: boolean
+  isManagingWorkspace: boolean
   actionError: string | null
 }
 
@@ -46,7 +55,17 @@ type RefreshOptions = {
 export function useDesktopApp() {
   const bridgeRef = useRef(getDesktopBridge())
   const bridge = bridgeRef.current
-  const [state, setState] = useState<AppState>(() => createInitialState(bridge.defaultWorkspaceRoot))
+  const [state, setState] = useState<AppState>(() =>
+    createInitialState({
+      defaultWorkspaceRoot: bridge.defaultWorkspaceRoot,
+      persistedProjectRoot: bridge.persistedProjectRoot,
+      persistedSessionId: bridge.persistedSessionId,
+    }),
+  )
+  const knownProjectsRef = useRef(createKnownProjectsMap({
+    defaultWorkspaceRoot: bridge.defaultWorkspaceRoot,
+    persistedProjectRoot: bridge.persistedProjectRoot,
+  }))
   const selectionRef = useRef({
     activeProjectRoot: state.activeProjectRoot,
     activeSessionId: state.activeSessionId,
@@ -58,6 +77,13 @@ export function useDesktopApp() {
       activeProjectRoot: state.activeProjectRoot,
       activeSessionId: state.activeSessionId,
     }
+  }, [state.activeProjectRoot, state.activeSessionId])
+
+  useEffect(() => {
+    void persistDesktopSelection({
+      activeProjectRoot: state.activeProjectRoot,
+      activeSessionId: state.activeSessionId,
+    }).catch(() => {})
   }, [state.activeProjectRoot, state.activeSessionId])
 
   const refresh = useEffectEvent(async (options: RefreshOptions = {}) => {
@@ -81,10 +107,13 @@ export function useDesktopApp() {
 
     try {
       const projectData = await loadProjects()
+      const projects = mergeProjects(projectData.projects, knownProjectsRef.current)
       const requestedProjectRoot =
         options.projectRoot ?? selectionRef.current.activeProjectRoot ?? bridge.defaultWorkspaceRoot ?? null
       const resolvedProjectRoot =
-        requestedProjectRoot ?? projectData.projects[0]?.workspaceRoot ?? null
+        requestedProjectRoot && projects.some((project) => project.workspaceRoot === requestedProjectRoot)
+          ? requestedProjectRoot
+          : projects[0]?.workspaceRoot ?? null
       const threadData = resolvedProjectRoot ? await loadThreads(resolvedProjectRoot) : { threads: [] }
       const activeSessionId = chooseActiveSessionId({
         preferredSessionId: options.sessionId ?? selectionRef.current.activeSessionId,
@@ -94,17 +123,22 @@ export function useDesktopApp() {
       let snapshot: DesktopSessionSnapshot | null = null
       let transcript: DesktopMessage[] = []
       let permissionRequests: DesktopPermissionRequest[] = []
+      let sessionRestoreError: unknown = null
 
       if (activeSessionId) {
-        snapshot = await loadSession(activeSessionId)
-        const transcriptData = await loadTranscript(activeSessionId)
-        transcript = sortTranscript(transcriptData.transcript)
+        try {
+          snapshot = await loadSession(activeSessionId)
+          const transcriptData = await loadTranscript(activeSessionId)
+          transcript = normalizeTranscript(transcriptData.transcript)
 
-        if (snapshot.activeRun) {
-          const runState = await loadRun(snapshot.activeRun.id)
-          permissionRequests = runState.permissionRequests
-            .filter((request) => request.status === "pending")
-            .sort((left, right) => left.createdAt - right.createdAt)
+          if (snapshot.activeRun) {
+            const runState = await loadRun(snapshot.activeRun.id)
+            permissionRequests = runState.permissionRequests
+              .filter((request) => request.status === "pending")
+              .sort((left, right) => left.createdAt - right.createdAt)
+          }
+        } catch (error) {
+          sessionRestoreError = error
         }
       }
 
@@ -112,29 +146,28 @@ export function useDesktopApp() {
         return
       }
 
-      startTransition(() => {
-        setState((previous) => ({
-          ...previous,
-          projects: projectData.projects,
-          threads: threadData.threads,
-          activeProjectRoot: resolvedProjectRoot,
-          activeSessionId,
-          sessionSnapshot: snapshot,
-          transcript,
-          permissionRequests,
-          connection: {
-            state: "online",
-            label: "Connected to app-server",
-            detail: bridge.apiOrigin ?? resolvedProjectRoot ?? "Desktop bridge",
-          },
-          isLoading: false,
-          isSending:
-            snapshot?.activeRun !== null &&
-            snapshot?.activeRun !== undefined &&
-            snapshot.activeRun.status !== "waiting_permission",
-          actionError: null,
-        }))
-      })
+      setState((previous) => ({
+        ...previous,
+        projects,
+        threads: threadData.threads,
+        activeProjectRoot: resolvedProjectRoot,
+        activeSessionId,
+        sessionSnapshot: snapshot,
+        transcript,
+        permissionRequests,
+        connection: {
+          state: "online",
+          label: "Connected to app-server",
+          detail: bridge.apiOrigin ?? resolvedProjectRoot ?? "Desktop bridge",
+        },
+        isLoading: false,
+        isSending:
+          snapshot?.activeRun !== null &&
+          snapshot?.activeRun !== undefined &&
+          snapshot.activeRun.status !== "waiting_permission",
+        isManagingWorkspace: false,
+        actionError: sessionRestoreError ? toErrorMessage(sessionRestoreError) : null,
+      }))
     } catch (error) {
       if (currentToken !== refreshTokenRef.current) {
         return
@@ -144,6 +177,7 @@ export function useDesktopApp() {
         ...previous,
         isLoading: false,
         isSending: false,
+        isManagingWorkspace: false,
         actionError: toErrorMessage(error),
         connection: {
           state: "error",
@@ -189,7 +223,7 @@ export function useDesktopApp() {
     if (event.type === "message.created" && event.message.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
-        transcript: upsertMessage(previous.transcript, {
+        transcript: upsertTranscriptMessage(previous.transcript, {
           ...event.message,
           parts: [],
         }),
@@ -200,7 +234,7 @@ export function useDesktopApp() {
     if (event.type === "message.part.updated" && event.part.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
-        transcript: upsertMessagePart(previous.transcript, event.part),
+        transcript: upsertTranscriptMessagePart(previous.transcript, event.part),
       }))
       return
     }
@@ -284,7 +318,7 @@ export function useDesktopApp() {
     })
 
     return unsubscribe
-  }, [bridge.apiOrigin, bridge.requestJson, handleEvent, refresh])
+  }, [bridge.apiOrigin, bridge.requestJson])
 
   const actions = {
     async selectWorkspace(workspaceRoot: string) {
@@ -317,8 +351,10 @@ export function useDesktopApp() {
     },
 
     async createEmptyThread() {
-      const workspaceRoot =
-        selectionRef.current.activeProjectRoot ?? bridge.defaultWorkspaceRoot ?? state.projects[0]?.workspaceRoot ?? null
+      const workspaceRoot = resolveWorkspaceRoot({
+        activeProjectRoot: selectionRef.current.activeProjectRoot,
+        projects: state.projects,
+      })
 
       if (!workspaceRoot) {
         setState((previous) => ({
@@ -332,6 +368,22 @@ export function useDesktopApp() {
         const created = await createThread({
           workspaceRoot,
         })
+
+        setState((previous) => ({
+          ...previous,
+          threads: upsertThread(previous.threads, created.thread),
+          activeProjectRoot: workspaceRoot,
+          activeSessionId: created.thread.id,
+          sessionSnapshot: {
+            session: created.thread,
+            latestRun: null,
+            activeRun: null,
+            status: "idle",
+          },
+          transcript: [],
+          permissionRequests: [],
+          actionError: null,
+        }))
 
         await refresh({
           projectRoot: workspaceRoot,
@@ -348,14 +400,55 @@ export function useDesktopApp() {
       }
     },
 
+    async createWorkspaceFromDialog() {
+      setState((previous) => ({
+        ...previous,
+        isManagingWorkspace: true,
+        actionError: null,
+      }))
+
+      try {
+        const directory = await pickDirectory()
+        if (!directory) {
+          setState((previous) => ({
+            ...previous,
+            isManagingWorkspace: false,
+          }))
+          return false
+        }
+
+        const opened = await openWorkspace({
+          directory,
+          create: true,
+        })
+        knownProjectsRef.current.set(opened.project.workspaceRoot, opened.project)
+
+        await refresh({
+          projectRoot: opened.project.workspaceRoot,
+          sessionId: null,
+        })
+
+        return true
+      } catch (error) {
+        setState((previous) => ({
+          ...previous,
+          isManagingWorkspace: false,
+          actionError: toErrorMessage(error),
+        }))
+        return false
+      }
+    },
+
     async sendMessage(prompt: string) {
       const trimmedPrompt = prompt.trim()
       if (!trimmedPrompt || state.isSending) {
         return false
       }
 
-      const workspaceRoot =
-        selectionRef.current.activeProjectRoot ?? bridge.defaultWorkspaceRoot ?? state.projects[0]?.workspaceRoot ?? null
+      const workspaceRoot = resolveWorkspaceRoot({
+        activeProjectRoot: selectionRef.current.activeProjectRoot,
+        projects: state.projects,
+      })
       if (!workspaceRoot) {
         setState((previous) => ({
           ...previous,
@@ -459,13 +552,21 @@ export function useDesktopApp() {
   }
 }
 
-function createInitialState(defaultWorkspaceRoot?: string | null): AppState {
+function createInitialState(input: {
+  defaultWorkspaceRoot?: string | null
+  persistedProjectRoot?: string | null
+  persistedSessionId?: string | null
+}): AppState {
+  const projects = createInitialProjects(input)
+  const activeProjectRoot = input.persistedProjectRoot ?? input.defaultWorkspaceRoot ?? null
+  const activeSessionId = input.persistedSessionId ?? null
+
   if (!window.neoCoworkerDesktop?.requestJson && !window.neoCoworkerDesktop?.apiOrigin) {
     return {
-      projects: [],
+      projects,
       threads: [],
-      activeProjectRoot: defaultWorkspaceRoot ?? null,
-      activeSessionId: null,
+      activeProjectRoot,
+      activeSessionId,
       sessionSnapshot: null,
       transcript: [],
       permissionRequests: [],
@@ -476,25 +577,27 @@ function createInitialState(defaultWorkspaceRoot?: string | null): AppState {
       },
       isLoading: false,
       isSending: false,
+      isManagingWorkspace: false,
       actionError: null,
     }
   }
 
   return {
-    projects: [],
+    projects,
     threads: [],
-    activeProjectRoot: defaultWorkspaceRoot ?? null,
-    activeSessionId: null,
+    activeProjectRoot,
+    activeSessionId,
     sessionSnapshot: null,
     transcript: [],
     permissionRequests: [],
     connection: {
       state: "connecting",
       label: "Connecting to app-server",
-      detail: window.neoCoworkerDesktop?.apiOrigin ?? defaultWorkspaceRoot ?? "Desktop bridge",
+      detail: window.neoCoworkerDesktop?.apiOrigin ?? activeProjectRoot ?? "Desktop bridge",
     },
     isLoading: true,
     isSending: false,
+    isManagingWorkspace: false,
     actionError: null,
   }
 }
@@ -510,60 +613,81 @@ function chooseActiveSessionId(input: {
   return input.threads[0]?.id ?? null
 }
 
-function sortTranscript(messages: DesktopMessage[]) {
-  return messages
-    .map((message) => ({
-      ...message,
-      parts: message.parts
-        .slice()
-        .sort((left, right) => left.sequence - right.sequence || left.createdAt - right.createdAt),
-    }))
-    .sort((left, right) => left.sequence - right.sequence || left.createdAt - right.createdAt)
+function createInitialProjects(input: {
+  defaultWorkspaceRoot?: string | null
+  persistedProjectRoot?: string | null
+}) {
+  return [...createKnownProjectsMap(input).values()]
+}
+
+function createKnownProjectsMap(input: {
+  defaultWorkspaceRoot?: string | null
+  persistedProjectRoot?: string | null
+}) {
+  const projects = new Map<string, DesktopProject>()
+
+  for (const workspaceRoot of [input.defaultWorkspaceRoot, input.persistedProjectRoot]) {
+    if (!workspaceRoot) {
+      continue
+    }
+
+    const project = createDefaultProject(workspaceRoot)
+    projects.set(project.workspaceRoot, project)
+  }
+
+  return projects
+}
+
+function createDefaultProject(workspaceRoot: string): DesktopProject {
+  return {
+    workspaceRoot,
+    name: workspaceRoot.split(/[\\/]/).filter(Boolean).at(-1) ?? workspaceRoot,
+    latestActivityAt: 0,
+    threadCount: 0,
+    pendingCandidateCount: 0,
+    assetCounts: {
+      source: 0,
+      note: 0,
+      finding: 0,
+      artifact: 0,
+    },
+    threads: [],
+  }
+}
+
+function mergeProjects(
+  projects: DesktopProject[],
+  knownProjects: ReadonlyMap<string, DesktopProject>,
+) {
+  const merged = new Map(knownProjects)
+
+  for (const project of projects) {
+    merged.set(project.workspaceRoot, project)
+  }
+
+  return [...merged.values()].sort((left, right) => right.latestActivityAt - left.latestActivityAt)
+}
+
+function resolveWorkspaceRoot(input: {
+  activeProjectRoot: string | null
+  projects: DesktopProject[]
+}) {
+  if (input.activeProjectRoot) {
+    const activeProject = input.projects.find(
+      (project) => project.workspaceRoot === input.activeProjectRoot,
+    )
+    if (activeProject) {
+      return activeProject.workspaceRoot
+    }
+  }
+
+  return input.projects[0]?.workspaceRoot ?? null
 }
 
 function upsertThread(threads: DesktopThread[], thread: DesktopThread) {
   const withoutCurrent = threads.filter((candidate) => candidate.id !== thread.id)
   withoutCurrent.push(thread)
   return withoutCurrent.sort((left, right) => right.updatedAt - left.updatedAt)
-}
-
-function upsertMessage(messages: DesktopMessage[], message: DesktopMessage) {
-  const index = messages.findIndex((candidate) => candidate.id === message.id)
-  if (index === -1) {
-    return sortTranscript([...messages, message])
-  }
-
-  const next = messages.slice()
-  next[index] = {
-    ...next[index],
-    ...message,
-    parts: sortParts(message.parts.length > 0 ? message.parts : next[index].parts),
-  }
-  return sortTranscript(next)
-}
-
-function upsertMessagePart(messages: DesktopMessage[], part: DesktopMessage["parts"][number]) {
-  const messageIndex = messages.findIndex((message) => message.id === part.messageId)
-  if (messageIndex === -1) {
-    return messages
-  }
-
-  const next = messages.slice()
-  const target = next[messageIndex]
-  const partIndex = target.parts.findIndex((candidate) => candidate.id === part.id)
-  const parts = target.parts.slice()
-
-  if (partIndex === -1) {
-    parts.push(part)
-  } else {
-    parts[partIndex] = part
-  }
-
-  next[messageIndex] = {
-    ...target,
-    parts: sortParts(parts),
-  }
-  return sortTranscript(next)
 }
 
 function upsertPermissionRequest(
@@ -575,12 +699,6 @@ function upsertPermissionRequest(
     pending.push(request)
   }
   return pending.sort((left, right) => left.createdAt - right.createdAt)
-}
-
-function sortParts(parts: DesktopMessage["parts"]) {
-  return parts
-    .slice()
-    .sort((left, right) => left.sequence - right.sequence || left.createdAt - right.createdAt)
 }
 
 function summarizePrompt(prompt: string) {

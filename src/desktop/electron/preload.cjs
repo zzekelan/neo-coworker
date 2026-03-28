@@ -1,14 +1,22 @@
-import { contextBridge, ipcRenderer } from "electron"
+const { contextBridge, ipcRenderer } = require("electron")
 
 const BRIDGE_STATE = {
   defaultWorkspaceRoot: readArgument("--neo-coworker-default-workspace-root="),
   platform: readArgument("--neo-coworker-platform=") ?? process.platform,
+  persistedProjectRoot: readArgument("--neo-coworker-persisted-project-root="),
+  persistedSessionId: readArgument("--neo-coworker-persisted-session-id="),
 }
 
 contextBridge.exposeInMainWorld("neoCoworkerDesktop", {
   ...BRIDGE_STATE,
+  pickDirectory() {
+    return ipcRenderer.invoke("neo-coworker:pick-directory")
+  },
   requestJson(input) {
     return ipcRenderer.invoke("neo-coworker:request-json", input)
+  },
+  persistSelection(input) {
+    return ipcRenderer.invoke("neo-coworker:persist-selection", input)
   },
 })
 
