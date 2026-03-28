@@ -275,25 +275,13 @@ Use these questions to place code:
 - Is this HTTP or SSE transport behavior? Put it in `app-server/`.
 - Is this desktop product-surface or local UI shell behavior? Put it in `desktop/`.
 
-Defaults, constants, and policy values no longer go into a standalone `config/` layer.
-They follow the owner that is responsible for interpreting them:
+Defaults, constants, and policy values follow the owner that is responsible for interpreting them:
 
 - business-semantic defaults and domain-owned constant sets go in `domain/`
 - use-case policy defaults and application-owned strategy values go in `application/`
 - adapter and implementation defaults go in `infrastructure/`
 - deployment, entrypoint, and operator-environment defaults go in shell modules
 - `kernel` never owns module defaults or strategy values
-
-Migration mapping from the old structure should follow ownership, not directory-name equivalence:
-
-- old `types/*` usually move to `domain/*` or `application/*`, depending on ownership
-- old `config/*` usually move to `domain/*`, `application/*`, `infrastructure/*`, or a shell module, depending on who owns and interprets the value
-- old `repo/contract.ts` usually becomes `application/ports/*`
-- old `repo/*.ts` concrete storage implementations usually become `infrastructure/*`
-- old `service/*` may split between `domain/*` and `application/*`
-- old `runtime/api.ts` usually becomes `public/*`
-- old runtime helper implementations such as queues, registries, provider adapters, and shell runners usually become `infrastructure/*`
-- old module-local `wiring/*` is retired and should move to `bootstrap/*` or a final module-owned layer with clear ownership
 
 If a change needs a new directory name, a new cross-module shortcut, or a broader `kernel`, stop and update the design docs and structure checks first.
 
