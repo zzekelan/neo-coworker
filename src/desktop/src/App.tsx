@@ -12,6 +12,8 @@ export default function App() {
     activeThreadId,
     setActiveThreadId,
     createThread,
+    createWorkspace,
+    isManagingWorkspace,
     session,
     transcript,
     permissionRequests,
@@ -39,6 +41,8 @@ export default function App() {
         createThread={() => {
           void createThread()
         }}
+        createWorkspace={createWorkspace}
+        isManagingWorkspace={isManagingWorkspace}
         isOnline={isOnline}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}

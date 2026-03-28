@@ -26,6 +26,10 @@ export function useAgent() {
     createThread() {
       return desktop.createEmptyThread()
     },
+    createWorkspace() {
+      return desktop.createWorkspaceFromDialog()
+    },
+    isManagingWorkspace: desktop.isManagingWorkspace,
     session: desktop.sessionSnapshot ? mapSessionSnapshot(desktop.sessionSnapshot) : null,
     transcript: desktop.transcript.map(mapTranscriptMessage),
     permissionRequests: desktop.permissionRequests.map(mapPermissionRequest),
