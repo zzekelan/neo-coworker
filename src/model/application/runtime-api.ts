@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto"
 import {
+  buildModelPromptSections,
   projectModelTurn,
 } from "./projection"
 import type { ModelObserverPort } from "./ports/model-observer"
@@ -48,6 +50,24 @@ export function createModelProvider(input: {
             type: "model.turn.requested",
             sessionId: request.sessionId,
             runId: request.runId,
+            turnKey: request.turnKey,
+          })
+          const sections = buildModelPromptSections({
+            systemPrompt: request.systemPrompt,
+            skillCatalog: request.skillCatalog,
+            activeSkills: request.activeSkills,
+            tools: request.tools,
+          })
+          input.observer?.recordModelEvent?.({
+            type: "model.prompt.assembled",
+            sessionId: request.sessionId,
+            runId: request.runId,
+            turnKey: request.turnKey ?? `${request.runId}:turn_unkeyed`,
+            catalogSkillNames: request.skillCatalog.map((skill) => skill.name),
+            activeSkillNames: request.activeSkills.map((skill) => skill.name),
+            activeSkillCount: request.activeSkills.length,
+            activeSkillSectionHash: hashPromptSection(sections.activeSkillSection),
+            activeSkillSectionLength: sections.activeSkillSection.length,
           })
         } catch {
           // Observability must not alter the model request path.
@@ -65,4 +85,8 @@ export function createModelProvider(input: {
       return input.runtime.streamTurn(projected)
     },
   }
+}
+
+function hashPromptSection(text: string) {
+  return createHash("sha256").update(text).digest("hex")
 }

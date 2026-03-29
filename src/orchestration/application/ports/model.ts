@@ -13,6 +13,7 @@ export type OrchestrationModelTurnRequest = {
   transcript: OrchestrationTranscriptMessage[]
   sessionId?: string
   runId?: string
+  turnKey?: string
   signal: AbortSignal
 }
 

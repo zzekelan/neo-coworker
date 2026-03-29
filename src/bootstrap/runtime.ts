@@ -116,8 +116,10 @@ export function createRuntime(input: RuntimeInput) {
     tools: createToolPortFactory({
       observer: observability.toolObserver,
       repository: input.repository,
+      runtimeObserver: observability.runtimeObserver,
       searchBackend: input.searchBackend,
       skill: skillPort,
+      now,
     }),
     activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
     permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
@@ -340,8 +342,10 @@ function createPermissionPort(input: {
 function createToolPortFactory(config: {
   observer?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
   repository: StorageRepository
+  runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
   searchBackend?: SearchToolBackend
   skill: OrchestrationSkillPort
+  now: () => number
 }): OrchestrationToolPortFactory {
   return {
     create(input) {
@@ -353,9 +357,11 @@ function createToolPortFactory(config: {
         extraTools: [
           createSkillTool({
             repository: config.repository,
+            runtimeObserver: config.runtimeObserver,
             skill: config.skill,
             sessionId: input.sessionId,
             runId: input.runId,
+            now: config.now,
           }),
         ],
       })
@@ -378,9 +384,11 @@ const SkillToolArgsSchema = z.object({
 
 function createSkillTool(input: {
   repository: StorageRepository
+  runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
   skill: OrchestrationSkillPort
   sessionId: string
   runId: string
+  now: () => number
 }): ToolDefinition {
   return {
     name: "skill",
@@ -388,9 +396,31 @@ function createSkillTool(input: {
     inputSchema: SkillToolArgsSchema,
     async execute(toolInput) {
       const { name } = SkillToolArgsSchema.parse(toolInput.args)
+      input.runtimeObserver?.recordRuntimeEvent?.({
+        sessionId: input.sessionId,
+        runId: input.runId,
+        event: {
+          type: "skill.load.requested",
+          skillName: name,
+          reason: "activation",
+        },
+        occurredAt: input.now(),
+      })
       const loaded = await input.skill.loadSkill({
         workspaceRoot: toolInput.workspaceRoot,
         name,
+      })
+      input.runtimeObserver?.recordRuntimeEvent?.({
+        sessionId: input.sessionId,
+        runId: input.runId,
+        event: {
+          type: "skill.load.completed",
+          skillName: loaded.name,
+          skillPath: loaded.path,
+          instructionsLength: loaded.instructions.length,
+          reason: "activation",
+        },
+        occurredAt: input.now(),
       })
       const run = input.repository.runs.get(input.runId)
 
@@ -407,6 +437,18 @@ function createSkillTool(input: {
       input.repository.runs.updateActiveSkills({
         runId: run.id,
         activeSkills: [...run.activeSkills, loaded.name],
+      })
+      const updatedRun = input.repository.runs.get(run.id)
+      input.runtimeObserver?.recordRuntimeEvent?.({
+        sessionId: input.sessionId,
+        runId: input.runId,
+        event: {
+          type: "skill.activated",
+          skillName: loaded.name,
+          activeSkillNames: updatedRun.activeSkills,
+          activeSkillCount: updatedRun.activeSkills.length,
+        },
+        occurredAt: input.now(),
       })
 
       return {

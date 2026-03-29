@@ -210,7 +210,7 @@ describe("provider selection", () => {
           observabilityRepository.runEvents
             .listByRun("run_local_provider")
             .map((event) => event.eventType),
-        ).toEqual(["model.turn.requested"])
+        ).toEqual(["model.turn.requested", "model.prompt.assembled"])
       } finally {
         database.close(false)
       }

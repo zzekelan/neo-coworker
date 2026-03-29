@@ -131,6 +131,11 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
       input.session.transitionRunToRunning(runInput.runId)
       runInput.emit({ type: "run.started", runId: runInput.runId })
+      runInput.emit({
+        type: "skill.run.snapshot.applied",
+        activeSkillNames: run.activeSkills,
+        activeSkillCount: run.activeSkills.length,
+      })
     },
     completeRun(runInput: {
       runId: string
@@ -178,17 +183,34 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
     > {
       const transcript = input.session.listTranscript(stepInput.sessionId)
       const run = input.session.getRun(stepInput.runId)
-      const [skillCatalog, activeSkills] = await Promise.all([
-        input.skill.listCatalog(stepInput.workspaceRoot),
-        Promise.all(
-          run.activeSkills.map((name) =>
-            input.skill.loadSkill({
-              workspaceRoot: stepInput.workspaceRoot,
-              name,
-            }),
-          ),
-        ),
-      ])
+      const turnKey = createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId))
+      const skillCatalog = await input.skill.listCatalog(stepInput.workspaceRoot)
+      stepInput.emit({
+        type: "skill.catalog.exposed",
+        catalogSkillNames: skillCatalog.map((skill) => skill.name),
+        catalogSkillCount: skillCatalog.length,
+      })
+      const activeSkills = []
+
+      for (const skillName of run.activeSkills) {
+        stepInput.emit({
+          type: "skill.load.requested",
+          skillName,
+          reason: "prompt",
+        })
+        const loadedSkill = await input.skill.loadSkill({
+          workspaceRoot: stepInput.workspaceRoot,
+          name: skillName,
+        })
+        stepInput.emit({
+          type: "skill.load.completed",
+          skillName: loadedSkill.name,
+          skillPath: loadedSkill.path,
+          instructionsLength: loadedSkill.instructions.length,
+          reason: "prompt",
+        })
+        activeSkills.push(loadedSkill)
+      }
       const assistantTurn = createAssistantTurnRecorder({
         session: input.session,
         sessionId: stepInput.sessionId,
@@ -216,6 +238,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             transcript,
             sessionId: stepInput.sessionId,
             runId: stepInput.runId,
+            turnKey,
             signal: stepInput.signal,
           })
           iterator = modelEvents[Symbol.asyncIterator]()
@@ -297,6 +320,10 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       }
     },
   }
+}
+
+function createTurnKey(runId: string, messageSequence: number) {
+  return `${runId}:turn_${messageSequence}`
 }
 
 async function executeToolCall(input: {

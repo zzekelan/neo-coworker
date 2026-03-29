@@ -4,6 +4,34 @@ export type OrchestrationRuntimeEvent =
       runId: string
     }
   | {
+      type: "skill.run.snapshot.applied"
+      activeSkillNames: string[]
+      activeSkillCount: number
+    }
+  | {
+      type: "skill.catalog.exposed"
+      catalogSkillNames: string[]
+      catalogSkillCount: number
+    }
+  | {
+      type: "skill.load.requested"
+      skillName: string
+      reason: "activation" | "prompt"
+    }
+  | {
+      type: "skill.load.completed"
+      skillName: string
+      skillPath: string
+      instructionsLength: number
+      reason: "activation" | "prompt"
+    }
+  | {
+      type: "skill.activated"
+      skillName: string
+      activeSkillNames: string[]
+      activeSkillCount: number
+    }
+  | {
       type: "message.started"
       role: "assistant"
     }

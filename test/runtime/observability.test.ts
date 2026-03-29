@@ -78,13 +78,18 @@ describe("runtime observability", () => {
 
     expect(readEventTypes(harness.observabilityRepository.runEvents.listByRun(started.run.id))).toEqual([
       "run.started",
+      "skill.run.snapshot.applied",
+      "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
+      "model.prompt.assembled",
       "message.started",
       "tool.executed",
       "tool.call.completed",
+      "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
+      "model.prompt.assembled",
       "message.started",
       "message.delta",
       "run.completed",
@@ -196,13 +201,18 @@ describe("runtime observability", () => {
     const initialTrace = harness.observability.exportRunTrace(started.run.id)
     expect(initialTrace?.events.map((event) => event.eventType)).toEqual([
       "run.started",
+      "skill.run.snapshot.applied",
+      "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
+      "model.prompt.assembled",
       "message.started",
       "tool.executed",
       "tool.call.completed",
+      "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
+      "model.prompt.assembled",
       "message.started",
       "message.delta",
       "run.completed",
@@ -233,6 +243,94 @@ describe("runtime observability", () => {
     } finally {
       reopenedDatabase.close(false)
     }
+  })
+
+  test("records skill disclosure telemetry before and after activation", async () => {
+    const harness = await createHarness("trace-skill", false)
+    const skillDirectory = join(harness.session.workspaceRoot, ".agents", "skills", "reviewer")
+
+    await mkdir(skillDirectory, { recursive: true })
+    await Bun.write(
+      join(skillDirectory, "SKILL.md"),
+      [
+        "name: reviewer",
+        "description: Review code changes carefully",
+        "",
+        "Focus on bugs first.",
+      ].join("\n"),
+    )
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_skill",
+      messageId: "message_trace_skill",
+      prompt: "Use the reviewer skill if needed",
+    })
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            yield {
+              type: "tool.call",
+              callId: "call_skill",
+              name: "skill",
+              inputText: '{"name":"reviewer"}',
+            }
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Reviewer ready." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    expect(trace).not.toBeNull()
+    expect(readEventTypes(trace?.events ?? [])).toEqual(
+      expect.arrayContaining([
+        "skill.run.snapshot.applied",
+        "skill.catalog.exposed",
+        "skill.load.requested",
+        "skill.load.completed",
+        "skill.activated",
+        "model.prompt.assembled",
+      ]),
+    )
+
+    const promptEvents = (trace?.events ?? []).filter((event) => event.eventType === "model.prompt.assembled")
+    expect(promptEvents).toHaveLength(2)
+    expect(promptEvents[0]?.data).toMatchObject({
+      catalogSkillNames: ["reviewer"],
+      activeSkillNames: [],
+      activeSkillCount: 0,
+      activeSkillSectionLength: "Active skill instructions:\n- None.".length,
+    })
+    expect(promptEvents[1]?.data).toMatchObject({
+      catalogSkillNames: ["reviewer"],
+      activeSkillNames: ["reviewer"],
+      activeSkillCount: 1,
+    })
+    expect(promptEvents[0]?.data.activeSkillSectionHash).not.toBe(promptEvents[1]?.data.activeSkillSectionHash)
+
+    const activationEvent = trace?.events.find((event) => event.eventType === "skill.activated")
+    expect(activationEvent?.data).toMatchObject({
+      skillName: "reviewer",
+      activeSkillNames: ["reviewer"],
+      activeSkillCount: 1,
+    })
   })
 })
 
