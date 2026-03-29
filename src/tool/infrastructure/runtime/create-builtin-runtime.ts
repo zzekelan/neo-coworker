@@ -1,4 +1,4 @@
-import type { RequestToolPermission } from "../../domain"
+import type { RequestToolPermission, ToolDefinition } from "../../domain"
 import { createToolRuntimeApi } from "../../application/runtime-api"
 import { createEditTool } from "../builtins/edit"
 import { createReadTool } from "../builtins/read"
@@ -10,6 +10,7 @@ const denyPermission: RequestToolPermission = async () => ({ decision: "deny" })
 
 export type CreateBuiltinToolRuntimeInput = {
   requestPermission?: RequestToolPermission
+  extraTools?: ToolDefinition[]
 }
 
 export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = {}) {
@@ -22,6 +23,7 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
       createWriteTool({ requestPermission }),
       createEditTool({ requestPermission }),
       createShellTool({ requestPermission }),
+      ...(input.extraTools ?? []),
     ],
   })
 }

@@ -356,6 +356,88 @@ describe("agent loop", () => {
     expect(requests[0]?.system).toContain("Focus on bugs first.")
   })
 
+  test("activates a skill mid-run and injects it on the next model turn", async () => {
+    const harness = await createHarness("skill-activation", false)
+    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+
+    await mkdir(skillDirectory, { recursive: true })
+    await Bun.write(
+      join(skillDirectory, "SKILL.md"),
+      [
+        "name: reviewer",
+        "description: Review code changes carefully",
+        "",
+        "Focus on bugs first.",
+      ].join("\n"),
+    )
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_skill_activation",
+      messageId: "message_skill_activation",
+      prompt: "Use the reviewer skill if helpful",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* (request) {
+          expect(request.system).toContain("Skill catalog:")
+          expect(request.system).toContain("reviewer: Review code changes carefully")
+          expect(request.system).toContain("Active skill instructions:\n- None.")
+          expect(request.tools.map((tool) => tool.name)).toContain("skill")
+
+          yield {
+            type: "tool.call",
+            callId: "call_skill",
+            name: "skill",
+            inputText: '{"name":"reviewer"}',
+          }
+        },
+        async function* (request) {
+          expect(request.system).toContain("## reviewer")
+          expect(request.system).toContain("Focus on bugs first.")
+
+          yield { type: "text.delta", text: "Reviewer skill is now active." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    expect(requests).toHaveLength(2)
+    expect(harness.repository.runs.get(started.run.id).activeSkills).toEqual(["reviewer"])
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    expect(activeRunMessages[1]?.parts).toMatchObject([
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_skill",
+          toolName: "skill",
+        },
+      },
+      {
+        kind: "tool_result",
+        text: "Activated skill reviewer",
+        data: {
+          callId: "call_skill",
+          toolName: "skill",
+          output: "Activated skill reviewer",
+        },
+      },
+    ])
+  })
+
   test("persists malformed tool arguments as an error outcome and continues the run", async () => {
     const harness = await createHarness("tool-error", false)
     const started = startPromptRun({

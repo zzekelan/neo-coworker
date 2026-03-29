@@ -1,4 +1,5 @@
 import { join } from "node:path"
+import { z } from "zod"
 import {
   assertRunStatusTransition,
   createSessionRepository as createStorageRepository,
@@ -14,7 +15,11 @@ import {
   type PermissionResponse,
   type PermissionRepository,
 } from "../permission"
-import { createToolProvider } from "../tool"
+import {
+  createBuiltinToolRuntime,
+  createToolProvider,
+  type ToolDefinition,
+} from "../tool"
 import {
   createWorkspaceSkillRuntime,
   type SkillRuntimeApi,
@@ -79,6 +84,7 @@ export { PermissionRequestNotAwaitingActiveRuntimeError }
 export function createRuntime(input: RuntimeInput) {
   const now = input.now ?? Date.now
   const observability = input.observability ?? createNoopObservabilityRuntimeApi()
+  const skillPort = input.skill ?? createSkillPort({ runtime: input.skillRuntime })
   const sessionProvider = createSessionRuntimeApi({
     repository: input.repository,
     now,
@@ -90,7 +96,7 @@ export function createRuntime(input: RuntimeInput) {
       repository: input.repository,
       session: sessionProvider.runs,
     }),
-    skill: input.skill ?? createSkillPort({ runtime: input.skillRuntime }),
+    skill: skillPort,
     permission: createPermissionPort({
       repository: input.permissionRepository,
       session: createPermissionSessionPort({
@@ -102,6 +108,8 @@ export function createRuntime(input: RuntimeInput) {
     }),
     tools: createToolPortFactory({
       observer: observability.toolObserver,
+      repository: input.repository,
+      skill: skillPort,
     }),
     activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
     permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
@@ -323,19 +331,77 @@ function createPermissionPort(input: {
 
 function createToolPortFactory(config: {
   observer?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
+  repository: StorageRepository
+  skill: OrchestrationSkillPort
 }): OrchestrationToolPortFactory {
   return {
     create(input) {
-      return createToolProvider({
+      const runtime = createBuiltinToolRuntime({
         requestPermission(request) {
           return input.requestPermission(request)
         },
+        extraTools: [
+          createSkillTool({
+            repository: config.repository,
+            skill: config.skill,
+            sessionId: input.sessionId,
+            runId: input.runId,
+          }),
+        ],
+      })
+
+      return createToolProvider({
+        runtime,
         observer: config.observer,
         scope: {
           sessionId: input.sessionId,
           runId: input.runId,
         },
       })
+    },
+  }
+}
+
+const SkillToolArgsSchema = z.object({
+  name: z.string().trim().min(1),
+})
+
+function createSkillTool(input: {
+  repository: StorageRepository
+  skill: OrchestrationSkillPort
+  sessionId: string
+  runId: string
+}): ToolDefinition {
+  return {
+    name: "skill",
+    description: "Load a skill by name and activate it for the current run",
+    inputSchema: SkillToolArgsSchema,
+    async execute(toolInput) {
+      const { name } = SkillToolArgsSchema.parse(toolInput.args)
+      const loaded = await input.skill.loadSkill({
+        workspaceRoot: toolInput.workspaceRoot,
+        name,
+      })
+      const run = input.repository.runs.get(input.runId)
+
+      if (run.sessionId !== input.sessionId) {
+        throw new Error(`Run ${input.runId} does not belong to session ${input.sessionId}`)
+      }
+
+      if (run.activeSkills.includes(loaded.name)) {
+        return {
+          output: `Skill ${loaded.name} is already active`,
+        }
+      }
+
+      input.repository.runs.updateActiveSkills({
+        runId: run.id,
+        activeSkills: [...run.activeSkills, loaded.name],
+      })
+
+      return {
+        output: `Activated skill ${loaded.name}`,
+      }
     },
   }
 }
