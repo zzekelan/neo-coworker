@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { buildCli } from "../src/cli"
 import {
+  createDefaultSearchBackend,
   resolveDefaultProviderConfig,
   resolveSearchBackendConfig,
 } from "../src/bootstrap"
@@ -145,5 +146,11 @@ describe("bootstrap", () => {
         SEARCH_BACKEND_URL: "search.example.com/tools",
       }),
     ).toThrow("SEARCH_BACKEND_URL must be a valid absolute URL")
+  })
+
+  test("falls back to the built-in public search backend when SEARCH_BACKEND_URL is absent", () => {
+    const searchBackend = createDefaultSearchBackend({})
+
+    expect(searchBackend).toBeDefined()
   })
 })

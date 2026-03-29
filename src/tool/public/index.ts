@@ -22,6 +22,7 @@ export { createGrepTool } from "../infrastructure/builtins/grep"
 export { createReadTool } from "../infrastructure/builtins/read"
 export {
   createHttpSearchToolBackend,
+  createPublicSearchToolBackend,
   type HttpSearchToolBackendConfig,
   type SearchToolBackend,
   type SearchToolBackendRequest,

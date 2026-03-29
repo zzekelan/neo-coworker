@@ -1,4 +1,5 @@
 import {
+  createPublicSearchToolBackend,
   createHttpSearchToolBackend,
   type HttpSearchToolBackendConfig,
   type SearchToolBackend,
@@ -39,11 +40,11 @@ export function createDefaultSearchBackend(
   input: DefaultSearchBackendInput = {},
 ): SearchToolBackend | undefined {
   const config = resolveSearchBackendConfig(input.env)
-  if (!config) {
-    return undefined
+  if (config) {
+    return createHttpSearchToolBackend(config)
   }
 
-  return createHttpSearchToolBackend(config)
+  return createPublicSearchToolBackend()
 }
 
 function readEnvValue(env: Record<string, string | undefined>, key: string) {

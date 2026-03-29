@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   createCodesearchTool,
+  createPublicSearchToolBackend,
   createToolRuntimeApi,
   createWebsearchTool,
 } from "../../../src/tool"
@@ -84,5 +85,64 @@ describe("search tools", () => {
       }),
     ).rejects.toThrow(/Permission denied/i)
     expect(calls).toBe(0)
+  })
+
+  test("public websearch fallback formats instant-answer results without custom backend config", async () => {
+    const backend = createPublicSearchToolBackend({
+      async fetchImpl() {
+        return new Response(
+          JSON.stringify({
+            Heading: "Alan Turing",
+            AbstractText: "Alan Turing was a pioneering computer scientist.",
+            AbstractURL: "https://en.wikipedia.org/wiki/Alan_Turing",
+            RelatedTopics: [],
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        )
+      },
+    })
+
+    await expect(
+      backend({
+        toolName: "websearch",
+        query: "Alan Turing",
+      }),
+    ).resolves.toContain('Top web results for "Alan Turing"')
+  })
+
+  test("public codesearch fallback formats MDN documents without custom backend config", async () => {
+    const backend = createPublicSearchToolBackend({
+      async fetchImpl() {
+        return new Response(
+          JSON.stringify({
+            documents: [
+              {
+                title: "URLSearchParams",
+                mdn_url: "/en-US/docs/Web/API/URLSearchParams",
+                summary: "Utility methods for working with URL query strings.",
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        )
+      },
+    })
+
+    await expect(
+      backend({
+        toolName: "codesearch",
+        query: "URLSearchParams",
+      }),
+    ).resolves.toContain("https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams")
   })
 })
