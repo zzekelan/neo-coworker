@@ -17,6 +17,7 @@ Approved top-level modules under `src/` fall into four groups:
   - `session`: durable session, run, message, and transcript state
   - `permission`: durable permission-request state and decision flow
   - `model`: model-provider integration and transcript projection
+  - `skill`: skill catalog, skill loading, and skill activation semantics
   - `tool`: tool catalog, execution, and tool-side runtime helpers
 - Coordinator module:
   - `orchestration`: the agent loop, run progression, suspend/resume, streaming, and coordination through explicit capability ports
@@ -51,7 +52,7 @@ New code in this refactor must follow module-role-specific layouts instead.
 
 ### Capability Modules
 
-`observability`, `session`, `permission`, `model`, and `tool` are capability modules.
+`observability`, `session`, `permission`, `model`, `skill`, and `tool` are capability modules.
 
 Their target internal layout is:
 
@@ -76,7 +77,7 @@ Its target internal layout is:
 - `infrastructure/`
 - root `index.ts`
 
-`orchestration/application/ports/` defines the capability contracts that `orchestration` needs from `observability`, `session`, `permission`, `model`, and `tool`.
+`orchestration/application/ports/` defines the capability contracts that `orchestration` needs from `observability`, `session`, `permission`, `model`, `skill`, and `tool`.
 
 `orchestration` does not gain a mandatory `domain/` directory in this round.
 If future work reveals durable, reusable orchestration-owned business rules that deserve a `domain/`, that must come from a later design change, not from ad hoc implementation drift.
@@ -198,7 +199,7 @@ Inside `infrastructure`, subroles tighten placement further:
 Anything else is a layer violation.
 In particular:
 
-- `orchestration/application` must not import `session`, `permission`, `model`, or `tool`
+- `orchestration/application` must not import `session`, `permission`, `model`, `skill`, or `tool`
 - `orchestration/public` must not contain business logic or hidden side-effect initialization
 - `orchestration` files must not import outer-shell code
 - module-internal files must not import `src/orchestration/index.ts`

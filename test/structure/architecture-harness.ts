@@ -14,6 +14,7 @@ export const FINAL_CAPABILITY_TOP_LEVELS = new Set([
   "model",
   "permission",
   "session",
+  "skill",
   "tool",
 ])
 export const FINAL_COORDINATOR_TOP_LEVELS = new Set(["orchestration"])

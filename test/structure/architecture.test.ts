@@ -19,6 +19,7 @@ describe("architecture structure", () => {
       "observability",
       "permission",
       "session",
+      "skill",
       "tool",
     ])
     expect(toSortedArray(FINAL_COORDINATOR_TOP_LEVELS)).toEqual([
