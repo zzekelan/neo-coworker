@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { buildCli } from "../src/cli"
-import { resolveDefaultProviderConfig } from "../src/bootstrap"
+import {
+  resolveDefaultProviderConfig,
+  resolveSearchBackendConfig,
+} from "../src/bootstrap"
 
 describe("bootstrap", () => {
   test("parses the run command", () => {
@@ -122,5 +125,25 @@ describe("bootstrap", () => {
         OPENAI_MODEL: "gpt-5",
       }),
     ).toThrow("LLM_API_KEY is required")
+  })
+
+  test("reads search backend configuration from SEARCH_BACKEND_* variables", () => {
+    expect(
+      resolveSearchBackendConfig({
+        SEARCH_BACKEND_URL: "https://search.example.com/tools",
+        SEARCH_BACKEND_BEARER_TOKEN: "search-secret",
+      }),
+    ).toEqual({
+      url: "https://search.example.com/tools",
+      bearerToken: "search-secret",
+    })
+  })
+
+  test("rejects invalid SEARCH_BACKEND_URL values", () => {
+    expect(() =>
+      resolveSearchBackendConfig({
+        SEARCH_BACKEND_URL: "search.example.com/tools",
+      }),
+    ).toThrow("SEARCH_BACKEND_URL must be a valid absolute URL")
   })
 })

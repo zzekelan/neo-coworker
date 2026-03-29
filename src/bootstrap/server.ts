@@ -11,6 +11,7 @@ import {
   type ObservabilityRepository,
 } from "../observability"
 import { createDefaultProvider } from "./provider"
+import { createDefaultSearchBackend } from "./search"
 import { createRuntime } from "./runtime"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
@@ -77,6 +78,9 @@ export async function createStandaloneServerComposition(input: {
       env,
       modelObserver: observability.modelObserver,
     })
+    const searchBackend = createDefaultSearchBackend({
+      env,
+    })
     const createRuntimeImpl = input.createRuntimeImpl ?? createRuntime
 
     return {
@@ -98,6 +102,7 @@ export async function createStandaloneServerComposition(input: {
           repository: runtimeInput.repository,
           permissionRepository: runtimeInput.permissionRepository,
           observability,
+          searchBackend,
           now: runtimeInput.now,
         })
       },

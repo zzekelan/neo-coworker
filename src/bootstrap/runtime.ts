@@ -18,6 +18,7 @@ import {
 import {
   createBuiltinToolRuntime,
   createToolProvider,
+  type SearchToolBackend,
   type ToolDefinition,
 } from "../tool"
 import {
@@ -57,6 +58,7 @@ type RuntimeInput = {
     ObservabilityRuntimeApi,
     "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver"
   >
+  searchBackend?: SearchToolBackend
   permissionPolicy?: Partial<
     Record<
       "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch",
@@ -114,6 +116,7 @@ export function createRuntime(input: RuntimeInput) {
     tools: createToolPortFactory({
       observer: observability.toolObserver,
       repository: input.repository,
+      searchBackend: input.searchBackend,
       skill: skillPort,
     }),
     activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
@@ -337,6 +340,7 @@ function createPermissionPort(input: {
 function createToolPortFactory(config: {
   observer?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
   repository: StorageRepository
+  searchBackend?: SearchToolBackend
   skill: OrchestrationSkillPort
 }): OrchestrationToolPortFactory {
   return {
@@ -345,6 +349,7 @@ function createToolPortFactory(config: {
         requestPermission(request) {
           return input.requestPermission(request)
         },
+        searchBackend: config.searchBackend,
         extraTools: [
           createSkillTool({
             repository: config.repository,

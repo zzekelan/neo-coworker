@@ -76,6 +76,64 @@ describe("bootstrap runtime", () => {
       await rm(workspaceRoot, { force: true, recursive: true })
     }
   })
+
+  test("createCliRuntime forwards the configured search backend to builtin search tools", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "bootstrap-runtime-search-"))
+    const calls: Array<{ toolName: string; query: string }> = []
+    let turnIndex = 0
+
+    try {
+      const runtime = createCliRuntime({
+        provider: createModelProvider({
+          runtime: createModelRuntimeApi({
+            async *streamTurn() {
+              if (turnIndex === 0) {
+                turnIndex += 1
+                yield {
+                  type: "tool.call" as const,
+                  callId: "call_websearch",
+                  name: "websearch",
+                  inputText: '{"query":"bun sqlite docs"}',
+                }
+                return
+              }
+
+              yield {
+                type: "text.delta" as const,
+                text: "Search complete.",
+              }
+            },
+          }),
+        }),
+        permissionPolicy: {
+          websearch: "allow",
+        },
+        searchBackend: async (input) => {
+          calls.push({
+            toolName: input.toolName,
+            query: input.query,
+          })
+          return "docs result"
+        },
+      })
+
+      const handle = await runtime.run({
+        cwd: workspaceRoot,
+        workspaceRoot,
+        prompt: "Look up Bun sqlite docs",
+      })
+      await collectEvents(handle.events)
+
+      expect(calls).toEqual([
+        {
+          toolName: "websearch",
+          query: "bun sqlite docs",
+        },
+      ])
+    } finally {
+      await rm(workspaceRoot, { force: true, recursive: true })
+    }
+  })
 })
 
 function createTextProvider(text: string) {

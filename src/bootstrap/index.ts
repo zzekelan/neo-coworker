@@ -1,5 +1,6 @@
 export * from "./provider"
 export * from "./runtime"
+export * from "./search"
 export * from "./server"
 export * from "./server-app"
 export * from "../model"

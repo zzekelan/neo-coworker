@@ -7,6 +7,7 @@ import {
 } from "./cli"
 import {
   createDefaultProvider,
+  createDefaultSearchBackend,
   createObservabilityRuntimeApi,
   createCliStorageComposition,
   createRuntime,
@@ -87,6 +88,9 @@ export function buildCli(input: BuildCliInput = {}) {
             createOpenAIProviderImpl: input.createOpenAIProviderImpl,
             createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
           }))
+        const searchBackend = createDefaultSearchBackend({
+          env: input.env,
+        })
 
         await runCliImpl({
           argv,
@@ -97,6 +101,7 @@ export function buildCli(input: BuildCliInput = {}) {
             return createRuntime({
               ...runtimeInput,
               observability,
+              searchBackend,
             })
           },
           createLocalStorageImpl(workspaceRoot) {
