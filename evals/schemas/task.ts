@@ -111,6 +111,9 @@ export const EvalTaskSchema = z.object({
       write: EvalPermissionModeSchema.optional(),
       edit: EvalPermissionModeSchema.optional(),
       shell: EvalPermissionModeSchema.optional(),
+      webfetch: EvalPermissionModeSchema.optional(),
+      websearch: EvalPermissionModeSchema.optional(),
+      codesearch: EvalPermissionModeSchema.optional(),
     })
     .default({}),
   autoReplyPermission: EvalPermissionDecisionSchema.optional(),

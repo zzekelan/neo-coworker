@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { basename, dirname, join, resolve, sep } from "node:path"
 import type { ModelObserverPort, ModelProvider } from "../src/model"
 import {
+  createDefaultSearchBackend,
   createCliStorageComposition,
   createObservabilityRuntimeApi,
   createOrchestrationActiveRunRegistry,
@@ -68,6 +69,7 @@ export async function runEvalTask(input: {
   task: EvalTask
   providerInfo: EvalProviderInfo
   createProvider: EvalProviderFactory
+  env?: Record<string, string | undefined>
   activeRuns?: OrchestrationActiveRunRegistry
   onRunStarted?(input: {
     storageIdentity: string
@@ -97,6 +99,9 @@ export async function runEvalTask(input: {
     repository: storage.repository,
     now,
   })
+  const searchBackend = createDefaultSearchBackend({
+    env: input.env,
+  })
   const runtime = createRuntime({
     provider,
     repository: storage.repository,
@@ -104,6 +109,7 @@ export async function runEvalTask(input: {
     observability,
     activeRuns,
     permissionPolicy: task.permissionPolicy,
+    searchBackend,
     now,
   })
 

@@ -7,8 +7,13 @@ import { loadEvalTasks, runDiscoveredEvalTasks } from "../../evals"
 import { createModelProvider, createModelRuntimeApi } from "../../src/model"
 
 const tempDirectories: string[] = []
+const activeServers: Array<{ stop(force?: boolean): void }> = []
 
 afterEach(async () => {
+  while (activeServers.length > 0) {
+    activeServers.pop()?.stop(true)
+  }
+
   while (tempDirectories.length > 0) {
     await rm(tempDirectories.pop()!, { force: true, recursive: true })
   }
@@ -123,6 +128,116 @@ describe("direct eval runner", () => {
       kind: "openai",
       model: "gpt-5",
     })
+  })
+
+  test("wires SEARCH_BACKEND_URL into live eval runs for websearch tasks", async () => {
+    const tasksRoot = await mkdtemp(join(tmpdir(), "eval-live-search-task-"))
+    const outputRoot = await mkdtemp(join(tmpdir(), "eval-live-search-output-"))
+    tempDirectories.push(tasksRoot, outputRoot)
+    await mkdir(join(tasksRoot, "live"), { recursive: true })
+    await writeFile(
+      join(tasksRoot, "live", "tool-websearch.json"),
+      JSON.stringify({
+        id: "live/tool-websearch",
+        providerMode: "live",
+        prompt: "Use websearch and repeat BACKEND_RESULT_TOKEN.",
+        workspaceFixture: "workspaces/basic",
+        permissionPolicy: {
+          websearch: "allow",
+        },
+        outcomeExpectation: {
+          runStatus: "completed",
+        },
+        toolPolicyExpectation: {
+          requiredToolNames: ["websearch"],
+        },
+        toolConsumptionExpectation: {
+          requiredConsumptions: [
+            {
+              toolName: "websearch",
+              toolResultIncludes: ["BACKEND_RESULT_TOKEN"],
+              assistantTextIncludes: ["BACKEND_RESULT_TOKEN"],
+            },
+          ],
+        },
+      }),
+      "utf8",
+    )
+
+    const searchRequests: Array<{ authorization: string | null; body: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        return request.text().then((body) => {
+          searchRequests.push({
+            authorization: request.headers.get("authorization"),
+            body,
+          })
+
+          return Response.json({
+            output: "BACKEND_RESULT_TOKEN from eval search backend",
+          })
+        })
+      },
+    })
+    activeServers.push(server)
+
+    const suite = await runDiscoveredEvalTasks({
+      providerMode: "live",
+      taskIds: ["live/tool-websearch"],
+      tasksRoot,
+      outputRoot,
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "gpt-5",
+        SEARCH_BACKEND_URL: server.url.toString(),
+        SEARCH_BACKEND_BEARER_TOKEN: "search-token",
+      },
+      createClient() {
+        return {} as OpenAI
+      },
+      createOpenAIProviderImpl(input) {
+        let turn = 0
+
+        return createModelProvider({
+          observer: input.observer,
+          runtime: createModelRuntimeApi({
+            async *streamTurn() {
+              turn += 1
+
+              if (turn === 1) {
+                yield {
+                  type: "tool.call",
+                  callId: "call_websearch",
+                  name: "websearch",
+                  inputText: '{"query":"BACKEND_RESULT_TOKEN"}',
+                }
+                return
+              }
+
+              if (turn === 2) {
+                yield { type: "text.delta", text: "BACKEND_RESULT_TOKEN confirmed." }
+                return
+              }
+
+              throw new Error(`Unexpected provider turn ${turn}`)
+            },
+          }),
+        })
+      },
+    })
+
+    expect(suite.pass).toBe(true)
+    expect(searchRequests).toEqual([
+      {
+        authorization: "Bearer search-token",
+        body: JSON.stringify({
+          toolName: "websearch",
+          query: "BACKEND_RESULT_TOKEN",
+        }),
+      },
+    ])
   })
 
   test("surfaces live provider execution failures with an explicit operator message", async () => {

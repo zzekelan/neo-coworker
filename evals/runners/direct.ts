@@ -58,6 +58,7 @@ export async function runDiscoveredEvalTasks(input: {
       task,
       providerMode,
       provider,
+      env: input.env,
       now: input.now,
     })
     const artifactDir = await persistEvalArtifacts({
@@ -177,6 +178,7 @@ async function runTaskOrThrow(input: {
   task: DiscoveredEvalTask
   providerMode: EvalProviderMode
   provider: ReturnType<typeof resolveEvalTaskProvider>
+  env?: Record<string, string | undefined>
   now?: () => number
 }) {
   try {
@@ -184,6 +186,7 @@ async function runTaskOrThrow(input: {
       task: input.task,
       providerInfo: input.provider.providerInfo,
       createProvider: input.provider.createProvider,
+      env: input.env,
       now: input.now,
     })
   } catch (error) {
