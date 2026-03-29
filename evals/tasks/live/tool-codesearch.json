@@ -1,11 +1,12 @@
 {
   "id": "live/tool-codesearch",
   "providerMode": "live",
-  "prompt": "Use codesearch to investigate the query URLSearchParams. Summarize the most relevant API-oriented result you found.",
+  "prompt": "Use only the codesearch tool to investigate the query URLSearchParams. Do not use webfetch, websearch, grep, shell, read, write, or edit. Summarize the most relevant API-oriented result you found.",
   "workspaceFixture": "workspaces/basic",
   "permissionPolicy": {
     "codesearch": "allow"
   },
+  "autoReplyPermission": "deny",
   "traceExpectation": {
     "requiredEventTypes": [
       "run.started",

@@ -6,6 +6,7 @@
   "permissionPolicy": {
     "websearch": "allow"
   },
+  "autoReplyPermission": "deny",
   "traceExpectation": {
     "requiredEventTypes": [
       "run.started",
