@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Loader2, Terminal } from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { DesktopTranscriptMessage, MessagePart } from "../view-types"
+import { MarkdownText } from "./MarkdownText"
 
 export const Message: React.FC<{ message: DesktopTranscriptMessage }> = ({ message }) => {
   const isUser = message.role === "user"
@@ -23,19 +24,23 @@ export const Message: React.FC<{ message: DesktopTranscriptMessage }> = ({ messa
         {message.parts ? (
           <div className="w-full space-y-4">
             {message.parts.map((part, index) => (
-              <MessagePartRenderer key={`${message.id}:${index}`} part={part} />
+              <MessagePartRenderer key={`${message.id}:${index}`} part={part} role={message.role} />
             ))}
           </div>
         ) : (
           <div
             className={cn(
-              "whitespace-pre-wrap text-[15px] leading-relaxed",
+              "text-[15px] leading-relaxed",
               isUser
                 ? "rounded-2xl rounded-tr-sm bg-zinc-100 px-5 py-3 text-zinc-900"
                 : "py-2 text-zinc-800",
             )}
           >
-            {message.content}
+            {isUser ? (
+              <div className="whitespace-pre-wrap">{message.content}</div>
+            ) : (
+              <MarkdownText text={message.content} />
+            )}
           </div>
         )}
       </div>
@@ -66,8 +71,15 @@ const renderToolData = (data: unknown, depth = 0): React.ReactNode => {
   )
 }
 
-const MessagePartRenderer: React.FC<{ part: MessagePart }> = ({ part }) => {
+const MessagePartRenderer: React.FC<{
+  part: MessagePart
+  role?: DesktopTranscriptMessage["role"]
+}> = ({ part, role }) => {
   if (part.type === "text") {
+    if (role === "assistant") {
+      return <MarkdownText text={part.text} className="py-1 text-[15px]" />
+    }
+
     return <div className="py-1 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{part.text}</div>
   }
 
