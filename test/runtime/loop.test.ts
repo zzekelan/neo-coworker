@@ -155,7 +155,7 @@ describe("agent loop", () => {
           yield {
             type: "tool.call",
             callId: "call_search",
-            name: "search",
+            name: "grep",
             inputText: '{"query":"fixture"}',
           }
         },
@@ -225,7 +225,7 @@ describe("agent loop", () => {
           yield {
             type: "tool.call",
             callId: "call_search",
-            name: "search",
+            name: "grep",
             inputText: '{"query":"fixture"}',
           }
         },
@@ -261,7 +261,7 @@ describe("agent loop", () => {
         {
           type: "tool_call",
           callId: "call_search",
-          toolName: "search",
+          toolName: "grep",
           inputText: '{"query":"fixture"}',
         },
       ],
@@ -283,7 +283,7 @@ describe("agent loop", () => {
         {
           type: "tool_result",
           callId: "call_search",
-          toolName: "search",
+          toolName: "grep",
           output: expect.stringContaining(
             "README.md:3: This fixture exists for the read-only tool tests.",
           ),

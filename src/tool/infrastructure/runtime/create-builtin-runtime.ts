@@ -4,7 +4,6 @@ import { createEditTool } from "../builtins/edit"
 import { createGlobTool } from "../builtins/glob"
 import { createGrepTool } from "../builtins/grep"
 import { createReadTool } from "../builtins/read"
-import { createSearchTool } from "../builtins/search"
 import { createShellTool } from "../builtins/shell"
 import { createWriteTool } from "../builtins/write"
 
@@ -23,7 +22,6 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
       createReadTool(),
       createGlobTool(),
       createGrepTool(),
-      createSearchTool(),
       createWriteTool({ requestPermission }),
       createEditTool({ requestPermission }),
       createShellTool({ requestPermission }),

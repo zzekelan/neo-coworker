@@ -19,7 +19,6 @@ export { createEditTool } from "../infrastructure/builtins/edit"
 export { createGlobTool } from "../infrastructure/builtins/glob"
 export { createGrepTool } from "../infrastructure/builtins/grep"
 export { createReadTool } from "../infrastructure/builtins/read"
-export { createSearchTool } from "../infrastructure/builtins/search"
 export { createShellTool } from "../infrastructure/builtins/shell"
 export { createWriteTool } from "../infrastructure/builtins/write"
 

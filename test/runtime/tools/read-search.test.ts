@@ -3,14 +3,14 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import {
+  createGrepTool,
   createReadTool,
-  createSearchTool,
   createToolRuntimeApi,
 } from "../../../src/tool"
 
 function createRegistry() {
   return createToolRuntimeApi({
-    tools: [createReadTool(), createSearchTool()],
+    tools: [createReadTool(), createGrepTool()],
   })
 }
 
@@ -27,11 +27,11 @@ describe("read-only tools", () => {
     expect(result.output).toContain("demo workspace")
   })
 
-  test("search finds matching files and line snippets", async () => {
+  test("grep finds matching files and line snippets", async () => {
     const registry = createRegistry()
 
     const result = await registry.execute({
-      toolName: "search",
+      toolName: "grep",
       args: { query: "helloDemo" },
       workspaceRoot: "test/fixtures/workspaces/read-search",
     })
@@ -76,19 +76,19 @@ describe("read-only tools", () => {
     ).rejects.toThrow("Path is reserved for agent runtime data")
   })
 
-  test("search rejects empty or whitespace-only queries", async () => {
+  test("grep rejects empty or whitespace-only queries", async () => {
     const registry = createRegistry()
 
     await expect(
       registry.execute({
-        toolName: "search",
+        toolName: "grep",
         args: { query: "   " },
         workspaceRoot: "test/fixtures/workspaces/read-search",
       }),
     ).rejects.toThrow("Query must not be empty")
   })
 
-  test("search skips heavy directories and agent runtime storage", async () => {
+  test("grep skips heavy directories and agent runtime storage", async () => {
     const registry = createRegistry()
     const workspaceRoot = await mkdtemp(join(tmpdir(), "read-search-workspace-"))
 
@@ -105,7 +105,7 @@ describe("read-only tools", () => {
     await writeFile(join(workspaceRoot, ".worktrees", "hidden.ts"), 'export const value = "skipMe"\n')
 
     const result = await registry.execute({
-      toolName: "search",
+      toolName: "grep",
       args: { query: "skipMe" },
       workspaceRoot,
     })
@@ -117,7 +117,7 @@ describe("read-only tools", () => {
     expect(result.output).not.toContain(".worktrees/hidden.ts")
   })
 
-  test("search caps the number of reported matches", async () => {
+  test("grep caps the number of reported matches", async () => {
     const registry = createRegistry()
     const workspaceRoot = await mkdtemp(join(tmpdir(), "read-search-workspace-"))
 
@@ -131,7 +131,7 @@ describe("read-only tools", () => {
     }
 
     const result = await registry.execute({
-      toolName: "search",
+      toolName: "grep",
       args: { query: "manyHit" },
       workspaceRoot,
     })
