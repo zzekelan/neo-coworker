@@ -18,6 +18,7 @@ export {
   type StoredSession,
   type TranscriptMessage,
   type UpdatePartContentInput,
+  type UpdateRunActiveSkillsInput,
   type UpdateRunStatusInput,
   type UpdateSessionInput,
 } from "./ports/repository"

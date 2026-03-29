@@ -113,6 +113,11 @@ export type UpdateRunStatusInput = {
   errorText?: string | null
 }
 
+export type UpdateRunActiveSkillsInput = {
+  runId: string
+  activeSkills: string[]
+}
+
 export type CreateMessageInput = {
   id?: string
   sessionId: string
@@ -207,6 +212,7 @@ export type SessionRepository = {
     getLatestBySession(sessionId: string): StoredRun | null
     getActiveBySession(sessionId: string): StoredRun | null
     updateStatus(update: UpdateRunStatusInput): StoredRun
+    updateActiveSkills(update: UpdateRunActiveSkillsInput): StoredRun
   }
   messages: {
     create(message: CreateMessageInput): StoredMessage

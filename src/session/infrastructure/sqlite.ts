@@ -627,6 +627,24 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
 
       return record
     },
+    updateActiveSkills(update) {
+      const current = requireRun(update.runId)
+      const record: StoredRun = {
+        ...current,
+        activeSkills: normalizeRunActiveSkills(update.activeSkills),
+      }
+
+      database
+        .query("UPDATE run SET active_skills_json = ? WHERE id = ?")
+        .run(serializeJson(record.activeSkills), record.id)
+
+      sessions.update({
+        sessionId: record.sessionId,
+        updatedAt: now(),
+      })
+
+      return record
+    },
   }
 
   const messages: SessionRepository["messages"] = {

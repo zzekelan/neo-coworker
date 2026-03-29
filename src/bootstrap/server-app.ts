@@ -274,6 +274,11 @@ export function createObservedRepository(input: {
         publishRunUpdated(updated)
         return updated
       },
+      updateActiveSkills(update) {
+        const updated = repository.runs.updateActiveSkills(update)
+        publishRunUpdated(updated)
+        return updated
+      },
     },
     messages: {
       ...repository.messages,

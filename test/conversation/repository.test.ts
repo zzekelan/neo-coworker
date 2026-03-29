@@ -508,6 +508,43 @@ describe("storage repository", () => {
     expect(repository.runs.get(run.id).activeSkills).toEqual(["reviewer", "writer"])
   })
 
+  test("updates run active skills without changing other run fields", () => {
+    const { repository } = createTestRepository("run-active-skills-update", {
+      now: () => 50,
+    })
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "running",
+      createdAt: 2,
+      startedAt: 3,
+    })
+
+    const updated = repository.runs.updateActiveSkills({
+      runId: "run_1",
+      activeSkills: [" reviewer ", "writer", "reviewer"],
+    })
+
+    expect(updated).toMatchObject({
+      id: "run_1",
+      status: "running",
+      startedAt: 3,
+      activeSkills: ["reviewer", "writer"],
+    })
+    expect(repository.sessions.get("session_1")).toMatchObject({
+      updatedAt: 50,
+    })
+  })
+
   test("surfaces explicit not-found errors for reads and updates", () => {
     const { repository } = createTestRepository("not-found")
 
