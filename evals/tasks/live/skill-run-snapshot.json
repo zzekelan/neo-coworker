@@ -1,0 +1,68 @@
+{
+  "id": "live/skill-run-snapshot",
+  "providerMode": "live",
+  "prompt": "A session default skill is already configured for this run. Answer briefly without changing the active skill set.",
+  "workspaceFixture": "workspaces/skills",
+  "sessionSeed": {
+    "activeSkills": [
+      "reviewer"
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "skill.run.snapshot.applied",
+      "skill.catalog.exposed",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "skill",
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "skill.run.snapshot.applied",
+      "skill.catalog.exposed",
+      "skill.load.requested",
+      "skill.load.completed",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "promptAssemblyExpectation": {
+    "checkpoints": [
+      {
+        "promptIndex": 0,
+        "catalogSkillNamesIncludes": [
+          "reviewer",
+          "writer"
+        ],
+        "activeSkillNamesIncludes": [
+          "reviewer"
+        ],
+        "activeSkillNamesExcludes": [
+          "writer"
+        ],
+        "activeSkillCount": 1
+      }
+    ]
+  }
+}

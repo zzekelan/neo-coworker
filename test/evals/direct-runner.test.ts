@@ -94,6 +94,10 @@ describe("direct eval runner", () => {
     })
     expect(tasks.map((task) => task.id)).toEqual([
       "live/read-only",
+      "live/skill-explicit-activation",
+      "live/skill-model-auto-selection",
+      "live/skill-run-override",
+      "live/skill-run-snapshot",
       "live/tool-codesearch",
       "live/tool-glob",
       "live/tool-grep",

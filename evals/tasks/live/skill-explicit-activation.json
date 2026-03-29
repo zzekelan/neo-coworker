@@ -1,0 +1,88 @@
+{
+  "id": "live/skill-explicit-activation",
+  "providerMode": "live",
+  "prompt": "Use the skill tool to activate the writer skill before answering. Then provide a concise operator-facing summary.",
+  "workspaceFixture": "workspaces/skills",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "skill.run.snapshot.applied",
+      "skill.catalog.exposed",
+      "skill.activated",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "skill"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "skill"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "skill.run.snapshot.applied",
+      "model.prompt.assembled",
+      "skill.activated",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "skillDisclosureExpectation": {
+    "skillName": "writer"
+  },
+  "promptAssemblyExpectation": {
+    "checkpoints": [
+      {
+        "promptIndex": 0,
+        "catalogSkillNamesIncludes": [
+          "reviewer",
+          "writer"
+        ],
+        "activeSkillNamesExcludes": [
+          "writer"
+        ],
+        "activeSkillCount": 0
+      },
+      {
+        "promptIndex": 1,
+        "activeSkillNamesIncludes": [
+          "writer"
+        ],
+        "activeSkillCount": 1
+      }
+    ],
+    "requireDistinctActiveSkillSectionHashes": true
+  }
+}

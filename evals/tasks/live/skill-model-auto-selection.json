@@ -1,0 +1,70 @@
+{
+  "id": "live/skill-model-auto-selection",
+  "providerMode": "live",
+  "prompt": "You need to produce a concise operator-facing summary. If a matching skill is available in the catalog, choose it and use it before answering.",
+  "workspaceFixture": "workspaces/skills",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "skill.catalog.exposed",
+      "skill.activated",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "skill"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "skill.catalog.exposed",
+      "model.prompt.assembled",
+      "skill.activated",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "skillDisclosureExpectation": {
+    "skillName": "writer"
+  },
+  "promptAssemblyExpectation": {
+    "checkpoints": [
+      {
+        "promptIndex": 0,
+        "catalogSkillNamesIncludes": [
+          "reviewer",
+          "writer"
+        ],
+        "activeSkillNamesExcludes": [
+          "writer"
+        ]
+      },
+      {
+        "promptIndex": 1,
+        "activeSkillNamesIncludes": [
+          "writer"
+        ]
+      }
+    ],
+    "requireDistinctActiveSkillSectionHashes": true
+  }
+}

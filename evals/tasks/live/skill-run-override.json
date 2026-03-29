@@ -1,0 +1,97 @@
+{
+  "id": "live/skill-run-override",
+  "providerMode": "live",
+  "prompt": "Keep the reviewer default active, then use the skill tool to activate writer for this run before answering with a concise operator-facing summary.",
+  "workspaceFixture": "workspaces/skills",
+  "sessionSeed": {
+    "activeSkills": [
+      "reviewer"
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "skill.run.snapshot.applied",
+      "skill.catalog.exposed",
+      "skill.activated",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "skill"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "skill"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "skill.run.snapshot.applied",
+      "model.prompt.assembled",
+      "skill.activated",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "skillDisclosureExpectation": {
+    "skillName": "writer"
+  },
+  "promptAssemblyExpectation": {
+    "checkpoints": [
+      {
+        "promptIndex": 0,
+        "catalogSkillNamesIncludes": [
+          "reviewer",
+          "writer"
+        ],
+        "activeSkillNamesIncludes": [
+          "reviewer"
+        ],
+        "activeSkillNamesExcludes": [
+          "writer"
+        ],
+        "activeSkillCount": 1
+      },
+      {
+        "promptIndex": 1,
+        "activeSkillNamesIncludes": [
+          "reviewer",
+          "writer"
+        ],
+        "activeSkillCount": 2
+      }
+    ],
+    "requireDistinctActiveSkillSectionHashes": true
+  }
+}
