@@ -7,6 +7,7 @@ export const DEFAULT_ORCHESTRATION_PERMISSION_POLICY: OrchestrationPermissionPol
   write: "ask",
   edit: "ask",
   shell: "ask",
+  webfetch: "ask",
 }
 
 export type ResolvedPermissionPolicy = OrchestrationPermissionPolicy

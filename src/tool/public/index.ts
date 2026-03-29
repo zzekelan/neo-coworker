@@ -20,6 +20,7 @@ export { createGlobTool } from "../infrastructure/builtins/glob"
 export { createGrepTool } from "../infrastructure/builtins/grep"
 export { createReadTool } from "../infrastructure/builtins/read"
 export { createShellTool } from "../infrastructure/builtins/shell"
+export { createWebfetchTool } from "../infrastructure/builtins/webfetch"
 export { createWriteTool } from "../infrastructure/builtins/write"
 
 export function createToolProvider(input: {

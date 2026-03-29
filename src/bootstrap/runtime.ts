@@ -57,7 +57,9 @@ type RuntimeInput = {
     ObservabilityRuntimeApi,
     "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver"
   >
-  permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
+  permissionPolicy?: Partial<
+    Record<"write" | "edit" | "shell" | "webfetch", PermissionMode>
+  >
   activeRuns?: OrchestrationActiveRunRegistry
   systemPrompt?: string
   now?: () => number

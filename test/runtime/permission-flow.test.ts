@@ -44,6 +44,86 @@ afterEach(async () => {
 })
 
 describe("runtime permission flow", () => {
+  test("approval resumes the same run for webfetch after waiting permission", async () => {
+    const harness = await createHarness("permission-webfetch", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_permission_webfetch",
+      messageId: "message_permission_webfetch_user",
+      prompt: "Fetch a note from the web",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const url = "data:text/plain,Hello%20from%20webfetch."
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_webfetch",
+            name: "webfetch",
+            inputText: `{"url":"${url}"}`,
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Fetch finished." }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        webfetch: "ask",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const permissionEvent = await waitForPermissionRequest(iterator)
+
+    expect(permissionEvent.reason).toBe(`webfetch ${url}`)
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      id: started.run.id,
+      status: "waiting_permission",
+    })
+
+    runtime.respondPermission({
+      requestId: permissionEvent.requestId,
+      decision: "allow",
+    })
+
+    const remainingEvents = await collectEvents(iterator)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(requests).toHaveLength(2)
+    expect(activeRunMessages[1]?.parts).toMatchObject([
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_webfetch",
+          toolName: "webfetch",
+        },
+      },
+      {
+        kind: "tool_result",
+        text: "Hello from webfetch.",
+        data: {
+          callId: "call_webfetch",
+          toolName: "webfetch",
+          output: "Hello from webfetch.",
+        },
+      },
+    ])
+    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Fetch finished." }])
+    expect(remainingEvents.at(-1)).toMatchObject({
+      type: "run.completed",
+      runId: started.run.id,
+    })
+  })
+
   test("approval resumes the same run after waiting permission", async () => {
     const harness = await createHarness("permission-allow", false)
     const started = startPromptRun({
@@ -644,7 +724,9 @@ async function createHarness(
 function createPermissionRuntime(input: {
   provider: OrchestrationModelPort
   harness: Awaited<ReturnType<typeof createHarness>>
-  permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
+  permissionPolicy?: Partial<
+    Record<"write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
+  >
 }) {
   return createRuntime({
     provider: input.provider,

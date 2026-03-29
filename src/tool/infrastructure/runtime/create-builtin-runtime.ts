@@ -5,6 +5,7 @@ import { createGlobTool } from "../builtins/glob"
 import { createGrepTool } from "../builtins/grep"
 import { createReadTool } from "../builtins/read"
 import { createShellTool } from "../builtins/shell"
+import { createWebfetchTool } from "../builtins/webfetch"
 import { createWriteTool } from "../builtins/write"
 
 const denyPermission: RequestToolPermission = async () => ({ decision: "deny" })
@@ -22,6 +23,7 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
       createReadTool(),
       createGlobTool(),
       createGrepTool(),
+      createWebfetchTool({ requestPermission }),
       createWriteTool({ requestPermission }),
       createEditTool({ requestPermission }),
       createShellTool({ requestPermission }),
