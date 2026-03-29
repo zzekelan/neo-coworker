@@ -1,7 +1,7 @@
 {
   "id": "live/tool-codesearch",
   "providerMode": "live",
-  "prompt": "Use codesearch to investigate the query SEARCH_BACKEND_TOKEN_CODE. Summarize the most relevant API-oriented result you found.",
+  "prompt": "Use codesearch to investigate the query URLSearchParams. Summarize the most relevant API-oriented result you found.",
   "workspaceFixture": "workspaces/basic",
   "permissionPolicy": {
     "codesearch": "allow"

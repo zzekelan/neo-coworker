@@ -1,7 +1,7 @@
 {
   "id": "live/tool-websearch",
   "providerMode": "live",
-  "prompt": "Use websearch to investigate the query SEARCH_BACKEND_TOKEN_WEB. Summarize the top result you found.",
+  "prompt": "Use websearch to investigate the query Alan Turing. Summarize the top result you found.",
   "workspaceFixture": "workspaces/basic",
   "permissionPolicy": {
     "websearch": "allow"

@@ -117,6 +117,7 @@ Additional requirements:
 
 - `LLM_MODEL` is required for `LLM_PROVIDER=openai-compatible`
 - `LLM_BASE_URL` is required for `LLM_PROVIDER=openai-compatible`
+- `SEARCH_BACKEND_URL` is optional; when absent, `websearch` and `codesearch` fall back to the built-in public search backend
 
 Example:
 
