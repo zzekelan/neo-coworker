@@ -6,6 +6,8 @@ export {
   SEARCH_MAX_MATCHES,
   SEARCH_SKIPPED_DIRECTORIES,
   SHELL_ABORT_GRACE_MS,
+  WORKSPACE_MAX_MATCHES,
+  WORKSPACE_SKIPPED_DIRECTORIES,
   createToolAbortError,
   throwIfToolAborted,
   type RequestToolPermission,

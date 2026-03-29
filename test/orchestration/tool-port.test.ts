@@ -20,6 +20,7 @@ describe("orchestration tool port", () => {
 
     expect(tools.list().map((tool) => tool.name)).toEqual([
       "read",
+      "glob",
       "search",
       "write",
       "edit",
