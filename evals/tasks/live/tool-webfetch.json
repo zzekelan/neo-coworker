@@ -1,0 +1,82 @@
+{
+  "id": "live/tool-webfetch",
+  "providerMode": "live",
+  "prompt": "Use webfetch to fetch data:text/plain,WEBFETCH_LIVE_TOKEN and repeat the exact token in your final answer.",
+  "workspaceFixture": "workspaces/basic",
+  "permissionPolicy": {
+    "webfetch": "allow"
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "webfetch"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "webfetch"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "WEBFETCH_LIVE_TOKEN"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "webfetch",
+        "toolResultIncludes": [
+          "WEBFETCH_LIVE_TOKEN"
+        ],
+        "assistantTextIncludes": [
+          "WEBFETCH_LIVE_TOKEN"
+        ]
+      }
+    ]
+  }
+}

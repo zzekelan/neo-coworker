@@ -1,0 +1,82 @@
+{
+  "id": "live/tool-grep",
+  "providerMode": "live",
+  "prompt": "Use grep to find ORANGE_FALCON_TOKEN. Reply with the exact relative path and the token.",
+  "workspaceFixture": "workspaces/tooling",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "grep"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "grep"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "src/grep-target.ts",
+          "ORANGE_FALCON_TOKEN"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "grep",
+        "toolResultIncludes": [
+          "src/grep-target.ts",
+          "ORANGE_FALCON_TOKEN"
+        ],
+        "assistantTextIncludes": [
+          "src/grep-target.ts",
+          "ORANGE_FALCON_TOKEN"
+        ]
+      }
+    ]
+  }
+}

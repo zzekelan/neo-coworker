@@ -92,7 +92,14 @@ describe("direct eval runner", () => {
     const tasks = await loadEvalTasks({
       providerMode: "live",
     })
-    expect(tasks.map((task) => task.id)).toEqual(["live/read-only"])
+    expect(tasks.map((task) => task.id)).toEqual([
+      "live/read-only",
+      "live/tool-codesearch",
+      "live/tool-glob",
+      "live/tool-grep",
+      "live/tool-webfetch",
+      "live/tool-websearch",
+    ])
 
     const suite = await runDiscoveredEvalTasks({
       providerMode: "live",

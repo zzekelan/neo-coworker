@@ -1,0 +1,79 @@
+{
+  "id": "live/tool-glob",
+  "providerMode": "live",
+  "prompt": "Use glob to find the file named ALPHA_NOTES.md. Return the exact relative path you found.",
+  "workspaceFixture": "workspaces/tooling",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "glob"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "glob"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "docs/ALPHA_NOTES.md"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "glob",
+        "toolResultIncludes": [
+          "docs/ALPHA_NOTES.md"
+        ],
+        "assistantTextIncludes": [
+          "docs/ALPHA_NOTES.md"
+        ]
+      }
+    ]
+  }
+}

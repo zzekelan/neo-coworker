@@ -1,0 +1,62 @@
+{
+  "id": "live/tool-websearch",
+  "providerMode": "live",
+  "prompt": "Use websearch to investigate the query SEARCH_BACKEND_TOKEN_WEB. Summarize the top result you found.",
+  "workspaceFixture": "workspaces/basic",
+  "permissionPolicy": {
+    "websearch": "allow"
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "websearch"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "websearch"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  }
+}
