@@ -2,6 +2,7 @@ export const DEFAULT_SESSION_TITLE = "New session"
 
 export const SESSION_TITLE_MAX_LENGTH = 60
 export const SESSION_PREVIEW_MAX_LENGTH = 120
+export const SESSION_ACTIVE_SKILLS_MAX_LENGTH = 100
 
 export type StoredSession = {
   id: string
@@ -11,6 +12,7 @@ export type StoredSession = {
   title: string
   updatedAt: number
   latestUserMessagePreview: string | null
+  activeSkills: string[]
 }
 
 export function buildDefaultSessionTitle() {
@@ -23,6 +25,32 @@ export function buildSessionTitleFromUserPrompt(promptText: string) {
 
 export function buildSessionPreviewFromUserPrompt(promptText: string) {
   return buildSessionTextPreview(promptText, SESSION_PREVIEW_MAX_LENGTH)
+}
+
+export function normalizeSessionActiveSkills(activeSkills: readonly string[] | null | undefined) {
+  if (!activeSkills || activeSkills.length === 0) {
+    return []
+  }
+
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const activeSkill of activeSkills) {
+    const value = activeSkill.trim()
+
+    if (!value || seen.has(value)) {
+      continue
+    }
+
+    seen.add(value)
+    normalized.push(value)
+
+    if (normalized.length >= SESSION_ACTIVE_SKILLS_MAX_LENGTH) {
+      break
+    }
+  }
+
+  return normalized
 }
 
 function buildSessionTextPreview(promptText: string, maxLength: number) {

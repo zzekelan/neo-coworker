@@ -14,6 +14,7 @@ export type DesktopSessionSummary = {
   title: string
   updatedAt: number
   latestUserMessagePreview: string | null
+  activeSkills: string[]
 }
 
 export type RunTrigger =

@@ -10,6 +10,7 @@ import {
   RUN_STATUSES,
   RUN_TRIGGERS,
   buildDefaultSessionTitle,
+  normalizeSessionActiveSkills,
   buildSessionPreviewFromUserPrompt,
   buildSessionTitleFromUserPrompt,
 } from "../domain"
@@ -214,6 +215,15 @@ const sessionMigrations = [
       `,
     ],
   },
+  {
+    version: 4,
+    statements: [
+      `
+        ALTER TABLE session
+        ADD COLUMN active_skills_json TEXT NOT NULL DEFAULT '[]'
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {
@@ -268,7 +278,8 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             created_at,
             title,
             updated_at,
-            latest_user_message_preview
+            latest_user_message_preview,
+            active_skills_json
           FROM session
           WHERE id = ?
         `,
@@ -287,7 +298,8 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             created_at,
             title,
             updated_at,
-            latest_user_message_preview
+            latest_user_message_preview,
+            active_skills_json
           FROM session
           ORDER BY created_at ASC, id ASC
         `,
@@ -434,6 +446,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         title: session.title ?? buildDefaultSessionTitle(),
         updatedAt: session.updatedAt ?? createdAt,
         latestUserMessagePreview: session.latestUserMessagePreview ?? null,
+        activeSkills: normalizeSessionActiveSkills(session.activeSkills),
       }
 
       database
@@ -446,8 +459,9 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
               created_at,
               title,
               updated_at,
-              latest_user_message_preview
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+              latest_user_message_preview,
+              active_skills_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -458,6 +472,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           record.title,
           record.updatedAt,
           record.latestUserMessagePreview,
+          serializeJson(record.activeSkills),
         )
 
       return record
@@ -481,13 +496,17 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           session.latestUserMessagePreview === undefined
             ? current.latestUserMessagePreview
             : session.latestUserMessagePreview,
+        activeSkills:
+          session.activeSkills === undefined
+            ? current.activeSkills
+            : normalizeSessionActiveSkills(session.activeSkills),
       }
 
       database
         .query(
           `
             UPDATE session
-            SET title = ?, updated_at = ?, latest_user_message_preview = ?
+            SET title = ?, updated_at = ?, latest_user_message_preview = ?, active_skills_json = ?
             WHERE id = ?
           `,
         )
@@ -495,6 +514,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           record.title,
           record.updatedAt,
           record.latestUserMessagePreview,
+          serializeJson(record.activeSkills),
           record.id,
         )
 

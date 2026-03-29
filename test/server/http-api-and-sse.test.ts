@@ -1268,6 +1268,7 @@ const desktopWorkspaceKeys = [
 ]
 
 const desktopSessionKeys = [
+  "activeSkills",
   "createdAt",
   "directory",
   "id",
@@ -1305,5 +1306,9 @@ function expectSessionContract(
     session.latestUserMessagePreview === null ||
       typeof session.latestUserMessagePreview === "string",
   ).toBe(true)
+  expect(Array.isArray(session.activeSkills)).toBe(true)
+  expect(session.activeSkills.every((activeSkill: unknown) => typeof activeSkill === "string")).toBe(
+    true,
+  )
   expect(session).toMatchObject(expected)
 }

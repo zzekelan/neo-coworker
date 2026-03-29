@@ -458,6 +458,33 @@ describe("storage repository", () => {
     })
   })
 
+  test("stores session active skills as a normalized string list", () => {
+    const { repository } = createTestRepository("session-active-skills")
+
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+      activeSkills: [" reviewer ", "writer", "reviewer", "", "  "],
+    })
+
+    expect(session.activeSkills).toEqual(["reviewer", "writer"])
+    expect(repository.sessions.get(session.id).activeSkills).toEqual(["reviewer", "writer"])
+
+    const updated = repository.sessions.update({
+      sessionId: session.id,
+      activeSkills: ["writer", " reviewer ", "designer", "designer"],
+    })
+
+    expect(updated.activeSkills).toEqual(["writer", "reviewer", "designer"])
+    expect(repository.sessions.get(session.id).activeSkills).toEqual([
+      "writer",
+      "reviewer",
+      "designer",
+    ])
+  })
+
   test("surfaces explicit not-found errors for reads and updates", () => {
     const { repository } = createTestRepository("not-found")
 

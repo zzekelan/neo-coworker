@@ -32,6 +32,7 @@ export type StoredSession = {
   title: string
   updatedAt: number
   latestUserMessagePreview: string | null
+  activeSkills: string[]
 }
 
 export type StoredRun = {
@@ -80,6 +81,7 @@ export type CreateSessionInput = {
   title?: string
   updatedAt?: number
   latestUserMessagePreview?: string | null
+  activeSkills?: string[]
 }
 
 export type UpdateSessionInput = {
@@ -87,6 +89,7 @@ export type UpdateSessionInput = {
   title?: string
   updatedAt?: number
   latestUserMessagePreview?: string | null
+  activeSkills?: string[]
 }
 
 export type CreateRunInput = {

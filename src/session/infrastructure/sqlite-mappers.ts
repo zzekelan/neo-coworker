@@ -17,6 +17,7 @@ export type SessionRow = {
   title: string
   updated_at: number
   latest_user_message_preview: string | null
+  active_skills_json: string
 }
 
 export type RunRow = {
@@ -79,6 +80,7 @@ export function mapSessionRow(row: SessionRow): StoredSession {
     title: row.title,
     updatedAt: row.updated_at,
     latestUserMessagePreview: row.latest_user_message_preview,
+    activeSkills: parseJson(row.active_skills_json) as string[],
   }
 }
 

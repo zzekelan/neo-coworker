@@ -65,6 +65,7 @@ type SessionSummary = {
   title: string
   updatedAt: number
   latestUserMessagePreview: string | null
+  activeSkills: string[]
 }
 
 export function createAgentServer(input: {
