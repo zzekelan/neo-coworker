@@ -24,7 +24,14 @@ describe("orchestration model port", () => {
     const events = []
     for await (const event of model.streamTurn({
       systemPrompt: "You are the agent runtime.",
-      activeSkillInstructions: ["Always explain the diff."],
+      skillCatalog: [
+        {
+          name: "reviewer",
+          description: "Review code changes carefully",
+          path: ".agents/skills/reviewer/SKILL.md",
+        },
+      ],
+      activeSkills: [{ name: "reviewer", instructions: "Always explain the diff." }],
       tools: [{ name: "read", description: "Read a file" }],
       transcript: [
         {
@@ -40,7 +47,7 @@ describe("orchestration model port", () => {
     expect(events).toEqual([])
     expect(requests).toEqual([
       {
-        system: expect.stringContaining("You are the agent runtime."),
+        system: expect.stringContaining("Skill catalog:"),
         messages: [
           {
             role: "user",

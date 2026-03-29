@@ -55,7 +55,8 @@ export function createModelProvider(input: {
       }
       const projected = input.runtime.projectTurn({
         systemPrompt: request.systemPrompt,
-        activeSkillInstructions: request.activeSkillInstructions,
+        skillCatalog: request.skillCatalog,
+        activeSkills: request.activeSkills,
         tools: request.tools,
         transcript: request.transcript,
         signal: request.signal,

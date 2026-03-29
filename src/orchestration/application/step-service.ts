@@ -196,7 +196,8 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         try {
           const modelEvents = input.model.streamTurn({
             systemPrompt: stepInput.systemPrompt,
-            activeSkillInstructions: [],
+            skillCatalog: [],
+            activeSkills: [],
             tools: stepInput.tools.list(),
             transcript,
             sessionId: stepInput.sessionId,

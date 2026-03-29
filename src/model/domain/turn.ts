@@ -7,9 +7,21 @@ export type ModelTool = {
   inputSchema?: ZodTypeAny
 }
 
+export type ModelSkillCatalogEntry = {
+  name: string
+  description: string
+  path: string
+}
+
+export type ModelActiveSkill = {
+  name: string
+  instructions: string
+}
+
 export type ModelProjectionInput = {
   systemPrompt: string
-  activeSkillInstructions: string[]
+  skillCatalog: ModelSkillCatalogEntry[]
+  activeSkills: ModelActiveSkill[]
   tools: ModelTool[]
   transcript: ModelTranscriptMessage[]
 }

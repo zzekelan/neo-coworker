@@ -8,6 +8,7 @@ export type {
   ProviderTurnRequest,
 } from "./ports/provider"
 export {
+  buildModelPromptSections,
   buildModelTurnInput,
   buildTranscriptMessages,
   projectModelTurn,
@@ -21,10 +22,12 @@ export {
   type ModelRuntimeApi,
 } from "./runtime-api"
 export type {
+  ModelActiveSkill,
   ModelEvent,
   ModelMessage,
   ModelMessagePart,
   ModelProjectionInput,
+  ModelSkillCatalogEntry,
   ModelTextPart,
   ModelTool,
   ModelToolCallPart,

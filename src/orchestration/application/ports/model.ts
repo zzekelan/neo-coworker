@@ -1,9 +1,21 @@
 import type { OrchestrationTranscriptMessage } from "./session"
 import type { OrchestrationTool } from "./tool"
 
+export type OrchestrationSkillCatalogEntry = {
+  name: string
+  description: string
+  path: string
+}
+
+export type OrchestrationActiveSkill = {
+  name: string
+  instructions: string
+}
+
 export type OrchestrationModelTurnRequest = {
   systemPrompt: string
-  activeSkillInstructions: string[]
+  skillCatalog: OrchestrationSkillCatalogEntry[]
+  activeSkills: OrchestrationActiveSkill[]
   tools: OrchestrationTool[]
   transcript: OrchestrationTranscriptMessage[]
   sessionId?: string

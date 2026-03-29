@@ -9,7 +9,9 @@ export type {
   ModelTranscriptPart,
 } from "./message"
 export type {
+  ModelActiveSkill,
   ModelProjectionInput,
+  ModelSkillCatalogEntry,
   ModelTool,
   ModelTurnRequest,
 } from "./turn"

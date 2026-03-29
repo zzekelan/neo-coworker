@@ -1,23 +1,45 @@
 import type {
+  ModelActiveSkill,
   ModelMessage,
   ModelMessagePart,
   ModelProjectionInput,
+  ModelSkillCatalogEntry,
   ModelTextPart,
   ModelTranscriptMessage,
   ModelTranscriptPart,
   ModelTurnRequest,
 } from "../domain"
 
+export type ModelPromptSections = {
+  baseSystemPrompt: string
+  skillCatalogSection: string
+  activeSkillSection: string
+  toolCatalogSection: string
+}
+
 export function buildModelTurnInput(input: ModelProjectionInput) {
-  const toolList = input.tools.map((tool) => `- ${tool.name}: ${tool.description}`).join("\n")
-  const skillText = input.activeSkillInstructions.join("\n\n")
+  const sections = buildModelPromptSections(input)
 
   return {
-    system: [input.systemPrompt, skillText, "Available tools:", toolList]
-      .filter(Boolean)
-      .join("\n\n"),
+    system: [
+      sections.baseSystemPrompt,
+      sections.skillCatalogSection,
+      sections.activeSkillSection,
+      sections.toolCatalogSection,
+    ].join("\n\n"),
     messages: buildTranscriptMessages(input.transcript),
     tools: input.tools,
+  }
+}
+
+export function buildModelPromptSections(
+  input: Pick<ModelProjectionInput, "systemPrompt" | "skillCatalog" | "activeSkills" | "tools">,
+): ModelPromptSections {
+  return {
+    baseSystemPrompt: input.systemPrompt,
+    skillCatalogSection: renderSkillCatalogSection(input.skillCatalog),
+    activeSkillSection: renderActiveSkillSection(input.activeSkills),
+    toolCatalogSection: renderToolCatalogSection(input.tools),
   }
 }
 
@@ -223,4 +245,36 @@ function readObject(value: unknown) {
 
 function readString(value: Record<string, unknown> | null, key: string) {
   return typeof value?.[key] === "string" ? (value[key] as string) : null
+}
+
+function renderSkillCatalogSection(skillCatalog: ModelSkillCatalogEntry[]) {
+  if (skillCatalog.length === 0) {
+    return "Skill catalog:\n- None."
+  }
+
+  return [
+    "Skill catalog:",
+    ...skillCatalog.map((skill) => `- ${skill.name}: ${skill.description} (${skill.path})`),
+  ].join("\n")
+}
+
+function renderActiveSkillSection(activeSkills: ModelActiveSkill[]) {
+  if (activeSkills.length === 0) {
+    return "Active skill instructions:\n- None."
+  }
+
+  return [
+    "Active skill instructions:",
+    ...activeSkills.map((skill) => `## ${skill.name}\n${skill.instructions}`),
+  ].join("\n\n")
+}
+
+function renderToolCatalogSection(tools: ModelProjectionInput["tools"]) {
+  if (tools.length === 0) {
+    return "Available tools:\n- None."
+  }
+
+  return ["Available tools:", ...tools.map((tool) => `- ${tool.name}: ${tool.description}`)].join(
+    "\n",
+  )
 }

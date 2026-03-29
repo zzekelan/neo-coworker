@@ -51,7 +51,8 @@ describe("provider selection", () => {
     const events = []
     for await (const event of provider.streamTurn({
       systemPrompt: "system",
-      activeSkillInstructions: [],
+      skillCatalog: [],
+      activeSkills: [],
       tools: [],
       transcript: [],
       signal: new AbortController().signal,
@@ -63,7 +64,12 @@ describe("provider selection", () => {
     expect(receivedBody).toEqual({
       model: "gpt-5",
       input: [],
-      instructions: "system\n\nAvailable tools:",
+      instructions: [
+        "system",
+        "Skill catalog:\n- None.",
+        "Active skill instructions:\n- None.",
+        "Available tools:\n- None.",
+      ].join("\n\n"),
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal: expect.any(AbortSignal) })
@@ -117,7 +123,8 @@ describe("provider selection", () => {
     const events = []
     for await (const event of provider.streamTurn({
       systemPrompt: "system",
-      activeSkillInstructions: [],
+      skillCatalog: [],
+      activeSkills: [],
       tools: [],
       transcript: [],
       signal: new AbortController().signal,
@@ -128,7 +135,17 @@ describe("provider selection", () => {
     expect(events).toEqual([])
     expect(receivedBody).toEqual({
       model: "kimi-k2.5",
-      messages: [{ role: "system", content: "system\n\nAvailable tools:" }],
+      messages: [
+        {
+          role: "system",
+          content: [
+            "system",
+            "Skill catalog:\n- None.",
+            "Active skill instructions:\n- None.",
+            "Available tools:\n- None.",
+          ].join("\n\n"),
+        },
+      ],
       stream: true,
       tools: [],
     })
@@ -165,7 +182,8 @@ describe("provider selection", () => {
           try {
             for await (const _event of input.provider.streamTurn({
               systemPrompt: "system",
-              activeSkillInstructions: [],
+              skillCatalog: [],
+              activeSkills: [],
               tools: [],
               transcript: [],
               signal: new AbortController().signal,

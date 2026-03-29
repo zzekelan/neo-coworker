@@ -1,5 +1,7 @@
 export type {
+  OrchestrationActiveSkill,
   OrchestrationModelEvent,
+  OrchestrationSkillCatalogEntry,
   OrchestrationModelPort,
   OrchestrationModelTurnRequest,
 } from "./ports/model"

@@ -1,11 +1,18 @@
 import { describe, expect, test } from "bun:test"
-import { buildModelTurnInput, buildTranscriptMessages } from "../../src/model"
+import { buildModelPromptSections, buildModelTurnInput, buildTranscriptMessages } from "../../src/model"
 
 describe("context builder", () => {
-  test("injects system prompt, active skills, tool names, and transcript", () => {
+  test("injects explicit prompt sections for skills, tools, and transcript", () => {
     const input = buildModelTurnInput({
       systemPrompt: "You are the agent runtime.",
-      activeSkillInstructions: ["Always explain the diff."],
+      skillCatalog: [
+        {
+          name: "reviewer",
+          description: "Review code changes carefully",
+          path: ".agents/skills/reviewer/SKILL.md",
+        },
+      ],
+      activeSkills: [{ name: "reviewer", instructions: "Always explain the diff." }],
       tools: [{ name: "read", description: "Read a file" }],
       transcript: [
         {
@@ -16,9 +23,26 @@ describe("context builder", () => {
     })
 
     expect(input.system).toContain("You are the agent runtime.")
+    expect(input.system).toContain("Skill catalog:")
+    expect(input.system).toContain(".agents/skills/reviewer/SKILL.md")
+    expect(input.system).toContain("Active skill instructions:")
+    expect(input.system).toContain("## reviewer")
     expect(input.system).toContain("Always explain the diff.")
     expect(input.system).toContain("read")
     expect(input.messages).toHaveLength(1)
+  })
+
+  test("renders empty skill and tool sections explicitly when nothing is active", () => {
+    const sections = buildModelPromptSections({
+      systemPrompt: "You are the agent runtime.",
+      skillCatalog: [],
+      activeSkills: [],
+      tools: [],
+    })
+
+    expect(sections.skillCatalogSection).toBe("Skill catalog:\n- None.")
+    expect(sections.activeSkillSection).toBe("Active skill instructions:\n- None.")
+    expect(sections.toolCatalogSection).toBe("Available tools:\n- None.")
   })
 
   test("renders persisted tool calls, tool results, and errors back into model messages", () => {
