@@ -17,8 +17,28 @@ import {
   type EvalRunArtifact,
 } from "./schemas/artifact"
 import { gradeOutcomeExpectation, type EvalOutcomeGrade } from "./graders/outcome"
+import {
+  gradePromptAssemblyExpectation,
+  type EvalPromptAssemblyGrade,
+} from "./graders/prompt-assembly"
 import { gradeProtocolExpectation, type EvalProtocolGrade } from "./graders/protocol"
 import { gradeTraceExpectation, type EvalTraceGrade } from "./graders/trace"
+import {
+  gradeTraceSequenceExpectation,
+  type EvalTraceSequenceGrade,
+} from "./graders/trace-sequence"
+import {
+  gradeTranscriptExpectation,
+  type EvalTranscriptGrade,
+} from "./graders/transcript"
+import {
+  gradeSkillDisclosureExpectation,
+  type EvalSkillDisclosureGrade,
+} from "./graders/skill-disclosure"
+import {
+  gradeToolConsumptionExpectation,
+  type EvalToolConsumptionGrade,
+} from "./graders/tool-consumption"
 import { gradeToolPolicyExpectation, type EvalToolPolicyGrade } from "./graders/tool-policy"
 import { EvalTaskSchema, type EvalTask } from "./schemas/task"
 
@@ -31,6 +51,11 @@ export type EvalRunGrades = {
   protocol: EvalProtocolGrade
   toolPolicy: EvalToolPolicyGrade
   trace: EvalTraceGrade
+  transcript: EvalTranscriptGrade
+  traceSequence: EvalTraceSequenceGrade
+  toolConsumption: EvalToolConsumptionGrade
+  skillDisclosure: EvalSkillDisclosureGrade
+  promptAssembly: EvalPromptAssemblyGrade
 }
 
 export type EvalRunResult = {
@@ -87,6 +112,7 @@ export async function runEvalTask(input: {
       directory: workspaceRoot,
       workspaceRoot,
       createdAt: now(),
+      activeSkills: task.sessionSeed.activeSkills,
     })
     const started = sessionProvider.runs.start({
       sessionId: session.id,
@@ -161,6 +187,26 @@ export async function runEvalTask(input: {
         trace: gradeTraceExpectation({
           artifact,
           expectation: task.traceExpectation,
+        }),
+        transcript: gradeTranscriptExpectation({
+          artifact,
+          expectation: task.transcriptExpectation,
+        }),
+        traceSequence: gradeTraceSequenceExpectation({
+          artifact,
+          expectation: task.traceSequenceExpectation,
+        }),
+        toolConsumption: gradeToolConsumptionExpectation({
+          artifact,
+          expectation: task.toolConsumptionExpectation,
+        }),
+        skillDisclosure: gradeSkillDisclosureExpectation({
+          artifact,
+          expectation: task.skillDisclosureExpectation,
+        }),
+        promptAssembly: gradePromptAssemblyExpectation({
+          artifact,
+          expectation: task.promptAssemblyExpectation,
         }),
       }
 

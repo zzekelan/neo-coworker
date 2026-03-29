@@ -117,6 +117,220 @@ describe("eval runner", () => {
     expect(result.grades.outcome.pass).toBe(true)
     expect(result.grades.protocol.pass).toBe(true)
     expect(result.grades.toolPolicy.pass).toBe(true)
+    expect(result.grades.transcript.pass).toBe(true)
+    expect(result.grades.traceSequence.pass).toBe(true)
+    expect(result.grades.toolConsumption.pass).toBe(true)
+    expect(result.grades.skillDisclosure.pass).toBe(true)
+    expect(result.grades.promptAssembly.pass).toBe(true)
+  })
+
+  test("grades transcript ordering, trace sequence, and tool result consumption", async () => {
+    const result = await runEvalTask({
+      task: {
+        id: "read-consumption",
+        prompt: "Read README.md and summarize the heading",
+        workspaceRoot: "test/fixtures/workspaces/read-search",
+        transcriptExpectation: {
+          orderedTextIncludes: ["Read README heading.", "The heading is # demo workspace."],
+          checkpoints: [
+            {
+              messageIndex: 1,
+              role: "assistant",
+              partKinds: ["text", "tool_call", "tool_result"],
+              textIncludes: ["Read README heading.", "# demo workspace"],
+              toolNames: ["read"],
+            },
+            {
+              messageIndex: 2,
+              role: "assistant",
+              textIncludes: ["The heading is # demo workspace."],
+            },
+          ],
+        },
+        traceSequenceExpectation: {
+          orderedEventTypes: [
+            "run.started",
+            "tool.call.completed",
+            "model.prompt.assembled",
+            "run.completed",
+          ],
+        },
+        toolConsumptionExpectation: {
+          requiredConsumptions: [
+            {
+              toolName: "read",
+              toolResultIncludes: ["# demo workspace"],
+              assistantTextIncludes: ["# demo workspace"],
+            },
+          ],
+        },
+      },
+      providerInfo: {
+        mode: "scripted",
+        kind: "scripted",
+        model: null,
+      },
+      createProvider: createProviderFactory([
+        async function* () {
+          yield { type: "text.delta", text: "Read README heading.\n" }
+          yield {
+            type: "tool.call",
+            callId: "call_read_heading",
+            name: "read",
+            inputText: '{"path":"README.md"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "The heading is # demo workspace." }
+        },
+      ]),
+    })
+
+    expect(result.pass).toBe(true)
+    expect(result.grades.transcript).toEqual({
+      pass: true,
+      orderedTextIncludes: ["Read README heading.", "The heading is # demo workspace."],
+      observedTexts: expect.arrayContaining([
+        "Read README heading.\n",
+        '# demo workspace\n\nThis fixture exists for the read-only tool tests.\n',
+        "The heading is # demo workspace.",
+      ]),
+      missingOrderedTexts: [],
+      checkpointFailures: [],
+    })
+    expect(result.grades.traceSequence).toEqual({
+      pass: true,
+      orderedEventTypes: [
+        "run.started",
+        "tool.call.completed",
+        "model.prompt.assembled",
+        "run.completed",
+      ],
+      observedEventTypes: expect.arrayContaining([
+        "run.started",
+        "tool.call.completed",
+        "model.prompt.assembled",
+        "run.completed",
+      ]),
+      missingOrderedEventTypes: [],
+    })
+    expect(result.grades.toolConsumption).toEqual({
+      pass: true,
+      failures: [],
+    })
+  })
+
+  test("seeds session skills and grades progressive disclosure across prompt assembly", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "eval-runner-skill-"))
+    tempDirectories.push(workspaceRoot)
+    const reviewerRoot = join(workspaceRoot, ".agents", "skills", "reviewer")
+    const writerRoot = join(workspaceRoot, ".agents", "skills", "writer")
+    await mkdir(reviewerRoot, { recursive: true })
+    await mkdir(writerRoot, { recursive: true })
+    await Bun.write(
+      join(reviewerRoot, "SKILL.md"),
+      [
+        "name: reviewer",
+        "description: Review diffs carefully",
+        "",
+        "Always review for bugs first.",
+      ].join("\n"),
+    )
+    await Bun.write(
+      join(writerRoot, "SKILL.md"),
+      [
+        "name: writer",
+        "description: Draft concise summaries",
+        "",
+        "Write concise operator-facing summaries.",
+      ].join("\n"),
+    )
+
+    const result = await runEvalTask({
+      task: {
+        id: "skill-disclosure",
+        prompt: "Use the writer skill after checking the reviewer default.",
+        workspaceRoot,
+        copyWorkspace: false,
+        sessionSeed: {
+          activeSkills: ["reviewer"],
+        },
+        transcriptExpectation: {
+          checkpoints: [
+            {
+              messageIndex: 1,
+              role: "assistant",
+              partKinds: ["tool_call", "tool_result"],
+              toolNames: ["skill"],
+            },
+            {
+              messageIndex: 2,
+              role: "assistant",
+              textIncludes: ["Writer skill activated."],
+            },
+          ],
+        },
+        traceSequenceExpectation: {
+          orderedEventTypes: [
+            "skill.run.snapshot.applied",
+            "model.prompt.assembled",
+            "skill.activated",
+            "model.prompt.assembled",
+            "run.completed",
+          ],
+        },
+        skillDisclosureExpectation: {
+          skillName: "writer",
+        },
+        promptAssemblyExpectation: {
+          checkpoints: [
+            {
+              promptIndex: 0,
+              catalogSkillNamesIncludes: ["reviewer", "writer"],
+              activeSkillNamesIncludes: ["reviewer"],
+              activeSkillNamesExcludes: ["writer"],
+              activeSkillCount: 1,
+            },
+            {
+              promptIndex: 1,
+              activeSkillNamesIncludes: ["reviewer", "writer"],
+              activeSkillCount: 2,
+            },
+          ],
+          requireDistinctActiveSkillSectionHashes: true,
+        },
+      },
+      providerInfo: {
+        mode: "scripted",
+        kind: "scripted",
+        model: null,
+      },
+      createProvider: createProviderFactory([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_skill_writer",
+            name: "skill",
+            inputText: '{"name":"writer"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Writer skill activated." }
+        },
+      ]),
+    })
+
+    expect(result.pass).toBe(true)
+    expect(result.artifact.transcript).toHaveLength(3)
+    expect(result.grades.skillDisclosure).toEqual({
+      pass: true,
+      failures: [],
+    })
+    expect(result.grades.promptAssembly).toEqual({
+      pass: true,
+      failures: [],
+      observedPromptCount: 2,
+    })
   })
 
   test("cancels the active run when permission requests are not auto-replied", async () => {

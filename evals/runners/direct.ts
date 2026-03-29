@@ -96,6 +96,11 @@ export function formatEvalTaskSummary(input: EvalSuiteTaskResult) {
     `grader.protocol ${formatPass(input.result.grades.protocol.pass)}`,
     `grader.tool_policy ${formatPass(input.result.grades.toolPolicy.pass)}`,
     `grader.trace ${formatPass(input.result.grades.trace.pass)}`,
+    `grader.transcript ${formatPass(input.result.grades.transcript.pass)}`,
+    `grader.trace_sequence ${formatPass(input.result.grades.traceSequence.pass)}`,
+    `grader.tool_consumption ${formatPass(input.result.grades.toolConsumption.pass)}`,
+    `grader.skill_disclosure ${formatPass(input.result.grades.skillDisclosure.pass)}`,
+    `grader.prompt_assembly ${formatPass(input.result.grades.promptAssembly.pass)}`,
     failures ? `failure.summary ${failures}` : null,
     `artifact.dir ${input.artifactDir}`,
   ]
@@ -235,6 +240,32 @@ function summarizeFailures(result: EvalRunResult) {
 
   if (!result.grades.trace.pass && result.grades.trace.missingEventTypes.length > 0) {
     failures.push(`trace missing ${result.grades.trace.missingEventTypes.join(", ")}`)
+  }
+
+  if (!result.grades.transcript.pass) {
+    if (result.grades.transcript.missingOrderedTexts.length > 0) {
+      failures.push(`transcript missing ordered text ${result.grades.transcript.missingOrderedTexts.join(", ")}`)
+    }
+
+    if (result.grades.transcript.checkpointFailures.length > 0) {
+      failures.push(...result.grades.transcript.checkpointFailures)
+    }
+  }
+
+  if (!result.grades.traceSequence.pass && result.grades.traceSequence.missingOrderedEventTypes.length > 0) {
+    failures.push(`trace sequence missing ${result.grades.traceSequence.missingOrderedEventTypes.join(", ")}`)
+  }
+
+  if (!result.grades.toolConsumption.pass && result.grades.toolConsumption.failures.length > 0) {
+    failures.push(...result.grades.toolConsumption.failures)
+  }
+
+  if (!result.grades.skillDisclosure.pass && result.grades.skillDisclosure.failures.length > 0) {
+    failures.push(...result.grades.skillDisclosure.failures)
+  }
+
+  if (!result.grades.promptAssembly.pass && result.grades.promptAssembly.failures.length > 0) {
+    failures.push(...result.grades.promptAssembly.failures)
   }
 
   return failures.join("; ")
