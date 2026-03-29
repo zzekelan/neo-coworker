@@ -17,6 +17,7 @@ import {
   createObservabilityRuntimeApi,
   createRuntime,
 } from "../../src/bootstrap"
+import { createWorkspaceSkillRuntime } from "../../src/skill"
 import {
   type SessionRepository,
   createSessionRepository as createStorageRepository,
@@ -689,6 +690,16 @@ describe("server HTTP API and SSE", () => {
     const alphaRoot = join(harness.workspaceRoot, "alpha")
     const betaRoot = join(harness.workspaceRoot, "beta")
     const gammaRoot = join(harness.workspaceRoot, "gamma")
+    await mkdir(join(alphaRoot, ".agents", "skills", "reviewer"), { recursive: true })
+    await mkdir(join(alphaRoot, ".agents", "skills", "writer"), { recursive: true })
+    await Bun.write(
+      join(alphaRoot, ".agents", "skills", "reviewer", "SKILL.md"),
+      ["name: reviewer", "description: Review carefully", "", "Focus on bugs first."].join("\n"),
+    )
+    await Bun.write(
+      join(alphaRoot, ".agents", "skills", "writer", "SKILL.md"),
+      ["name: writer", "description: Draft clearly", "", "Lead with the result."].join("\n"),
+    )
 
     const alphaOneResponse = await requestJson(harness.server, "POST", "/workspace/sessions", {
       workspaceRoot: alphaRoot,
@@ -766,6 +777,25 @@ describe("server HTTP API and SSE", () => {
       latestUserMessagePreview: null,
     })
     expect(latestAlphaSession.updatedAt).toBeGreaterThan(olderAlphaSession.updatedAt)
+
+    const alphaSkillsResponse = await requestJson(
+      harness.server,
+      "GET",
+      `/workspace/skills?workspaceRoot=${encodeURIComponent(alphaRoot)}`,
+    )
+    expect(alphaSkillsResponse.status).toBe(200)
+    expect(alphaSkillsResponse.body.data.skills).toEqual([
+      {
+        name: "reviewer",
+        description: "Review carefully",
+        path: ".agents/skills/reviewer/SKILL.md",
+      },
+      {
+        name: "writer",
+        description: "Draft clearly",
+        path: ".agents/skills/writer/SKILL.md",
+      },
+    ])
 
     const alphaWorkspaceResponse = await requestJson(
       harness.server,
@@ -928,6 +958,7 @@ async function createHarness(
     repository: observabilityRepository,
     now,
   })
+  const skillRuntime = createWorkspaceSkillRuntime()
   const server = createAgentServer({
     createRuntimeImpl(runtimeInput) {
       return createRuntime({
@@ -942,6 +973,9 @@ async function createHarness(
     repository,
     permissionRepository,
     exportRunTraceImpl: observability.exportRunTrace,
+    listSkillCatalogImpl(workspaceRoot) {
+      return skillRuntime.listCatalog(workspaceRoot)
+    },
     now,
     heartbeatIntervalMs: 15,
   })
@@ -993,6 +1027,7 @@ async function restartHarness(
     repository: reopenedObservabilityRepository,
     now: harness.now,
   })
+  const skillRuntime = createWorkspaceSkillRuntime()
   const reopenedServer = createAgentServer({
     createRuntimeImpl(runtimeInput) {
       return createRuntime({
@@ -1007,6 +1042,9 @@ async function restartHarness(
     repository: reopenedRepository,
     permissionRepository: reopenedPermissionRepository,
     exportRunTraceImpl: reopenedObservability.exportRunTrace,
+    listSkillCatalogImpl(workspaceRoot) {
+      return skillRuntime.listCatalog(workspaceRoot)
+    },
     now: harness.now,
     heartbeatIntervalMs: 15,
   })

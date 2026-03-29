@@ -73,6 +73,7 @@ export function createAgentServer(input: {
   repository: StorageRepository
   permissionRepository: PermissionRepository
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
+  listSkillCatalogImpl?: Parameters<typeof createServerApp>[0]["listSkillCatalogImpl"]
   now?: () => number
   heartbeatIntervalMs?: number
   allowDetachedPermissionRecovery?: boolean
@@ -84,6 +85,7 @@ export function createAgentServer(input: {
     repository: input.repository,
     permissionRepository: input.permissionRepository,
     exportRunTraceImpl: input.exportRunTraceImpl,
+    listSkillCatalogImpl: input.listSkillCatalogImpl,
     allowDetachedPermissionRecovery: input.allowDetachedPermissionRecovery ?? true,
     now,
   })
@@ -171,6 +173,15 @@ export function createAgentServer(input: {
               .list()
               .filter((session) => session.workspaceRoot === query.workspaceRoot)
               .sort((left, right) => right.updatedAt - left.updatedAt),
+          },
+        })
+      }
+
+      if (request.method === "GET" && path === "workspace/skills") {
+        const query = workspaceRootQuerySchema.parse(readQuery(url))
+        return jsonResponse(200, {
+          data: {
+            skills: await app.workspaces.skills(query.workspaceRoot),
           },
         })
       }

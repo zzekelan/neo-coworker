@@ -10,6 +10,7 @@ import {
   createObservabilityRuntimeApi,
   type ObservabilityRepository,
 } from "../observability"
+import { createWorkspaceSkillRuntime } from "../skill"
 import { createDefaultProvider } from "./provider"
 import { createDefaultSearchBackend } from "./search"
 import { createRuntime } from "./runtime"
@@ -81,6 +82,7 @@ export async function createStandaloneServerComposition(input: {
     const searchBackend = createDefaultSearchBackend({
       env,
     })
+    const skillRuntime = createWorkspaceSkillRuntime()
     const createRuntimeImpl = input.createRuntimeImpl ?? createRuntime
 
     return {
@@ -91,6 +93,9 @@ export async function createStandaloneServerComposition(input: {
       observabilityRepository,
       exportRunTrace(runId: string) {
         return observability.exportRunTrace(runId)
+      },
+      listSkillCatalog(workspaceRoot: string) {
+        return skillRuntime.listCatalog(workspaceRoot)
       },
       createRuntimeImpl(runtimeInput: {
         repository: SessionRepository
@@ -116,6 +121,7 @@ export async function createStandaloneServerComposition(input: {
       permissionRepository: PermissionRepository
       observabilityRepository: ObservabilityRepository
       exportRunTrace(runId: string): ReturnType<typeof observability.exportRunTrace>
+      listSkillCatalog(workspaceRoot: string): ReturnType<typeof skillRuntime.listCatalog>
       createRuntimeImpl(input: {
         repository: SessionRepository
         permissionRepository: PermissionRepository

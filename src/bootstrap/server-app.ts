@@ -407,6 +407,13 @@ export function createServerApp(input: {
   permissionRepository: PermissionRepository
   createRuntimeImpl: CreateServerAppRuntime
   exportRunTraceImpl?: (runId: string) => ExportedRunTrace | null
+  listSkillCatalogImpl?: (workspaceRoot: string) => Promise<
+    Array<{
+      name: string
+      description: string
+      path: string
+    }>
+  >
   allowDetachedPermissionRecovery?: boolean
   now?: () => number
 }) {
@@ -509,6 +516,11 @@ export function createServerApp(input: {
       },
       transcript(sessionId: string) {
         return sessionProvider.transcript.listSessionTranscript(sessionId)
+      },
+    },
+    workspaces: {
+      async skills(workspaceRoot: string) {
+        return await (input.listSkillCatalogImpl?.(workspaceRoot) ?? Promise.resolve([]))
       },
     },
     runs: {

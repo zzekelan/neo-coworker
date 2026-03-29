@@ -22,6 +22,7 @@ export async function startStandaloneServer(input: {
     repository: composition.repository,
     permissionRepository: composition.permissionRepository,
     exportRunTraceImpl: composition.exportRunTrace,
+    listSkillCatalogImpl: composition.listSkillCatalog,
   })
 
   try {
