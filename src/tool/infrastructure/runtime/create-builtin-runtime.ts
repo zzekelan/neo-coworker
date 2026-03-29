@@ -2,6 +2,7 @@ import type { RequestToolPermission, ToolDefinition } from "../../domain"
 import { createToolRuntimeApi } from "../../application/runtime-api"
 import { createEditTool } from "../builtins/edit"
 import { createGlobTool } from "../builtins/glob"
+import { createGrepTool } from "../builtins/grep"
 import { createReadTool } from "../builtins/read"
 import { createSearchTool } from "../builtins/search"
 import { createShellTool } from "../builtins/shell"
@@ -21,6 +22,7 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
     tools: [
       createReadTool(),
       createGlobTool(),
+      createGrepTool(),
       createSearchTool(),
       createWriteTool({ requestPermission }),
       createEditTool({ requestPermission }),
