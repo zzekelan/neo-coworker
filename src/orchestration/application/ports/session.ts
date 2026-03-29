@@ -30,6 +30,7 @@ export type OrchestrationRunRecord = {
   id: string
   sessionId: string
   status: OrchestrationRunStatus
+  activeSkills: string[]
 }
 
 export type OrchestrationMessageRecord = {

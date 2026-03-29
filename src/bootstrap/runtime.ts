@@ -16,6 +16,10 @@ import {
 } from "../permission"
 import { createToolProvider } from "../tool"
 import {
+  createWorkspaceSkillRuntime,
+  type SkillRuntimeApi,
+} from "../skill"
+import {
   createNoopObservabilityRuntimeApi,
   createObservabilityRepository,
   createObservabilityRuntimeApi,
@@ -26,6 +30,7 @@ import type {
   OrchestrationModelPort,
   OrchestrationPermissionPort,
   OrchestrationSessionPort,
+  type OrchestrationSkillPort,
   OrchestrationToolPortFactory,
 } from "../orchestration"
 import {
@@ -41,6 +46,8 @@ type RuntimeInput = {
   provider: OrchestrationModelPort
   repository: StorageRepository
   permissionRepository: PermissionRepository
+  skill?: OrchestrationSkillPort
+  skillRuntime?: SkillRuntimeApi
   observability?: Pick<
     ObservabilityRuntimeApi,
     "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver"
@@ -83,6 +90,7 @@ export function createRuntime(input: RuntimeInput) {
       repository: input.repository,
       session: sessionProvider.runs,
     }),
+    skill: input.skill ?? createSkillPort({ runtime: input.skillRuntime }),
     permission: createPermissionPort({
       repository: input.permissionRepository,
       session: createPermissionSessionPort({
@@ -328,6 +336,26 @@ function createToolPortFactory(config: {
           runId: input.runId,
         },
       })
+    },
+  }
+}
+
+function createSkillPort(input: {
+  runtime?: SkillRuntimeApi
+}): OrchestrationSkillPort {
+  const runtime = input.runtime ?? createWorkspaceSkillRuntime()
+
+  return {
+    listCatalog(workspaceRoot) {
+      return runtime.listCatalog(workspaceRoot)
+    },
+    async loadSkill(inputValue) {
+      const skill = await runtime.loadSkill(inputValue)
+
+      return {
+        name: skill.name,
+        instructions: skill.instructions,
+      }
     },
   }
 }

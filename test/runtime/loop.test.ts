@@ -302,6 +302,60 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
+  test("projects workspace skill catalog and run active skills into model turns", async () => {
+    const harness = await createHarness("skill-context", false)
+    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+
+    await mkdir(skillDirectory, { recursive: true })
+    await Bun.write(
+      join(skillDirectory, "SKILL.md"),
+      [
+        "name: reviewer",
+        "description: Review code changes carefully",
+        "",
+        "Focus on bugs first.",
+      ].join("\n"),
+    )
+
+    harness.repository.sessions.update({
+      sessionId: harness.session.id,
+      activeSkills: ["reviewer"],
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_skill_context",
+      messageId: "message_skill_context",
+      prompt: "Review the current changes",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Reviewing now." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.system).toContain("Skill catalog:")
+    expect(requests[0]?.system).toContain("reviewer: Review code changes carefully")
+    expect(requests[0]?.system).toContain("Active skill instructions:")
+    expect(requests[0]?.system).toContain("## reviewer")
+    expect(requests[0]?.system).toContain("Focus on bugs first.")
+  })
+
   test("persists malformed tool arguments as an error outcome and continues the run", async () => {
     const harness = await createHarness("tool-error", false)
     const started = startPromptRun({

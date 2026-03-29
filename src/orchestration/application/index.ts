@@ -1,10 +1,4 @@
-export type {
-  OrchestrationActiveSkill,
-  OrchestrationModelEvent,
-  OrchestrationSkillCatalogEntry,
-  OrchestrationModelPort,
-  OrchestrationModelTurnRequest,
-} from "./ports/model"
+export type { OrchestrationModelEvent, OrchestrationModelPort, OrchestrationModelTurnRequest } from "./ports/model"
 export type {
   OrchestrationPendingPermissionRequest,
   OrchestrationPermissionCoordinator,
@@ -25,6 +19,11 @@ export type {
   OrchestrationTranscriptMessage,
   OrchestrationTranscriptPart,
 } from "./ports/session"
+export type {
+  OrchestrationActiveSkill,
+  OrchestrationSkillCatalogEntry,
+  OrchestrationSkillPort,
+} from "./ports/skill"
 export type {
   OrchestrationTool,
   OrchestrationToolExecutionInput,

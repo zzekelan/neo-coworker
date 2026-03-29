@@ -4,6 +4,7 @@ import type {
   OrchestrationTranscriptMessage,
 } from "./ports/session"
 import type { OrchestrationModelPort } from "./ports/model"
+import type { OrchestrationSkillPort } from "./ports/skill"
 import type { OrchestrationToolPort } from "./ports/tool"
 import type { RuntimeEvent } from "./event"
 
@@ -12,6 +13,7 @@ type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 type CreateOrchestrationStepServiceInput = {
   session: OrchestrationSessionPort
   model: OrchestrationModelPort
+  skill: OrchestrationSkillPort
   now?: () => number
 }
 
@@ -175,6 +177,18 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         }
     > {
       const transcript = input.session.listTranscript(stepInput.sessionId)
+      const run = input.session.getRun(stepInput.runId)
+      const [skillCatalog, activeSkills] = await Promise.all([
+        input.skill.listCatalog(stepInput.workspaceRoot),
+        Promise.all(
+          run.activeSkills.map((name) =>
+            input.skill.loadSkill({
+              workspaceRoot: stepInput.workspaceRoot,
+              name,
+            }),
+          ),
+        ),
+      ])
       const assistantTurn = createAssistantTurnRecorder({
         session: input.session,
         sessionId: stepInput.sessionId,
@@ -196,8 +210,8 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         try {
           const modelEvents = input.model.streamTurn({
             systemPrompt: stepInput.systemPrompt,
-            skillCatalog: [],
-            activeSkills: [],
+            skillCatalog,
+            activeSkills,
             tools: stepInput.tools.list(),
             transcript,
             sessionId: stepInput.sessionId,

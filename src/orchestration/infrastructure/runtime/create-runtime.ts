@@ -7,6 +7,7 @@ import type {
   OrchestrationPermissionResponse,
 } from "../../application/ports/permission"
 import type { OrchestrationSessionPort } from "../../application/ports/session"
+import type { OrchestrationSkillPort } from "../../application/ports/skill"
 import type {
   OrchestrationToolPort,
   OrchestrationToolPortFactory,
@@ -28,6 +29,7 @@ const DEFAULT_SYSTEM_PROMPT = "You are the agent runtime."
 export type CreateOrchestrationRuntimeApiInput = {
   model: OrchestrationModelPort
   session: OrchestrationSessionPort
+  skill: OrchestrationSkillPort
   permission: OrchestrationPermissionPort
   tools: OrchestrationToolPortFactory
   activeRuns: OrchestrationActiveRunRegistry
@@ -54,6 +56,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
   const stepService = createOrchestrationStepService({
     session: input.session,
     model: input.model,
+    skill: input.skill,
     now,
   })
 
