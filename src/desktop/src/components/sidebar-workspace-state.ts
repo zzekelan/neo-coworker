@@ -1,5 +1,5 @@
-export function hasVisibleWorkspaceSelect(projectCount: number) {
-  return projectCount >= 0
+export function hasVisibleWorkspaceSelect(workspaceCount: number) {
+  return workspaceCount >= 0
 }
 
 export function inferWorkspaceParentDirectory(

@@ -1,10 +1,10 @@
 import type {
   DesktopPermissionRequest,
-  DesktopProject,
+  DesktopWorkspaceSummary,
   DesktopRun,
   DesktopServerEvent,
   DesktopSessionSnapshot,
-  DesktopThread,
+  DesktopSessionSummary,
   DesktopMessage,
 } from "./types"
 
@@ -43,7 +43,7 @@ export async function pickDirectory() {
 }
 
 export async function persistDesktopSelection(input: {
-  activeProjectRoot: string | null
+  activeWorkspaceRoot: string | null
   activeSessionId: string | null
 }) {
   const bridge = getDesktopBridge()
@@ -142,25 +142,25 @@ export function subscribeToEvents(input: {
   }
 }
 
-export async function loadProjects() {
-  return requestApi<{ projects: DesktopProject[] }>("/projects")
+export async function loadWorkspaces() {
+  return requestApi<{ workspaces: DesktopWorkspaceSummary[] }>("/workspaces")
 }
 
 export async function openWorkspace(input: { directory: string; create?: boolean }) {
-  return requestApi<{ project: DesktopProject }>("/projects/open", {
+  return requestApi<{ workspace: DesktopWorkspaceSummary }>("/workspaces/open", {
     method: "POST",
     body: input,
   })
 }
 
-export async function loadThreads(workspaceRoot: string) {
-  return requestApi<{ threads: DesktopThread[] }>(
-    `/project/threads?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
+export async function loadWorkspaceSessions(workspaceRoot: string) {
+  return requestApi<{ sessions: DesktopSessionSummary[] }>(
+    `/workspace/sessions?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
   )
 }
 
-export async function createThread(input: { workspaceRoot: string; title?: string }) {
-  return requestApi<{ thread: DesktopThread }>("/project/threads", {
+export async function createSession(input: { workspaceRoot: string; title?: string }) {
+  return requestApi<{ session: DesktopSessionSummary }>("/workspace/sessions", {
     method: "POST",
     body: input,
   })

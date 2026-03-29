@@ -1,19 +1,12 @@
-export type DesktopProject = {
+export type DesktopWorkspaceSummary = {
   workspaceRoot: string
   name: string
   latestActivityAt: number
-  threadCount: number
-  pendingCandidateCount: number
-  assetCounts: {
-    source: number
-    note: number
-    finding: number
-    artifact: number
-  }
-  threads: DesktopThread[]
+  sessionCount: number
+  sessions: DesktopSessionSummary[]
 }
 
-export type DesktopThread = {
+export type DesktopSessionSummary = {
   id: string
   directory: string
   workspaceRoot: string
@@ -97,7 +90,7 @@ export type DesktopPermissionRequest = {
 }
 
 export type DesktopSessionSnapshot = {
-  session: DesktopThread
+  session: DesktopSessionSummary
   latestRun: DesktopRun | null
   activeRun: DesktopRun | null
   status: "idle" | "busy"
@@ -113,7 +106,7 @@ export type SessionEvent = {
   id: string
   time: number
   type: "session.created" | "session.updated"
-  session: DesktopThread
+  session: DesktopSessionSummary
   latestRun: DesktopRun | null
   activeRun: DesktopRun | null
   status: "idle" | "busy"

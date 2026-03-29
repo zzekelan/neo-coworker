@@ -6,7 +6,7 @@ import {
 } from "../../src/desktop/src/components/sidebar-workspace-state"
 
 describe("desktop sidebar workspace state", () => {
-  test("keeps the workspace select visible even before additional projects are loaded", () => {
+  test("keeps the workspace select visible even before additional workspaces are loaded", () => {
     expect(hasVisibleWorkspaceSelect(0)).toBe(true)
     expect(hasVisibleWorkspaceSelect(1)).toBe(true)
   })

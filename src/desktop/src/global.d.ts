@@ -6,11 +6,11 @@ declare global {
       apiOrigin?: string
       platform?: string
       defaultWorkspaceRoot?: string
-      persistedProjectRoot?: string
+      persistedWorkspaceRoot?: string
       persistedSessionId?: string
       pickDirectory?: () => Promise<string | null>
       persistSelection?: (input: {
-        activeProjectRoot: string | null
+        activeWorkspaceRoot: string | null
         activeSessionId: string | null
       }) => Promise<boolean>
       requestJson?: (input: {

@@ -5,5 +5,8 @@ export type OrchestrationRunPermissionResponse = {
   decision: OrchestrationRunPermissionDecision
 }
 
-export type OrchestrationPermissionPolicy = Record<string, OrchestrationPermissionPolicyMode>
+export type OrchestrationPermissionPolicy = Record<
+  "write" | "edit" | "shell",
+  OrchestrationPermissionPolicyMode
+>
 export type OrchestrationPermissionPolicyInput = Partial<OrchestrationPermissionPolicy>

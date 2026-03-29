@@ -20,22 +20,22 @@ describe("desktop selection state", () => {
     const filePath = createSelectionFilePath()
 
     writeDesktopSelectionState(filePath, {
-      activeProjectRoot: "/workspace/beta",
+      activeWorkspaceRoot: "/workspace/beta",
       activeSessionId: "session-42",
     })
 
     expect(readDesktopSelectionState(filePath)).toEqual({
-      activeProjectRoot: "/workspace/beta",
+      activeWorkspaceRoot: "/workspace/beta",
       activeSessionId: "session-42",
     })
   })
 
   test("falls back to null values when the file is malformed", () => {
     const filePath = createSelectionFilePath()
-    writeFileSync(filePath, "{\"activeProjectRoot\":42}")
+    writeFileSync(filePath, "{\"activeWorkspaceRoot\":42}")
 
     expect(readDesktopSelectionState(filePath)).toEqual({
-      activeProjectRoot: null,
+      activeWorkspaceRoot: null,
       activeSessionId: null,
     })
   })

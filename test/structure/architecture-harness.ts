@@ -10,7 +10,6 @@ export const STRUCTURE_BASELINE_PATH = join(
   "architecture-findings.json",
 )
 export const FINAL_CAPABILITY_TOP_LEVELS = new Set([
-  "knowledge",
   "observability",
   "model",
   "permission",

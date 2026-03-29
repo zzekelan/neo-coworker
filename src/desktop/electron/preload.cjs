@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron")
 const BRIDGE_STATE = {
   defaultWorkspaceRoot: readArgument("--neo-coworker-default-workspace-root="),
   platform: readArgument("--neo-coworker-platform=") ?? process.platform,
-  persistedProjectRoot: readArgument("--neo-coworker-persisted-project-root="),
+  persistedWorkspaceRoot: readArgument("--neo-coworker-persisted-workspace-root="),
   persistedSessionId: readArgument("--neo-coworker-persisted-session-id="),
 }
 

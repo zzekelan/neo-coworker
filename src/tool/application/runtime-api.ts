@@ -54,27 +54,19 @@ export function createToolProviderFromRuntime(
       return input.runtime.list()
     },
     execute(value) {
-      const scopedValue = input.scope
-        ? {
-            ...value,
-            sessionId: input.scope.sessionId,
-            runId: input.scope.runId,
-          }
-        : value
-
       if (input.scope) {
         try {
           input.observer?.recordToolEvent?.({
             type: "tool.executed",
             sessionId: input.scope.sessionId,
             runId: input.scope.runId,
-            toolName: scopedValue.toolName,
+            toolName: value.toolName,
           })
         } catch {
           // Observability must not alter tool execution behavior.
         }
       }
-      return input.runtime.execute(scopedValue)
+      return input.runtime.execute(value)
     },
   }
 }

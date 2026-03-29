@@ -24,15 +24,15 @@ export function writeDesktopSelectionState(filePath, selection) {
 function normalizeDesktopSelectionState(value) {
   if (!value || typeof value !== "object") {
     return {
-      activeProjectRoot: null,
+      activeWorkspaceRoot: null,
       activeSessionId: null,
     }
   }
 
   return {
-    activeProjectRoot:
-      typeof value.activeProjectRoot === "string" && value.activeProjectRoot.length > 0
-        ? value.activeProjectRoot
+    activeWorkspaceRoot:
+      typeof value.activeWorkspaceRoot === "string" && value.activeWorkspaceRoot.length > 0
+        ? value.activeWorkspaceRoot
         : null,
     activeSessionId:
       typeof value.activeSessionId === "string" && value.activeSessionId.length > 0

@@ -11,8 +11,8 @@ import {
 import { AnimatePresence, motion } from "framer-motion"
 import type {
   DesktopPermissionRequest,
+  DesktopSession,
   DesktopSessionSnapshot,
-  DesktopThread,
   DesktopTranscriptMessage,
 } from "../view-types"
 import { cn } from "../lib/utils"
@@ -20,7 +20,7 @@ import { Message } from "./Message"
 import { PermissionRequest } from "./PermissionRequest"
 
 interface ChatAreaProps {
-  thread: DesktopThread | null
+  sessionSummary: DesktopSession | null
   session: DesktopSessionSnapshot | null
   transcript: DesktopTranscriptMessage[]
   permissionRequests: DesktopPermissionRequest[]
@@ -33,7 +33,7 @@ interface ChatAreaProps {
 }
 
 export function ChatArea({
-  thread,
+  sessionSummary,
   session,
   transcript,
   permissionRequests,
@@ -69,7 +69,7 @@ export function ChatArea({
     submitMessage()
   }
 
-  if (!thread) {
+  if (!sessionSummary) {
     return (
       <div className="relative flex flex-1 flex-col bg-white">
         <div className="absolute top-4 left-4 z-10">
@@ -107,7 +107,9 @@ export function ChatArea({
               <PanelLeft className="h-5 w-5" />
             </button>
           ) : null}
-          <h2 className="font-semibold tracking-tight text-zinc-800">{thread.title || "Untitled Session"}</h2>
+          <h2 className="font-semibold tracking-tight text-zinc-800">
+            {sessionSummary.title || "Untitled Session"}
+          </h2>
 
           <AnimatePresence mode="wait">
             {isRunning ? (

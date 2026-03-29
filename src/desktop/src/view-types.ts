@@ -1,10 +1,10 @@
-export interface DesktopProject {
+export interface DesktopWorkspace {
   id: string
   name: string
   workspaceRoot: string
 }
 
-export interface DesktopThread {
+export interface DesktopSession {
   id: string
   title: string
   workspaceRoot: string

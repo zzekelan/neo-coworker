@@ -1,10 +1,10 @@
 import { useDesktopApp } from "../useDesktopApp"
 import type {
   DesktopPermissionRequest,
-  DesktopProject,
+  DesktopSession,
   DesktopRun,
   DesktopSessionSnapshot,
-  DesktopThread,
+  DesktopWorkspace,
   DesktopTranscriptMessage,
 } from "../view-types"
 import { mapTranscriptMessage } from "../transcript-mapper"
@@ -13,18 +13,18 @@ export function useAgent() {
   const desktop = useDesktopApp()
 
   return {
-    projects: desktop.projects.map(mapProject),
-    activeWorkspace: desktop.activeProjectRoot,
+    workspaces: desktop.workspaces.map(mapWorkspace),
+    activeWorkspaceRoot: desktop.activeWorkspaceRoot,
     setActiveWorkspace(workspaceRoot: string) {
       return desktop.selectWorkspace(workspaceRoot)
     },
-    threads: desktop.threads.map(mapThread),
-    activeThreadId: desktop.activeSessionId,
-    setActiveThreadId(threadId: string) {
-      return desktop.selectSession(threadId)
+    sessions: desktop.sessions.map(mapSession),
+    activeSessionId: desktop.activeSessionId,
+    setActiveSessionId(sessionId: string) {
+      return desktop.selectSession(sessionId)
     },
-    createThread() {
-      return desktop.createEmptyThread()
+    createSession() {
+      return desktop.createEmptySession()
     },
     createWorkspace() {
       return desktop.createWorkspaceFromDialog()
@@ -47,21 +47,25 @@ export function useAgent() {
   }
 }
 
-function mapProject(project: import("../types").DesktopProject): DesktopProject {
+function mapWorkspace(
+  workspace: import("../types").DesktopWorkspaceSummary,
+): DesktopWorkspace {
   return {
-    id: project.workspaceRoot,
-    name: project.name,
-    workspaceRoot: project.workspaceRoot,
+    id: workspace.workspaceRoot,
+    name: workspace.name,
+    workspaceRoot: workspace.workspaceRoot,
   }
 }
 
-function mapThread(thread: import("../types").DesktopThread): DesktopThread {
+function mapSession(
+  session: import("../types").DesktopSessionSummary,
+): DesktopSession {
   return {
-    id: thread.id,
-    title: thread.title,
-    workspaceRoot: thread.workspaceRoot,
-    sessionId: thread.id,
-    updatedAt: toIsoString(thread.updatedAt),
+    id: session.id,
+    title: session.title,
+    workspaceRoot: session.workspaceRoot,
+    sessionId: session.id,
+    updatedAt: toIsoString(session.updatedAt),
   }
 }
 

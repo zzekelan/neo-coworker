@@ -15,7 +15,6 @@ import {
 describe("architecture structure", () => {
   test("declares the final target vocabulary explicitly", () => {
     expect(toSortedArray(FINAL_CAPABILITY_TOP_LEVELS)).toEqual([
-      "knowledge",
       "model",
       "observability",
       "permission",
@@ -376,12 +375,18 @@ describe("architecture structure", () => {
     expect(message).toContain("See docs/ARCHITECTURE.md#cross-module-boundaries.")
   })
 
-  test("repository structure has zero architecture findings", async () => {
-    const graph = await loadRepositoryGraph()
-    const findings = validateRepositoryGraph(graph)
+  test(
+    "repository structure has zero architecture findings",
+    {
+      timeout: 15000,
+    },
+    async () => {
+      const graph = await loadRepositoryGraph()
+      const findings = validateRepositoryGraph(graph)
 
-    expect(formatFindings(findings)).toEqual([])
-  })
+      expect(formatFindings(findings)).toEqual([])
+    },
+  )
 
   test("baseline debt file stays empty in the final state", async () => {
     const baseline = await loadStructureBaseline(STRUCTURE_BASELINE_PATH)

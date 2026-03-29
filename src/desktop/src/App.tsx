@@ -5,13 +5,13 @@ import { ChatArea } from "./components/ChatArea"
 
 export default function App() {
   const {
-    projects,
-    activeWorkspace,
+    workspaces,
+    activeWorkspaceRoot,
     setActiveWorkspace,
-    threads,
-    activeThreadId,
-    setActiveThreadId,
-    createThread,
+    sessions,
+    activeSessionId,
+    setActiveSessionId,
+    createSession,
     createWorkspace,
     isManagingWorkspace,
     session,
@@ -28,18 +28,18 @@ export default function App() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-paper font-sans text-ink selection:bg-accent/20 selection:text-ink">
       <Sidebar
-        projects={projects}
-        activeWorkspace={activeWorkspace}
+        workspaces={workspaces}
+        activeWorkspaceRoot={activeWorkspaceRoot}
         setActiveWorkspace={(workspaceRoot) => {
           void setActiveWorkspace(workspaceRoot)
         }}
-        threads={threads}
-        activeThreadId={activeThreadId}
-        setActiveThreadId={(threadId) => {
-          void setActiveThreadId(threadId)
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        setActiveSessionId={(sessionId) => {
+          void setActiveSessionId(sessionId)
         }}
-        createThread={() => {
-          void createThread()
+        createSession={() => {
+          void createSession()
         }}
         createWorkspace={createWorkspace}
         isManagingWorkspace={isManagingWorkspace}
@@ -49,7 +49,7 @@ export default function App() {
       />
       <div className="relative flex min-w-0 flex-1 flex-col border-l border-ink/5 bg-white/40">
         <ChatArea
-          thread={threads.find((thread) => thread.id === activeThreadId) || null}
+          sessionSummary={sessions.find((candidate) => candidate.id === activeSessionId) || null}
           session={session}
           transcript={transcript}
           permissionRequests={permissionRequests}

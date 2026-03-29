@@ -679,6 +679,149 @@ describe("server HTTP API and SSE", () => {
     })
   })
 
+  test("workspace endpoints keep the desktop workspace and session contract covered without knowledge fields", async () => {
+    const harness = await createHarness("server-workspace-contract", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "Alpha refreshed." }
+      },
+    ]))
+    const alphaRoot = join(harness.workspaceRoot, "alpha")
+    const betaRoot = join(harness.workspaceRoot, "beta")
+    const gammaRoot = join(harness.workspaceRoot, "gamma")
+
+    const alphaOneResponse = await requestJson(harness.server, "POST", "/workspace/sessions", {
+      workspaceRoot: alphaRoot,
+      title: "Alpha one",
+    })
+    expect(alphaOneResponse.status).toBe(201)
+    const alphaOneSession = alphaOneResponse.body.data.session as Record<string, any>
+    expectSessionContract(alphaOneSession, {
+      directory: alphaRoot,
+      workspaceRoot: alphaRoot,
+      title: "Alpha one",
+      latestUserMessagePreview: null,
+    })
+
+    const alphaTwoResponse = await requestJson(harness.server, "POST", "/workspace/sessions", {
+      workspaceRoot: alphaRoot,
+      title: "Alpha two",
+    })
+    expect(alphaTwoResponse.status).toBe(201)
+    const alphaTwoSession = alphaTwoResponse.body.data.session as Record<string, any>
+    expectSessionContract(alphaTwoSession, {
+      directory: alphaRoot,
+      workspaceRoot: alphaRoot,
+      title: "Alpha two",
+      latestUserMessagePreview: null,
+    })
+
+    const betaResponse = await requestJson(harness.server, "POST", "/workspace/sessions", {
+      workspaceRoot: betaRoot,
+      title: "Beta one",
+    })
+    expect(betaResponse.status).toBe(201)
+    const betaSession = betaResponse.body.data.session as Record<string, any>
+    expectSessionContract(betaSession, {
+      directory: betaRoot,
+      workspaceRoot: betaRoot,
+      title: "Beta one",
+      latestUserMessagePreview: null,
+    })
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${alphaOneSession.id}/runs`,
+      {
+        prompt: "Refresh alpha project",
+      },
+    )
+    expect(startedRun.status).toBe(201)
+    const runId = startedRun.body.data.run.id as string
+    await waitForRunStatus(harness.server, runId, "completed")
+
+    const alphaSessionsResponse = await requestJson(
+      harness.server,
+      "GET",
+      `/workspace/sessions?workspaceRoot=${encodeURIComponent(alphaRoot)}`,
+    )
+    expect(alphaSessionsResponse.status).toBe(200)
+    expect(alphaSessionsResponse.body.data.sessions).toHaveLength(2)
+    const [latestAlphaSession, olderAlphaSession] = alphaSessionsResponse.body.data.sessions as Array<
+      Record<string, any>
+    >
+    expectSessionContract(latestAlphaSession, {
+      id: alphaOneSession.id,
+      directory: alphaRoot,
+      workspaceRoot: alphaRoot,
+      title: "Alpha one",
+      latestUserMessagePreview: "Refresh alpha project",
+    })
+    expectSessionContract(olderAlphaSession, {
+      id: alphaTwoSession.id,
+      directory: alphaRoot,
+      workspaceRoot: alphaRoot,
+      title: "Alpha two",
+      latestUserMessagePreview: null,
+    })
+    expect(latestAlphaSession.updatedAt).toBeGreaterThan(olderAlphaSession.updatedAt)
+
+    const alphaWorkspaceResponse = await requestJson(
+      harness.server,
+      "GET",
+      `/workspace?workspaceRoot=${encodeURIComponent(alphaRoot)}`,
+    )
+    expect(alphaWorkspaceResponse.status).toBe(200)
+    const alphaWorkspace = alphaWorkspaceResponse.body.data.workspace as Record<string, any>
+    expectWorkspaceContract(alphaWorkspace, {
+      workspaceRoot: alphaRoot,
+      name: "alpha",
+      latestActivityAt: latestAlphaSession.updatedAt,
+      sessionCount: 2,
+    })
+    expect(alphaWorkspace.sessions).toEqual(alphaSessionsResponse.body.data.sessions)
+
+    const listedWorkspaces = await requestJson(harness.server, "GET", "/workspaces")
+    expect(listedWorkspaces.status).toBe(200)
+    expect(listedWorkspaces.body.data.workspaces).toHaveLength(2)
+    const [firstWorkspace, secondWorkspace] = listedWorkspaces.body.data.workspaces as Array<
+      Record<string, any>
+    >
+    expectWorkspaceContract(firstWorkspace, {
+      workspaceRoot: alphaRoot,
+      name: "alpha",
+      latestActivityAt: latestAlphaSession.updatedAt,
+      sessionCount: 2,
+    })
+    expect(firstWorkspace.sessions).toEqual(alphaSessionsResponse.body.data.sessions)
+    expectWorkspaceContract(secondWorkspace, {
+      workspaceRoot: betaRoot,
+      name: "beta",
+      latestActivityAt: betaSession.updatedAt,
+      sessionCount: 1,
+    })
+    expect(secondWorkspace.sessions).toEqual([betaSession])
+
+    const openedAlphaWorkspace = await requestJson(harness.server, "POST", "/workspaces/open", {
+      directory: alphaRoot,
+    })
+    expect(openedAlphaWorkspace.status).toBe(200)
+    expect(openedAlphaWorkspace.body.data.workspace).toEqual(alphaWorkspace)
+
+    const openedEmptyWorkspace = await requestJson(harness.server, "POST", "/workspaces/open", {
+      directory: gammaRoot,
+      create: true,
+    })
+    expect(openedEmptyWorkspace.status).toBe(200)
+    expectWorkspaceContract(openedEmptyWorkspace.body.data.workspace as Record<string, any>, {
+      workspaceRoot: gammaRoot,
+      name: "gamma",
+      latestActivityAt: 0,
+      sessionCount: 0,
+    })
+    expect(openedEmptyWorkspace.body.data.workspace.sessions).toEqual([])
+  })
+
   test("a reconnecting client can refetch final state without historical SSE replay", async () => {
     const harness = await createHarness("server-reconnect", createTurnProvider([
       async function* () {
@@ -1114,4 +1257,53 @@ function createMonotonicClock(start = 1_000) {
     current += 1
     return current
   }
+}
+
+const desktopWorkspaceKeys = [
+  "latestActivityAt",
+  "name",
+  "sessionCount",
+  "sessions",
+  "workspaceRoot",
+]
+
+const desktopSessionKeys = [
+  "createdAt",
+  "directory",
+  "id",
+  "latestUserMessagePreview",
+  "title",
+  "updatedAt",
+  "workspaceRoot",
+]
+
+function expectWorkspaceContract(
+  workspace: Record<string, any>,
+  expected: Partial<Record<string, unknown>>,
+) {
+  expect(Object.keys(workspace).sort()).toEqual(desktopWorkspaceKeys)
+  expect(typeof workspace.workspaceRoot).toBe("string")
+  expect(typeof workspace.name).toBe("string")
+  expect(typeof workspace.latestActivityAt).toBe("number")
+  expect(typeof workspace.sessionCount).toBe("number")
+  expect(Array.isArray(workspace.sessions)).toBe(true)
+  expect(workspace).toMatchObject(expected)
+}
+
+function expectSessionContract(
+  session: Record<string, any>,
+  expected: Partial<Record<string, unknown>>,
+) {
+  expect(Object.keys(session).sort()).toEqual(desktopSessionKeys)
+  expect(typeof session.id).toBe("string")
+  expect(typeof session.directory).toBe("string")
+  expect(typeof session.workspaceRoot).toBe("string")
+  expect(typeof session.createdAt).toBe("number")
+  expect(typeof session.title).toBe("string")
+  expect(typeof session.updatedAt).toBe("number")
+  expect(
+    session.latestUserMessagePreview === null ||
+      typeof session.latestUserMessagePreview === "string",
+  ).toBe(true)
+  expect(session).toMatchObject(expected)
 }

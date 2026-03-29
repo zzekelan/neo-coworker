@@ -3,7 +3,6 @@ import { mkdir, realpath, stat } from "node:fs/promises"
 import { basename, resolve } from "node:path"
 import { z, ZodError } from "zod"
 import {
-  createResearchToolCallbacks,
   createServerApp,
   InvalidRunStatusTransitionError,
   type CreateServerAppRuntime,
@@ -43,18 +42,14 @@ const replyPermissionBodySchema = z.object({
   decision: z.enum(["allow", "deny"]),
 })
 
-const openProjectBodySchema = z.object({
+const openWorkspaceBodySchema = z.object({
   directory: z.string().trim().min(1),
   create: z.boolean().optional(),
 })
 
-const createProjectThreadBodySchema = z.object({
+const createWorkspaceSessionBodySchema = z.object({
   workspaceRoot: z.string().trim().min(1),
   title: z.string().trim().min(1).max(60).optional(),
-})
-
-const saveCandidateBodySchema = z.object({
-  title: z.string().trim().min(1).optional(),
 })
 
 const workspaceRootQuerySchema = z.object({
@@ -72,45 +67,19 @@ type SessionSummary = {
   latestUserMessagePreview: string | null
 }
 
-type KnowledgeRuntime = Parameters<typeof createResearchToolCallbacks>[0]["knowledge"]
-
 export function createAgentServer(input: {
   createRuntimeImpl: CreateServerAppRuntime
   repository: StorageRepository
   permissionRepository: PermissionRepository
-  knowledge?: KnowledgeRuntime
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
   now?: () => number
   heartbeatIntervalMs?: number
   allowDetachedPermissionRecovery?: boolean
-  fetchExternalContent?: Parameters<typeof createResearchToolCallbacks>[0]["fetchExternalContent"]
 }) {
   const now = input.now ?? Date.now
   const heartbeatIntervalMs = input.heartbeatIntervalMs ?? DEFAULT_SSE_HEARTBEAT_INTERVAL_MS
   const app = createServerApp({
-    createRuntimeImpl(runtimeInput) {
-      return input.createRuntimeImpl({
-        ...runtimeInput,
-        researchTools: input.knowledge
-          ? createResearchToolCallbacks({
-              knowledge: input.knowledge,
-              fetchExternalContent: input.fetchExternalContent,
-              onCandidateStaged(candidate) {
-                runtimeInput.publishEvent({
-                  type: "knowledge.candidate.created",
-                  candidate,
-                })
-              },
-              onAssetCreated(asset) {
-                runtimeInput.publishEvent({
-                  type: "knowledge.asset.created",
-                  asset,
-                })
-              },
-            })
-          : runtimeInput.researchTools,
-      })
-    },
+    createRuntimeImpl: input.createRuntimeImpl,
     repository: input.repository,
     permissionRepository: input.permissionRepository,
     exportRunTraceImpl: input.exportRunTraceImpl,
@@ -157,50 +126,47 @@ export function createAgentServer(input: {
         })
       }
 
-      if (request.method === "GET" && path === "projects") {
+      if (request.method === "GET" && path === "workspaces") {
         return jsonResponse(200, {
           data: {
-            projects: listProjects({
+            workspaces: listWorkspaces({
               repository: app.sessions.list(),
-              knowledge: input.knowledge,
             }),
           },
         })
       }
 
-      if (request.method === "POST" && path === "projects/open") {
-        const body = await readJsonBody(request, openProjectBodySchema)
-        const workspaceRoot = await resolveProjectDirectory(body.directory, body.create ?? false)
+      if (request.method === "POST" && path === "workspaces/open") {
+        const body = await readJsonBody(request, openWorkspaceBodySchema)
+        const workspaceRoot = await resolveWorkspaceDirectory(body.directory, body.create ?? false)
 
         return jsonResponse(200, {
           data: {
-            project: buildProjectSummary({
+            workspace: buildWorkspaceSummary({
               workspaceRoot,
               sessions: app.sessions.list(),
-              knowledge: input.knowledge,
             }),
           },
         })
       }
 
-      if (request.method === "GET" && path === "project") {
+      if (request.method === "GET" && path === "workspace") {
         const query = workspaceRootQuerySchema.parse(readQuery(url))
         return jsonResponse(200, {
           data: {
-            project: buildProjectSummary({
+            workspace: buildWorkspaceSummary({
               workspaceRoot: query.workspaceRoot,
               sessions: app.sessions.list(),
-              knowledge: input.knowledge,
             }),
           },
         })
       }
 
-      if (request.method === "GET" && path === "project/threads") {
+      if (request.method === "GET" && path === "workspace/sessions") {
         const query = workspaceRootQuerySchema.parse(readQuery(url))
         return jsonResponse(200, {
           data: {
-            threads: app.sessions
+            sessions: app.sessions
               .list()
               .filter((session) => session.workspaceRoot === query.workspaceRoot)
               .sort((left, right) => right.updatedAt - left.updatedAt),
@@ -208,9 +174,9 @@ export function createAgentServer(input: {
         })
       }
 
-      if (request.method === "POST" && path === "project/threads") {
-        const body = await readJsonBody(request, createProjectThreadBodySchema)
-        const workspaceRoot = await resolveProjectDirectory(body.workspaceRoot, true)
+      if (request.method === "POST" && path === "workspace/sessions") {
+        const body = await readJsonBody(request, createWorkspaceSessionBodySchema)
+        const workspaceRoot = await resolveWorkspaceDirectory(body.workspaceRoot, true)
         const session = app.sessions.create({
           directory: workspaceRoot,
           workspaceRoot,
@@ -219,17 +185,7 @@ export function createAgentServer(input: {
 
         return jsonResponse(201, {
           data: {
-            thread: session,
-          },
-        })
-      }
-
-      if (request.method === "GET" && path === "project/knowledge") {
-        const query = workspaceRootQuerySchema.parse(readQuery(url))
-        return jsonResponse(200, {
-          data: {
-            candidates: input.knowledge?.candidates.list(query.workspaceRoot) ?? [],
-            assets: input.knowledge?.assets.list(query.workspaceRoot) ?? [],
+            session,
           },
         })
       }
@@ -307,42 +263,6 @@ export function createAgentServer(input: {
             requestId: permissionReplyMatch.requestId,
             decision: body.decision,
           }),
-        })
-      }
-
-      const candidateSaveMatch = matchPath(path, ["project", "candidates", ":candidateId", "save"])
-      if (request.method === "POST" && candidateSaveMatch) {
-        if (!input.knowledge) {
-          return errorResponse(404, "not_found", "Knowledge runtime is not configured")
-        }
-
-        const body = await readJsonBody(request, saveCandidateBodySchema)
-        const saved = await input.knowledge.candidates.saveAsSource({
-          candidateId: candidateSaveMatch.candidateId,
-          title: body.title,
-        })
-        app.events.publish({
-          type: "knowledge.candidate.updated",
-          candidate: saved.candidate,
-        })
-        app.events.publish({
-          type: "knowledge.asset.created",
-          asset: saved.asset,
-        })
-
-        return jsonResponse(201, {
-          data: saved,
-        })
-      }
-
-      const assetMatch = matchPath(path, ["project", "assets", ":assetId"])
-      if (request.method === "GET" && assetMatch) {
-        if (!input.knowledge) {
-          return errorResponse(404, "not_found", "Knowledge runtime is not configured")
-        }
-
-        return jsonResponse(200, {
-          data: await input.knowledge.assets.read(assetMatch.assetId),
         })
       }
 
@@ -537,7 +457,7 @@ function mapHttpError(error: unknown) {
     error instanceof StorageNotFoundError ||
     error instanceof PermissionNotFoundError ||
     error instanceof RunTraceNotFoundError ||
-    error instanceof ProjectDirectoryNotFoundError
+    error instanceof WorkspaceDirectoryNotFoundError
   ) {
     return {
       status: 404,
@@ -549,7 +469,7 @@ function mapHttpError(error: unknown) {
   if (
     error instanceof ZodError ||
     isJsonBodyError(error) ||
-    error instanceof ProjectDirectoryValidationError
+    error instanceof WorkspaceDirectoryValidationError
   ) {
     return {
       status: 400,
@@ -630,7 +550,7 @@ async function resolveListenPort(hostname: string, port: number | undefined) {
   })
 }
 
-async function resolveProjectDirectory(directory: string, createIfMissing: boolean) {
+async function resolveWorkspaceDirectory(directory: string, createIfMissing: boolean) {
   const resolved = resolve(directory)
 
   if (createIfMissing) {
@@ -640,12 +560,12 @@ async function resolveProjectDirectory(directory: string, createIfMissing: boole
   try {
     const metadata = await stat(resolved)
     if (!metadata.isDirectory()) {
-      throw new ProjectDirectoryValidationError(`${directory} is not a directory`)
+      throw new WorkspaceDirectoryValidationError(`${directory} is not a directory`)
     }
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     if (code === "ENOENT") {
-      throw new ProjectDirectoryNotFoundError(directory)
+      throw new WorkspaceDirectoryNotFoundError(directory)
     }
 
     throw error
@@ -654,9 +574,8 @@ async function resolveProjectDirectory(directory: string, createIfMissing: boole
   return realpath(resolved)
 }
 
-function listProjects(input: {
+function listWorkspaces(input: {
   repository: SessionSummary[]
-  knowledge?: KnowledgeRuntime
 }) {
   const workspaceRoots = new Set<string>()
 
@@ -666,59 +585,42 @@ function listProjects(input: {
 
   return [...workspaceRoots]
     .map((workspaceRoot) =>
-      buildProjectSummary({
+      buildWorkspaceSummary({
         workspaceRoot,
         sessions: input.repository,
-        knowledge: input.knowledge,
       }),
     )
     .sort((left, right) => right.latestActivityAt - left.latestActivityAt)
 }
 
-function buildProjectSummary(input: {
+function buildWorkspaceSummary(input: {
   workspaceRoot: string
   sessions: SessionSummary[]
-  knowledge?: KnowledgeRuntime
 }) {
-  const threads = input.sessions
+  const sessions = input.sessions
     .filter((session) => session.workspaceRoot === input.workspaceRoot)
     .sort((left, right) => right.updatedAt - left.updatedAt)
-  const candidates = input.knowledge?.candidates.list(input.workspaceRoot) ?? []
-  const assets = input.knowledge?.assets.list(input.workspaceRoot) ?? []
-  const assetCounts = {
-    source: assets.filter((asset) => asset.kind === "source").length,
-    note: assets.filter((asset) => asset.kind === "note").length,
-    finding: assets.filter((asset) => asset.kind === "finding").length,
-    artifact: assets.filter((asset) => asset.kind === "artifact").length,
-  }
-  const latestActivityAt = Math.max(
-    0,
-    ...threads.map((thread) => thread.updatedAt),
-    ...candidates.map((candidate) => candidate.createdAt),
-    ...assets.map((asset) => asset.updatedAt),
-  )
+  const latestActivityAt = Math.max(0, ...sessions.map((session) => session.updatedAt))
 
   return {
     workspaceRoot: input.workspaceRoot,
     name: basename(input.workspaceRoot),
     latestActivityAt,
-    threadCount: threads.length,
-    pendingCandidateCount: candidates.filter((candidate) => candidate.status === "candidate").length,
-    assetCounts,
-    threads: threads.slice(0, 6),
+    sessionCount: sessions.length,
+    sessions: sessions.slice(0, 6),
   }
 }
 
-class ProjectDirectoryNotFoundError extends Error {
+class WorkspaceDirectoryNotFoundError extends Error {
   constructor(directory: string) {
-    super(`Project directory does not exist: ${directory}`)
-    this.name = "ProjectDirectoryNotFoundError"
+    super(`Workspace directory does not exist: ${directory}`)
+    this.name = "WorkspaceDirectoryNotFoundError"
   }
 }
 
-class ProjectDirectoryValidationError extends Error {
+class WorkspaceDirectoryValidationError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = "ProjectDirectoryValidationError"
+    this.name = "WorkspaceDirectoryValidationError"
   }
 }

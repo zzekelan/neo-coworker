@@ -1,14 +1,5 @@
 import { join } from "node:path"
 import {
-  createKnowledgeFileStorage,
-  createKnowledgeRepository,
-  createKnowledgeRuntimeApi,
-  type KnowledgeAssetKind,
-  type KnowledgeRepository,
-  type StoredKnowledgeAsset,
-  type StoredKnowledgeCandidate,
-} from "../knowledge"
-import {
   assertRunStatusTransition,
   createSessionRepository as createStorageRepository,
   createSessionRuntimeApi,
@@ -23,11 +14,7 @@ import {
   type PermissionResponse,
   type PermissionRepository,
 } from "../permission"
-import {
-  createToolProvider,
-  type BuiltinResearchToolCallbacks,
-  type ExternalContentDocument,
-} from "../tool"
+import { createToolProvider } from "../tool"
 import {
   createNoopObservabilityRuntimeApi,
   createObservabilityRepository,
@@ -58,8 +45,7 @@ type RuntimeInput = {
     ObservabilityRuntimeApi,
     "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver"
   >
-  researchTools?: BuiltinResearchToolCallbacks
-  permissionPolicy?: Partial<Record<string, PermissionMode>>
+  permissionPolicy?: Partial<Record<"write" | "edit" | "shell", PermissionMode>>
   activeRuns?: OrchestrationActiveRunRegistry
   systemPrompt?: string
   now?: () => number
@@ -73,8 +59,6 @@ type CliRuntimeInput = Omit<RuntimeInput, "repository" | "permissionRepository">
   repository?: StorageRepository
   permissionRepository?: PermissionRepository
   observabilityRepository?: ObservabilityRepository
-  knowledgeRepository?: KnowledgeRepository
-  fetchExternalContent?: BuiltinResearchToolCallbacks["fetchExternalContent"]
 }
 
 type CliRunInput = {
@@ -110,7 +94,6 @@ export function createRuntime(input: RuntimeInput) {
     }),
     tools: createToolPortFactory({
       observer: observability.toolObserver,
-      research: input.researchTools,
     }),
     activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
     permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
@@ -134,7 +117,6 @@ export function createCliStorageComposition(input: {
   repository?: StorageRepository
   permissionRepository?: PermissionRepository
   observabilityRepository?: ObservabilityRepository
-  knowledgeRepository?: KnowledgeRepository
 }) {
   const now = input.now ?? Date.now
   const database =
@@ -166,20 +148,11 @@ export function createCliStorageComposition(input: {
           now,
         })
       : undefined)
-  const knowledgeRepository =
-    input.knowledgeRepository ??
-    (database
-      ? createKnowledgeRepository({
-          database,
-          now,
-        })
-      : undefined)
 
   return {
     repository,
     permissionRepository,
     observabilityRepository,
-    knowledgeRepository,
     close() {
       database?.close(false)
     },
@@ -187,7 +160,6 @@ export function createCliStorageComposition(input: {
     repository: StorageRepository
     permissionRepository: PermissionRepository
     observabilityRepository?: ObservabilityRepository
-    knowledgeRepository?: KnowledgeRepository
     close(): void
   }
 }
@@ -203,7 +175,6 @@ export function createCliRuntime(input: CliRuntimeInput) {
         repository: input.repository,
         permissionRepository: input.permissionRepository,
         observabilityRepository: input.observabilityRepository,
-        knowledgeRepository: input.knowledgeRepository,
         openStorageDatabaseImpl: input.openStorageDatabaseImpl,
         createStorageRepositoryImpl: input.createStorageRepositoryImpl,
         createPermissionRepositoryImpl: input.createPermissionRepositoryImpl,
@@ -217,13 +188,6 @@ export function createCliRuntime(input: CliRuntimeInput) {
             now,
           })
         : undefined
-      const knowledge = storage.knowledgeRepository
-        ? createKnowledgeRuntimeApi({
-            repository: storage.knowledgeRepository,
-            storage: createKnowledgeFileStorage(),
-            now,
-          })
-        : undefined
       const sessionProvider = createSessionRuntimeApi({
         repository,
         now,
@@ -233,12 +197,6 @@ export function createCliRuntime(input: CliRuntimeInput) {
         repository,
         permissionRepository,
         observability,
-        researchTools: knowledge
-          ? createResearchToolCallbacks({
-              knowledge,
-              fetchExternalContent: input.fetchExternalContent,
-            })
-          : undefined,
         now,
       })
 
@@ -277,98 +235,6 @@ export function createCliRuntime(input: CliRuntimeInput) {
       }
     },
   }
-}
-
-export function createResearchToolCallbacks(input: {
-  knowledge: Pick<ReturnType<typeof createKnowledgeRuntimeApi>, "candidates" | "assets">
-  fetchExternalContent?: (
-    input: {
-      url: string
-      signal?: AbortSignal
-    },
-  ) => Promise<ExternalContentDocument> | ExternalContentDocument
-  onCandidateStaged?: (candidate: StoredKnowledgeCandidate) => void
-  onAssetCreated?: (asset: StoredKnowledgeAsset) => void
-}) {
-  return {
-    fetchExternalContent: input.fetchExternalContent,
-    stageFetchedSource(stageInput) {
-      const candidate = input.knowledge.candidates.stage({
-        workspaceRoot: stageInput.workspaceRoot,
-        sessionId: stageInput.sessionId ?? null,
-        runId: stageInput.runId ?? null,
-        title: stageInput.title,
-        sourceUrl: stageInput.sourceUrl,
-        content: stageInput.content,
-      })
-      input.onCandidateStaged?.(candidate)
-
-      return {
-        id: candidate.id,
-        title: candidate.title,
-        sourceUrl: candidate.sourceUrl,
-        excerpt: candidate.excerpt,
-      }
-    },
-    listAssets(listInput) {
-      return input.knowledge.assets
-        .list(listInput.workspaceRoot, normalizeAssetKind(listInput.kind))
-        .map((asset) => ({
-          id: asset.id,
-          kind: asset.kind,
-          title: asset.title,
-          path: asset.path,
-          snippet: asset.snippet,
-          sourceUrl: asset.sourceUrl,
-        }))
-    },
-    async readAsset(readInput) {
-      const asset = await input.knowledge.assets.read(readInput.assetId)
-
-      return {
-        id: asset.asset.id,
-        kind: asset.asset.kind,
-        title: asset.asset.title,
-        path: asset.asset.path,
-        content: asset.content,
-        sourceUrl: asset.asset.sourceUrl,
-      }
-    },
-    async searchAssets(searchInput) {
-      const matches = await input.knowledge.assets.search({
-        workspaceRoot: searchInput.workspaceRoot,
-        query: searchInput.query,
-        kind: normalizeAssetKind(searchInput.kind),
-      })
-
-      return matches.map((match) => ({
-        id: match.asset.id,
-        kind: match.asset.kind,
-        title: match.asset.title,
-        snippet: match.snippet,
-      }))
-    },
-    async writeAsset(writeInput) {
-      const asset = await input.knowledge.assets.create({
-        workspaceRoot: writeInput.workspaceRoot,
-        sessionId: writeInput.sessionId ?? null,
-        runId: writeInput.runId ?? null,
-        kind: normalizeRequiredAssetKind(writeInput.kind),
-        title: writeInput.title,
-        content: writeInput.content,
-      })
-      input.onAssetCreated?.(asset)
-
-      return {
-        id: asset.id,
-        kind: asset.kind,
-        title: asset.title,
-        path: asset.path,
-        snippet: asset.snippet,
-        sourceUrl: asset.sourceUrl,
-      }
-    },
-  } satisfies BuiltinResearchToolCallbacks
 }
 
 function createSessionPort(input: {
@@ -449,7 +315,6 @@ function createPermissionPort(input: {
 
 function createToolPortFactory(config: {
   observer?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
-  research?: BuiltinResearchToolCallbacks
 }): OrchestrationToolPortFactory {
   return {
     create(input) {
@@ -458,7 +323,6 @@ function createToolPortFactory(config: {
           return input.requestPermission(request)
         },
         observer: config.observer,
-        research: config.research,
         scope: {
           sessionId: input.sessionId,
           runId: input.runId,
@@ -519,26 +383,4 @@ function withDatabaseCleanup(handle: RunHandle, cleanup: () => void): RunHandle 
       handle.respondPermission(response)
     },
   }
-}
-
-function normalizeAssetKind(kind: string | undefined): KnowledgeAssetKind | undefined {
-  if (
-    kind === "source" ||
-    kind === "note" ||
-    kind === "finding" ||
-    kind === "artifact"
-  ) {
-    return kind
-  }
-
-  return undefined
-}
-
-function normalizeRequiredAssetKind(kind: string): KnowledgeAssetKind {
-  const normalized = normalizeAssetKind(kind)
-  if (!normalized) {
-    throw new Error(`Unknown research asset kind: ${kind}`)
-  }
-
-  return normalized
 }

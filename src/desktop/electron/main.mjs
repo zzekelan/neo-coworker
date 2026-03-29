@@ -58,7 +58,7 @@ async function startDesktop() {
   const uiOrigin = await startUiServer()
   const window = createWindow({
     defaultWorkspaceRoot: workspaceRoot,
-    persistedProjectRoot: persistedSelection?.activeProjectRoot ?? null,
+    persistedWorkspaceRoot: persistedSelection?.activeWorkspaceRoot ?? null,
     persistedSessionId: persistedSelection?.activeSessionId ?? null,
   })
 
@@ -102,8 +102,12 @@ function createWindow(input) {
       additionalArguments: [
         `--neo-coworker-default-workspace-root=${encodeURIComponent(input.defaultWorkspaceRoot)}`,
         `--neo-coworker-platform=${encodeURIComponent(process.platform)}`,
-        ...(input.persistedProjectRoot
-          ? [`--neo-coworker-persisted-project-root=${encodeURIComponent(input.persistedProjectRoot)}`]
+        ...(input.persistedWorkspaceRoot
+          ? [
+              `--neo-coworker-persisted-workspace-root=${encodeURIComponent(
+                input.persistedWorkspaceRoot,
+              )}`,
+            ]
           : []),
         ...(input.persistedSessionId
           ? [`--neo-coworker-persisted-session-id=${encodeURIComponent(input.persistedSessionId)}`]

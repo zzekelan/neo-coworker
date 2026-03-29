@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react"
 import { Folder, PanelLeftClose, Plus, MessageSquare } from "lucide-react"
 import { cn } from "../lib/utils"
-import type { DesktopProject, DesktopThread } from "../view-types"
+import type { DesktopSession, DesktopWorkspace } from "../view-types"
 import { hasVisibleWorkspaceSelect } from "./sidebar-workspace-state"
 
 interface SidebarProps {
-  projects: DesktopProject[]
-  activeWorkspace: string | null
+  workspaces: DesktopWorkspace[]
+  activeWorkspaceRoot: string | null
   setActiveWorkspace: (ws: string) => void
-  threads: DesktopThread[]
-  activeThreadId: string | null
-  setActiveThreadId: (id: string) => void
-  createThread: () => void
+  sessions: DesktopSession[]
+  activeSessionId: string | null
+  setActiveSessionId: (id: string) => void
+  createSession: () => void
   createWorkspace: () => Promise<boolean>
   isManagingWorkspace: boolean
   isOnline: boolean
@@ -20,13 +20,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-  projects,
-  activeWorkspace,
+  workspaces,
+  activeWorkspaceRoot,
   setActiveWorkspace,
-  threads,
-  activeThreadId,
-  setActiveThreadId,
-  createThread,
+  sessions,
+  activeSessionId,
+  setActiveSessionId,
+  createSession,
   createWorkspace,
   isManagingWorkspace,
   isOnline,
@@ -35,9 +35,11 @@ export function Sidebar({
 }: SidebarProps) {
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false)
   const workspaceMenuRef = useRef<HTMLDivElement | null>(null)
-  const showWorkspaceSelect = hasVisibleWorkspaceSelect(projects.length)
-  const activeProject =
-    projects.find((project) => project.workspaceRoot === activeWorkspace) ?? projects[0] ?? null
+  const showWorkspaceSelect = hasVisibleWorkspaceSelect(workspaces.length)
+  const activeWorkspace =
+    workspaces.find((workspace) => workspace.workspaceRoot === activeWorkspaceRoot) ??
+    workspaces[0] ??
+    null
 
   useEffect(() => {
     if (!isWorkspaceMenuOpen) {
@@ -124,7 +126,7 @@ export function Sidebar({
                     aria-expanded={isWorkspaceMenuOpen}
                     onClick={() => setIsWorkspaceMenuOpen((previous) => !previous)}
                   >
-                    <span className="truncate">{activeProject?.name ?? "Select workspace"}</span>
+                    <span className="truncate">{activeWorkspace?.name ?? "Select workspace"}</span>
                   </button>
                   <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
                     <Folder className="h-4 w-4 text-zinc-400" />
@@ -148,30 +150,32 @@ export function Sidebar({
                     )}
                   >
                     <div className="max-h-56 overflow-y-auto p-1.5">
-                      {projects.map((project) => (
+                      {workspaces.map((workspace) => (
                         <button
-                          key={project.id}
+                          key={workspace.id}
                           type="button"
                           role="option"
-                          aria-selected={project.workspaceRoot === activeWorkspace}
+                          aria-selected={workspace.workspaceRoot === activeWorkspaceRoot}
                           className={cn(
                             "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                            project.workspaceRoot === activeWorkspace
+                            workspace.workspaceRoot === activeWorkspaceRoot
                               ? "bg-zinc-100 text-zinc-900 shadow-sm ring-1 ring-zinc-200"
                               : "text-zinc-700 hover:bg-zinc-100",
                           )}
                           onClick={() => {
                             setIsWorkspaceMenuOpen(false)
-                            setActiveWorkspace(project.workspaceRoot)
+                            setActiveWorkspace(workspace.workspaceRoot)
                           }}
                         >
                           <Folder
                             className={cn(
                               "h-4 w-4 shrink-0",
-                              project.workspaceRoot === activeWorkspace ? "text-zinc-500" : "text-zinc-400",
+                              workspace.workspaceRoot === activeWorkspaceRoot
+                                ? "text-zinc-500"
+                                : "text-zinc-400",
                             )}
                           />
-                          <span className="truncate">{project.name}</span>
+                          <span className="truncate">{workspace.name}</span>
                         </button>
                       ))}
                       <div className="my-1 border-t border-zinc-200" />
@@ -204,7 +208,7 @@ export function Sidebar({
                 Sessions
               </label>
               <button
-                onClick={() => createThread()}
+                onClick={() => createSession()}
                 disabled={!showWorkspaceSelect}
                 className="flex h-7 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white/80 px-2 text-[11px] font-medium text-zinc-600 transition-colors hover:bg-white hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40"
                 title="New Session"
@@ -216,13 +220,13 @@ export function Sidebar({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-1">
               <div className="space-y-1">
-                {threads.map((thread) => (
+                {sessions.map((session) => (
                   <button
-                    key={thread.id}
-                    onClick={() => setActiveThreadId(thread.id)}
+                    key={session.id}
+                    onClick={() => setActiveSessionId(session.id)}
                     className={cn(
                       "group flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
-                      activeThreadId === thread.id
+                      activeSessionId === session.id
                         ? "border-zinc-200 bg-white font-medium text-zinc-900 shadow-sm"
                         : "border-transparent text-zinc-600 hover:border-zinc-200/80 hover:bg-white/80 hover:text-zinc-900",
                     )}
@@ -230,13 +234,13 @@ export function Sidebar({
                     <MessageSquare
                       className={cn(
                         "h-4 w-4 shrink-0",
-                        activeThreadId === thread.id ? "text-zinc-900" : "text-zinc-400",
+                        activeSessionId === session.id ? "text-zinc-900" : "text-zinc-400",
                       )}
                     />
-                    <span className="flex-1 truncate">{thread.title || "Untitled Session"}</span>
+                    <span className="flex-1 truncate">{session.title || "Untitled Session"}</span>
                   </button>
                 ))}
-                {threads.length === 0 ? (
+                {sessions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-4 text-xs italic text-zinc-500">
                     No sessions found.
                   </div>
