@@ -51,6 +51,7 @@ describe("session run service", () => {
       status: "queued",
       startedAt: null,
       finishedAt: null,
+      activeSkills: [],
     })
     expect(created.message).toMatchObject({
       id: "message_1",
@@ -277,16 +278,59 @@ describe("session run service", () => {
       status: "queued",
     })
   })
+
+  test("snapshots session active skills into each new run", () => {
+    const { repository, service } = createTestSubject("run-skill-snapshot", [11, 22])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+      activeSkills: ["reviewer"],
+    })
+
+    const first = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    expect(first.run.activeSkills).toEqual(["reviewer"])
+
+    repository.sessions.update({
+      sessionId: session.id,
+      activeSkills: ["writer"],
+    })
+
+    expect(repository.runs.get(first.run.id).activeSkills).toEqual(["reviewer"])
+
+    service.transitionRunToRunning(first.run.id)
+    service.completeRun(first.run.id)
+
+    const second = service.startRun({
+      sessionId: session.id,
+      runId: "run_2",
+      messageId: "message_2",
+      createdAt: 4,
+      messageCreatedAt: 5,
+    })
+
+    expect(second.run.activeSkills).toEqual(["writer"])
+  })
 })
 
 function createTestSubject(prefix: string, nowValues: number[]) {
   const database = openStorageDatabase(createDatabasePath(prefix))
   trackDatabase(database)
+  const repositoryNowValues = [...nowValues]
+  const serviceNowValues = [...nowValues]
 
   const repository = createStorageRepository({
     database,
     now: () => {
-      const value = nowValues.shift()
+      const value = repositoryNowValues.shift()
       if (value === undefined) {
         throw new Error("No timestamp left for repository.now()")
       }
@@ -299,7 +343,7 @@ function createTestSubject(prefix: string, nowValues: number[]) {
     service: createSessionRunService({
       repository,
       now: () => {
-        const value = nowValues.shift()
+        const value = serviceNowValues.shift()
         if (value === undefined) {
           throw new Error("No timestamp left for service.now()")
         }

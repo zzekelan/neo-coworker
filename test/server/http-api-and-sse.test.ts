@@ -82,6 +82,7 @@ describe("server HTTP API and SSE", () => {
       sessionId,
       trigger: "prompt",
       status: "queued",
+      activeSkills: [],
     })
 
     const runId = startedRun.body.data.run.id as string

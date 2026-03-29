@@ -62,6 +62,7 @@ export {
 export {
   DEFAULT_SESSION_TITLE,
   MESSAGE_ROLES,
+  RUN_ACTIVE_SKILLS_MAX_LENGTH,
   PART_KINDS,
   RUN_STATUSES,
   RUN_TRIGGERS,
@@ -69,6 +70,7 @@ export {
   SESSION_PREVIEW_MAX_LENGTH,
   SESSION_TITLE_MAX_LENGTH,
   buildDefaultSessionTitle,
+  normalizeRunActiveSkills,
   normalizeSessionActiveSkills,
   buildSessionPreviewFromUserPrompt,
   buildSessionTitleFromUserPrompt,

@@ -44,6 +44,7 @@ export type StoredRun = {
   startedAt: number | null
   finishedAt: number | null
   errorText: string | null
+  activeSkills: string[]
 }
 
 export type StoredMessage = {
@@ -101,6 +102,7 @@ export type CreateRunInput = {
   startedAt?: number | null
   finishedAt?: number | null
   errorText?: string | null
+  activeSkills?: string[]
 }
 
 export type UpdateRunStatusInput = {

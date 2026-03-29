@@ -19,6 +19,7 @@ export const RUN_STATUSES = [
 
 export type RunTrigger = (typeof RUN_TRIGGERS)[number]
 export type RunStatus = (typeof RUN_STATUSES)[number]
+export const RUN_ACTIVE_SKILLS_MAX_LENGTH = 100
 
 export type StoredRun = {
   id: string
@@ -29,4 +30,31 @@ export type StoredRun = {
   startedAt: number | null
   finishedAt: number | null
   errorText: string | null
+  activeSkills: string[]
+}
+
+export function normalizeRunActiveSkills(activeSkills: readonly string[] | null | undefined) {
+  if (!activeSkills || activeSkills.length === 0) {
+    return []
+  }
+
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const activeSkill of activeSkills) {
+    const value = activeSkill.trim()
+
+    if (!value || seen.has(value)) {
+      continue
+    }
+
+    seen.add(value)
+    normalized.push(value)
+
+    if (normalized.length >= RUN_ACTIVE_SKILLS_MAX_LENGTH) {
+      break
+    }
+  }
+
+  return normalized
 }

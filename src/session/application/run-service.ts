@@ -119,6 +119,8 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
       })
     }
 
+    const session = repository.sessions.get(run.sessionId)
+
     assertStartRunIdentityAvailable(repository, run)
 
     try {
@@ -129,6 +131,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
             sessionId: run.sessionId,
             trigger: run.trigger ?? "prompt",
             createdAt: run.createdAt,
+            activeSkills: session.activeSkills,
           },
           message: {
             id: run.messageId,
@@ -150,6 +153,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
           sessionId: run.sessionId,
           trigger: run.trigger ?? "prompt",
           createdAt: run.createdAt,
+          activeSkills: session.activeSkills,
         },
         message: {
           id: run.messageId,

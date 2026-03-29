@@ -30,6 +30,7 @@ export type RunRow = {
   started_at: number | null
   finished_at: number | null
   error_text: string | null
+  active_skills_json: string
 }
 
 export type MessageRow = {
@@ -94,6 +95,7 @@ export function mapRunRow(row: RunRow): StoredRun {
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     errorText: row.error_text,
+    activeSkills: parseJson(row.active_skills_json) as string[],
   }
 }
 

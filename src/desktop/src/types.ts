@@ -55,6 +55,7 @@ export type DesktopRun = {
   startedAt: number | null
   finishedAt: number | null
   errorText: string | null
+  activeSkills: string[]
 }
 
 export type DesktopMessage = {

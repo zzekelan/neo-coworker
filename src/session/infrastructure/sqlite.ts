@@ -10,6 +10,7 @@ import {
   RUN_STATUSES,
   RUN_TRIGGERS,
   buildDefaultSessionTitle,
+  normalizeRunActiveSkills,
   normalizeSessionActiveSkills,
   buildSessionPreviewFromUserPrompt,
   buildSessionTitleFromUserPrompt,
@@ -224,6 +225,15 @@ const sessionMigrations = [
       `,
     ],
   },
+  {
+    version: 5,
+    statements: [
+      `
+        ALTER TABLE run
+        ADD COLUMN active_skills_json TEXT NOT NULL DEFAULT '[]'
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {
@@ -310,7 +320,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
   function getRunRow(runId: string) {
     return database
       .query(
-        "SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text FROM run WHERE id = ?",
+        "SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text, active_skills_json FROM run WHERE id = ?",
       )
       .get(runId) as RunRow | null
   }
@@ -320,6 +330,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
+            , active_skills_json
           FROM run
           WHERE session_id = ?
           ORDER BY created_at ASC, session_sequence ASC
@@ -333,6 +344,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
+            , active_skills_json
           FROM run
           WHERE session_id = ?
           ORDER BY created_at DESC, session_sequence DESC
@@ -347,6 +359,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
+            , active_skills_json
           FROM run
           WHERE session_id = ? AND status IN (${activeRunStatusCheck})
           ORDER BY created_at DESC, session_sequence DESC
@@ -535,6 +548,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         startedAt: run.startedAt ?? null,
         finishedAt: run.finishedAt ?? null,
         errorText: run.errorText ?? null,
+        activeSkills: normalizeRunActiveSkills(run.activeSkills),
       }
 
       database
@@ -548,8 +562,9 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
               created_at,
               started_at,
               finished_at,
-              error_text
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              error_text,
+              active_skills_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -561,6 +576,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           record.startedAt,
           record.finishedAt,
           record.errorText,
+          serializeJson(record.activeSkills),
         )
 
       return record
