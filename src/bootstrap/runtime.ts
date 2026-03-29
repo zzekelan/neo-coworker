@@ -58,7 +58,10 @@ type RuntimeInput = {
     "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver"
   >
   permissionPolicy?: Partial<
-    Record<"write" | "edit" | "shell" | "webfetch", PermissionMode>
+    Record<
+      "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch",
+      PermissionMode
+    >
   >
   activeRuns?: OrchestrationActiveRunRegistry
   systemPrompt?: string

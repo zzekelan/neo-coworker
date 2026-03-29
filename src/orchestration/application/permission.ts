@@ -6,7 +6,7 @@ export type OrchestrationRunPermissionResponse = {
 }
 
 export type OrchestrationPermissionPolicy = Record<
-  "write" | "edit" | "shell" | "webfetch",
+  "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch",
   OrchestrationPermissionPolicyMode
 >
 export type OrchestrationPermissionPolicyInput = Partial<OrchestrationPermissionPolicy>

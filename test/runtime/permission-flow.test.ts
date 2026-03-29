@@ -725,7 +725,10 @@ function createPermissionRuntime(input: {
   provider: OrchestrationModelPort
   harness: Awaited<ReturnType<typeof createHarness>>
   permissionPolicy?: Partial<
-    Record<"write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
+    Record<
+      "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch",
+      "allow" | "ask" | "deny"
+    >
   >
 }) {
   return createRuntime({

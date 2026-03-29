@@ -23,6 +23,8 @@ describe("orchestration tool port", () => {
       "glob",
       "grep",
       "webfetch",
+      "websearch",
+      "codesearch",
       "write",
       "edit",
       "shell",
