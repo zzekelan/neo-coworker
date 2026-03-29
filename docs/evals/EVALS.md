@@ -25,6 +25,7 @@ Current goals:
 - fast deterministic regression coverage through scripted provider scenarios
 - opt-in validation of the real env-backed provider path through live mode
 - artifact bundles that can be inspected without querying runtime memory directly
+- graders that can verify transcript ordering, trace sequence, tool-result consumption, and skill disclosure
 
 The eval harness is not an end-user feature.
 Its artifacts and grader outputs are developer/operator material.
@@ -172,6 +173,15 @@ Current runner and grading code:
 - `evals/graders/`
 - `evals/schemas/`
 
+Current richer task fields:
+
+- `sessionSeed.activeSkills` for seeding run snapshots from session defaults
+- `transcriptExpectation` for transcript ordering and structured checkpoints
+- `traceSequenceExpectation` for ordered trace assertions
+- `toolConsumptionExpectation` for verifying assistant follow-up after tool results
+- `skillDisclosureExpectation` for proving progressive disclosure around activation
+- `promptAssemblyExpectation` for checking prompt state before and after activation
+
 ## Rules For Adding Tasks
 
 When adding or changing eval tasks:
@@ -179,9 +189,11 @@ When adding or changing eval tasks:
 - keep default local coverage in `scripted` mode
 - keep `live` tasks opt-in and resilient to normal model variability
 - prefer structured expectations such as run status, protocol, tool policy, and trace completeness
+- prefer the richer structured expectations over brittle exact free-text assertions whenever possible
 - avoid exact free-text grading in live mode unless variability is tightly controlled
 - keep `workspaceFixture` inside `evals/fixtures`
 - keep scripted tasks paired with a `scenario`
+- keep `.agents/skills` fixture content minimal and commit ignored skill files explicitly when a live skill task needs them
 - do not place secrets in tasks, fixtures, or exported artifacts
 
 ## Where To Look Next
