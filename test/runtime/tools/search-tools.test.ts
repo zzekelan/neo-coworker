@@ -91,16 +91,15 @@ describe("search tools", () => {
     const backend = createPublicSearchToolBackend({
       async fetchImpl() {
         return new Response(
-          JSON.stringify({
-            Heading: "Alan Turing",
-            AbstractText: "Alan Turing was a pioneering computer scientist.",
-            AbstractURL: "https://en.wikipedia.org/wiki/Alan_Turing",
-            RelatedTopics: [],
-          }),
+          [
+            'event: message',
+            'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"Top web results for \\"Alan Turing\\"\\n1. Alan Turing\\nURL: https://en.wikipedia.org/wiki/Alan_Turing"}]}}',
+            "",
+          ].join("\n"),
           {
             status: 200,
             headers: {
-              "content-type": "application/json",
+              "content-type": "text/event-stream",
             },
           },
         )
@@ -119,14 +118,42 @@ describe("search tools", () => {
     const backend = createPublicSearchToolBackend({
       async fetchImpl() {
         return new Response(
+          [
+            'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"URLSearchParams lets you work with query strings.\\nhttps://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams"}]}}',
+            "",
+          ].join("\n"),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+            },
+          },
+        )
+      },
+    })
+
+    await expect(
+      backend({
+        toolName: "codesearch",
+        query: "URLSearchParams",
+      }),
+    ).resolves.toContain("https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams")
+  })
+
+  test("public search backend also accepts plain JSON MCP responses", async () => {
+    const backend = createPublicSearchToolBackend({
+      async fetchImpl() {
+        return new Response(
           JSON.stringify({
-            documents: [
-              {
-                title: "URLSearchParams",
-                mdn_url: "/en-US/docs/Web/API/URLSearchParams",
-                summary: "Utility methods for working with URL query strings.",
-              },
-            ],
+            jsonrpc: "2.0",
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text: "Plain JSON response from Exa MCP.",
+                },
+              ],
+            },
           }),
           {
             status: 200,
@@ -140,9 +167,9 @@ describe("search tools", () => {
 
     await expect(
       backend({
-        toolName: "codesearch",
-        query: "URLSearchParams",
+        toolName: "websearch",
+        query: "plain json",
       }),
-    ).resolves.toContain("https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams")
+    ).resolves.toBe("Plain JSON response from Exa MCP.")
   })
 })
