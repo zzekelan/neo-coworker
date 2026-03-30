@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import {
   ArrowUp,
   ChevronDown,
@@ -60,6 +60,8 @@ export function ChatArea({
   const [skillFilter, setSkillFilter] = useState("")
   const [busySkillName, setBusySkillName] = useState<string | null>(null)
   const [skillErrorMessage, setSkillErrorMessage] = useState<string | null>(null)
+  const transcriptViewportRef = useRef<HTMLDivElement>(null)
+  const shouldStickToBottomRef = useRef(true)
   const isRunning = session?.activeRun?.status === "running"
   const isWaiting = session?.activeRun?.status === "waiting_permission"
   const isBusy = isRunning || isWaiting
@@ -77,6 +79,20 @@ export function ChatArea({
     setIsSkillPanelOpen(false)
     setSkillFilter("")
   }, [sessionSummary?.id])
+
+  useEffect(() => {
+    shouldStickToBottomRef.current = true
+  }, [sessionSummary?.id])
+
+  useEffect(() => {
+    const viewport = transcriptViewportRef.current
+
+    if (!viewport || !shouldStickToBottomRef.current) {
+      return
+    }
+
+    viewport.scrollTop = viewport.scrollHeight
+  }, [transcript, permissionRequests, session?.activeRun?.status])
 
   const submitMessage = () => {
     if (!input.trim() || isBusy) {
@@ -219,7 +235,13 @@ export function ChatArea({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-32 md:px-8">
+      <div
+        ref={transcriptViewportRef}
+        onScroll={(event) => {
+          shouldStickToBottomRef.current = isNearTranscriptBottom(event.currentTarget)
+        }}
+        className="flex-1 overflow-y-auto px-4 pb-32 md:px-8"
+      >
         {transcript.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center space-y-4 text-zinc-400">
             <div className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
@@ -373,4 +395,8 @@ export function ChatArea({
       </div>
     </div>
   )
+}
+
+function isNearTranscriptBottom(element: HTMLDivElement) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
 }

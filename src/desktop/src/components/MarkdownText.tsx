@@ -1,306 +1,134 @@
-import React, { Fragment } from "react"
-
-type MarkdownBlock =
-  | {
-      type: "heading"
-      level: 1 | 2 | 3 | 4 | 5 | 6
-      text: string
-    }
-  | {
-      type: "paragraph"
-      lines: string[]
-    }
-  | {
-      type: "list"
-      ordered: boolean
-      items: string[]
-    }
-  | {
-      type: "code"
-      language: string | null
-      content: string
-    }
+import React from "react"
+import ReactMarkdown from "react-markdown"
+import type { Components } from "react-markdown"
+import remarkGfm from "remark-gfm"
+import { cn } from "../lib/utils"
 
 export function MarkdownText(input: {
   text: string
   className?: string
 }) {
-  const blocks = parseMarkdownBlocks(input.text)
-
   return (
-    <div className={input.className}>
-      {blocks.map((block, index) => (
-        <React.Fragment key={index}>
-          {renderBlock(block)}
-        </React.Fragment>
-      ))}
+    <div className={cn("min-w-0", input.className)}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {input.text}
+      </ReactMarkdown>
     </div>
   )
-}
-
-function renderBlock(block: MarkdownBlock) {
-  if (block.type === "heading") {
-    const HeadingTag = `h${block.level}` as const
-
-    return (
-      <HeadingTag className={headingClassNames[block.level]}>
-        {renderInlineMarkdown(block.text)}
-      </HeadingTag>
-    )
-  }
-
-  if (block.type === "list") {
-    const ListTag = block.ordered ? "ol" : "ul"
-
-    return (
-      <ListTag className={block.ordered ? orderedListClassName : unorderedListClassName}>
-        {block.items.map((item, index) => (
-          <li key={index}>{renderInlineMarkdown(item)}</li>
-        ))}
-      </ListTag>
-    )
-  }
-
-  if (block.type === "code") {
-    return (
-      <pre className="my-4 overflow-x-auto rounded-2xl border border-zinc-200 bg-zinc-950 px-4 py-3 text-sm text-zinc-100">
-        <code className={block.language ? `language-${block.language}` : undefined}>
-          {block.content}
-        </code>
-      </pre>
-    )
-  }
-
-  return (
-    <p className="my-3 leading-7 text-zinc-800">
-      {block.lines.map((line, index) => (
-        <Fragment key={index}>
-          {index > 0 ? <br /> : null}
-          {renderInlineMarkdown(line)}
-        </Fragment>
-      ))}
-    </p>
-  )
-}
-
-function renderInlineMarkdown(text: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = []
-  let cursor = 0
-  let key = 0
-
-  while (cursor < text.length) {
-    const codeIndex = text.indexOf("`", cursor)
-    const linkIndex = text.indexOf("[", cursor)
-    const nextIndex = findNextTokenIndex(codeIndex, linkIndex)
-
-    if (nextIndex === -1) {
-      pushTextNode(nodes, text.slice(cursor), key)
-      break
-    }
-
-    if (nextIndex > cursor) {
-      pushTextNode(nodes, text.slice(cursor, nextIndex), key)
-      key += 1
-    }
-
-    if (nextIndex === codeIndex) {
-      const closingIndex = text.indexOf("`", codeIndex + 1)
-
-      if (closingIndex === -1) {
-        pushTextNode(nodes, text.slice(codeIndex), key)
-        break
-      }
-
-      nodes.push(
-        <code
-          key={`code-${key}`}
-          className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[0.95em] text-zinc-900"
-        >
-          {text.slice(codeIndex + 1, closingIndex)}
-        </code>,
-      )
-      key += 1
-      cursor = closingIndex + 1
-      continue
-    }
-
-    const parsedLink = parseMarkdownLink(text, linkIndex)
-    if (!parsedLink) {
-      pushTextNode(nodes, text.slice(linkIndex, linkIndex + 1), key)
-      key += 1
-      cursor = linkIndex + 1
-      continue
-    }
-
-    nodes.push(
-      <a
-        key={`link-${key}`}
-        href={parsedLink.href}
-        target="_blank"
-        rel="noreferrer"
-        className="text-indigo-600 underline decoration-indigo-300 underline-offset-4 hover:text-indigo-500"
-      >
-        {parsedLink.label}
-      </a>,
-    )
-    key += 1
-    cursor = parsedLink.end
-  }
-
-  return nodes
-}
-
-function parseMarkdownBlocks(text: string): MarkdownBlock[] {
-  const blocks: MarkdownBlock[] = []
-  const lines = text.replace(/\r\n/g, "\n").split("\n")
-  let index = 0
-
-  while (index < lines.length) {
-    const line = lines[index] ?? ""
-
-    if (!line.trim()) {
-      index += 1
-      continue
-    }
-
-    const codeFence = line.match(/^```([\w-]+)?\s*$/)
-    if (codeFence) {
-      const content: string[] = []
-      index += 1
-
-      while (index < lines.length && !/^```\s*$/.test(lines[index] ?? "")) {
-        content.push(lines[index] ?? "")
-        index += 1
-      }
-
-      if (index < lines.length && /^```\s*$/.test(lines[index] ?? "")) {
-        index += 1
-      }
-
-      blocks.push({
-        type: "code",
-        language: codeFence[1] ?? null,
-        content: content.join("\n"),
-      })
-      continue
-    }
-
-    const heading = line.match(/^(#{1,6})\s+(.*)$/)
-    if (heading) {
-      blocks.push({
-        type: "heading",
-        level: heading[1].length as MarkdownBlock["level"],
-        text: heading[2] ?? "",
-      })
-      index += 1
-      continue
-    }
-
-    const unorderedItem = line.match(/^[-*]\s+(.*)$/)
-    const orderedItem = line.match(/^\d+\.\s+(.*)$/)
-    if (unorderedItem || orderedItem) {
-      const ordered = Boolean(orderedItem)
-      const items: string[] = []
-
-      while (index < lines.length) {
-        const listLine = lines[index] ?? ""
-        const match = ordered
-          ? listLine.match(/^\d+\.\s+(.*)$/)
-          : listLine.match(/^[-*]\s+(.*)$/)
-
-        if (!match) {
-          break
-        }
-
-        items.push(match[1] ?? "")
-        index += 1
-      }
-
-      blocks.push({
-        type: "list",
-        ordered,
-        items,
-      })
-      continue
-    }
-
-    const paragraphLines: string[] = []
-
-    while (index < lines.length) {
-      const paragraphLine = lines[index] ?? ""
-
-      if (!paragraphLine.trim()) {
-        break
-      }
-
-      if (
-        /^```/.test(paragraphLine) ||
-        /^(#{1,6})\s+/.test(paragraphLine) ||
-        /^[-*]\s+/.test(paragraphLine) ||
-        /^\d+\.\s+/.test(paragraphLine)
-      ) {
-        break
-      }
-
-      paragraphLines.push(paragraphLine)
-      index += 1
-    }
-
-    blocks.push({
-      type: "paragraph",
-      lines: paragraphLines,
-    })
-  }
-
-  return blocks
-}
-
-function parseMarkdownLink(text: string, start: number) {
-  const slice = text.slice(start)
-  const match = slice.match(/^\[([^\]]+)\]\(([^)\s]+)\)/)
-
-  if (!match) {
-    return null
-  }
-
-  const href = match[2] ?? ""
-  if (!isSafeHref(href)) {
-    return null
-  }
-
-  return {
-    label: match[1] ?? href,
-    href,
-    end: start + match[0].length,
-  }
 }
 
 function isSafeHref(href: string) {
   return /^(https?:|mailto:)/.test(href)
 }
 
-function findNextTokenIndex(...indexes: number[]) {
-  return indexes
-    .filter((index) => index >= 0)
-    .sort((left, right) => left - right)[0] ?? -1
+const markdownComponents: Components = {
+  h1: ({ children }) => (
+    <h1 className="mt-4 mb-3 text-3xl font-semibold tracking-tight text-zinc-950">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="mt-4 mb-3 text-2xl font-semibold tracking-tight text-zinc-950">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="mt-4 mb-2 text-xl font-semibold tracking-tight text-zinc-950">{children}</h3>
+  ),
+  h4: ({ children }) => (
+    <h4 className="mt-4 mb-2 text-lg font-semibold tracking-tight text-zinc-950">{children}</h4>
+  ),
+  h5: ({ children }) => (
+    <h5 className="mt-3 mb-2 text-base font-semibold tracking-tight text-zinc-900">{children}</h5>
+  ),
+  h6: ({ children }) => (
+    <h6 className="mt-3 mb-2 text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">
+      {children}
+    </h6>
+  ),
+  p: ({ children }) => <p className="my-3 leading-7 text-zinc-800">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold text-zinc-950">{children}</strong>,
+  em: ({ children }) => <em className="italic text-zinc-900">{children}</em>,
+  del: ({ children }) => <del className="text-zinc-500 line-through">{children}</del>,
+  a: ({ href, children }) => {
+    if (!href || !isSafeHref(href)) {
+      return <span>{children}</span>
+    }
+
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="text-indigo-600 underline decoration-indigo-300 underline-offset-4 hover:text-indigo-500"
+      >
+        {children}
+      </a>
+    )
+  },
+  ul: ({ children, className }) => (
+    <ul
+      className={cn(
+        "my-3 space-y-1 pl-6 text-zinc-800",
+        className?.includes("contains-task-list") ? "list-none pl-0" : "list-disc",
+      )}
+    >
+      {children}
+    </ul>
+  ),
+  ol: ({ children }) => <ol className="my-3 list-decimal space-y-1 pl-6 text-zinc-800">{children}</ol>,
+  li: ({ children, className }) => (
+    <li className={cn(className?.includes("task-list-item") ? "flex items-start gap-3" : undefined)}>
+      {children}
+    </li>
+  ),
+  hr: () => <hr className="my-6 border-0 border-t border-zinc-200" />,
+  table: ({ children }) => (
+    <div className="my-5 overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm">
+      <table className="min-w-full border-collapse text-left text-sm text-zinc-700">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-zinc-50/80 text-zinc-900">{children}</thead>,
+  tbody: ({ children }) => <tbody className="divide-y divide-zinc-200">{children}</tbody>,
+  tr: ({ children }) => <tr className="align-top">{children}</tr>,
+  th: ({ children }) => (
+    <th className="border-b border-zinc-200 px-4 py-3 text-xs font-semibold tracking-[0.08em] text-zinc-600 uppercase">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => <td className="px-4 py-3 leading-6 text-zinc-800">{children}</td>,
+  pre: ({ children }) => (
+    <pre className="my-4 overflow-x-auto rounded-2xl border border-zinc-200 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 shadow-sm selection:bg-sky-200 selection:text-zinc-950">
+      {children}
+    </pre>
+  ),
+  code: ({ children, className }) => {
+    const isBlockCode = Boolean(className && className.startsWith("language-"))
+
+    if (isBlockCode) {
+      return (
+        <code className={cn(className, "bg-transparent text-inherit selection:bg-sky-200 selection:text-zinc-950")}>
+          {children}
+        </code>
+      )
+    }
+
+    return (
+      <code className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[0.95em] text-zinc-900 selection:bg-zinc-200 selection:text-zinc-950">
+        {children}
+      </code>
+    )
+  },
+  input: ({ type, checked, disabled }) => {
+    if (type === "checkbox") {
+      return (
+        <input
+          type="checkbox"
+          checked={Boolean(checked)}
+          disabled={disabled}
+          readOnly
+          aria-label={Boolean(checked) ? "Completed task" : "Incomplete task"}
+          className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 text-zinc-900 accent-zinc-900"
+        />
+      )
+    }
+
+    return <input type={type} disabled={disabled} readOnly />
+  },
 }
-
-function pushTextNode(nodes: React.ReactNode[], value: string, key: number) {
-  if (!value) {
-    return
-  }
-
-  nodes.push(<Fragment key={`text-${key}`}>{value}</Fragment>)
-}
-
-const headingClassNames: Record<MarkdownBlock["level"], string> = {
-  1: "mt-4 mb-3 text-3xl font-semibold tracking-tight text-zinc-950",
-  2: "mt-4 mb-3 text-2xl font-semibold tracking-tight text-zinc-950",
-  3: "mt-4 mb-2 text-xl font-semibold tracking-tight text-zinc-950",
-  4: "mt-4 mb-2 text-lg font-semibold tracking-tight text-zinc-950",
-  5: "mt-3 mb-2 text-base font-semibold tracking-tight text-zinc-900",
-  6: "mt-3 mb-2 text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600",
-}
-
-const unorderedListClassName = "my-3 list-disc space-y-1 pl-6 text-zinc-800"
-const orderedListClassName = "my-3 list-decimal space-y-1 pl-6 text-zinc-800"
