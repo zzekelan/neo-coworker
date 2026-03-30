@@ -17,6 +17,12 @@ export type DesktopSessionSummary = {
   activeSkills: string[]
 }
 
+export type DesktopSkillCatalogEntry = {
+  name: string
+  description: string
+  path: string
+}
+
 export type RunTrigger =
   | "cli"
   | "prompt"

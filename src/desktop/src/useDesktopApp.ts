@@ -4,6 +4,7 @@ import {
   createSession,
   getDesktopBridge,
   loadWorkspaces,
+  loadWorkspaceSkills,
   loadRun,
   loadSession,
   loadWorkspaceSessions,
@@ -14,6 +15,8 @@ import {
   replyPermission,
   startRun,
   subscribeToEvents,
+  updateRunActiveSkills,
+  updateSessionActiveSkills,
 } from "./api"
 import {
   normalizeTranscript,
@@ -24,6 +27,7 @@ import type {
   ConnectionStatus,
   DesktopMessage,
   DesktopPermissionRequest,
+  DesktopSkillCatalogEntry,
   DesktopSessionSummary,
   DesktopRun,
   DesktopServerEvent,
@@ -33,6 +37,7 @@ import type {
 
 type AppState = {
   workspaces: DesktopWorkspaceSummary[]
+  skills: DesktopSkillCatalogEntry[]
   sessions: DesktopSessionSummary[]
   activeWorkspaceRoot: string | null
   activeSessionId: string | null
@@ -118,6 +123,9 @@ export function useDesktopApp() {
       const sessionData = resolvedWorkspaceRoot
         ? await loadWorkspaceSessions(resolvedWorkspaceRoot)
         : { sessions: [] }
+      const skillData = resolvedWorkspaceRoot
+        ? await loadWorkspaceSkills(resolvedWorkspaceRoot)
+        : { skills: [] }
       const activeSessionId = chooseActiveSessionId({
         preferredSessionId: options.sessionId ?? selectionRef.current.activeSessionId,
         sessions: sessionData.sessions,
@@ -152,6 +160,7 @@ export function useDesktopApp() {
       setState((previous) => ({
         ...previous,
         workspaces,
+        skills: skillData.skills,
         sessions: sessionData.sessions,
         activeWorkspaceRoot: resolvedWorkspaceRoot,
         activeSessionId,
@@ -331,6 +340,7 @@ export function useDesktopApp() {
       setState((previous) => ({
         ...previous,
         activeWorkspaceRoot: workspaceRoot,
+        skills: [],
         activeSessionId: null,
         sessions: [],
         transcript: [],
@@ -549,6 +559,61 @@ export function useDesktopApp() {
         }))
       }
     },
+
+    async setSessionActiveSkills(sessionId: string, activeSkills: string[]) {
+      try {
+        const updated = await updateSessionActiveSkills({
+          sessionId,
+          activeSkills,
+        })
+
+        setState((previous) => ({
+          ...previous,
+          sessions: upsertSession(previous.sessions, updated.session),
+          sessionSnapshot:
+            previous.sessionSnapshot?.session.id === updated.session.id
+              ? {
+                  ...previous.sessionSnapshot,
+                  session: updated.session,
+                }
+              : previous.sessionSnapshot,
+          actionError: null,
+        }))
+
+        await refresh({
+          workspaceRoot: selectionRef.current.activeWorkspaceRoot,
+          sessionId: updated.session.id,
+          preserveTranscript: true,
+        })
+      } catch (error) {
+        setState((previous) => ({
+          ...previous,
+          actionError: toErrorMessage(error),
+        }))
+        throw error
+      }
+    },
+
+    async setRunActiveSkills(runId: string, activeSkills: string[]) {
+      try {
+        await updateRunActiveSkills({
+          runId,
+          activeSkills,
+        })
+
+        await refresh({
+          workspaceRoot: selectionRef.current.activeWorkspaceRoot,
+          sessionId: selectionRef.current.activeSessionId,
+          preserveTranscript: true,
+        })
+      } catch (error) {
+        setState((previous) => ({
+          ...previous,
+          actionError: toErrorMessage(error),
+        }))
+        throw error
+      }
+    },
   }
 
   return {
@@ -570,6 +635,7 @@ function createInitialState(input: {
   if (!window.neoCoworkerDesktop?.requestJson && !window.neoCoworkerDesktop?.apiOrigin) {
     return {
       workspaces,
+      skills: [],
       sessions: [],
       activeWorkspaceRoot,
       activeSessionId,
@@ -590,6 +656,7 @@ function createInitialState(input: {
 
   return {
     workspaces,
+    skills: [],
     sessions: [],
     activeWorkspaceRoot,
     activeSessionId,

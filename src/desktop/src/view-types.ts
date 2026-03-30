@@ -10,6 +10,7 @@ export interface DesktopSession {
   workspaceRoot: string
   sessionId: string
   updatedAt: string
+  activeSkills: string[]
 }
 
 export type DesktopRunStatus =
@@ -25,13 +26,23 @@ export interface DesktopRun {
   sessionId: string
   status: DesktopRunStatus
   createdAt: string
+  activeSkills: string[]
 }
 
 export interface DesktopSessionSnapshot {
-  session: { id: string }
+  session: {
+    id: string
+    activeSkills: string[]
+  }
   latestRun?: DesktopRun
   activeRun?: DesktopRun
   status: "idle" | "busy"
+}
+
+export interface DesktopSkillCatalogEntry {
+  name: string
+  description: string
+  path: string
 }
 
 export type MessagePart =

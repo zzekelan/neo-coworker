@@ -1,11 +1,13 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useState } from "react"
 import {
   ArrowUp,
+  ChevronDown,
   Info,
   Loader2,
   MessageSquare,
   PanelLeft,
   Play,
+  Sparkles,
   Square,
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
@@ -13,20 +15,26 @@ import type {
   DesktopPermissionRequest,
   DesktopSession,
   DesktopSessionSnapshot,
+  DesktopSkillCatalogEntry,
   DesktopTranscriptMessage,
 } from "../view-types"
 import { cn } from "../lib/utils"
 import { Message } from "./Message"
 import { PermissionRequest } from "./PermissionRequest"
+import { SkillPanel } from "./SkillPanel"
+import { getEffectiveActiveSkills, toggleSkill } from "./skill-state"
 
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
   session: DesktopSessionSnapshot | null
+  skills: DesktopSkillCatalogEntry[]
   transcript: DesktopTranscriptMessage[]
   permissionRequests: DesktopPermissionRequest[]
   onSendMessage: (msg: string) => void | Promise<unknown>
   onCancelRun: () => void | Promise<unknown>
   onReplyPermission: (id: string, decision: "allow" | "deny") => void | Promise<unknown>
+  onSetSessionActiveSkills: (sessionId: string, activeSkills: string[]) => void | Promise<unknown>
+  onSetRunActiveSkills: (runId: string, activeSkills: string[]) => void | Promise<unknown>
   isSidebarOpen: boolean
   onToggleSidebar: () => void
   errorMessage: string | null
@@ -35,25 +43,40 @@ interface ChatAreaProps {
 export function ChatArea({
   sessionSummary,
   session,
+  skills,
   transcript,
   permissionRequests,
   onSendMessage,
   onCancelRun,
   onReplyPermission,
+  onSetSessionActiveSkills,
+  onSetRunActiveSkills,
   isSidebarOpen,
   onToggleSidebar,
   errorMessage,
 }: ChatAreaProps) {
   const [input, setInput] = useState("")
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-
+  const [isSkillPanelOpen, setIsSkillPanelOpen] = useState(false)
+  const [skillFilter, setSkillFilter] = useState("")
+  const [busySkillName, setBusySkillName] = useState<string | null>(null)
+  const [skillErrorMessage, setSkillErrorMessage] = useState<string | null>(null)
   const isRunning = session?.activeRun?.status === "running"
   const isWaiting = session?.activeRun?.status === "waiting_permission"
   const isBusy = isRunning || isWaiting
+  const visibleActiveSkills = getEffectiveActiveSkills({
+    session: sessionSummary,
+    activeRun: session?.activeRun,
+  })
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [transcript, permissionRequests, session?.activeRun?.status])
+    setSkillErrorMessage(null)
+    setBusySkillName(null)
+  }, [sessionSummary?.id, session?.activeRun?.id])
+
+  useEffect(() => {
+    setIsSkillPanelOpen(false)
+    setSkillFilter("")
+  }, [sessionSummary?.id])
 
   const submitMessage = () => {
     if (!input.trim() || isBusy) {
@@ -67,6 +90,65 @@ export function ChatArea({
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
     submitMessage()
+  }
+
+  const updateSkillSet = async (skillName: string, enabled: boolean) => {
+    if (!sessionSummary) {
+      return
+    }
+
+    setBusySkillName(skillName)
+    setSkillErrorMessage(null)
+
+    try {
+      if (session?.activeRun) {
+        await onSetRunActiveSkills(
+          session.activeRun.id,
+          toggleSkill({
+            skills: session.activeRun.activeSkills,
+            skillName,
+            enabled,
+          }),
+        )
+      } else {
+        await onSetSessionActiveSkills(
+          sessionSummary.id,
+          toggleSkill({
+            skills: sessionSummary.activeSkills,
+            skillName,
+            enabled,
+          }),
+        )
+      }
+    } catch (error) {
+      setSkillErrorMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusySkillName(null)
+    }
+  }
+
+  const setDefaultSkill = async (skillName: string) => {
+    if (!sessionSummary) {
+      return
+    }
+
+    setBusySkillName(skillName)
+    setSkillErrorMessage(null)
+
+    try {
+      await onSetSessionActiveSkills(
+        sessionSummary.id,
+        toggleSkill({
+          skills: sessionSummary.activeSkills,
+          skillName,
+          enabled: true,
+        }),
+      )
+    } catch (error) {
+      setSkillErrorMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setBusySkillName(null)
+    }
   }
 
   if (!sessionSummary) {
@@ -110,7 +192,6 @@ export function ChatArea({
           <h2 className="font-semibold tracking-tight text-zinc-800">
             {sessionSummary.title || "Untitled Session"}
           </h2>
-
           <AnimatePresence mode="wait">
             {isRunning ? (
               <motion.div
@@ -138,7 +219,7 @@ export function ChatArea({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-32 scroll-smooth md:px-8">
+      <div className="flex-1 overflow-y-auto px-4 pb-32 md:px-8">
         {transcript.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center space-y-4 text-zinc-400">
             <div className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
@@ -176,11 +257,69 @@ export function ChatArea({
             ) : null}
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-white via-white/80 to-transparent p-4">
         <div className="relative mx-auto max-w-4xl">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsSkillPanelOpen((previous) => !previous)}
+              className={cn(
+                "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors",
+                isSkillPanelOpen
+                  ? "border-zinc-300 bg-zinc-100 text-zinc-900"
+                  : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100",
+              )}
+            >
+              <Sparkles className="h-4 w-4" />
+              Skills
+              <ChevronDown
+                className={cn("h-4 w-4 transition-transform", isSkillPanelOpen && "rotate-180")}
+              />
+            </button>
+
+            {visibleActiveSkills.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {visibleActiveSkills.map((skillName) => (
+                  <span
+                    key={skillName}
+                    className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600"
+                  >
+                    {skillName}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-zinc-400">No active skills</span>
+            )}
+          </div>
+
+          {isSkillPanelOpen ? (
+            <SkillPanel
+              skills={skills}
+              query={skillFilter}
+              session={sessionSummary}
+              activeRun={session?.activeRun}
+              busySkillName={busySkillName}
+              errorMessage={skillErrorMessage}
+              onStartSkill={(skillName) => updateSkillSet(skillName, true)}
+              onStopSkill={(skillName) => updateSkillSet(skillName, false)}
+              onSetDefaultSkill={setDefaultSkill}
+            />
+          ) : null}
+
+          {isSkillPanelOpen ? (
+            <div className="mb-3">
+              <input
+                value={skillFilter}
+                onChange={(event) => setSkillFilter(event.target.value)}
+                placeholder="Filter skills..."
+                className="h-11 w-full rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-300"
+              />
+            </div>
+          ) : null}
+
           <form
             onSubmit={handleSubmit}
             className={cn(
@@ -193,7 +332,11 @@ export function ChatArea({
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              placeholder={isBusy ? "Agent is busy..." : "Ask NeoCoworker to do something..."}
+              placeholder={
+                isBusy
+                  ? "Agent is busy..."
+                  : "Ask NeoCoworker to do something..."
+              }
               disabled={isBusy}
               className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent py-4 pr-14 pl-4 text-[15px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-0"
               rows={1}

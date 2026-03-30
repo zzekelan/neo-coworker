@@ -261,6 +261,11 @@ export function createObservedRepository(input: {
         })
         return created
       },
+      update(session) {
+        const updated = repository.sessions.update(session)
+        publishSessionUpdated(updated.id, "session.updated")
+        return updated
+      },
     },
     runs: {
       ...repository.runs,
@@ -514,6 +519,13 @@ export function createServerApp(input: {
       get(sessionId: string) {
         return buildSessionSnapshot(repository, sessionId)
       },
+      updateActiveSkills(inputValue: { sessionId: string; activeSkills: string[] }) {
+        return repository.sessions.update({
+          sessionId: inputValue.sessionId,
+          activeSkills: inputValue.activeSkills,
+          updatedAt: now(),
+        })
+      },
       transcript(sessionId: string) {
         return sessionProvider.transcript.listSessionTranscript(sessionId)
       },
@@ -534,6 +546,9 @@ export function createServerApp(input: {
           run,
           permissionRequests: permissionRepository.requests.listByRun(runId),
         }
+      },
+      updateActiveSkills(inputValue: { runId: string; activeSkills: string[] }) {
+        return repository.runs.updateActiveSkills(inputValue)
       },
       cancel(runId: string) {
         const run = repository.runs.get(runId)

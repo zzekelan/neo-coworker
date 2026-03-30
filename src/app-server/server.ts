@@ -52,6 +52,10 @@ const createWorkspaceSessionBodySchema = z.object({
   title: z.string().trim().min(1).max(60).optional(),
 })
 
+const updateActiveSkillsBodySchema = z.object({
+  activeSkills: z.array(z.string().trim().min(1)).max(100),
+})
+
 const workspaceRootQuerySchema = z.object({
   workspaceRoot: z.string().trim().min(1),
 })
@@ -218,6 +222,19 @@ export function createAgentServer(input: {
         })
       }
 
+      const sessionActiveSkillsMatch = matchPath(path, ["sessions", ":sessionId", "active-skills"])
+      if (request.method === "POST" && sessionActiveSkillsMatch) {
+        const body = await readJsonBody(request, updateActiveSkillsBodySchema)
+        return jsonResponse(200, {
+          data: {
+            session: app.sessions.updateActiveSkills({
+              sessionId: sessionActiveSkillsMatch.sessionId,
+              activeSkills: body.activeSkills,
+            }),
+          },
+        })
+      }
+
       const sessionRunsMatch = matchPath(path, ["sessions", ":sessionId", "runs"])
       if (request.method === "GET" && sessionRunsMatch) {
         return jsonResponse(200, {
@@ -246,6 +263,19 @@ export function createAgentServer(input: {
       if (request.method === "GET" && runMatch) {
         return jsonResponse(200, {
           data: app.runs.get(runMatch.runId),
+        })
+      }
+
+      const runActiveSkillsMatch = matchPath(path, ["runs", ":runId", "active-skills"])
+      if (request.method === "POST" && runActiveSkillsMatch) {
+        const body = await readJsonBody(request, updateActiveSkillsBodySchema)
+        return jsonResponse(200, {
+          data: {
+            run: app.runs.updateActiveSkills({
+              runId: runActiveSkillsMatch.runId,
+              activeSkills: body.activeSkills,
+            }),
+          },
         })
       }
 

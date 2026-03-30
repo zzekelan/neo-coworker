@@ -4,6 +4,7 @@ import type {
   DesktopSession,
   DesktopRun,
   DesktopSessionSnapshot,
+  DesktopSkillCatalogEntry,
   DesktopWorkspace,
   DesktopTranscriptMessage,
 } from "../view-types"
@@ -30,6 +31,7 @@ export function useAgent() {
       return desktop.createWorkspaceFromDialog()
     },
     isManagingWorkspace: desktop.isManagingWorkspace,
+    skills: desktop.skills.map(mapSkillCatalogEntry),
     session: desktop.sessionSnapshot ? mapSessionSnapshot(desktop.sessionSnapshot) : null,
     transcript: desktop.transcript.map(mapTranscriptMessage),
     permissionRequests: desktop.permissionRequests.map(mapPermissionRequest),
@@ -42,6 +44,12 @@ export function useAgent() {
     },
     replyPermission(id: string, decision: "allow" | "deny") {
       return desktop.replyPermission(id, decision)
+    },
+    setSessionActiveSkills(sessionId: string, activeSkills: string[]) {
+      return desktop.setSessionActiveSkills(sessionId, activeSkills)
+    },
+    setRunActiveSkills(runId: string, activeSkills: string[]) {
+      return desktop.setRunActiveSkills(runId, activeSkills)
     },
     errorMessage: desktop.actionError,
   }
@@ -66,6 +74,7 @@ function mapSession(
     workspaceRoot: session.workspaceRoot,
     sessionId: session.id,
     updatedAt: toIsoString(session.updatedAt),
+    activeSkills: session.activeSkills,
   }
 }
 
@@ -73,6 +82,7 @@ function mapSessionSnapshot(snapshot: import("../types").DesktopSessionSnapshot)
   return {
     session: {
       id: snapshot.session.id,
+      activeSkills: snapshot.session.activeSkills,
     },
     latestRun: snapshot.latestRun ? mapRun(snapshot.latestRun) : undefined,
     activeRun: snapshot.activeRun ? mapRun(snapshot.activeRun) : undefined,
@@ -86,6 +96,17 @@ function mapRun(run: import("../types").DesktopRun): DesktopRun {
     sessionId: run.sessionId,
     status: run.status,
     createdAt: toIsoString(run.createdAt),
+    activeSkills: run.activeSkills,
+  }
+}
+
+function mapSkillCatalogEntry(
+  skill: import("../types").DesktopSkillCatalogEntry,
+): DesktopSkillCatalogEntry {
+  return {
+    name: skill.name,
+    description: skill.description,
+    path: skill.path,
   }
 }
 

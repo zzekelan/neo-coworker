@@ -14,6 +14,7 @@ export default function App() {
     createSession,
     createWorkspace,
     isManagingWorkspace,
+    skills,
     session,
     transcript,
     permissionRequests,
@@ -21,6 +22,8 @@ export default function App() {
     sendMessage,
     cancelRun,
     replyPermission,
+    setSessionActiveSkills,
+    setRunActiveSkills,
     errorMessage,
   } = useAgent()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -51,11 +54,14 @@ export default function App() {
         <ChatArea
           sessionSummary={sessions.find((candidate) => candidate.id === activeSessionId) || null}
           session={session}
+          skills={skills}
           transcript={transcript}
           permissionRequests={permissionRequests}
           onSendMessage={sendMessage}
           onCancelRun={cancelRun}
           onReplyPermission={replyPermission}
+          onSetSessionActiveSkills={setSessionActiveSkills}
+          onSetRunActiveSkills={setRunActiveSkills}
           isSidebarOpen={isSidebarOpen}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           errorMessage={errorMessage}

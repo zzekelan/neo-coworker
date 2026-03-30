@@ -853,6 +853,73 @@ describe("server HTTP API and SSE", () => {
     expect(openedEmptyWorkspace.body.data.workspace.sessions).toEqual([])
   })
 
+  test("skill state endpoints update session defaults and run active skills through the public API", async () => {
+    const harness = await createHarness("server-skill-state-update", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "Skill state updated." }
+      },
+    ]))
+    await mkdir(join(harness.workspaceRoot, ".agents", "skills", "reviewer"), { recursive: true })
+    await mkdir(join(harness.workspaceRoot, ".agents", "skills", "writer"), { recursive: true })
+    await Bun.write(
+      join(harness.workspaceRoot, ".agents", "skills", "reviewer", "SKILL.md"),
+      ["name: reviewer", "description: Review carefully", "", "Focus on bugs first."].join("\n"),
+    )
+    await Bun.write(
+      join(harness.workspaceRoot, ".agents", "skills", "writer", "SKILL.md"),
+      ["name: writer", "description: Draft clearly", "", "Lead with the result."].join("\n"),
+    )
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+      title: "Skill session",
+    })
+    expect(createdSession.status).toBe(201)
+    const sessionId = createdSession.body.data.session.id as string
+
+    const updatedSession = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/active-skills`,
+      {
+        activeSkills: [" reviewer ", "writer", "reviewer"],
+      },
+    )
+    expect(updatedSession.status).toBe(200)
+    expect(updatedSession.body.data.session.activeSkills).toEqual(["reviewer", "writer"])
+
+    const sessionState = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+    expect(sessionState.status).toBe(200)
+    expect(sessionState.body.data.session.activeSkills).toEqual(["reviewer", "writer"])
+
+    const startedRun = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "Update skill state",
+      runId: "run_skill_state_update",
+    })
+    expect(startedRun.status).toBe(201)
+    expect(startedRun.body.data.run.activeSkills).toEqual(["reviewer", "writer"])
+    await waitForRunStatus(harness.server, "run_skill_state_update", "completed")
+
+    const updatedRun = await requestJson(
+      harness.server,
+      "POST",
+      "/runs/run_skill_state_update/active-skills",
+      {
+        activeSkills: ["writer"],
+      },
+    )
+    expect(updatedRun.status).toBe(200)
+    expect(updatedRun.body.data.run.activeSkills).toEqual(["writer"])
+
+    const runState = await requestJson(harness.server, "GET", "/runs/run_skill_state_update")
+    expect(runState.status).toBe(200)
+    expect(runState.body.data.run.activeSkills).toEqual(["writer"])
+
+    const sessionStateAfterRunUpdate = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+    expect(sessionStateAfterRunUpdate.status).toBe(200)
+    expect(sessionStateAfterRunUpdate.body.data.session.activeSkills).toEqual(["reviewer", "writer"])
+  })
+
   test("a reconnecting client can refetch final state without historical SSE replay", async () => {
     const harness = await createHarness("server-reconnect", createTurnProvider([
       async function* () {

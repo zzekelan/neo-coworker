@@ -1,5 +1,6 @@
 import type {
   DesktopPermissionRequest,
+  DesktopSkillCatalogEntry,
   DesktopWorkspaceSummary,
   DesktopRun,
   DesktopServerEvent,
@@ -166,6 +167,12 @@ export async function createSession(input: { workspaceRoot: string; title?: stri
   })
 }
 
+export async function loadWorkspaceSkills(workspaceRoot: string) {
+  return requestApi<{ skills: DesktopSkillCatalogEntry[] }>(
+    `/workspace/skills?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
+  )
+}
+
 export async function loadSession(sessionId: string) {
   return requestApi<DesktopSessionSnapshot>(`/sessions/${encodeURIComponent(sessionId)}`)
 }
@@ -193,6 +200,27 @@ export async function loadRun(runId: string) {
   return requestApi<{ run: DesktopRun; permissionRequests: DesktopPermissionRequest[] }>(
     `/runs/${encodeURIComponent(runId)}`,
   )
+}
+
+export async function updateSessionActiveSkills(input: { sessionId: string; activeSkills: string[] }) {
+  return requestApi<{ session: DesktopSessionSummary }>(
+    `/sessions/${encodeURIComponent(input.sessionId)}/active-skills`,
+    {
+      method: "POST",
+      body: {
+        activeSkills: input.activeSkills,
+      },
+    },
+  )
+}
+
+export async function updateRunActiveSkills(input: { runId: string; activeSkills: string[] }) {
+  return requestApi<{ run: DesktopRun }>(`/runs/${encodeURIComponent(input.runId)}/active-skills`, {
+    method: "POST",
+    body: {
+      activeSkills: input.activeSkills,
+    },
+  })
 }
 
 export async function cancelRun(runId: string) {
