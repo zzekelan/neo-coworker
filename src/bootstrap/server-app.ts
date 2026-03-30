@@ -548,7 +548,7 @@ export function createServerApp(input: {
         }
       },
       updateActiveSkills(inputValue: { runId: string; activeSkills: string[] }) {
-        return repository.runs.updateActiveSkills(inputValue)
+        return sessionProvider.runs.updateActiveSkills(inputValue)
       },
       cancel(runId: string) {
         const run = repository.runs.get(runId)

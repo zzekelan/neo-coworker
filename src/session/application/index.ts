@@ -27,6 +27,7 @@ export {
   CURRENT_SESSION_SCHEMA_VERSION,
 } from "./storage-schema"
 export {
+  RunActiveSkillsUpdateStateError,
   RetrySourceRunError,
   SessionBusyError,
   SessionRunServiceError,

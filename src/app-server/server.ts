@@ -11,6 +11,7 @@ import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
   RUN_TRIGGERS,
+  RunActiveSkillsUpdateStateError,
   type ServerEvent,
   ServerShuttingDownError,
   SessionBusyError,
@@ -524,6 +525,7 @@ function mapHttpError(error: unknown) {
     error instanceof InvalidRunStatusTransitionError ||
     error instanceof SessionBusyError ||
     error instanceof StartRunIdentityConflictError ||
+    error instanceof RunActiveSkillsUpdateStateError ||
     error instanceof PermissionRequestNotPendingError ||
     error instanceof PermissionRequestRunStateError ||
     error instanceof PermissionRequestNotAwaitingActiveRuntimeError ||

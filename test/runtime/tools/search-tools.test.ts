@@ -140,6 +140,34 @@ describe("search tools", () => {
     ).resolves.toContain("https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams")
   })
 
+  test("public search backend parses multi-line SSE data frames", async () => {
+    const backend = createPublicSearchToolBackend({
+      async fetchImpl() {
+        return new Response(
+          [
+            "event: message",
+            'data: {"jsonrpc":"2.0",',
+            'data: "result":{"content":[{"type":"text","text":"Multi-line SSE result."}]}}',
+            "",
+          ].join("\n"),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+            },
+          },
+        )
+      },
+    })
+
+    await expect(
+      backend({
+        toolName: "websearch",
+        query: "split sse",
+      }),
+    ).resolves.toBe("Multi-line SSE result.")
+  })
+
   test("public search backend also accepts plain JSON MCP responses", async () => {
     const backend = createPublicSearchToolBackend({
       async fetchImpl() {

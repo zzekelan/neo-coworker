@@ -5,7 +5,10 @@ import {
   type SessionRepository,
   type StoredRun,
 } from "./ports/repository"
-import { createRunStateMachine } from "./run-state-machine"
+import {
+  createRunStateMachine,
+  isActiveRunStatus,
+} from "./run-state-machine"
 import { createSessionTranscriptService } from "./transcript-service"
 
 export type SessionActivityStatus = "idle" | "busy"
@@ -80,6 +83,18 @@ export class RetrySourceRunError extends SessionRunServiceError {
     this.name = "RetrySourceRunError"
     this.sessionId = input.sessionId
     this.runId = input.runId
+  }
+}
+
+export class RunActiveSkillsUpdateStateError extends SessionRunServiceError {
+  readonly runId: string
+  readonly status: StoredRun["status"]
+
+  constructor(input: { runId: string; status: StoredRun["status"] }) {
+    super(`Run ${input.runId} cannot update active skills from status ${input.status}`)
+    this.name = "RunActiveSkillsUpdateStateError"
+    this.runId = input.runId
+    this.status = input.status
   }
 }
 
@@ -209,11 +224,24 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
     return runStateMachine.transitionRunStatus(runId, "running")
   }
 
+  function updateRunActiveSkills(inputValue: { runId: string; activeSkills: string[] }) {
+    const run = repository.runs.get(inputValue.runId)
+    if (!isActiveRunStatus(run.status)) {
+      throw new RunActiveSkillsUpdateStateError({
+        runId: run.id,
+        status: run.status,
+      })
+    }
+
+    return repository.runs.updateActiveSkills(inputValue)
+  }
+
   return {
     getSessionState,
     startRun,
     retryRun,
     transitionRunToRunning,
+    updateRunActiveSkills,
     resumeRun(runId: string) {
       return transitionRunToRunning(runId)
     },

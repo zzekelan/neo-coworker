@@ -908,12 +908,15 @@ describe("server HTTP API and SSE", () => {
         activeSkills: ["writer"],
       },
     )
-    expect(updatedRun.status).toBe(200)
-    expect(updatedRun.body.data.run.activeSkills).toEqual(["writer"])
+    expect(updatedRun.status).toBe(409)
+    expect(updatedRun.body.error).toMatchObject({
+      code: "invalid_state",
+      message: "Run run_skill_state_update cannot update active skills from status completed",
+    })
 
     const runState = await requestJson(harness.server, "GET", "/runs/run_skill_state_update")
     expect(runState.status).toBe(200)
-    expect(runState.body.data.run.activeSkills).toEqual(["writer"])
+    expect(runState.body.data.run.activeSkills).toEqual(["reviewer", "writer"])
 
     const sessionStateAfterRunUpdate = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
     expect(sessionStateAfterRunUpdate.status).toBe(200)

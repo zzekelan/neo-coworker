@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 4173",
+    "dev": "vite --port 4173",
     "build": "vite build",
     "check": "tsc --noEmit",
     "electron": "electron electron/main.mjs"

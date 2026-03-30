@@ -6,6 +6,9 @@
     "dev": "bun run src/cli/main.ts",
     "server": "bun run src/app-server/main.ts",
     "desktop:open": "cd src/desktop && bun run electron",
+    "desktop:web:server": "AGENT_SERVER_HOST=127.0.0.1 AGENT_SERVER_PORT=3100 bun run src/app-server/main.ts",
+    "desktop:web:ui": "cd src/desktop && DESKTOP_UI_HOST=127.0.0.1 DESKTOP_APP_SERVER_URL=http://127.0.0.1:3100 bun run dev",
+    "desktop:web:ui:public": "cd src/desktop && DESKTOP_UI_HOST=0.0.0.0 DESKTOP_APP_SERVER_URL=http://127.0.0.1:3100 bun run dev",
     "eval": "bun run evals/main.ts",
     "test:structure": "bun test test/structure",
     "test": "bun test"

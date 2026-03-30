@@ -62,6 +62,9 @@ const markdownComponents: Components = {
       </a>
     )
   },
+  img: ({ alt }) => (
+    <span className="text-sm text-zinc-500">{alt ? `[Image omitted: ${alt}]` : "[Image omitted]"}</span>
+  ),
   ul: ({ children, className }) => (
     <ul
       className={cn(

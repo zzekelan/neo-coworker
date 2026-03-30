@@ -299,30 +299,51 @@ function parseExaResponse(responseText: string) {
 
 function parseExaEventStream(responseText: string) {
   const lines = responseText.split(/\r?\n/)
+  let dataSegments: string[] = []
 
   for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed.startsWith("data:")) {
-      continue
-    }
-
-    const payloadText = trimmed.slice(5).trimStart()
-    if (!payloadText) {
-      continue
-    }
-
-    try {
-      const payload = JSON.parse(payloadText) as ExaMcpResponse
-      const text = readExaContentText(payload)
+    if (line === "") {
+      const text = parseExaEventStreamPayload(dataSegments)
       if (text) {
         return text
       }
-    } catch {
+
+      dataSegments = []
       continue
     }
+
+    if (line.startsWith(":")) {
+      continue
+    }
+
+    const separatorIndex = line.indexOf(":")
+    const field = separatorIndex === -1 ? line : line.slice(0, separatorIndex)
+    if (field !== "data") {
+      continue
+    }
+
+    let value = separatorIndex === -1 ? "" : line.slice(separatorIndex + 1)
+    if (value.startsWith(" ")) {
+      value = value.slice(1)
+    }
+    dataSegments.push(value)
   }
 
-  return null
+  return parseExaEventStreamPayload(dataSegments)
+}
+
+function parseExaEventStreamPayload(dataSegments: string[]) {
+  const payloadText = dataSegments.join("\n").trim()
+  if (!payloadText) {
+    return null
+  }
+
+  try {
+    const payload = JSON.parse(payloadText) as ExaMcpResponse
+    return readExaContentText(payload)
+  } catch {
+    return null
+  }
 }
 
 function readExaContentText(payload: ExaMcpResponse) {

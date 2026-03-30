@@ -63,4 +63,14 @@ describe("desktop markdown text", () => {
     expect(html).toContain("unsafe")
     expect(html).toContain("before continuing.")
   })
+
+  test("omits markdown images instead of emitting img tags", () => {
+    const html = renderToStaticMarkup(
+      <MarkdownText text={"Preview ![diagram](https://example.com/a.png) before continuing."} />,
+    )
+
+    expect(html).not.toContain("<img")
+    expect(html).not.toContain("https://example.com/a.png")
+    expect(html).toContain("[Image omitted: diagram]")
+  })
 })

@@ -5,6 +5,7 @@ import { join } from "node:path"
 
 import {
   InvalidRunStatusTransitionError,
+  RunActiveSkillsUpdateStateError,
   SessionBusyError,
   createSessionRunService,
 } from "../../src/session"
@@ -318,6 +319,42 @@ describe("session run service", () => {
     })
 
     expect(second.run.activeSkills).toEqual(["writer"])
+  })
+
+  test("only allows run active skill updates while the run is active", () => {
+    const { repository, service } = createTestSubject("run-skill-update-state", [11, 22, 33])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    const started = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    const updatedWhileQueued = service.updateRunActiveSkills({
+      runId: started.run.id,
+      activeSkills: [" reviewer ", "writer", "reviewer"],
+    })
+
+    expect(updatedWhileQueued.activeSkills).toEqual(["reviewer", "writer"])
+
+    service.transitionRunToRunning(started.run.id)
+    service.completeRun(started.run.id)
+
+    expect(() =>
+      service.updateRunActiveSkills({
+        runId: started.run.id,
+        activeSkills: ["designer"],
+      }),
+    ).toThrow(RunActiveSkillsUpdateStateError)
+    expect(repository.runs.get(started.run.id).activeSkills).toEqual(["reviewer", "writer"])
   })
 })
 
