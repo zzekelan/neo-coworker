@@ -11,6 +11,7 @@ interface SkillPanelProps {
   activeRun?: DesktopRun
   busySkillName: string | null
   errorMessage: string | null
+  warningMessage: string | null
   onStartSkill: (skillName: string) => void | Promise<unknown>
   onStopSkill: (skillName: string) => void | Promise<unknown>
   onSetDefaultSkill: (skillName: string) => void | Promise<unknown>
@@ -23,6 +24,7 @@ export function SkillPanel({
   activeRun,
   busySkillName,
   errorMessage,
+  warningMessage,
   onStartSkill,
   onStopSkill,
   onSetDefaultSkill,
@@ -44,6 +46,12 @@ export function SkillPanel({
           </div>
         </div>
       </div>
+
+      {warningMessage ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+          {warningMessage}
+        </div>
+      ) : null}
 
       {errorMessage ? (
         <div className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-600">{errorMessage}</div>

@@ -58,6 +58,11 @@ async function loadSkillFromPath(
   }
 }
 
+function shouldSkipCatalogEntryError(error: unknown) {
+  const code = (error as NodeJS.ErrnoException)?.code
+  return code === "ENOENT"
+}
+
 export function createWorkspaceSkillStore(): SkillStore {
   return {
     async listCatalog(workspaceRoot: string): Promise<SkillCatalogEntry[]> {
@@ -82,7 +87,16 @@ export function createWorkspaceSkillStore(): SkillStore {
         }
 
         const skillPath = getSkillCatalogPath(entry.name)
-        const metadata = await readSkillMetadata(workspaceRoot, skillPath, entry.name)
+        let metadata
+        try {
+          metadata = await readSkillMetadata(workspaceRoot, skillPath, entry.name)
+        } catch (error) {
+          if (shouldSkipCatalogEntryError(error)) {
+            continue
+          }
+
+          throw error
+        }
 
         catalog.push({
           ...metadata,

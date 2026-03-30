@@ -25,6 +25,7 @@ export default function App() {
     setSessionActiveSkills,
     setRunActiveSkills,
     errorMessage,
+    skillWarningMessage,
   } = useAgent()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
@@ -65,6 +66,7 @@ export default function App() {
           isSidebarOpen={isSidebarOpen}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           errorMessage={errorMessage}
+          skillWarningMessage={skillWarningMessage}
         />
       </div>
     </div>

@@ -76,6 +76,35 @@ describe("skill runtime", () => {
     })
   })
 
+  test("skips broken skill symlinks while keeping the rest of the catalog readable", async () => {
+    const workspaceRoot = await createWorkspaceWithSkill({
+      directoryName: "reviewer",
+      instructions: [
+        "name: reviewer",
+        "description: Review code changes for regressions",
+        "",
+        "Focus on bugs first.",
+      ].join("\n"),
+    })
+    const brokenSkillDirectory = join(workspaceRoot, ".agents", "skills", "broken")
+
+    await mkdir(brokenSkillDirectory, { recursive: true })
+    await symlink(
+      join(workspaceRoot, ".agents", "skills", "broken", "missing-SKILL.md"),
+      join(brokenSkillDirectory, "SKILL.md"),
+    )
+
+    const runtime = createWorkspaceSkillRuntime()
+
+    await expect(runtime.listCatalog(workspaceRoot)).resolves.toEqual([
+      {
+        name: "reviewer",
+        description: "Review code changes for regressions",
+        path: ".agents/skills/reviewer/SKILL.md",
+      },
+    ])
+  })
+
   test("rejects discovered skill files that escape the skills directory", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "skill-runtime-workspace-"))
     const externalRoot = await mkdtemp(join(tmpdir(), "skill-runtime-external-"))

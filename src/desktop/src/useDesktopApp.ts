@@ -19,10 +19,10 @@ import {
   updateSessionActiveSkills,
 } from "./api"
 import {
-  normalizeTranscript,
   upsertTranscriptMessage,
   upsertTranscriptMessagePart,
 } from "./transcript-state"
+import { loadDesktopRefreshCore } from "./refresh-data"
 import type {
   ConnectionStatus,
   DesktopMessage,
@@ -49,6 +49,7 @@ type AppState = {
   isSending: boolean
   isManagingWorkspace: boolean
   actionError: string | null
+  skillWarningMessage: string | null
 }
 
 type RefreshOptions = {
@@ -111,47 +112,21 @@ export function useDesktopApp() {
     }
 
     try {
-      const workspaceData = await loadWorkspaces()
-      const workspaces = mergeWorkspaces(workspaceData.workspaces, knownWorkspacesRef.current)
       const requestedWorkspaceRoot =
         options.workspaceRoot ?? selectionRef.current.activeWorkspaceRoot ?? bridge.defaultWorkspaceRoot ?? null
-      const resolvedWorkspaceRoot =
-        requestedWorkspaceRoot &&
-        workspaces.some((workspace) => workspace.workspaceRoot === requestedWorkspaceRoot)
-          ? requestedWorkspaceRoot
-          : workspaces[0]?.workspaceRoot ?? null
-      const sessionData = resolvedWorkspaceRoot
-        ? await loadWorkspaceSessions(resolvedWorkspaceRoot)
-        : { sessions: [] }
-      const skillData = resolvedWorkspaceRoot
-        ? await loadWorkspaceSkills(resolvedWorkspaceRoot)
-        : { skills: [] }
-      const activeSessionId = chooseActiveSessionId({
+      const refreshData = await loadDesktopRefreshCore({
+        loaders: {
+          loadWorkspaces,
+          loadWorkspaceSessions,
+          loadWorkspaceSkills,
+          loadSession,
+          loadTranscript,
+          loadRun,
+        },
+        knownWorkspaces: knownWorkspacesRef.current,
+        requestedWorkspaceRoot,
         preferredSessionId: options.sessionId ?? selectionRef.current.activeSessionId,
-        sessions: sessionData.sessions,
       })
-
-      let snapshot: DesktopSessionSnapshot | null = null
-      let transcript: DesktopMessage[] = []
-      let permissionRequests: DesktopPermissionRequest[] = []
-      let sessionRestoreError: unknown = null
-
-      if (activeSessionId) {
-        try {
-          snapshot = await loadSession(activeSessionId)
-          const transcriptData = await loadTranscript(activeSessionId)
-          transcript = normalizeTranscript(transcriptData.transcript)
-
-          if (snapshot.activeRun) {
-            const runState = await loadRun(snapshot.activeRun.id)
-            permissionRequests = runState.permissionRequests
-              .filter((request) => request.status === "pending")
-              .sort((left, right) => left.createdAt - right.createdAt)
-          }
-        } catch (error) {
-          sessionRestoreError = error
-        }
-      }
 
       if (currentToken !== refreshTokenRef.current) {
         return
@@ -159,27 +134,43 @@ export function useDesktopApp() {
 
       setState((previous) => ({
         ...previous,
-        workspaces,
-        skills: skillData.skills,
-        sessions: sessionData.sessions,
-        activeWorkspaceRoot: resolvedWorkspaceRoot,
-        activeSessionId,
-        sessionSnapshot: snapshot,
-        transcript,
-        permissionRequests,
+        workspaces: refreshData.workspaces,
+        skills:
+          previous.activeWorkspaceRoot === refreshData.resolvedWorkspaceRoot
+            ? previous.skills
+            : [],
+        sessions: refreshData.sessions,
+        activeWorkspaceRoot: refreshData.resolvedWorkspaceRoot,
+        activeSessionId: refreshData.activeSessionId,
+        sessionSnapshot: refreshData.snapshot,
+        transcript: refreshData.transcript,
+        permissionRequests: refreshData.permissionRequests,
         connection: {
           state: "online",
           label: "Connected to app-server",
-          detail: bridge.apiOrigin ?? resolvedWorkspaceRoot ?? "Desktop bridge",
+          detail: bridge.apiOrigin ?? refreshData.resolvedWorkspaceRoot ?? "Desktop bridge",
         },
         isLoading: false,
         isSending:
-          snapshot?.activeRun !== null &&
-          snapshot?.activeRun !== undefined &&
-          snapshot.activeRun.status !== "waiting_permission",
+          refreshData.snapshot?.activeRun !== null &&
+          refreshData.snapshot?.activeRun !== undefined &&
+          refreshData.snapshot.activeRun.status !== "waiting_permission",
         isManagingWorkspace: false,
-        actionError: sessionRestoreError ? toErrorMessage(sessionRestoreError) : null,
+        actionError: refreshData.sessionRestoreError ? toErrorMessage(refreshData.sessionRestoreError) : null,
+        skillWarningMessage: null,
       }))
+
+      void refreshData.loadSkills().then((skillData) => {
+        if (currentToken !== refreshTokenRef.current) {
+          return
+        }
+
+        setState((previous) => ({
+          ...previous,
+          skills: skillData.skills,
+          skillWarningMessage: skillData.warningMessage,
+        }))
+      })
     } catch (error) {
       if (currentToken !== refreshTokenRef.current) {
         return
@@ -191,6 +182,7 @@ export function useDesktopApp() {
         isSending: false,
         isManagingWorkspace: false,
         actionError: toErrorMessage(error),
+        skillWarningMessage: null,
         connection: {
           state: "error",
           label: "app-server unavailable",
@@ -341,6 +333,7 @@ export function useDesktopApp() {
         ...previous,
         activeWorkspaceRoot: workspaceRoot,
         skills: [],
+        skillWarningMessage: null,
         activeSessionId: null,
         sessions: [],
         transcript: [],
@@ -633,10 +626,10 @@ function createInitialState(input: {
   const activeSessionId = input.persistedSessionId ?? null
 
   if (!window.neoCoworkerDesktop?.requestJson && !window.neoCoworkerDesktop?.apiOrigin) {
-    return {
-      workspaces,
-      skills: [],
-      sessions: [],
+      return {
+        workspaces,
+        skills: [],
+        sessions: [],
       activeWorkspaceRoot,
       activeSessionId,
       sessionSnapshot: null,
@@ -648,10 +641,11 @@ function createInitialState(input: {
         detail: "Connect this renderer to app-server through the desktop shell.",
       },
       isLoading: false,
-      isSending: false,
-      isManagingWorkspace: false,
-      actionError: null,
-    }
+        isSending: false,
+        isManagingWorkspace: false,
+        actionError: null,
+        skillWarningMessage: null,
+      }
   }
 
   return {
@@ -672,21 +666,8 @@ function createInitialState(input: {
     isSending: false,
     isManagingWorkspace: false,
     actionError: null,
+    skillWarningMessage: null,
   }
-}
-
-function chooseActiveSessionId(input: {
-  preferredSessionId: string | null | undefined
-  sessions: DesktopSessionSummary[]
-}) {
-  if (
-    input.preferredSessionId &&
-    input.sessions.some((session) => session.id === input.preferredSessionId)
-  ) {
-    return input.preferredSessionId
-  }
-
-  return input.sessions[0]?.id ?? null
 }
 
 function createInitialWorkspaces(input: {
@@ -722,19 +703,6 @@ function createDefaultWorkspace(workspaceRoot: string): DesktopWorkspaceSummary 
     sessionCount: 0,
     sessions: [],
   }
-}
-
-function mergeWorkspaces(
-  workspaces: DesktopWorkspaceSummary[],
-  knownWorkspaces: ReadonlyMap<string, DesktopWorkspaceSummary>,
-) {
-  const merged = new Map(knownWorkspaces)
-
-  for (const workspace of workspaces) {
-    merged.set(workspace.workspaceRoot, workspace)
-  }
-
-  return [...merged.values()].sort((left, right) => right.latestActivityAt - left.latestActivityAt)
 }
 
 function resolveWorkspaceRoot(input: {

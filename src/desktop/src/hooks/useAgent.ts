@@ -52,6 +52,7 @@ export function useAgent() {
       return desktop.setRunActiveSkills(runId, activeSkills)
     },
     errorMessage: desktop.actionError,
+    skillWarningMessage: desktop.skillWarningMessage,
   }
 }
 

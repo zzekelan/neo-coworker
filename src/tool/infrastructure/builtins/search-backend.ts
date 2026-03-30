@@ -35,6 +35,10 @@ type ExaMcpRequest = {
 }
 
 type ExaMcpResponse = {
+  error?: {
+    code?: number
+    message?: string
+  }
   result?: {
     content?: Array<{
       type?: string
@@ -289,12 +293,14 @@ function parseExaResponse(responseText: string) {
     return sseOutput
   }
 
+  let payload: ExaMcpResponse
   try {
-    const payload = JSON.parse(responseText) as ExaMcpResponse
-    return readExaContentText(payload)
+    payload = JSON.parse(responseText) as ExaMcpResponse
   } catch {
     return null
   }
+
+  return readExaResponseText(payload)
 }
 
 function parseExaEventStream(responseText: string) {
@@ -338,12 +344,30 @@ function parseExaEventStreamPayload(dataSegments: string[]) {
     return null
   }
 
+  let payload: ExaMcpResponse
   try {
-    const payload = JSON.parse(payloadText) as ExaMcpResponse
-    return readExaContentText(payload)
+    payload = JSON.parse(payloadText) as ExaMcpResponse
   } catch {
     return null
   }
+
+  return readExaResponseText(payload)
+}
+
+function readExaResponseText(payload: ExaMcpResponse) {
+  if (payload.error) {
+    const codeSuffix =
+      typeof payload.error.code === "number"
+        ? ` (${payload.error.code})`
+        : ""
+    const message =
+      typeof payload.error.message === "string" && payload.error.message.trim()
+        ? payload.error.message.trim()
+        : "unknown Exa MCP error"
+    throw new Error(`Setup error: Public search backend failed${codeSuffix}: ${message}`)
+  }
+
+  return readExaContentText(payload)
 }
 
 function readExaContentText(payload: ExaMcpResponse) {

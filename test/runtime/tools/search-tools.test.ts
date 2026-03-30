@@ -200,4 +200,33 @@ describe("search tools", () => {
       }),
     ).resolves.toBe("Plain JSON response from Exa MCP.")
   })
+
+  test("public search backend surfaces JSON-RPC errors instead of pretending no results were found", async () => {
+    const backend = createPublicSearchToolBackend({
+      async fetchImpl() {
+        return new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: {
+              code: -32000,
+              message: "rate limited",
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        )
+      },
+    })
+
+    await expect(
+      backend({
+        toolName: "websearch",
+        query: "x",
+      }),
+    ).rejects.toThrow("Setup error: Public search backend failed (-32000): rate limited")
+  })
 })
