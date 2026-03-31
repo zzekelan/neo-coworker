@@ -78,28 +78,81 @@ async function readNextModelEvent<T>(input: {
   iterator: AsyncIterator<T>
   signal: AbortSignal
 }) {
+  const nextValue = input.iterator.next()
   if (input.signal.aborted) {
-    void input.iterator.return?.()
+    const drained = await drainAlreadyProducedModelEvent(nextValue)
+    if (drained && !drained.done) {
+      void Promise.resolve(input.iterator.return?.()).catch(() => {})
+      return drained
+    }
+
+    void Promise.resolve(input.iterator.return?.()).catch(() => {})
     throw createAbortError()
   }
 
+  let aborted = false
   let rejectAbort: ((error: Error) => void) | null = null
-  const nextValue = input.iterator.next()
-  const aborted = new Promise<never>((_resolve, reject) => {
+  const abortedPromise = new Promise<never>((_resolve, reject) => {
     rejectAbort = reject
   })
   const onAbort = () => {
-    void input.iterator.return?.()
+    aborted = true
     rejectAbort?.(createAbortError())
   }
 
   input.signal.addEventListener("abort", onAbort, { once: true })
 
   try {
-    return await Promise.race([nextValue, aborted])
+    return await Promise.race([nextValue, abortedPromise])
+  } catch (error) {
+    if (!aborted) {
+      throw error
+    }
+
+    const drained = await drainAlreadyProducedModelEvent(nextValue)
+    if (drained && !drained.done) {
+      void Promise.resolve(input.iterator.return?.()).catch(() => {})
+      return drained
+    }
+
+    void Promise.resolve(input.iterator.return?.()).catch(() => {})
+    throw createAbortError()
   } finally {
     input.signal.removeEventListener("abort", onAbort)
   }
+}
+
+async function drainAlreadyProducedModelEvent<T>(nextValue: Promise<IteratorResult<T>>) {
+  const result = await Promise.race([
+    nextValue.then(
+      (value) =>
+        ({
+          kind: "value" as const,
+          value,
+        }),
+      (error) =>
+        ({
+          kind: "error" as const,
+          error,
+        }),
+    ),
+    new Promise<{ kind: "timeout" }>((resolve) => {
+      setTimeout(() => {
+        resolve({ kind: "timeout" })
+      }, 0)
+    }),
+  ])
+
+  if (result.kind === "value") {
+    return result.value
+  }
+
+  if (result.kind === "error") {
+    throw result.error
+  }
+
+  void nextValue.catch(() => {})
+  return null
 }
 
 function shouldRetryModelRequest(input: {
@@ -258,7 +311,14 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             if (item.type === "text.delta") {
               assistantTurn.appendText(item.text)
               stepInput.emit({ type: "message.delta", text: item.text })
+              if (stepInput.signal.aborted) {
+                throw createAbortError()
+              }
               continue
+            }
+
+            if (stepInput.signal.aborted) {
+              throw createAbortError()
             }
 
             requestedTool = true

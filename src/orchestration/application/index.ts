@@ -21,6 +21,7 @@ export type {
 } from "./ports/session"
 export type {
   OrchestrationActiveSkill,
+  OrchestrationLoadedSkill,
   OrchestrationSkillCatalogEntry,
   OrchestrationSkillPort,
 } from "./ports/skill"

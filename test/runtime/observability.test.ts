@@ -331,6 +331,20 @@ describe("runtime observability", () => {
       activeSkillNames: ["reviewer"],
       activeSkillCount: 1,
     })
+
+    const loadCompletedEvents = (trace?.events ?? []).filter(
+      (event) => event.eventType === "skill.load.completed",
+    )
+    expect(loadCompletedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            skillName: "reviewer",
+            skillPath: ".agents/skills/reviewer/SKILL.md",
+          }),
+        }),
+      ]),
+    )
   })
 })
 

@@ -435,23 +435,19 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
   function cancelRun(runId: string) {
     const run = input.session.getRun(runId)
     const activeRun = activeRuns.get(buildActiveRunKey(run.sessionId, runId))
-    const didCancel = stepService.cancelRun({
-      runId,
-      emit: activeRun?.emit,
-    })
-
-    if (!didCancel) {
-      return
+    if (run.status === "cancelled" || run.status === "completed" || run.status === "failed") {
+      return false
     }
 
     input.permission.cancelPendingRequestsByRun(runId, now())
 
     if (!activeRun) {
-      return
+      return stepService.cancelRun({ runId })
     }
 
     activeRun.controller.abort()
     activeRun.suspend.cancel()
+    return true
   }
 
   function detachRun(runId: string) {

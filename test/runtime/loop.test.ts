@@ -438,6 +438,90 @@ describe("agent loop", () => {
     ])
   })
 
+  test("does not activate a skill after cancellation is requested during skill loading", async () => {
+    const harness = await createHarness("skill-cancelled-activation", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_skill_cancelled_activation",
+      messageId: "message_skill_cancelled_activation",
+      prompt: "Try to activate the reviewer skill and then cancel",
+    })
+    let releaseSkillLoad!: () => void
+    const skillLoadBlocked = new Promise<void>((resolve) => {
+      releaseSkillLoad = resolve
+    })
+    let notifySkillLoadStarted!: () => void
+    const skillLoadStarted = new Promise<void>((resolve) => {
+      notifySkillLoadStarted = resolve
+    })
+    const runtime = createRuntime({
+      provider: createTurnProvider([], [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_skill_cancelled",
+            name: "skill",
+            inputText: '{"name":"reviewer"}',
+          }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      skill: {
+        async listCatalog() {
+          return [
+            {
+              name: "reviewer",
+              description: "Review code changes carefully",
+              path: ".agents/skills/reviewer/SKILL.md",
+            },
+          ]
+        },
+        async loadSkill() {
+          notifySkillLoadStarted()
+          await skillLoadBlocked
+          return {
+            name: "reviewer",
+            path: ".agents/skills/reviewer/SKILL.md",
+            instructions: "Focus on bugs first.",
+          }
+        },
+      },
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+
+    await skillLoadStarted
+    handle.cancel()
+    releaseSkillLoad()
+
+    await collectEvents(handle.events)
+
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      status: "cancelled",
+      activeSkills: [],
+    })
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    expect(activeRunMessages[1]?.parts).toMatchObject([
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_skill_cancelled",
+          toolName: "skill",
+        },
+      },
+    ])
+    expect(activeRunMessages[1]?.parts).toHaveLength(1)
+  })
+
   test("persists malformed tool arguments as an error outcome and continues the run", async () => {
     const harness = await createHarness("tool-error", false)
     const started = startPromptRun({
@@ -736,6 +820,66 @@ describe("agent loop", () => {
       runId: started.run.id,
       error: "provider exploded",
     })
+  })
+
+  test("cancellation requested after run start still persists already-yielded output", async () => {
+    const harness = await createHarness("cancelled-after-start", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_cancelled_after_start",
+      messageId: "message_cancelled_after_start_user",
+      prompt: "Start and then cancel immediately",
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn(request: { signal: AbortSignal }) {
+          yield { type: "text.delta", text: "Still working." }
+          await new Promise<void>((_, reject) => {
+            request.signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("aborted")
+                error.name = "AbortError"
+                reject(error)
+              },
+              { once: true },
+            )
+          })
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const observedTypes: string[] = []
+
+    while (true) {
+      const next = await iterator.next()
+      if (next.done) {
+        break
+      }
+
+      observedTypes.push(next.value.type)
+      if (next.value.type === "run.started") {
+        handle.cancel()
+      }
+    }
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(observedTypes).toContain("message.delta")
+    expect(observedTypes.at(-1)).toBe("run.cancelled")
+    expect(activeRunMessages[1]?.parts).toMatchObject([{ kind: "text", text: "Still working." }])
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
   })
 
   test("cancellation keeps persisted output intact and marks the run cancelled", async () => {

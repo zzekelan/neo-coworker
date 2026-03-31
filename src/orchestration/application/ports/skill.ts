@@ -9,10 +9,14 @@ export type OrchestrationActiveSkill = {
   instructions: string
 }
 
+export type OrchestrationLoadedSkill = OrchestrationActiveSkill & {
+  path: string
+}
+
 export type OrchestrationSkillPort = {
   listCatalog(workspaceRoot: string): Promise<OrchestrationSkillCatalogEntry[]>
   loadSkill(input: {
     workspaceRoot: string
     name: string
-  }): Promise<OrchestrationActiveSkill>
+  }): Promise<OrchestrationLoadedSkill>
 }
