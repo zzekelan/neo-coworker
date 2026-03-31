@@ -19,6 +19,8 @@ const repositoryRoot = resolve(__dirname, "..", "..", "..")
 const preloadPath = resolve(__dirname, "preload.cjs")
 const workspaceRoot = process.env.DESKTOP_WORKSPACE_ROOT || resolve(repositoryRoot, ".agents", "workspace")
 const desktopSelectionStatePath = resolve(repositoryRoot, ".agents", "desktop-state.json")
+const desktopServerDatabasePath =
+  process.env.AGENT_SERVER_DB_PATH?.trim() || resolve(repositoryRoot, ".agents", "server.sqlite")
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
 const bunBin = resolveBunExecutable()
 const bootstrapLogPath = process.env.DESKTOP_BOOTSTRAP_LOG?.trim() || null
@@ -158,6 +160,7 @@ async function resolveServerOrigin() {
   const env = buildLoopbackEnv({
     AGENT_SERVER_HOST: "127.0.0.1",
     AGENT_SERVER_PORT: String(port),
+    AGENT_SERVER_DB_PATH: desktopServerDatabasePath,
   })
   logBootstrap(`server.local.start ${port}`)
   const child = spawn(bunBin, ["run", "src/app-server/main.ts"], {
