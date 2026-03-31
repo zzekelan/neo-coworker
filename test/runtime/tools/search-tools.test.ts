@@ -140,6 +140,106 @@ describe("search tools", () => {
     ).resolves.toContain("https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams")
   })
 
+  test("public websearch falls back to DuckDuckGo when Exa returns an HTTP error", async () => {
+    const requestedUrls: string[] = []
+    const backend = createPublicSearchToolBackend({
+      async fetchImpl(input) {
+        const url = typeof input === "string" ? input : input.toString()
+        requestedUrls.push(url)
+
+        if (url === "https://mcp.exa.ai/mcp") {
+          return new Response("upstream unavailable", {
+            status: 500,
+            headers: {
+              "content-type": "text/plain",
+            },
+          })
+        }
+
+        if (url.startsWith("https://api.duckduckgo.com/")) {
+          return new Response(
+            JSON.stringify({
+              Heading: "Alan Turing",
+              AbstractText: "Alan Turing was born on 23 June 1912.",
+              AbstractURL: "https://en.wikipedia.org/wiki/Alan_Turing",
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+              },
+            },
+          )
+        }
+
+        throw new Error(`Unexpected fetch URL: ${url}`)
+      },
+    })
+
+    await expect(
+      backend({
+        toolName: "websearch",
+        query: "Alan Turing birth date",
+      }),
+    ).resolves.toContain("23 June 1912")
+    expect(requestedUrls).toEqual([
+      "https://mcp.exa.ai/mcp",
+      expect.stringContaining("https://api.duckduckgo.com/"),
+    ])
+  })
+
+  test("public codesearch falls back to MDN when Exa returns an HTTP error", async () => {
+    const requestedUrls: string[] = []
+    const backend = createPublicSearchToolBackend({
+      async fetchImpl(input) {
+        const url = typeof input === "string" ? input : input.toString()
+        requestedUrls.push(url)
+
+        if (url === "https://mcp.exa.ai/mcp") {
+          return new Response("upstream unavailable", {
+            status: 500,
+            headers: {
+              "content-type": "text/plain",
+            },
+          })
+        }
+
+        if (url.startsWith("https://developer.mozilla.org/api/v1/search")) {
+          return new Response(
+            JSON.stringify({
+              documents: [
+                {
+                  title: "URLSearchParams",
+                  mdn_url: "/en-US/docs/Web/API/URLSearchParams",
+                  summary: "URLSearchParams lets you work with the query string of a URL.",
+                },
+              ],
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+              },
+            },
+          )
+        }
+
+        throw new Error(`Unexpected fetch URL: ${url}`)
+      },
+    })
+
+    await expect(
+      backend({
+        toolName: "codesearch",
+        query: "URLSearchParams",
+      }),
+    ).resolves.toContain("https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams")
+    expect(requestedUrls).toEqual([
+      "https://mcp.exa.ai/mcp",
+      expect.stringContaining("https://developer.mozilla.org/api/v1/search"),
+    ])
+  })
+
   test("public search backend parses multi-line SSE data frames", async () => {
     const backend = createPublicSearchToolBackend({
       async fetchImpl() {
