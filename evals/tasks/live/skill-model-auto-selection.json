@@ -1,8 +1,9 @@
 {
   "id": "live/skill-model-auto-selection",
   "providerMode": "live",
-  "prompt": "You need to produce a concise operator-facing summary. If a matching skill is available in the catalog, choose it and use it before answering.",
+  "prompt": "You need to produce a concise operator-facing summary of this update: API error rate spiked to 7% at 10:12 UTC after deploy 1442, traffic was rolled back at 10:18 UTC, recovery was confirmed by 10:21 UTC, and the next step is to compare the config diff and DB pool settings before redeploy. If a matching skill is available in the catalog, choose it and use it before answering.",
   "workspaceFixture": "workspaces/skills",
+  "autoReplyPermission": "deny",
   "traceExpectation": {
     "requiredEventTypes": [
       "skill.catalog.exposed",
@@ -32,6 +33,28 @@
       "write",
       "edit",
       "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "skill"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Summary:"
+        ]
+      }
     ]
   },
   "traceSequenceExpectation": {

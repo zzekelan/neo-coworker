@@ -1,8 +1,9 @@
 {
   "id": "live/skill-run-snapshot",
   "providerMode": "live",
-  "prompt": "A session default skill is already configured for this run. Answer briefly without changing the active skill set.",
+  "prompt": "A reviewer session default skill is already configured for this run. Use only the information in this prompt and do not inspect the workspace or run tools. Briefly review this proposed change without changing the active skill set: remove the null check around providerResponse.id because it is 'always set', add exponential retry backoff for 429s, and leave the duplicate-event tests unchanged.",
   "workspaceFixture": "workspaces/skills",
+  "autoReplyPermission": "deny",
   "sessionSeed": {
     "activeSkills": [
       "reviewer"
@@ -32,9 +33,26 @@
   "toolPolicyExpectation": {
     "forbiddenToolNames": [
       "skill",
+      "glob",
+      "grep",
+      "read",
+      "webfetch",
+      "websearch",
+      "codesearch",
       "write",
       "edit",
       "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "textIncludes": [
+          "Review:"
+        ]
+      }
     ]
   },
   "traceSequenceExpectation": {

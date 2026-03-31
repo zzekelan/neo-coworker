@@ -1,7 +1,7 @@
 {
   "id": "live/tool-websearch",
   "providerMode": "live",
-  "prompt": "Use websearch to investigate the query Alan Turing. Summarize the top result you found.",
+  "prompt": "Use websearch to find Alan Turing's exact birth date from the Wikipedia result. Reply with the exact date and the exact URL you used.",
   "workspaceFixture": "workspaces/basic",
   "permissionPolicy": {
     "websearch": "allow"
@@ -50,6 +50,14 @@
         "toolNames": [
           "websearch"
         ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "23 June 1912",
+          "https://en.wikipedia.org/wiki/Alan_Turing"
+        ]
       }
     ]
   },
@@ -58,6 +66,21 @@
       "run.started",
       "tool.call.completed",
       "run.completed"
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "websearch",
+        "toolResultIncludes": [
+          "23 June 1912",
+          "https://en.wikipedia.org/wiki/Alan_Turing"
+        ],
+        "assistantTextIncludes": [
+          "23 June 1912",
+          "https://en.wikipedia.org/wiki/Alan_Turing"
+        ]
+      }
     ]
   }
 }

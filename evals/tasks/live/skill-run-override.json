@@ -1,8 +1,9 @@
 {
   "id": "live/skill-run-override",
   "providerMode": "live",
-  "prompt": "Keep the reviewer default active, then use the skill tool to activate writer for this run before answering with a concise operator-facing summary.",
+  "prompt": "Keep the reviewer default active, then use the skill tool to activate writer for this run before answering with a concise operator-facing summary of this update: API error rate spiked to 7% at 10:12 UTC after deploy 1442, traffic was rolled back at 10:18 UTC, recovery was confirmed by 10:21 UTC, and the next step is to compare the config diff and DB pool settings before redeploy.",
   "workspaceFixture": "workspaces/skills",
+  "autoReplyPermission": "deny",
   "sessionSeed": {
     "activeSkills": [
       "reviewer"
@@ -51,6 +52,13 @@
         ],
         "toolNames": [
           "skill"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Summary:"
         ]
       }
     ]

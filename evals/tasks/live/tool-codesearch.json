@@ -1,7 +1,7 @@
 {
   "id": "live/tool-codesearch",
   "providerMode": "live",
-  "prompt": "Use only the codesearch tool to investigate the query URLSearchParams. Do not use webfetch, websearch, grep, shell, read, write, or edit. Summarize the most relevant API-oriented result you found.",
+  "prompt": "Use only the codesearch tool to investigate URLSearchParams. Do not use webfetch, websearch, grep, shell, read, write, or edit. Reply with the exact MDN URL you found and the exact baseline-availability month and year mentioned in the result.",
   "workspaceFixture": "workspaces/basic",
   "permissionPolicy": {
     "codesearch": "allow"
@@ -50,6 +50,14 @@
         "toolNames": [
           "codesearch"
         ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "April 2018",
+          "https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams"
+        ]
       }
     ]
   },
@@ -58,6 +66,21 @@
       "run.started",
       "tool.call.completed",
       "run.completed"
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "codesearch",
+        "toolResultIncludes": [
+          "April 2018",
+          "https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams"
+        ],
+        "assistantTextIncludes": [
+          "April 2018",
+          "https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams"
+        ]
+      }
     ]
   }
 }

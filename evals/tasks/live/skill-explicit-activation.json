@@ -1,8 +1,9 @@
 {
   "id": "live/skill-explicit-activation",
   "providerMode": "live",
-  "prompt": "Use the skill tool to activate the writer skill before answering. Then provide a concise operator-facing summary.",
+  "prompt": "Use the skill tool to activate the writer skill before answering. Then provide a concise operator-facing summary of this update: API error rate spiked to 7% at 10:12 UTC after deploy 1442, traffic was rolled back at 10:18 UTC, recovery was confirmed by 10:21 UTC, and the next step is to compare the config diff and DB pool settings before redeploy.",
   "workspaceFixture": "workspaces/skills",
+  "autoReplyPermission": "deny",
   "traceExpectation": {
     "requiredEventTypes": [
       "skill.run.snapshot.applied",
@@ -46,6 +47,13 @@
         ],
         "toolNames": [
           "skill"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Summary:"
         ]
       }
     ]
