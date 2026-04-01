@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useEffect, useRef } from "react"
 import { Check, ShieldAlert, X } from "lucide-react"
 import { motion } from "framer-motion"
 import type { DesktopPermissionRequest } from "../view-types"
@@ -6,17 +6,41 @@ import type { DesktopPermissionRequest } from "../view-types"
 interface Props {
   request: DesktopPermissionRequest
   onReply: (id: string, decision: "allow" | "deny") => void | Promise<unknown>
+  autoFocus?: boolean
 }
 
-export const PermissionRequest: React.FC<Props> = ({ request, onReply }) => {
+export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus = false }) => {
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!autoFocus) {
+      return
+    }
+
+    cardRef.current?.focus()
+  }, [autoFocus])
+
   if (request.status !== "pending") {
     return null
   }
 
   return (
     <motion.div
+      ref={cardRef}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault()
+          void onReply(request.id, "allow")
+        }
+
+        if (event.key === "Escape") {
+          event.preventDefault()
+          void onReply(request.id, "deny")
+        }
+      }}
       className="my-6 max-w-3xl rounded-xl border border-zinc-200 bg-white p-5 shadow-sm"
     >
       <div className="flex items-start gap-4">

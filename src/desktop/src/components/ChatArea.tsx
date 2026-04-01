@@ -57,12 +57,14 @@ export function ChatArea({
   skillWarningMessage,
 }: ChatAreaProps) {
   const [input, setInput] = useState("")
+  const [isComposing, setIsComposing] = useState(false)
   const [isSkillPanelOpen, setIsSkillPanelOpen] = useState(false)
   const [skillFilter, setSkillFilter] = useState("")
   const [busySkillName, setBusySkillName] = useState<string | null>(null)
   const [skillErrorMessage, setSkillErrorMessage] = useState<string | null>(null)
   const [optimisticSessionSkills, setOptimisticSessionSkills] = useState<string[] | null>(null)
   const transcriptViewportRef = useRef<HTMLDivElement>(null)
+  const skillPanelShellRef = useRef<HTMLDivElement>(null)
   const shouldStickToBottomRef = useRef(true)
   const sessionSkillQueueRef = useRef<{
     sessionId: string | null
@@ -108,6 +110,23 @@ export function ChatArea({
   }, [sessionSummary?.id])
 
   useEffect(() => {
+    if (!isSkillPanelOpen) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!skillPanelShellRef.current?.contains(event.target as Node)) {
+        setIsSkillPanelOpen(false)
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown)
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown)
+    }
+  }, [isSkillPanelOpen])
+
+  useEffect(() => {
     const viewport = transcriptViewportRef.current
 
     if (!viewport || !shouldStickToBottomRef.current) {
@@ -117,11 +136,20 @@ export function ChatArea({
     viewport.scrollTop = viewport.scrollHeight
   }, [transcript, permissionRequests, session?.activeRun?.status])
 
+  const stickTranscriptToBottom = () => {
+    shouldStickToBottomRef.current = true
+    const viewport = transcriptViewportRef.current
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight
+    }
+  }
+
   const submitMessage = () => {
-    if (!input.trim() || isBusy) {
+    if (!input.trim() || isBusy || isComposing) {
       return
     }
 
+    stickTranscriptToBottom()
     void onSendMessage(input)
     setInput("")
   }
@@ -192,6 +220,11 @@ export function ChatArea({
       enabled: true,
     })
     getSessionSkillQueue(sessionSummary.id).enqueue(nextSkills)
+  }
+
+  const handlePermissionReply = (requestId: string, decision: "allow" | "deny") => {
+    stickTranscriptToBottom()
+    void onReplyPermission(requestId, decision)
   }
 
   if (!sessionSummary) {
@@ -288,8 +321,13 @@ export function ChatArea({
               <Message key={message.id} message={message} />
             ))}
 
-            {permissionRequests.map((request) => (
-              <PermissionRequest key={request.id} request={request} onReply={onReplyPermission} />
+            {permissionRequests.map((request, index) => (
+              <PermissionRequest
+                key={request.id}
+                request={request}
+                autoFocus={index === 0}
+                onReply={handlePermissionReply}
+              />
             ))}
 
             {isRunning ? (
@@ -310,66 +348,68 @@ export function ChatArea({
 
       <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-white via-white/80 to-transparent p-4">
         <div className="relative mx-auto max-w-4xl">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsSkillPanelOpen((previous) => !previous)}
-              className={cn(
-                "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors",
-                isSkillPanelOpen
-                  ? "border-zinc-300 bg-zinc-100 text-zinc-900"
-                  : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100",
+          <div ref={skillPanelShellRef}>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsSkillPanelOpen((previous) => !previous)}
+                className={cn(
+                  "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors",
+                  isSkillPanelOpen
+                    ? "border-zinc-300 bg-zinc-100 text-zinc-900"
+                    : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100",
+                )}
+              >
+                <Sparkles className="h-4 w-4" />
+                Skills
+                <ChevronDown
+                  className={cn("h-4 w-4 transition-transform", isSkillPanelOpen && "rotate-180")}
+                />
+              </button>
+
+              {visibleActiveSkills.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {visibleActiveSkills.map((skillName) => (
+                    <span
+                      key={skillName}
+                      className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600"
+                    >
+                      {skillName}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-xs text-zinc-400">No active skills</span>
               )}
-            >
-              <Sparkles className="h-4 w-4" />
-              Skills
-              <ChevronDown
-                className={cn("h-4 w-4 transition-transform", isSkillPanelOpen && "rotate-180")}
-              />
-            </button>
-
-            {visibleActiveSkills.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {visibleActiveSkills.map((skillName) => (
-                  <span
-                    key={skillName}
-                    className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600"
-                  >
-                    {skillName}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <span className="text-xs text-zinc-400">No active skills</span>
-            )}
-          </div>
-
-          {isSkillPanelOpen ? (
-            <SkillPanel
-              skills={skills}
-              query={skillFilter}
-              session={sessionSummaryWithOptimisticSkills}
-              activeRun={session?.activeRun}
-              controlsDisabled={isRunSkillEditingLocked}
-              busySkillName={busySkillName}
-              errorMessage={skillErrorMessage}
-              warningMessage={skillWarningMessage}
-              onStartSkill={(skillName) => updateSkillSet(skillName, true)}
-              onStopSkill={(skillName) => updateSkillSet(skillName, false)}
-              onSetDefaultSkill={setDefaultSkill}
-            />
-          ) : null}
-
-          {isSkillPanelOpen ? (
-            <div className="mb-3">
-              <input
-                value={skillFilter}
-                onChange={(event) => setSkillFilter(event.target.value)}
-                placeholder="Filter skills..."
-                className="h-11 w-full rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-300"
-              />
             </div>
-          ) : null}
+
+            {isSkillPanelOpen ? (
+              <SkillPanel
+                skills={skills}
+                query={skillFilter}
+                session={sessionSummaryWithOptimisticSkills}
+                activeRun={session?.activeRun}
+                controlsDisabled={isRunSkillEditingLocked}
+                busySkillName={busySkillName}
+                errorMessage={skillErrorMessage}
+                warningMessage={skillWarningMessage}
+                onStartSkill={(skillName) => updateSkillSet(skillName, true)}
+                onStopSkill={(skillName) => updateSkillSet(skillName, false)}
+                onSetDefaultSkill={setDefaultSkill}
+              />
+            ) : null}
+
+            {isSkillPanelOpen ? (
+              <div className="mb-3">
+                <input
+                  value={skillFilter}
+                  onChange={(event) => setSkillFilter(event.target.value)}
+                  placeholder="Filter skills..."
+                  className="h-11 w-full rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-300"
+                />
+              </div>
+            ) : null}
+          </div>
 
           <form
             onSubmit={handleSubmit}
@@ -383,6 +423,8 @@ export function ChatArea({
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
               placeholder={
                 isBusy
                   ? "Agent is busy..."
@@ -392,7 +434,12 @@ export function ChatArea({
               className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent py-4 pr-14 pl-4 text-[15px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-0"
               rows={1}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !isComposing &&
+                  !event.nativeEvent.isComposing
+                ) {
                   event.preventDefault()
                   submitMessage()
                 }
@@ -412,7 +459,7 @@ export function ChatArea({
               ) : (
                 <button
                   type="submit"
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || isComposing}
                   className="rounded-xl bg-zinc-900 p-2 text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-50 disabled:hover:bg-zinc-900"
                 >
                   <ArrowUp className="h-5 w-5" />

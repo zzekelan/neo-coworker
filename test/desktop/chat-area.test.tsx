@@ -26,4 +26,26 @@ describe("desktop chat area", () => {
     expect(source).toContain("if (!sessionSummary || isRunSkillEditingLocked)")
     expect(panelSource).toContain("Changes apply to future runs only.")
   })
+
+  test("restores sticky-bottom behavior when sending messages or replying to permissions", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("const stickTranscriptToBottom = () => {")
+    expect(source).toContain("shouldStickToBottomRef.current = true")
+    expect(source).toContain("stickTranscriptToBottom()\n    void onSendMessage(input)")
+    expect(source).toContain("const handlePermissionReply = (requestId: string, decision: \"allow\" | \"deny\") => {")
+    expect(source).toContain("void onReplyPermission(requestId, decision)")
+  })
+
+  test("closes the skill panel on outside click and defers Enter submission during IME composition", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("const skillPanelShellRef = useRef<HTMLDivElement>(null)")
+    expect(source).toContain("window.addEventListener(\"mousedown\", handlePointerDown)")
+    expect(source).toContain("setIsSkillPanelOpen(false)")
+    expect(source).toContain("onCompositionStart={() => setIsComposing(true)}")
+    expect(source).toContain("onCompositionEnd={() => setIsComposing(false)}")
+    expect(source).toContain("!event.nativeEvent.isComposing")
+    expect(source).toContain("disabled={!input.trim() || isComposing}")
+  })
 })
