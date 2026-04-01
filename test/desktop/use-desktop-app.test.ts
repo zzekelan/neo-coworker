@@ -20,6 +20,8 @@ describe("desktop app state flow", () => {
     expect(source).toContain("const syncWorkspaces = useEffectEvent(async () => {")
     expect(source).toContain("const workspaceData = await loadWorkspaces()")
     expect(source).toContain("mergeWorkspaces(workspaceData.workspaces, knownWorkspacesRef.current)")
+    expect(source).toContain("hasAuthoritativeWorkspaceBusyState: true")
+    expect(source).toContain("hasAuthoritativeWorkspaceBusyState: false")
     expect(source).toContain("void syncWorkspaces()")
     expect(source).not.toContain("function upsertWorkspaceSession(")
     expect(source).not.toContain("function removeWorkspaceSession(")

@@ -30,6 +30,9 @@ describe("desktop chat area", () => {
   test("restores sticky-bottom behavior when sending messages or replying to permissions", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
+    expect(source).toContain("import { isBusyRunStatus } from \"../busy-state\"")
+    expect(source).toContain("const activeRunStatus = session?.activeRun?.status ?? null")
+    expect(source).toContain("const isBusy = isBusyRunStatus(activeRunStatus)")
     expect(source).toContain("const stickTranscriptToBottom = () => {")
     expect(source).toContain("shouldStickToBottomRef.current = true")
     expect(source).toContain("await sessionSkillQueueRef.current.queue?.flush()")

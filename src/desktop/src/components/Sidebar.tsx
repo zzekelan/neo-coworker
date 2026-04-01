@@ -4,6 +4,7 @@ import type { DesktopServerMode, DesktopSettings } from "../desktop-settings"
 import { cn } from "../lib/utils"
 import { useDesktopText } from "../i18n"
 import type { DesktopSession, DesktopWorkspace } from "../view-types"
+import { isBusyRunStatus, shouldBlockSettingsApplyFromBusyState } from "../busy-state"
 import { SettingsPanel } from "./SettingsPanel"
 import { hasVisibleWorkspaceSelect } from "./sidebar-workspace-state"
 
@@ -25,6 +26,7 @@ interface SidebarProps {
   onApplySettings: () => void | Promise<unknown>
   isManagingWorkspace: boolean
   isOnline: boolean
+  hasAuthoritativeBusyState: boolean
   isOpen: boolean
   onToggle: () => void
 }
@@ -47,6 +49,7 @@ export function Sidebar({
   onApplySettings,
   isManagingWorkspace,
   isOnline,
+  hasAuthoritativeBusyState,
   isOpen,
   onToggle,
 }: SidebarProps) {
@@ -66,9 +69,11 @@ export function Sidebar({
     null
   const contextMenuSession =
     sessions.find((session) => session.id === sessionContextMenu?.sessionId) ?? null
-  const hasBusySession =
-    sessions.some((session) => isBusySessionStatus(session.latestRunStatus)) ||
-    workspaces.some((workspace) => workspace.hasBusySession)
+  const hasBusySession = shouldBlockSettingsApplyFromBusyState({
+    hasAuthoritativeBusyState,
+    sessions,
+    workspaces,
+  })
   const text = useDesktopText()
 
   useEffect(() => {
@@ -337,11 +342,11 @@ export function Sidebar({
           >
             <button
               type="button"
-              disabled={isBusySessionStatus(contextMenuSession.latestRunStatus)}
+              disabled={isBusyRunStatus(contextMenuSession.latestRunStatus)}
               className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left font-medium text-zinc-800 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:hover:bg-transparent"
               onClick={() => {
                 setSessionContextMenu(null)
-                if (!isBusySessionStatus(contextMenuSession.latestRunStatus)) {
+                if (!isBusyRunStatus(contextMenuSession.latestRunStatus)) {
                   void deleteSession(contextMenuSession.id)
                 }
               }}
@@ -350,7 +355,7 @@ export function Sidebar({
               <span className="text-[11px] uppercase tracking-wide text-zinc-400">Del</span>
             </button>
             <p className="px-3 py-2 text-xs leading-relaxed text-zinc-500">
-              {isBusySessionStatus(contextMenuSession.latestRunStatus)
+              {isBusyRunStatus(contextMenuSession.latestRunStatus)
                 ? text.sidebar.deleteBlocked
                 : text.sidebar.deleteHint}
             </p>
@@ -437,10 +442,6 @@ function getSessionStatusBadge(
   }
 
   return null
-}
-
-function isBusySessionStatus(status: DesktopSession["latestRunStatus"]) {
-  return status === "queued" || status === "running" || status === "waiting_permission"
 }
 
 function getContextMenuStyle(position: { x: number; y: number }) {

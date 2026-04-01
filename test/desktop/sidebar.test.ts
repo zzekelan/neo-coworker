@@ -24,14 +24,16 @@ describe("desktop sidebar", () => {
     expect(source).toContain("text.sidebar.deleteSession")
     expect(source).toContain("text.sidebar.deleteBlocked")
     expect(source).toContain("text.sidebar.deleteHint")
-    expect(source).toContain("status === \"queued\" || status === \"running\" || status === \"waiting_permission\"")
+    expect(source).toContain("import { isBusyRunStatus, shouldBlockSettingsApplyFromBusyState } from \"../busy-state\"")
+    expect(source).toContain("disabled={isBusyRunStatus(contextMenuSession.latestRunStatus)}")
   })
 
   test("shows a settings entry wired to the desktop settings panel", () => {
     const source = readFileSync("src/desktop/src/components/Sidebar.tsx", "utf8")
 
     expect(source).toContain("const [isSettingsOpen, setIsSettingsOpen] = useState(false)")
-    expect(source).toContain("workspaces.some((workspace) => workspace.hasBusySession)")
+    expect(source).toContain("shouldBlockSettingsApplyFromBusyState")
+    expect(source).toContain("hasAuthoritativeBusyState")
     expect(source).toContain("<SettingsPanel")
     expect(source).toContain("text.sidebar.settings")
     expect(source).toContain("settings.language === \"zh\" ? \"中文\" : \"EN\"")

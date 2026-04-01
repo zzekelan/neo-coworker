@@ -44,6 +44,7 @@ export function useAgent() {
     ),
     permissionRequests: desktop.permissionRequests.map(mapPermissionRequest),
     isOnline: desktop.connection.state === "online",
+    hasAuthoritativeBusyState: desktop.hasAuthoritativeWorkspaceBusyState,
     sendMessage(message: string) {
       return desktop.sendMessage(message)
     },

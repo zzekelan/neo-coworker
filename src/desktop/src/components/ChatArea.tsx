@@ -20,6 +20,7 @@ import type {
 } from "../view-types"
 import { cn } from "../lib/utils"
 import { createSkillUpdateQueue, type SkillUpdateQueue } from "../skill-update-queue"
+import { isBusyRunStatus } from "../busy-state"
 import { Message } from "./Message"
 import { PermissionRequest } from "./PermissionRequest"
 import { SkillPanel } from "./SkillPanel"
@@ -76,9 +77,10 @@ export function ChatArea({
     sessionId: null,
     queue: null,
   })
-  const isRunning = session?.activeRun?.status === "running"
-  const isWaiting = session?.activeRun?.status === "waiting_permission"
-  const isBusy = isRunning || isWaiting
+  const activeRunStatus = session?.activeRun?.status ?? null
+  const isRunning = activeRunStatus === "running"
+  const isWaiting = activeRunStatus === "waiting_permission"
+  const isBusy = isBusyRunStatus(activeRunStatus)
   const isRunSkillEditingLocked = Boolean(session?.activeRun)
   const sessionSummaryWithOptimisticSkills =
     sessionSummary && optimisticSessionSkills

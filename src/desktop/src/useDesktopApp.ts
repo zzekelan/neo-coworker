@@ -47,6 +47,7 @@ type AppState = {
   transcript: DesktopMessage[]
   permissionRequests: DesktopPermissionRequest[]
   connection: ConnectionStatus
+  hasAuthoritativeWorkspaceBusyState: boolean
   isLoading: boolean
   isSending: boolean
   isManagingWorkspace: boolean
@@ -175,6 +176,7 @@ export function useDesktopApp() {
           label: "Connected to app-server",
           detail: bridge.apiOrigin ?? refreshData.resolvedWorkspaceRoot ?? "Desktop bridge",
         },
+        hasAuthoritativeWorkspaceBusyState: true,
         isLoading: false,
         isSending:
           refreshData.snapshot?.activeRun !== null &&
@@ -213,6 +215,7 @@ export function useDesktopApp() {
           label: "app-server unavailable",
           detail: bridge.apiOrigin ?? bridge.defaultWorkspaceRoot ?? "Desktop bridge",
         },
+        hasAuthoritativeWorkspaceBusyState: false,
       }))
     }
   })
@@ -233,9 +236,13 @@ export function useDesktopApp() {
       setState((previous) => ({
         ...previous,
         workspaces,
+        hasAuthoritativeWorkspaceBusyState: true,
       }))
     } catch {
-      // Keep the current workspace list until a full refresh succeeds.
+      setState((previous) => ({
+        ...previous,
+        hasAuthoritativeWorkspaceBusyState: false,
+      }))
     }
   })
 
@@ -411,6 +418,7 @@ export function useDesktopApp() {
             label: "Disconnected from app-server",
             detail: bridge.apiOrigin ?? previous.activeWorkspaceRoot ?? "Desktop bridge",
           },
+          hasAuthoritativeWorkspaceBusyState: false,
         }))
       },
     })
@@ -787,6 +795,7 @@ function createInitialState(input: {
         label: "Desktop bridge unavailable",
         detail: "Connect this renderer to app-server through the desktop shell.",
       },
+      hasAuthoritativeWorkspaceBusyState: false,
       isLoading: false,
       isSending: false,
       isManagingWorkspace: false,
@@ -810,6 +819,7 @@ function createInitialState(input: {
       label: "Connecting to app-server",
       detail: window.neoCoworkerDesktop?.apiOrigin ?? activeWorkspaceRoot ?? "Desktop bridge",
     },
+    hasAuthoritativeWorkspaceBusyState: false,
     isLoading: true,
     isSending: false,
     isManagingWorkspace: false,

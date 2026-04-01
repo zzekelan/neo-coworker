@@ -22,6 +22,7 @@ export default function App() {
     transcript,
     permissionRequests,
     isOnline,
+    hasAuthoritativeBusyState,
     sendMessage,
     cancelRun,
     replyPermission,
@@ -70,6 +71,7 @@ export default function App() {
           }}
           isManagingWorkspace={isManagingWorkspace}
           isOnline={isOnline}
+          hasAuthoritativeBusyState={hasAuthoritativeBusyState}
           isOpen={isSidebarOpen}
           onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         />
