@@ -59,6 +59,7 @@ export function ChatArea({
 }: ChatAreaProps) {
   const text = useDesktopText()
   const [input, setInput] = useState("")
+  const [isSubmittingMessage, setIsSubmittingMessage] = useState(false)
   const [isComposing, setIsComposing] = useState(false)
   const [isSkillPanelOpen, setIsSkillPanelOpen] = useState(false)
   const [skillFilter, setSkillFilter] = useState("")
@@ -146,19 +147,33 @@ export function ChatArea({
     }
   }
 
-  const submitMessage = () => {
-    if (!input.trim() || isBusy || isComposing) {
+  const submitMessage = async () => {
+    const nextInput = input
+    if (!nextInput.trim() || isBusy || isComposing || isSubmittingMessage) {
       return
     }
 
     stickTranscriptToBottom()
-    void onSendMessage(input)
-    setInput("")
+    setIsSubmittingMessage(true)
+
+    try {
+      await sessionSkillQueueRef.current.queue?.flush()
+      const sent = await onSendMessage(nextInput)
+      if (sent === false) {
+        return
+      }
+
+      setInput("")
+    } catch {
+      return
+    } finally {
+      setIsSubmittingMessage(false)
+    }
   }
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    submitMessage()
+    void submitMessage()
   }
 
   const getSessionSkillQueue = (sessionId: string) => {
@@ -443,7 +458,7 @@ export function ChatArea({
                   !event.nativeEvent.isComposing
                 ) {
                   event.preventDefault()
-                  submitMessage()
+                  void submitMessage()
                 }
               }}
             />
@@ -461,7 +476,7 @@ export function ChatArea({
               ) : (
                 <button
                   type="submit"
-                  disabled={!input.trim() || isComposing}
+                  disabled={!input.trim() || isComposing || isSubmittingMessage}
                   className="rounded-xl bg-zinc-900 p-2 text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-50 disabled:hover:bg-zinc-900"
                 >
                   <ArrowUp className="h-5 w-5" />

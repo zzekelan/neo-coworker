@@ -41,6 +41,44 @@ describe("desktop skill update queue", () => {
     expect(optimisticSnapshots).toEqual([["writer"], ["writer", "reviewer"], null])
     expect(errors).toEqual([])
   })
+
+  test("flush waits for the latest queued skill snapshot before continuing", async () => {
+    const submittedSkills: string[][] = []
+    const firstSubmission = createDeferred()
+    const secondSubmission = createDeferred()
+    const submissions = [firstSubmission, secondSubmission]
+    let submissionIndex = 0
+
+    const queue = createSkillUpdateQueue({
+      submit(skills) {
+        submittedSkills.push([...skills])
+        return submissions[submissionIndex++]!.promise
+      },
+      onOptimisticChange() {},
+      onError() {},
+    })
+
+    queue.enqueue(["writer"])
+    queue.enqueue(["writer", "reviewer"])
+
+    let flushed = false
+    const flushPromise = queue.flush().then(() => {
+      flushed = true
+    })
+
+    await flushMicrotasks()
+    expect(flushed).toBe(false)
+
+    firstSubmission.resolve()
+    await flushMicrotasks()
+    expect(submittedSkills).toEqual([["writer"], ["writer", "reviewer"]])
+    expect(flushed).toBe(false)
+
+    secondSubmission.resolve()
+    await flushPromise
+
+    expect(flushed).toBe(true)
+  })
 })
 
 function createDeferred() {

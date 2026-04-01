@@ -1,6 +1,7 @@
 import {
   assertRunStatusTransition,
   createSessionRuntimeApi,
+  SessionBusyError,
   type RunTrigger,
   type SessionRepository as StorageRepository,
   type StoredMessage,
@@ -532,6 +533,14 @@ export function createServerApp(input: {
         return buildSessionSnapshot(repository, sessionId)
       },
       updateActiveSkills(inputValue: { sessionId: string; activeSkills: string[] }) {
+        const activeRun = repository.runs.getActiveBySession(inputValue.sessionId)
+        if (activeRun) {
+          throw new SessionBusyError({
+            sessionId: inputValue.sessionId,
+            activeRunId: activeRun.id,
+          })
+        }
+
         const updated = repository.sessions.update({
           sessionId: inputValue.sessionId,
           activeSkills: inputValue.activeSkills,

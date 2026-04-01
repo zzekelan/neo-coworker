@@ -131,10 +131,19 @@ async function startDesktop() {
     }
 
     await ensureNoActiveRuns(currentServerOrigin)
-    currentServerOrigin = await restartManagedLocalServer({
-      settings: desktopSettings,
-      window,
-    })
+    try {
+      currentServerOrigin = await restartManagedLocalServer({
+        settings: desktopSettings,
+        window,
+      })
+      unavailableServerMessage = null
+    } catch (error) {
+      currentServerOrigin = null
+      unavailableServerMessage = toErrorMessage(error)
+      logBootstrap(`server.unavailable ${sanitizeBootstrapMessage(unavailableServerMessage)}`)
+      console.error(unavailableServerMessage)
+      throw error
+    }
 
     return {
       settings: desktopSettings,
@@ -301,11 +310,15 @@ async function ensureNoActiveRuns(origin) {
   const sessions = Array.isArray(response.body?.data?.sessions)
     ? response.body.data.sessions
     : []
-  const busySession = sessions.find((session) => isActiveRunStatus(session?.latestRunStatus))
+  const busySession = sessions.find((session) => isBusySessionRunStatus(session?.latestRunStatus))
 
   if (busySession) {
     throw new Error("Stop the active run before applying LLM settings.")
   }
+}
+
+function isBusySessionRunStatus(status) {
+  return status === "queued" || status === "running" || status === "waiting_permission"
 }
 
 function buildManagedServerEnv(input) {

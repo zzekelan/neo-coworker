@@ -6,42 +6,67 @@ export function createSkillUpdateQueue(input: {
   onError(error: unknown): void
 }) {
   let desiredSkills: string[] | null = null
-  let isFlushing = false
   let generation = 0
+  let activeFlushPromise: Promise<void> | null = null
 
-  async function flush(queueGeneration: number) {
-    if (isFlushing) {
-      return
+  function startFlush(queueGeneration: number) {
+    if (activeFlushPromise) {
+      return activeFlushPromise
     }
 
-    isFlushing = true
+    if (!desiredSkills) {
+      return Promise.resolve()
+    }
 
-    try {
-      while (queueGeneration === generation && desiredSkills) {
-        const nextSkills = desiredSkills
-        desiredSkills = null
-        await input.submit(nextSkills)
+    activeFlushPromise = (async () => {
+      try {
+        while (queueGeneration === generation && desiredSkills) {
+          const nextSkills = desiredSkills
+          desiredSkills = null
+          await input.submit(nextSkills)
 
-        if (queueGeneration !== generation) {
-          return
+          if (queueGeneration !== generation) {
+            return
+          }
+
+          if (desiredSkills === null) {
+            input.onOptimisticChange(null)
+          }
         }
-
-        if (desiredSkills === null) {
+      } catch (error) {
+        if (queueGeneration === generation) {
+          desiredSkills = null
           input.onOptimisticChange(null)
+          input.onError(error)
+        }
+        throw error
+      } finally {
+        activeFlushPromise = null
+
+        if (queueGeneration === generation && desiredSkills) {
+          void startFlush(queueGeneration).catch(() => {})
         }
       }
-    } catch (error) {
-      if (queueGeneration === generation) {
-        desiredSkills = null
-        input.onOptimisticChange(null)
-        input.onError(error)
-      }
-    } finally {
-      isFlushing = false
+    })()
 
-      if (queueGeneration === generation && desiredSkills) {
-        void flush(queueGeneration)
+    return activeFlushPromise
+  }
+
+  async function flush() {
+    const queueGeneration = generation
+
+    while (queueGeneration === generation) {
+      if (desiredSkills) {
+        await startFlush(queueGeneration)
+        continue
       }
+
+      if (activeFlushPromise) {
+        await activeFlushPromise
+        continue
+      }
+
+      return
     }
   }
 
@@ -49,11 +74,16 @@ export function createSkillUpdateQueue(input: {
     enqueue(skills: string[]) {
       desiredSkills = [...skills]
       input.onOptimisticChange([...skills])
-      void flush(generation)
+      void startFlush(generation).catch(() => {})
+    },
+    flush,
+    isPending() {
+      return desiredSkills !== null || activeFlushPromise !== null
     },
     reset() {
       generation += 1
       desiredSkills = null
+      activeFlushPromise = null
       input.onOptimisticChange(null)
     },
   }

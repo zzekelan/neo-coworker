@@ -32,7 +32,9 @@ describe("desktop chat area", () => {
 
     expect(source).toContain("const stickTranscriptToBottom = () => {")
     expect(source).toContain("shouldStickToBottomRef.current = true")
-    expect(source).toContain("stickTranscriptToBottom()\n    void onSendMessage(input)")
+    expect(source).toContain("await sessionSkillQueueRef.current.queue?.flush()")
+    expect(source).toContain("const sent = await onSendMessage(nextInput)")
+    expect(source).toContain("setInput(\"\")")
     expect(source).toContain("const handlePermissionReply = (requestId: string, decision: \"allow\" | \"deny\") => {")
     expect(source).toContain("void onReplyPermission(requestId, decision)")
   })
@@ -46,6 +48,6 @@ describe("desktop chat area", () => {
     expect(source).toContain("onCompositionStart={() => setIsComposing(true)}")
     expect(source).toContain("onCompositionEnd={() => setIsComposing(false)}")
     expect(source).toContain("!event.nativeEvent.isComposing")
-    expect(source).toContain("disabled={!input.trim() || isComposing}")
+    expect(source).toContain("disabled={!input.trim() || isComposing || isSubmittingMessage}")
   })
 })

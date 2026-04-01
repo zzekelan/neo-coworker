@@ -1016,6 +1016,47 @@ describe("server HTTP API and SSE", () => {
     expect(sessionStateAfterRunUpdate.body.data.session.activeSkills).toEqual(["reviewer", "writer"])
   })
 
+  test("rejects session skill updates while a run is active", async () => {
+    const harness = await createHarness("server-skill-state-busy", createTurnProvider([
+      async function* () {
+        await Bun.sleep(50)
+        yield { type: "text.delta", text: "Busy run finished." }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+      title: "Busy skill session",
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "Hold the session busy",
+      runId: "run_busy_skill_update",
+    })
+    expect(startedRun.status).toBe(201)
+
+    const rejectedUpdate = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/active-skills`,
+      {
+        activeSkills: ["reviewer"],
+      },
+    )
+    expect(rejectedUpdate.status).toBe(409)
+    expect(rejectedUpdate.body.error).toMatchObject({
+      code: "invalid_state",
+      message: expect.stringContaining(`Session ${sessionId}`),
+    })
+
+    await waitForRunStatus(harness.server, "run_busy_skill_update", "completed")
+
+    const sessionState = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+    expect(sessionState.status).toBe(200)
+    expect(sessionState.body.data.session.activeSkills).toEqual([])
+  })
+
   test("a reconnecting client can refetch final state without historical SSE replay", async () => {
     const harness = await createHarness("server-reconnect", createTurnProvider([
       async function* () {
