@@ -348,6 +348,7 @@ export function ChatArea({
             icon={<MessageSquare className="h-6 w-6 text-zinc-300" />}
             title={text.chat.startConversation}
             errorMessage={errorMessage}
+            offsetClassName="translate-y-2"
           />
         ) : (
           <div className="mx-auto max-w-4xl py-8">
@@ -537,10 +538,16 @@ function EmptyChatState(input: {
   title: string
   action?: React.ReactNode
   errorMessage: string | null
+  offsetClassName?: string
 }) {
   return (
     <div className="flex h-full w-full items-center justify-center">
-      <div className="flex w-full max-w-md flex-col items-center justify-center px-6 text-center text-zinc-400">
+      <div
+        className={cn(
+          "flex w-full max-w-md flex-col items-center justify-center px-6 text-center text-zinc-400",
+          input.offsetClassName,
+        )}
+      >
         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
           {input.icon}
         </div>
