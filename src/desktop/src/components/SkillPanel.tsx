@@ -9,6 +9,7 @@ interface SkillPanelProps {
   query: string
   session: DesktopSession | null
   activeRun?: DesktopRun
+  controlsDisabled: boolean
   busySkillName: string | null
   errorMessage: string | null
   warningMessage: string | null
@@ -22,6 +23,7 @@ export function SkillPanel({
   query,
   session,
   activeRun,
+  controlsDisabled,
   busySkillName,
   errorMessage,
   warningMessage,
@@ -50,6 +52,12 @@ export function SkillPanel({
       {warningMessage ? (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
           {warningMessage}
+        </div>
+      ) : null}
+
+      {controlsDisabled ? (
+        <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-700">
+          Skill changes are locked while this run is active. Changes apply to future runs only.
         </div>
       ) : null}
 
@@ -101,7 +109,7 @@ export function SkillPanel({
                     <div className="flex shrink-0 items-center gap-2">
                       {state.canStart ? (
                         <ActionButton
-                          disabled={isBusy}
+                          disabled={isBusy || controlsDisabled}
                           onClick={() => void onStartSkill(skill.name)}
                           tone="primary"
                         >
@@ -112,7 +120,7 @@ export function SkillPanel({
 
                       {state.canStop ? (
                         <ActionButton
-                          disabled={isBusy}
+                          disabled={isBusy || controlsDisabled}
                           onClick={() => void onStopSkill(skill.name)}
                           tone="secondary"
                         >
@@ -123,7 +131,7 @@ export function SkillPanel({
 
                       {state.canSetDefault ? (
                         <ActionButton
-                          disabled={isBusy}
+                          disabled={isBusy || controlsDisabled}
                           onClick={() => void onSetDefaultSkill(skill.name)}
                           tone="ghost"
                         >

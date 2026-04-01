@@ -35,7 +35,6 @@ interface ChatAreaProps {
   onCancelRun: () => void | Promise<unknown>
   onReplyPermission: (id: string, decision: "allow" | "deny") => void | Promise<unknown>
   onSetSessionActiveSkills: (sessionId: string, activeSkills: string[]) => void | Promise<unknown>
-  onSetRunActiveSkills: (runId: string, activeSkills: string[]) => void | Promise<unknown>
   isSidebarOpen: boolean
   onToggleSidebar: () => void
   errorMessage: string | null
@@ -52,7 +51,6 @@ export function ChatArea({
   onCancelRun,
   onReplyPermission,
   onSetSessionActiveSkills,
-  onSetRunActiveSkills,
   isSidebarOpen,
   onToggleSidebar,
   errorMessage,
@@ -64,7 +62,6 @@ export function ChatArea({
   const [busySkillName, setBusySkillName] = useState<string | null>(null)
   const [skillErrorMessage, setSkillErrorMessage] = useState<string | null>(null)
   const [optimisticSessionSkills, setOptimisticSessionSkills] = useState<string[] | null>(null)
-  const [optimisticRunSkills, setOptimisticRunSkills] = useState<string[] | null>(null)
   const transcriptViewportRef = useRef<HTMLDivElement>(null)
   const shouldStickToBottomRef = useRef(true)
   const sessionSkillQueueRef = useRef<{
@@ -74,16 +71,10 @@ export function ChatArea({
     sessionId: null,
     queue: null,
   })
-  const runSkillQueueRef = useRef<{
-    runId: string | null
-    queue: SkillUpdateQueue | null
-  }>({
-    runId: null,
-    queue: null,
-  })
   const isRunning = session?.activeRun?.status === "running"
   const isWaiting = session?.activeRun?.status === "waiting_permission"
   const isBusy = isRunning || isWaiting
+  const isRunSkillEditingLocked = Boolean(session?.activeRun)
   const sessionSummaryWithOptimisticSkills =
     sessionSummary && optimisticSessionSkills
       ? {
@@ -91,31 +82,18 @@ export function ChatArea({
           activeSkills: optimisticSessionSkills,
         }
       : sessionSummary
-  const activeRunWithOptimisticSkills =
-    session?.activeRun && optimisticRunSkills
-      ? {
-          ...session.activeRun,
-          activeSkills: optimisticRunSkills,
-        }
-      : session?.activeRun
   const visibleActiveSkills = getEffectiveActiveSkills({
     session: sessionSummaryWithOptimisticSkills,
-    activeRun: activeRunWithOptimisticSkills,
+    activeRun: session?.activeRun,
   })
 
   useEffect(() => {
     sessionSkillQueueRef.current.queue?.reset()
-    runSkillQueueRef.current.queue?.reset()
     sessionSkillQueueRef.current = {
       sessionId: sessionSummary?.id ?? null,
       queue: null,
     }
-    runSkillQueueRef.current = {
-      runId: session?.activeRun?.id ?? null,
-      queue: null,
-    }
     setOptimisticSessionSkills(null)
-    setOptimisticRunSkills(null)
     setSkillErrorMessage(null)
     setBusySkillName(null)
   }, [sessionSummary?.id, session?.activeRun?.id])
@@ -184,51 +162,13 @@ export function ChatArea({
     return queue
   }
 
-  const getRunSkillQueue = (runId: string) => {
-    if (runSkillQueueRef.current.runId === runId && runSkillQueueRef.current.queue) {
-      return runSkillQueueRef.current.queue
-    }
-
-    const queue = createSkillUpdateQueue({
-      async submit(skills) {
-        await onSetRunActiveSkills(runId, skills)
-      },
-      onOptimisticChange(skills) {
-        setOptimisticRunSkills(skills)
-        if (skills === null) {
-          setBusySkillName(null)
-        }
-      },
-      onError(error) {
-        setSkillErrorMessage(error instanceof Error ? error.message : String(error))
-        setBusySkillName(null)
-      },
-    })
-
-    runSkillQueueRef.current = {
-      runId,
-      queue,
-    }
-    return queue
-  }
-
   const updateSkillSet = async (skillName: string, enabled: boolean) => {
-    if (!sessionSummary) {
+    if (!sessionSummary || isRunSkillEditingLocked) {
       return
     }
 
     setBusySkillName(skillName)
     setSkillErrorMessage(null)
-
-    if (activeRunWithOptimisticSkills) {
-      const nextSkills = toggleSkill({
-        skills: activeRunWithOptimisticSkills.activeSkills,
-        skillName,
-        enabled,
-      })
-      getRunSkillQueue(activeRunWithOptimisticSkills.id).enqueue(nextSkills)
-      return
-    }
 
     const nextSkills = toggleSkill({
       skills: sessionSummaryWithOptimisticSkills?.activeSkills ?? [],
@@ -239,7 +179,7 @@ export function ChatArea({
   }
 
   const setDefaultSkill = async (skillName: string) => {
-    if (!sessionSummary) {
+    if (!sessionSummary || isRunSkillEditingLocked) {
       return
     }
 
@@ -409,7 +349,8 @@ export function ChatArea({
               skills={skills}
               query={skillFilter}
               session={sessionSummaryWithOptimisticSkills}
-              activeRun={activeRunWithOptimisticSkills}
+              activeRun={session?.activeRun}
+              controlsDisabled={isRunSkillEditingLocked}
               busySkillName={busySkillName}
               errorMessage={skillErrorMessage}
               warningMessage={skillWarningMessage}

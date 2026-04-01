@@ -17,4 +17,13 @@ describe("desktop chat area", () => {
     expect(source).toContain("isNearTranscriptBottom")
     expect(source).not.toContain("scrollIntoView")
   })
+
+  test("locks user-driven skill edits while an active run is present", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+    const panelSource = readFileSync("src/desktop/src/components/SkillPanel.tsx", "utf8")
+
+    expect(source).toContain("const isRunSkillEditingLocked = Boolean(session?.activeRun)")
+    expect(source).toContain("if (!sessionSummary || isRunSkillEditingLocked)")
+    expect(panelSource).toContain("Changes apply to future runs only.")
+  })
 })

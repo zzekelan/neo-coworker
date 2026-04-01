@@ -15,7 +15,6 @@ import {
   replyPermission,
   startRun,
   subscribeToEvents,
-  updateRunActiveSkills,
   updateSessionActiveSkills,
 } from "./api"
 import {
@@ -576,27 +575,6 @@ export function useDesktopApp() {
         await refresh({
           workspaceRoot: selectionRef.current.activeWorkspaceRoot,
           sessionId: updated.session.id,
-          preserveTranscript: true,
-        })
-      } catch (error) {
-        setState((previous) => ({
-          ...previous,
-          actionError: toErrorMessage(error),
-        }))
-        throw error
-      }
-    },
-
-    async setRunActiveSkills(runId: string, activeSkills: string[]) {
-      try {
-        await updateRunActiveSkills({
-          runId,
-          activeSkills,
-        })
-
-        await refresh({
-          workspaceRoot: selectionRef.current.activeWorkspaceRoot,
-          sessionId: selectionRef.current.activeSessionId,
           preserveTranscript: true,
         })
       } catch (error) {

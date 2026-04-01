@@ -214,15 +214,6 @@ export async function updateSessionActiveSkills(input: { sessionId: string; acti
   )
 }
 
-export async function updateRunActiveSkills(input: { runId: string; activeSkills: string[] }) {
-  return requestApi<{ run: DesktopRun }>(`/runs/${encodeURIComponent(input.runId)}/active-skills`, {
-    method: "POST",
-    body: {
-      activeSkills: input.activeSkills,
-    },
-  })
-}
-
 export async function cancelRun(runId: string) {
   return requestApi<{ run: DesktopRun }>(`/runs/${encodeURIComponent(runId)}/cancel`, {
     method: "POST",

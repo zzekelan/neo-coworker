@@ -853,7 +853,7 @@ describe("server HTTP API and SSE", () => {
     expect(openedEmptyWorkspace.body.data.workspace.sessions).toEqual([])
   })
 
-  test("skill state endpoints update session defaults and run active skills through the public API", async () => {
+  test("skill state endpoints update session defaults but do not expose run-level mutation", async () => {
     const harness = await createHarness("server-skill-state-update", createTurnProvider([
       async function* () {
         yield { type: "text.delta", text: "Skill state updated." }
@@ -900,18 +900,13 @@ describe("server HTTP API and SSE", () => {
     expect(startedRun.body.data.run.activeSkills).toEqual(["reviewer", "writer"])
     await waitForRunStatus(harness.server, "run_skill_state_update", "completed")
 
-    const updatedRun = await requestJson(
-      harness.server,
-      "POST",
-      "/runs/run_skill_state_update/active-skills",
-      {
-        activeSkills: ["writer"],
-      },
-    )
-    expect(updatedRun.status).toBe(409)
+    const updatedRun = await requestJson(harness.server, "POST", "/runs/run_skill_state_update/active-skills", {
+      activeSkills: ["writer"],
+    })
+    expect(updatedRun.status).toBe(404)
     expect(updatedRun.body.error).toMatchObject({
-      code: "invalid_state",
-      message: "Run run_skill_state_update cannot update active skills from status completed",
+      code: "not_found",
+      message: "Unknown route: POST /runs/run_skill_state_update/active-skills",
     })
 
     const runState = await requestJson(harness.server, "GET", "/runs/run_skill_state_update")

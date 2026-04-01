@@ -23,7 +23,6 @@ export default function App() {
     cancelRun,
     replyPermission,
     setSessionActiveSkills,
-    setRunActiveSkills,
     errorMessage,
     skillWarningMessage,
   } = useAgent()
@@ -62,7 +61,6 @@ export default function App() {
           onCancelRun={cancelRun}
           onReplyPermission={replyPermission}
           onSetSessionActiveSkills={setSessionActiveSkills}
-          onSetRunActiveSkills={setRunActiveSkills}
           isSidebarOpen={isSidebarOpen}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           errorMessage={errorMessage}

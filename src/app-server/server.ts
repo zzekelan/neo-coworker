@@ -11,7 +11,6 @@ import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
   RUN_TRIGGERS,
-  RunActiveSkillsUpdateStateError,
   type ServerEvent,
   ServerShuttingDownError,
   SessionBusyError,
@@ -267,19 +266,6 @@ export function createAgentServer(input: {
         })
       }
 
-      const runActiveSkillsMatch = matchPath(path, ["runs", ":runId", "active-skills"])
-      if (request.method === "POST" && runActiveSkillsMatch) {
-        const body = await readJsonBody(request, updateActiveSkillsBodySchema)
-        return jsonResponse(200, {
-          data: {
-            run: app.runs.updateActiveSkills({
-              runId: runActiveSkillsMatch.runId,
-              activeSkills: body.activeSkills,
-            }),
-          },
-        })
-      }
-
       const runTraceMatch = matchPath(path, ["runs", ":runId", "trace"])
       if (request.method === "GET" && runTraceMatch) {
         return jsonResponse(200, {
@@ -525,7 +511,6 @@ function mapHttpError(error: unknown) {
     error instanceof InvalidRunStatusTransitionError ||
     error instanceof SessionBusyError ||
     error instanceof StartRunIdentityConflictError ||
-    error instanceof RunActiveSkillsUpdateStateError ||
     error instanceof PermissionRequestNotPendingError ||
     error instanceof PermissionRequestRunStateError ||
     error instanceof PermissionRequestNotAwaitingActiveRuntimeError ||

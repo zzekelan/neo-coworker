@@ -48,9 +48,6 @@ export function useAgent() {
     setSessionActiveSkills(sessionId: string, activeSkills: string[]) {
       return desktop.setSessionActiveSkills(sessionId, activeSkills)
     },
-    setRunActiveSkills(runId: string, activeSkills: string[]) {
-      return desktop.setRunActiveSkills(runId, activeSkills)
-    },
     errorMessage: desktop.actionError,
     skillWarningMessage: desktop.skillWarningMessage,
   }

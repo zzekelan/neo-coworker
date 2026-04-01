@@ -547,9 +547,6 @@ export function createServerApp(input: {
           permissionRequests: permissionRepository.requests.listByRun(runId),
         }
       },
-      updateActiveSkills(inputValue: { runId: string; activeSkills: string[] }) {
-        return sessionProvider.runs.updateActiveSkills(inputValue)
-      },
       cancel(runId: string) {
         const run = repository.runs.get(runId)
         assertRunStatusTransition(run, "cancelled")
