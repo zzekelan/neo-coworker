@@ -70,6 +70,7 @@ type SessionSummary = {
   updatedAt: number
   latestUserMessagePreview: string | null
   activeSkills: string[]
+  latestRunStatus: "queued" | "running" | "waiting_permission" | "completed" | "failed" | "cancelled" | null
 }
 
 export function createAgentServer(input: {

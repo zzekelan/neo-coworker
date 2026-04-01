@@ -11,6 +11,7 @@ export interface DesktopSession {
   sessionId: string
   updatedAt: string
   activeSkills: string[]
+  latestRunStatus: DesktopRunStatus | null
 }
 
 export type DesktopRunStatus =

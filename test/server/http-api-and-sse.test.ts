@@ -66,6 +66,7 @@ describe("server HTTP API and SSE", () => {
         workspaceRoot: harness.workspaceRoot,
         title: "New session",
         latestUserMessagePreview: null,
+        latestRunStatus: null,
         updatedAt: expect.any(Number),
       }),
     ])
@@ -98,6 +99,7 @@ describe("server HTTP API and SSE", () => {
         id: sessionId,
         title: "Say hi from the server",
         latestUserMessagePreview: "Say hi from the server",
+        latestRunStatus: "completed",
         updatedAt: expect.any(Number),
       },
       latestRun: {
@@ -115,6 +117,7 @@ describe("server HTTP API and SSE", () => {
         id: sessionId,
         title: "Say hi from the server",
         latestUserMessagePreview: "Say hi from the server",
+        latestRunStatus: "completed",
         updatedAt: expect.any(Number),
       }),
     ])
@@ -712,6 +715,7 @@ describe("server HTTP API and SSE", () => {
       workspaceRoot: alphaRoot,
       title: "Alpha one",
       latestUserMessagePreview: null,
+      latestRunStatus: null,
     })
 
     const alphaTwoResponse = await requestJson(harness.server, "POST", "/workspace/sessions", {
@@ -725,6 +729,7 @@ describe("server HTTP API and SSE", () => {
       workspaceRoot: alphaRoot,
       title: "Alpha two",
       latestUserMessagePreview: null,
+      latestRunStatus: null,
     })
 
     const betaResponse = await requestJson(harness.server, "POST", "/workspace/sessions", {
@@ -738,6 +743,7 @@ describe("server HTTP API and SSE", () => {
       workspaceRoot: betaRoot,
       title: "Beta one",
       latestUserMessagePreview: null,
+      latestRunStatus: null,
     })
 
     const startedRun = await requestJson(
@@ -768,6 +774,7 @@ describe("server HTTP API and SSE", () => {
       workspaceRoot: alphaRoot,
       title: "Alpha one",
       latestUserMessagePreview: "Refresh alpha project",
+      latestRunStatus: "completed",
     })
     expectSessionContract(olderAlphaSession, {
       id: alphaTwoSession.id,
@@ -775,6 +782,7 @@ describe("server HTTP API and SSE", () => {
       workspaceRoot: alphaRoot,
       title: "Alpha two",
       latestUserMessagePreview: null,
+      latestRunStatus: null,
     })
     expect(latestAlphaSession.updatedAt).toBeGreaterThan(olderAlphaSession.updatedAt)
 
@@ -1376,6 +1384,7 @@ const desktopSessionKeys = [
   "createdAt",
   "directory",
   "id",
+  "latestRunStatus",
   "latestUserMessagePreview",
   "title",
   "updatedAt",
@@ -1409,6 +1418,12 @@ function expectSessionContract(
   expect(
     session.latestUserMessagePreview === null ||
       typeof session.latestUserMessagePreview === "string",
+  ).toBe(true)
+  expect(
+    session.latestRunStatus === null ||
+      ["queued", "running", "waiting_permission", "completed", "failed", "cancelled"].includes(
+        session.latestRunStatus,
+      ),
   ).toBe(true)
   expect(Array.isArray(session.activeSkills)).toBe(true)
   expect(session.activeSkills.every((activeSkill: unknown) => typeof activeSkill === "string")).toBe(

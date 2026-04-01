@@ -15,6 +15,7 @@ export type DesktopSessionSummary = {
   updatedAt: number
   latestUserMessagePreview: string | null
   activeSkills: string[]
+  latestRunStatus: RunStatus | null
 }
 
 export type DesktopSkillCatalogEntry = {

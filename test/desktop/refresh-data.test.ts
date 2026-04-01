@@ -32,6 +32,7 @@ describe("desktop refresh data", () => {
                 updatedAt: 2,
                 latestUserMessagePreview: "hello",
                 activeSkills: ["reviewer"],
+                latestRunStatus: null,
               },
             ],
           }
@@ -51,6 +52,7 @@ describe("desktop refresh data", () => {
               updatedAt: 2,
               latestUserMessagePreview: "hello",
               activeSkills: ["reviewer"],
+              latestRunStatus: null,
             },
             latestRun: null,
             activeRun: null,

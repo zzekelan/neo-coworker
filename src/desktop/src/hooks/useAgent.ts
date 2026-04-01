@@ -78,6 +78,7 @@ function mapSession(
     sessionId: session.id,
     updatedAt: toIsoString(session.updatedAt),
     activeSkills: session.activeSkills,
+    latestRunStatus: session.latestRunStatus,
   }
 }
 

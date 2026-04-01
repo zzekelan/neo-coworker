@@ -43,6 +43,7 @@ describe("desktop skill state", () => {
           sessionId: "session-1",
           updatedAt: new Date(0).toISOString(),
           activeSkills: ["writer"],
+          latestRunStatus: null,
         },
         activeRun: {
           id: "run-1",
@@ -63,6 +64,7 @@ describe("desktop skill state", () => {
       sessionId: "session-1",
       updatedAt: new Date(0).toISOString(),
       activeSkills: ["writer"],
+      latestRunStatus: null,
     }
 
     expect(

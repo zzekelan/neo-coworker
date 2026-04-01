@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Folder, PanelLeftClose, Plus, MessageSquare } from "lucide-react"
+import { AlertCircle, Folder, Loader2, PanelLeftClose, Plus, MessageSquare, ShieldAlert } from "lucide-react"
 import { cn } from "../lib/utils"
 import type { DesktopSession, DesktopWorkspace } from "../view-types"
 import { hasVisibleWorkspaceSelect } from "./sidebar-workspace-state"
@@ -221,24 +221,12 @@ export function Sidebar({
             <div className="min-h-0 flex-1 overflow-y-auto px-1">
               <div className="space-y-1">
                 {sessions.map((session) => (
-                  <button
+                  <SessionListItem
                     key={session.id}
-                    onClick={() => setActiveSessionId(session.id)}
-                    className={cn(
-                      "group flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
-                      activeSessionId === session.id
-                        ? "border-zinc-200 bg-white font-medium text-zinc-900 shadow-sm"
-                        : "border-transparent text-zinc-600 hover:border-zinc-200/80 hover:bg-white/80 hover:text-zinc-900",
-                    )}
-                  >
-                    <MessageSquare
-                      className={cn(
-                        "h-4 w-4 shrink-0",
-                        activeSessionId === session.id ? "text-zinc-900" : "text-zinc-400",
-                      )}
-                    />
-                    <span className="flex-1 truncate">{session.title || "Untitled Session"}</span>
-                  </button>
+                    session={session}
+                    isActive={activeSessionId === session.id}
+                    onSelect={() => setActiveSessionId(session.id)}
+                  />
                 ))}
                 {sessions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-4 text-xs italic text-zinc-500">
@@ -257,4 +245,73 @@ export function Sidebar({
       </div>
     </div>
   )
+}
+
+function SessionListItem(input: {
+  session: DesktopSession
+  isActive: boolean
+  onSelect(): void
+}) {
+  const badge = getSessionStatusBadge(input.session.latestRunStatus)
+
+  return (
+    <button
+      onClick={input.onSelect}
+      className={cn(
+        "group flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
+        input.isActive
+          ? "border-zinc-200 bg-white font-medium text-zinc-900 shadow-sm"
+          : "border-transparent text-zinc-600 hover:border-zinc-200/80 hover:bg-white/80 hover:text-zinc-900",
+      )}
+    >
+      <MessageSquare
+        className={cn(
+          "h-4 w-4 shrink-0",
+          input.isActive ? "text-zinc-900" : "text-zinc-400",
+        )}
+      />
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="min-w-0 flex-1 truncate">{input.session.title || "Untitled Session"}</span>
+        {badge ? (
+          <span
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+              badge.className,
+            )}
+          >
+            <badge.icon className="h-3 w-3" />
+            {badge.label}
+          </span>
+        ) : null}
+      </div>
+    </button>
+  )
+}
+
+function getSessionStatusBadge(status: DesktopSession["latestRunStatus"]) {
+  if (status === "running") {
+    return {
+      label: "Running",
+      className: "border-sky-200 bg-sky-50 text-sky-700",
+      icon: Loader2,
+    }
+  }
+
+  if (status === "waiting_permission") {
+    return {
+      label: "Waiting",
+      className: "border-amber-200 bg-amber-50 text-amber-700",
+      icon: ShieldAlert,
+    }
+  }
+
+  if (status === "failed") {
+    return {
+      label: "Failed",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+      icon: AlertCircle,
+    }
+  }
+
+  return null
 }

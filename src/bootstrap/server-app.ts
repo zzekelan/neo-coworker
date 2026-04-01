@@ -20,7 +20,9 @@ import type {
 } from "../permission"
 
 export type SessionSnapshot = {
-  session: StoredSession
+  session: StoredSession & {
+    latestRunStatus: StoredRun["status"] | null
+  }
   latestRun: StoredRun | null
   activeRun: StoredRun | null
   status: "idle" | "busy"
@@ -139,7 +141,10 @@ export function buildSessionSnapshot(
   const activeRun = repository.runs.getActiveBySession(sessionId)
 
   return {
-    session,
+    session: {
+      ...session,
+      latestRunStatus: latestRun?.status ?? null,
+    },
     latestRun,
     activeRun,
     status: activeRun ? "busy" : "idle",
@@ -506,25 +511,36 @@ export function createServerApp(input: {
         workspaceRoot?: string
         title?: string
       }) {
-        return repository.sessions.create({
+        const created = repository.sessions.create({
           directory: sessionInput.directory,
           workspaceRoot: sessionInput.workspaceRoot ?? sessionInput.directory,
           title: sessionInput.title,
           createdAt: now(),
         })
+        return {
+          ...created,
+          latestRunStatus: null,
+        }
       },
       list() {
-        return repository.sessions.list()
+        return repository.sessions.list().map((session) => ({
+          ...session,
+          latestRunStatus: repository.runs.getLatestBySession(session.id)?.status ?? null,
+        }))
       },
       get(sessionId: string) {
         return buildSessionSnapshot(repository, sessionId)
       },
       updateActiveSkills(inputValue: { sessionId: string; activeSkills: string[] }) {
-        return repository.sessions.update({
+        const updated = repository.sessions.update({
           sessionId: inputValue.sessionId,
           activeSkills: inputValue.activeSkills,
           updatedAt: now(),
         })
+        return {
+          ...updated,
+          latestRunStatus: repository.runs.getLatestBySession(updated.id)?.status ?? null,
+        }
       },
       transcript(sessionId: string) {
         return sessionProvider.transcript.listSessionTranscript(sessionId)
