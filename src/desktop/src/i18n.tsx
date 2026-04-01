@@ -59,6 +59,7 @@ type DesktopText = {
     title: string
     language: string
     provider: string
+    providerUnset: string
     apiKey: string
     model: string
     baseUrl: string
@@ -132,6 +133,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       title: "Settings",
       language: "Language",
       provider: "LLM provider",
+      providerUnset: "Not configured",
       apiKey: "API key",
       model: "Model",
       baseUrl: "Base URL",
@@ -203,6 +205,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       title: "设置",
       language: "语言",
       provider: "LLM 提供商",
+      providerUnset: "未设置",
       apiKey: "API Key",
       model: "模型",
       baseUrl: "Base URL",

@@ -14,6 +14,7 @@ import {
 } from "./selection-state.mjs"
 import {
   createDefaultDesktopSettings,
+  readDesktopSettingsEnvFiles,
   readDesktopSettingsState,
   writeDesktopSettingsState,
 } from "./settings-state.mjs"
@@ -28,7 +29,10 @@ const desktopSettingsStatePath = resolve(repositoryRoot, ".agents", "desktop-set
 const desktopServerDatabasePath =
   process.env.AGENT_SERVER_DB_PATH?.trim() || resolve(repositoryRoot, ".agents", "server.sqlite")
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
-const defaultDesktopSettings = createDefaultDesktopSettings(process.env)
+const defaultDesktopSettings = createDefaultDesktopSettings({
+  ...readDesktopSettingsEnvFiles(repositoryRoot),
+  ...process.env,
+})
 let desktopSettings = readDesktopSettingsState(desktopSettingsStatePath, defaultDesktopSettings)
 const bunBin = resolveBunExecutable()
 const bootstrapLogPath = process.env.DESKTOP_BOOTSTRAP_LOG?.trim() || null
@@ -40,6 +44,7 @@ let currentServerOrigin = null
 let currentServerMode = "managed-local"
 let mainWindow = null
 let runtimeCleanupPromise = null
+let unavailableServerMessage = null
 
 app.disableHardwareAcceleration()
 
@@ -70,10 +75,6 @@ async function startDesktop() {
   currentServerMode = readConfiguredServerOrigin(process.env.AGENT_SERVER_URL)
     ? "external"
     : "managed-local"
-  currentServerOrigin = await resolveServerOrigin({
-    serverMode: currentServerMode,
-    settings: desktopSettings,
-  })
   const uiOrigin = await startUiServer()
   const window = createWindow({
     defaultWorkspaceRoot: workspaceRoot,
@@ -142,10 +143,22 @@ async function startDesktop() {
     }
   })
 
-  await replaceEventBridge({
-    serverOrigin: currentServerOrigin,
-    window,
-  })
+  try {
+    currentServerOrigin = await resolveServerOrigin({
+      serverMode: currentServerMode,
+      settings: desktopSettings,
+    })
+    unavailableServerMessage = null
+    await replaceEventBridge({
+      serverOrigin: currentServerOrigin,
+      window,
+    })
+  } catch (error) {
+    currentServerOrigin = null
+    unavailableServerMessage = toErrorMessage(error)
+    logBootstrap(`server.unavailable ${sanitizeBootstrapMessage(unavailableServerMessage)}`)
+    console.error(unavailableServerMessage)
+  }
 
   await window.loadURL(uiOrigin)
   logBootstrap(`window.loaded ${uiOrigin}`)
@@ -243,6 +256,7 @@ async function startManagedLocalServer(settings) {
       return waitForServerStarted(child, `http://127.0.0.1:${port}`)
     },
   })
+  unavailableServerMessage = null
   logBootstrap(`server.local.ready ${startedOrigin}`)
   return startedOrigin
 }
@@ -272,6 +286,10 @@ async function restartManagedLocalServer(input) {
 }
 
 async function ensureNoActiveRuns(origin) {
+  if (!origin) {
+    return
+  }
+
   const response = await requestJson(origin, {
     path: "/sessions",
   })
@@ -450,6 +468,10 @@ function createEventBridge(input) {
 }
 
 async function requestJson(origin, input) {
+  if (!origin) {
+    return createUnavailableServerResponse()
+  }
+
   const url = new URL(input.path, origin)
   const body = input.body === undefined ? undefined : JSON.stringify(input.body)
   const response = await requestUrl(url, {
@@ -462,6 +484,22 @@ async function requestJson(origin, input) {
     ok: response.status >= 200 && response.status < 300,
     status: response.status,
     body: response.body,
+  }
+}
+
+function createUnavailableServerResponse() {
+  const detail = unavailableServerMessage
+    ? `${unavailableServerMessage} Open Settings, configure the LLM fields, and apply them to start the local server.`
+    : "The desktop app-server is unavailable. Open Settings, configure the LLM fields, and apply them to start the local server."
+
+  return {
+    ok: false,
+    status: 503,
+    body: {
+      error: {
+        message: detail,
+      },
+    },
   }
 }
 
@@ -738,4 +776,12 @@ function logBootstrap(message) {
   }
 
   console.log(line)
+}
+
+function sanitizeBootstrapMessage(message) {
+  return message.replace(/\s+/g, " ").trim()
+}
+
+function toErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error)
 }

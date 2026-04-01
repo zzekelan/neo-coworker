@@ -63,9 +63,9 @@ export async function loadDesktopSettings() {
     return {
       settings: {
         language: "en",
-        provider: "openai",
+        provider: "",
         apiKey: "",
-        model: "gpt-5",
+        model: "",
         baseURL: "",
         timeoutMs: "",
       } satisfies DesktopSettings,

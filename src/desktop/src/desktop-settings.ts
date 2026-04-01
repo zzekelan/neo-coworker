@@ -1,6 +1,6 @@
 export type DesktopLanguage = "en" | "zh"
 export type DesktopServerMode = "managed-local" | "external"
-export type DesktopProviderKind = "openai" | "openai-compatible"
+export type DesktopProviderKind = "" | "openai" | "openai-compatible"
 
 export type DesktopSettings = {
   language: DesktopLanguage
@@ -13,9 +13,9 @@ export type DesktopSettings = {
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   language: "en",
-  provider: "openai",
+  provider: "",
   apiKey: "",
-  model: "gpt-5",
+  model: "",
   baseURL: "",
   timeoutMs: "",
 }

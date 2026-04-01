@@ -116,6 +116,10 @@ describe("desktop electron lifecycle", () => {
     const mainSource = readFileSync("src/desktop/electron/main.mjs", "utf8")
     const preloadSource = readFileSync("src/desktop/electron/preload.cjs", "utf8")
 
+    expect(mainSource).toContain("readDesktopSettingsEnvFiles(repositoryRoot)")
+    expect(mainSource).toContain("currentServerOrigin = null")
+    expect(mainSource).toContain("createUnavailableServerResponse()")
+    expect(mainSource).not.toContain("process.loadEnvFile")
     expect(mainSource).toContain("neo-coworker:load-settings")
     expect(mainSource).toContain("neo-coworker:save-settings")
     expect(mainSource).toContain("neo-coworker:apply-settings")

@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
   createDefaultDesktopSettings,
+  readDesktopSettingsEnvFiles,
   readDesktopSettingsState,
   writeDesktopSettingsState,
 } from "../../src/desktop/electron/settings-state.mjs"
@@ -61,10 +62,51 @@ describe("desktop settings state", () => {
       timeoutMs: "45000",
     })
   })
+
+  test("uses blank LLM settings when neither env nor persisted settings are present", () => {
+    expect(createDefaultDesktopSettings({})).toEqual({
+      language: "en",
+      provider: "",
+      apiKey: "",
+      model: "",
+      baseURL: "",
+      timeoutMs: "",
+    })
+  })
+
+  test("reads only LLM settings from repo env files", () => {
+    const directory = createSettingsDirectory()
+    writeFileSync(
+      join(directory, ".env"),
+      [
+        "LLM_PROVIDER=\"openai-compatible\"",
+        "LLM_API_KEY=env-key",
+        "AGENT_SERVER_DB_PATH=\"$PWD/.agents/server.sqlite\"",
+      ].join("\n"),
+    )
+    writeFileSync(
+      join(directory, ".env.local"),
+      [
+        "LLM_MODEL=local-model",
+        "LLM_TIMEOUT_MS=45000",
+      ].join("\n"),
+    )
+
+    expect(readDesktopSettingsEnvFiles(directory)).toEqual({
+      LLM_PROVIDER: "openai-compatible",
+      LLM_API_KEY: "env-key",
+      LLM_MODEL: "local-model",
+      LLM_TIMEOUT_MS: "45000",
+    })
+  })
 })
 
 function createSettingsFilePath() {
+  return join(createSettingsDirectory(), "desktop-settings.json")
+}
+
+function createSettingsDirectory() {
   const directory = mkdtempSync(join(tmpdir(), "neo-coworker-desktop-settings-"))
   temporaryDirectories.push(directory)
-  return join(directory, "desktop-settings.json")
+  return directory
 }

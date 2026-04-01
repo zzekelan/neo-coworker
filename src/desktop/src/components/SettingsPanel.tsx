@@ -73,6 +73,7 @@ export function SettingsPanel({
             }
             className={fieldClassName(llmFieldsDisabled)}
           >
+            <option value="">{text.settings.providerUnset}</option>
             <option value="openai">openai</option>
             <option value="openai-compatible">openai-compatible</option>
           </select>

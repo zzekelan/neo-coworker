@@ -140,7 +140,12 @@ function normalizeBrowserSettings(value: unknown): DesktopSettings {
 
   return {
     language: candidate.language === "zh" ? "zh" : "en",
-    provider: candidate.provider === "openai-compatible" ? "openai-compatible" : "openai",
+    provider:
+      candidate.provider === "openai-compatible"
+        ? "openai-compatible"
+        : candidate.provider === "openai"
+          ? "openai"
+          : "",
     apiKey: typeof candidate.apiKey === "string" ? candidate.apiKey : "",
     model:
       typeof candidate.model === "string" && candidate.model.trim().length > 0
