@@ -22,6 +22,8 @@ type DesktopText = {
   chat: {
     selectSession: string
     startConversation: string
+    createSessionToStart: string
+    createSession: string
     agentRunning: string
     waitingPermission: string
     thinking: string
@@ -162,6 +164,8 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     chat: {
       selectSession: "Select a session to start",
       startConversation: "Start a conversation with NeoCoworker",
+      createSessionToStart: "New a session to start",
+      createSession: "New Session",
       agentRunning: "Agent Running",
       waitingPermission: "Waiting Permission",
       thinking: "NeoCoworker is thinking...",
@@ -324,6 +328,8 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     chat: {
       selectSession: "选择一个会话开始",
       startConversation: "开始与 NeoCoworker 对话",
+      createSessionToStart: "新建一个会话以开始",
+      createSession: "新建会话",
       agentRunning: "Agent 运行中",
       waitingPermission: "等待权限",
       thinking: "NeoCoworker 正在思考...",

@@ -82,6 +82,7 @@ export default function App() {
         <div className="relative flex min-w-0 flex-1 flex-col border-l border-ink/5 bg-white/40">
           <ChatArea
             sessionSummary={sessions.find((candidate) => candidate.id === activeSessionId) || null}
+            hasSessions={sessions.length > 0}
             session={session}
             skills={skills}
             transcript={transcript}
@@ -90,6 +91,9 @@ export default function App() {
             onCancelRun={cancelRun}
             onReplyPermission={replyPermission}
             onSetSessionActiveSkills={setSessionActiveSkills}
+            onCreateSession={() => {
+              void createSession()
+            }}
             isSidebarOpen={isSidebarOpen}
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             errorMessage={errorMessage}

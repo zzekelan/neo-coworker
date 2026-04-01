@@ -7,6 +7,7 @@ import {
   MessageSquare,
   PanelLeft,
   Play,
+  Plus,
   Sparkles,
   Square,
 } from "lucide-react"
@@ -34,6 +35,7 @@ const SKILL_DRAWER_TRANSITION = {
 
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
+  hasSessions: boolean
   session: DesktopSessionSnapshot | null
   skills: DesktopSkillCatalogEntry[]
   transcript: DesktopTranscriptMessage[]
@@ -42,6 +44,7 @@ interface ChatAreaProps {
   onCancelRun: () => void | Promise<unknown>
   onReplyPermission: (id: string, decision: "allow" | "deny") => boolean | Promise<boolean>
   onSetSessionActiveSkills: (sessionId: string, activeSkills: string[]) => void | Promise<unknown>
+  onCreateSession: () => void | Promise<unknown>
   isSidebarOpen: boolean
   onToggleSidebar: () => void
   errorMessage: string | null
@@ -50,6 +53,7 @@ interface ChatAreaProps {
 
 export function ChatArea({
   sessionSummary,
+  hasSessions,
   session,
   skills,
   transcript,
@@ -58,6 +62,7 @@ export function ChatArea({
   onCancelRun,
   onReplyPermission,
   onSetSessionActiveSkills,
+  onCreateSession,
   isSidebarOpen,
   onToggleSidebar,
   errorMessage,
@@ -267,13 +272,23 @@ export function ChatArea({
             </button>
           ) : null}
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center text-zinc-400">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
-            <Play className="ml-1 h-6 w-6 text-zinc-300" />
-          </div>
-          <p className="text-sm font-medium tracking-wide text-zinc-500">{text.chat.selectSession}</p>
-          {errorMessage ? <p className="mt-3 max-w-sm text-center text-xs text-rose-500">{errorMessage}</p> : null}
-        </div>
+        <EmptyChatState
+          icon={<Play className="h-6 w-6 text-zinc-300" />}
+          title={hasSessions ? text.chat.selectSession : text.chat.createSessionToStart}
+          action={
+            !hasSessions ? (
+              <button
+                type="button"
+                onClick={() => void onCreateSession()}
+                className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+              >
+                <Plus className="h-4 w-4" />
+                {text.chat.createSession}
+              </button>
+            ) : null
+          }
+          errorMessage={errorMessage}
+        />
       </div>
     )
   }
@@ -329,13 +344,11 @@ export function ChatArea({
         className="flex-1 overflow-y-auto px-4 pb-32 md:px-8"
       >
         {transcript.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center space-y-4 text-zinc-400">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
-              <MessageSquare className="h-5 w-5 text-zinc-300" />
-            </div>
-            <p className="text-sm text-zinc-500">{text.chat.startConversation}</p>
-            {errorMessage ? <p className="max-w-md text-center text-xs text-rose-500">{errorMessage}</p> : null}
-          </div>
+          <EmptyChatState
+            icon={<MessageSquare className="h-6 w-6 text-zinc-300" />}
+            title={text.chat.startConversation}
+            errorMessage={errorMessage}
+          />
         ) : (
           <div className="mx-auto max-w-4xl py-8">
             {errorMessage ? (
@@ -517,4 +530,26 @@ export function ChatArea({
 
 function isNearTranscriptBottom(element: HTMLDivElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
+}
+
+function EmptyChatState(input: {
+  icon: React.ReactNode
+  title: string
+  action?: React.ReactNode
+  errorMessage: string | null
+}) {
+  return (
+    <div className="flex h-full w-full items-center justify-center">
+      <div className="flex w-full max-w-md flex-col items-center justify-center px-6 text-center text-zinc-400">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
+          {input.icon}
+        </div>
+        <p className="text-sm font-medium tracking-wide text-zinc-500">{input.title}</p>
+        {input.action}
+        {input.errorMessage ? (
+          <p className="mt-3 max-w-sm text-center text-xs text-rose-500">{input.errorMessage}</p>
+        ) : null}
+      </div>
+    </div>
+  )
 }
