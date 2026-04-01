@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import { AlertCircle, Folder, Loader2, PanelLeftClose, Plus, MessageSquare, ShieldAlert } from "lucide-react"
 import { cn } from "../lib/utils"
 import type { DesktopSession, DesktopWorkspace } from "../view-types"
@@ -13,6 +13,7 @@ interface SidebarProps {
   setActiveSessionId: (id: string) => void
   createSession: () => void
   createWorkspace: () => Promise<boolean>
+  deleteSession: (sessionId: string) => void | Promise<unknown>
   isManagingWorkspace: boolean
   isOnline: boolean
   isOpen: boolean
@@ -28,18 +29,27 @@ export function Sidebar({
   setActiveSessionId,
   createSession,
   createWorkspace,
+  deleteSession,
   isManagingWorkspace,
   isOnline,
   isOpen,
   onToggle,
 }: SidebarProps) {
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false)
+  const [sessionContextMenu, setSessionContextMenu] = useState<{
+    sessionId: string
+    x: number
+    y: number
+  } | null>(null)
   const workspaceMenuRef = useRef<HTMLDivElement | null>(null)
+  const sessionContextMenuRef = useRef<HTMLDivElement | null>(null)
   const showWorkspaceSelect = hasVisibleWorkspaceSelect(workspaces.length)
   const activeWorkspace =
     workspaces.find((workspace) => workspace.workspaceRoot === activeWorkspaceRoot) ??
     workspaces[0] ??
     null
+  const contextMenuSession =
+    sessions.find((session) => session.id === sessionContextMenu?.sessionId) ?? null
 
   useEffect(() => {
     if (!isWorkspaceMenuOpen) {
@@ -57,6 +67,31 @@ export function Sidebar({
       window.removeEventListener("mousedown", handlePointerDown)
     }
   }, [isWorkspaceMenuOpen])
+
+  useEffect(() => {
+    if (!sessionContextMenu) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!sessionContextMenuRef.current?.contains(event.target as Node)) {
+        setSessionContextMenu(null)
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSessionContextMenu(null)
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown)
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown)
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [sessionContextMenu])
 
   return (
     <div
@@ -226,6 +261,14 @@ export function Sidebar({
                     session={session}
                     isActive={activeSessionId === session.id}
                     onSelect={() => setActiveSessionId(session.id)}
+                    onOpenContextMenu={(event) => {
+                      event.preventDefault()
+                      setSessionContextMenu({
+                        sessionId: session.id,
+                        x: event.clientX,
+                        y: event.clientY,
+                      })
+                    }}
                   />
                 ))}
                 {sessions.length === 0 ? (
@@ -242,6 +285,34 @@ export function Sidebar({
             <span>{isOnline ? "Online" : "Offline"}</span>
           </div>
         </div>
+
+        {sessionContextMenu && contextMenuSession ? (
+          <div
+            ref={sessionContextMenuRef}
+            className="fixed z-50 w-56 rounded-xl border border-zinc-200 bg-white/98 p-2 text-sm text-zinc-700 shadow-[0_18px_45px_rgba(24,24,27,0.18)] backdrop-blur-sm"
+            style={getContextMenuStyle(sessionContextMenu)}
+          >
+            <button
+              type="button"
+              disabled={isBusySessionStatus(contextMenuSession.latestRunStatus)}
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left font-medium text-zinc-800 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:hover:bg-transparent"
+              onClick={() => {
+                setSessionContextMenu(null)
+                if (!isBusySessionStatus(contextMenuSession.latestRunStatus)) {
+                  void deleteSession(contextMenuSession.id)
+                }
+              }}
+            >
+              <span>Delete session</span>
+              <span className="text-[11px] uppercase tracking-wide text-zinc-400">Del</span>
+            </button>
+            <p className="px-3 py-2 text-xs leading-relaxed text-zinc-500">
+              {isBusySessionStatus(contextMenuSession.latestRunStatus)
+                ? "Stop the active run before deleting this session."
+                : "Deletes this session together with its transcript, runs, and trace history."}
+            </p>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -251,12 +322,14 @@ function SessionListItem(input: {
   session: DesktopSession
   isActive: boolean
   onSelect(): void
+  onOpenContextMenu(event: ReactMouseEvent<HTMLButtonElement>): void
 }) {
   const badge = getSessionStatusBadge(input.session.latestRunStatus)
 
   return (
     <button
       onClick={input.onSelect}
+      onContextMenu={input.onOpenContextMenu}
       className={cn(
         "group flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
         input.isActive
@@ -279,7 +352,7 @@ function SessionListItem(input: {
               badge.className,
             )}
           >
-            <badge.icon className="h-3 w-3" />
+            <badge.icon className={cn("h-3 w-3", badge.iconClassName)} />
             {badge.label}
           </span>
         ) : null}
@@ -294,6 +367,7 @@ function getSessionStatusBadge(status: DesktopSession["latestRunStatus"]) {
       label: "Running",
       className: "border-sky-200 bg-sky-50 text-sky-700",
       icon: Loader2,
+      iconClassName: "animate-spin",
     }
   }
 
@@ -302,6 +376,7 @@ function getSessionStatusBadge(status: DesktopSession["latestRunStatus"]) {
       label: "Waiting",
       className: "border-amber-200 bg-amber-50 text-amber-700",
       icon: ShieldAlert,
+      iconClassName: "",
     }
   }
 
@@ -310,8 +385,27 @@ function getSessionStatusBadge(status: DesktopSession["latestRunStatus"]) {
       label: "Failed",
       className: "border-rose-200 bg-rose-50 text-rose-700",
       icon: AlertCircle,
+      iconClassName: "",
     }
   }
 
   return null
+}
+
+function isBusySessionStatus(status: DesktopSession["latestRunStatus"]) {
+  return status === "queued" || status === "running" || status === "waiting_permission"
+}
+
+function getContextMenuStyle(position: { x: number; y: number }) {
+  if (typeof window === "undefined") {
+    return {
+      left: position.x,
+      top: position.y,
+    }
+  }
+
+  return {
+    left: Math.min(position.x, window.innerWidth - 244),
+    top: Math.min(position.y, window.innerHeight - 132),
+  }
 }

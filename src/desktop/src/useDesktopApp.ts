@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react"
 import {
   cancelRun,
   createSession,
+  deleteSession as deleteSessionRequest,
   getDesktopBridge,
   loadWorkspaces,
   loadWorkspaceSkills,
@@ -593,6 +594,46 @@ export function useDesktopApp() {
         throw error
       }
     },
+
+    async deleteSession(sessionId: string) {
+      const nextActiveSessionId =
+        selectionRef.current.activeSessionId === sessionId
+          ? pickNextSessionIdAfterDelete(state.sessions, sessionId)
+          : selectionRef.current.activeSessionId
+
+      try {
+        await deleteSessionRequest(sessionId)
+
+        setState((previous) => {
+          const deletingActiveSession = previous.activeSessionId === sessionId
+
+          return {
+            ...previous,
+            sessions: previous.sessions.filter((candidate) => candidate.id !== sessionId),
+            activeSessionId: deletingActiveSession ? nextActiveSessionId : previous.activeSessionId,
+            sessionSnapshot: deletingActiveSession ? null : previous.sessionSnapshot,
+            sessionRuns: deletingActiveSession ? [] : previous.sessionRuns,
+            transcript: deletingActiveSession ? [] : previous.transcript,
+            permissionRequests: deletingActiveSession ? [] : previous.permissionRequests,
+            isSending: deletingActiveSession ? false : previous.isSending,
+            actionError: null,
+          }
+        })
+
+        await refresh({
+          workspaceRoot: selectionRef.current.activeWorkspaceRoot,
+          sessionId: nextActiveSessionId,
+        })
+
+        return true
+      } catch (error) {
+        setState((previous) => ({
+          ...previous,
+          actionError: toErrorMessage(error),
+        }))
+        return false
+      }
+    },
   }
 
   return {
@@ -707,6 +748,13 @@ function resolveWorkspaceRoot(input: {
   }
 
   return input.workspaces[0]?.workspaceRoot ?? null
+}
+
+export function pickNextSessionIdAfterDelete(
+  sessions: DesktopSessionSummary[],
+  deletedSessionId: string,
+) {
+  return sessions.find((candidate) => candidate.id !== deletedSessionId)?.id ?? null
 }
 
 function upsertSession(

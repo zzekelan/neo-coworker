@@ -31,6 +31,9 @@ export function useAgent() {
     createWorkspace() {
       return desktop.createWorkspaceFromDialog()
     },
+    deleteSession(sessionId: string) {
+      return desktop.deleteSession(sessionId)
+    },
     isManagingWorkspace: desktop.isManagingWorkspace,
     skills: desktop.skills.map(mapSkillCatalogEntry),
     session: desktop.sessionSnapshot ? mapSessionSnapshot(desktop.sessionSnapshot) : null,

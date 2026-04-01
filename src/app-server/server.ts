@@ -79,6 +79,7 @@ export function createAgentServer(input: {
   permissionRepository: PermissionRepository
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
   listSkillCatalogImpl?: Parameters<typeof createServerApp>[0]["listSkillCatalogImpl"]
+  deleteSessionImpl?: (sessionId: string) => void
   now?: () => number
   heartbeatIntervalMs?: number
   allowDetachedPermissionRecovery?: boolean
@@ -208,6 +209,19 @@ export function createAgentServer(input: {
       }
 
       const sessionStateMatch = matchPath(path, ["sessions", ":sessionId"])
+      if (request.method === "DELETE" && sessionStateMatch) {
+        if (!input.deleteSessionImpl) {
+          throw new Error("Session deletion is not configured for this server instance")
+        }
+
+        input.deleteSessionImpl(sessionStateMatch.sessionId)
+        return jsonResponse(200, {
+          data: {
+            sessionId: sessionStateMatch.sessionId,
+          },
+        })
+      }
+
       if (request.method === "GET" && sessionStateMatch) {
         return jsonResponse(200, {
           data: app.sessions.get(sessionStateMatch.sessionId),

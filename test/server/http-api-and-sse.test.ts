@@ -13,6 +13,7 @@ import type { OrchestrationModelPort } from "../../src/orchestration"
 import { createPermissionRepository } from "../../src/permission"
 import { createAgentServer } from "../../src/app-server"
 import {
+  createSessionDeletionCoordinator,
   createObservabilityRepository,
   createObservabilityRuntimeApi,
   createRuntime,
@@ -861,6 +862,95 @@ describe("server HTTP API and SSE", () => {
     expect(openedEmptyWorkspace.body.data.workspace.sessions).toEqual([])
   })
 
+  test("deletes idle sessions atomically and rejects busy sessions", async () => {
+    const harness = await createHarness(
+      "server-session-delete",
+      createTurnProvider([
+        async function* () {
+          yield { type: "text.delta", text: "Idle run completed." }
+        },
+        async function* (request) {
+          yield { type: "text.delta", text: "Busy run started." }
+          await new Promise<void>((resolve) => {
+            request.signal.addEventListener("abort", () => resolve(), { once: true })
+          })
+        },
+      ]),
+    )
+
+    const idleSessionResponse = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+      title: "Idle session",
+    })
+    const idleSessionId = idleSessionResponse.body.data.session.id as string
+
+    const busySessionResponse = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+      title: "Busy session",
+    })
+    const busySessionId = busySessionResponse.body.data.session.id as string
+
+    const idleRunResponse = await requestJson(harness.server, "POST", `/sessions/${idleSessionId}/runs`, {
+      prompt: "Finish and delete me",
+    })
+    const idleRunId = idleRunResponse.body.data.run.id as string
+    await waitForRunStatus(harness.server, idleRunId, "completed")
+
+    const busyRunResponse = await requestJson(harness.server, "POST", `/sessions/${busySessionId}/runs`, {
+      prompt: "Keep the busy session alive",
+    })
+    const busyRunId = busyRunResponse.body.data.run.id as string
+    await waitForRunStatus(harness.server, busyRunId, "running")
+
+    const busyDeleteResponse = await requestJson(harness.server, "DELETE", `/sessions/${busySessionId}`)
+    expect(busyDeleteResponse.status).toBe(409)
+    expect(busyDeleteResponse.body).toMatchObject({
+      error: {
+        code: "invalid_state",
+        message: expect.stringContaining(`Session ${busySessionId} already has active run`),
+      },
+    })
+
+    const idleDeleteResponse = await requestJson(harness.server, "DELETE", `/sessions/${idleSessionId}`)
+    expect(idleDeleteResponse.status).toBe(200)
+    expect(idleDeleteResponse.body.data).toEqual({
+      sessionId: idleSessionId,
+    })
+
+    const deletedRunEvents = harness.database
+      .query("SELECT COUNT(*) AS count FROM run_event WHERE session_id = ?")
+      .get(idleSessionId) as { count: number } | null
+    expect(deletedRunEvents?.count ?? 0).toBe(0)
+
+    const missingSessionState = await requestJson(harness.server, "GET", `/sessions/${idleSessionId}`)
+    expect(missingSessionState.status).toBe(404)
+    expect(missingSessionState.body.error.message).toContain(`Unknown session: ${idleSessionId}`)
+
+    const removedTrace = await requestJson(harness.server, "GET", `/runs/${idleRunId}/trace`)
+    expect(removedTrace.status).toBe(404)
+    expect(removedTrace.body.error.message).toContain(`Unknown run: ${idleRunId}`)
+
+    const remainingSessions = await requestJson(harness.server, "GET", "/sessions")
+    expect(remainingSessions.status).toBe(200)
+    expect(remainingSessions.body.data.sessions).toHaveLength(1)
+    expect(remainingSessions.body.data.sessions[0]).toMatchObject({
+      id: busySessionId,
+    })
+
+    await restartHarness(harness, createTurnProvider([]))
+
+    const remainingSessionsAfterRestart = await requestJson(harness.server, "GET", "/sessions")
+    expect(remainingSessionsAfterRestart.status).toBe(200)
+    expect(remainingSessionsAfterRestart.body.data.sessions).toHaveLength(1)
+    expect(remainingSessionsAfterRestart.body.data.sessions[0]).toMatchObject({
+      id: busySessionId,
+    })
+
+    const removedTraceAfterRestart = await requestJson(harness.server, "GET", `/runs/${idleRunId}/trace`)
+    expect(removedTraceAfterRestart.status).toBe(404)
+    expect(removedTraceAfterRestart.body.error.message).toContain(`Unknown run: ${idleRunId}`)
+  })
+
   test("skill state endpoints update session defaults but do not expose run-level mutation", async () => {
     const harness = await createHarness("server-skill-state-update", createTurnProvider([
       async function* () {
@@ -1049,6 +1139,10 @@ async function createHarness(
     listSkillCatalogImpl(workspaceRoot) {
       return skillRuntime.listCatalog(workspaceRoot)
     },
+    deleteSessionImpl: createSessionDeletionCoordinator({
+      database,
+      repository,
+    }).deleteSession,
     now,
     heartbeatIntervalMs: 15,
   })
@@ -1056,6 +1150,7 @@ async function createHarness(
 
   return {
     databasePath,
+    database,
     workspaceRoot,
     server,
     repository,
@@ -1067,6 +1162,7 @@ async function createHarness(
 async function restartHarness(
   harness: {
     databasePath: string
+    database: ReturnType<typeof openStorageDatabase>
     now: () => number
     server: { stop(): Promise<void> | void }
     repository: SessionRepository
@@ -1118,11 +1214,16 @@ async function restartHarness(
     listSkillCatalogImpl(workspaceRoot) {
       return skillRuntime.listCatalog(workspaceRoot)
     },
+    deleteSessionImpl: createSessionDeletionCoordinator({
+      database: reopenedDatabase,
+      repository: reopenedRepository,
+    }).deleteSession,
     now: harness.now,
     heartbeatIntervalMs: 15,
   })
   activeServers.push(reopenedServer)
 
+  harness.database = reopenedDatabase
   harness.server = reopenedServer
   harness.repository = reopenedRepository
   harness.permissionRepository = reopenedPermissionRepository

@@ -13,6 +13,7 @@ export default function App() {
     setActiveSessionId,
     createSession,
     createWorkspace,
+    deleteSession,
     isManagingWorkspace,
     skills,
     session,
@@ -45,6 +46,9 @@ export default function App() {
           void createSession()
         }}
         createWorkspace={createWorkspace}
+        deleteSession={(sessionId) => {
+          void deleteSession(sessionId)
+        }}
         isManagingWorkspace={isManagingWorkspace}
         isOnline={isOnline}
         isOpen={isSidebarOpen}

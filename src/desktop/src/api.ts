@@ -167,6 +167,12 @@ export async function createSession(input: { workspaceRoot: string; title?: stri
   })
 }
 
+export async function deleteSession(sessionId: string) {
+  return requestApi<{ sessionId: string }>(`/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+  })
+}
+
 export async function loadWorkspaceSkills(workspaceRoot: string) {
   return requestApi<{ skills: DesktopSkillCatalogEntry[] }>(
     `/workspace/skills?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,

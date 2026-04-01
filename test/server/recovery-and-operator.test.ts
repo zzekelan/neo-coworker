@@ -13,6 +13,7 @@ import type { OrchestrationModelPort } from "../../src/orchestration"
 import { createPermissionRepository } from "../../src/permission"
 import { createAgentServer } from "../../src/app-server"
 import {
+  createSessionDeletionCoordinator,
   createObservabilityRepository,
   createObservabilityRuntimeApi,
   createRuntime,
@@ -518,6 +519,10 @@ async function createHarness(
     repository,
     permissionRepository,
     exportRunTraceImpl: observability.exportRunTrace,
+    deleteSessionImpl: createSessionDeletionCoordinator({
+      database: connection,
+      repository,
+    }).deleteSession,
     now,
   })
   activeServers.push(server)
@@ -574,6 +579,10 @@ async function restartHarness(harness: {
     repository: reopenedRepository,
     permissionRepository: reopenedPermissionRepository,
     exportRunTraceImpl: reopenedObservability.exportRunTrace,
+    deleteSessionImpl: createSessionDeletionCoordinator({
+      database: reopenedConnection,
+      repository: reopenedRepository,
+    }).deleteSession,
     now: harness.now,
   })
   activeServers.push(reopenedServer)

@@ -2,6 +2,8 @@ import { join } from "node:path"
 import {
   createSessionRepository,
   openSessionDatabase,
+  SessionBusyError,
+  SessionNotFoundError,
   type SessionRepository,
 } from "../session"
 import { createPermissionRepository, type PermissionRepository } from "../permission"
@@ -84,6 +86,10 @@ export async function createStandaloneServerComposition(input: {
     })
     const skillRuntime = createWorkspaceSkillRuntime()
     const createRuntimeImpl = input.createRuntimeImpl ?? createRuntime
+    const sessionDeletion = createSessionDeletionCoordinator({
+      database,
+      repository,
+    })
 
     return {
       config,
@@ -111,6 +117,9 @@ export async function createStandaloneServerComposition(input: {
           now: runtimeInput.now,
         })
       },
+      deleteSession(sessionId: string) {
+        sessionDeletion.deleteSession(sessionId)
+      },
       closeDatabase() {
         database.close(false)
       },
@@ -127,11 +136,42 @@ export async function createStandaloneServerComposition(input: {
         permissionRepository: PermissionRepository
         now: () => number
       }): Pick<ReturnType<typeof createRuntime>, "run" | "cancelRun" | "respondPermission">
+      deleteSession(sessionId: string): void
       closeDatabase(): void
     }
   } catch (error) {
     database.close(false)
     throw error
+  }
+}
+
+export function createSessionDeletionCoordinator(input: {
+  database: ReturnType<typeof openSessionDatabase>
+  repository: SessionRepository
+}) {
+  const deleteSessionTransaction = input.database.transaction((sessionId: string) => {
+    input.repository.sessions.get(sessionId)
+
+    const activeRun = input.repository.runs.getActiveBySession(sessionId)
+    if (activeRun) {
+      throw new SessionBusyError({
+        sessionId,
+        activeRunId: activeRun.id,
+      })
+    }
+
+    input.database.query("DELETE FROM run_event WHERE session_id = ?").run(sessionId)
+    const deleted = input.database.query("DELETE FROM session WHERE id = ?").run(sessionId)
+
+    if (deleted.changes === 0) {
+      throw new SessionNotFoundError("session", sessionId)
+    }
+  })
+
+  return {
+    deleteSession(sessionId: string) {
+      deleteSessionTransaction(sessionId)
+    },
   }
 }
 
