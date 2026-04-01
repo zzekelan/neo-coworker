@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { buildModelPromptSections, buildModelTurnInput, buildTranscriptMessages } from "../../src/model"
 
 describe("context builder", () => {
-  test("injects explicit prompt sections for skills, tools, and transcript", () => {
+  test("injects explicit prompt sections for skills and transcript without duplicating tool descriptions", () => {
     const input = buildModelTurnInput({
       systemPrompt: "You are the agent runtime.",
       skillCatalog: [
@@ -28,11 +28,12 @@ describe("context builder", () => {
     expect(input.system).toContain("Active skill instructions:")
     expect(input.system).toContain("## reviewer")
     expect(input.system).toContain("Always explain the diff.")
-    expect(input.system).toContain("read")
+    expect(input.system).not.toContain("Available tools:")
+    expect(input.system).not.toContain("- read: Read a file")
     expect(input.messages).toHaveLength(1)
   })
 
-  test("renders empty skill and tool sections explicitly when nothing is active", () => {
+  test("renders empty skill sections explicitly when nothing is active", () => {
     const sections = buildModelPromptSections({
       systemPrompt: "You are the agent runtime.",
       skillCatalog: [],
@@ -42,7 +43,30 @@ describe("context builder", () => {
 
     expect(sections.skillCatalogSection).toBe("Skill catalog:\n- None.")
     expect(sections.activeSkillSection).toBe("Active skill instructions:\n- None.")
-    expect(sections.toolCatalogSection).toBe("Available tools:\n- None.")
+  })
+
+  test("keeps active skill instructions at the end of the system prompt", () => {
+    const input = buildModelTurnInput({
+      systemPrompt: "You are the agent runtime.",
+      skillCatalog: [
+        {
+          name: "reviewer",
+          description: "Review carefully",
+          path: ".agents/skills/reviewer/SKILL.md",
+        },
+      ],
+      activeSkills: [{ name: "reviewer", instructions: "Focus on bugs first." }],
+      tools: [{ name: "read", description: "Read a file" }],
+      transcript: [],
+    })
+
+    expect(input.system).toBe(
+      [
+        "You are the agent runtime.",
+        "Skill catalog:\n- reviewer: Review carefully (.agents/skills/reviewer/SKILL.md)",
+        "Active skill instructions:\n\n## reviewer\nFocus on bugs first.",
+      ].join("\n\n"),
+    )
   })
 
   test("renders persisted tool calls, tool results, and errors back into model messages", () => {

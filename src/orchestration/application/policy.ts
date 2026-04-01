@@ -8,7 +8,7 @@ export const DEFAULT_ORCHESTRATION_PERMISSION_POLICY: OrchestrationPermissionPol
   edit: "ask",
   shell: "ask",
   webfetch: "ask",
-  websearch: "ask",
+  websearch: "allow",
   codesearch: "ask",
 }
 

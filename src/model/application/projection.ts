@@ -14,7 +14,6 @@ export type ModelPromptSections = {
   baseSystemPrompt: string
   skillCatalogSection: string
   activeSkillSection: string
-  toolCatalogSection: string
 }
 
 export function buildModelTurnInput(input: ModelProjectionInput) {
@@ -25,7 +24,6 @@ export function buildModelTurnInput(input: ModelProjectionInput) {
       sections.baseSystemPrompt,
       sections.skillCatalogSection,
       sections.activeSkillSection,
-      sections.toolCatalogSection,
     ].join("\n\n"),
     messages: buildTranscriptMessages(input.transcript),
     tools: input.tools,
@@ -39,7 +37,6 @@ export function buildModelPromptSections(
     baseSystemPrompt: input.systemPrompt,
     skillCatalogSection: renderSkillCatalogSection(input.skillCatalog),
     activeSkillSection: renderActiveSkillSection(input.activeSkills),
-    toolCatalogSection: renderToolCatalogSection(input.tools),
   }
 }
 
@@ -267,14 +264,4 @@ function renderActiveSkillSection(activeSkills: ModelActiveSkill[]) {
     "Active skill instructions:",
     ...activeSkills.map((skill) => `## ${skill.name}\n${skill.instructions}`),
   ].join("\n\n")
-}
-
-function renderToolCatalogSection(tools: ModelProjectionInput["tools"]) {
-  if (tools.length === 0) {
-    return "Available tools:\n- None."
-  }
-
-  return ["Available tools:", ...tools.map((tool) => `- ${tool.name}: ${tool.description}`)].join(
-    "\n",
-  )
 }

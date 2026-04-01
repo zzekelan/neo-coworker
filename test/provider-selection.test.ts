@@ -68,7 +68,6 @@ describe("provider selection", () => {
         "system",
         "Skill catalog:\n- None.",
         "Active skill instructions:\n- None.",
-        "Available tools:\n- None.",
       ].join("\n\n"),
       tools: [],
     })
@@ -142,7 +141,6 @@ describe("provider selection", () => {
             "system",
             "Skill catalog:\n- None.",
             "Active skill instructions:\n- None.",
-            "Available tools:\n- None.",
           ].join("\n\n"),
         },
       ],
