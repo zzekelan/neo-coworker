@@ -15,6 +15,7 @@ type DesktopRefreshLoaders = {
   loadWorkspaceSkills(workspaceRoot: string): Promise<{ skills: DesktopSkillCatalogEntry[] }>
   loadSession(sessionId: string): Promise<DesktopSessionSnapshot>
   loadTranscript(sessionId: string): Promise<{ transcript: DesktopMessage[] }>
+  loadSessionRuns(sessionId: string): Promise<{ runs: DesktopRun[] }>
   loadRun(runId: string): Promise<{
     run: DesktopRun
     permissionRequests: DesktopPermissionRequest[]
@@ -27,6 +28,7 @@ export type DesktopRefreshCoreResult = {
   sessions: DesktopSessionSummary[]
   activeSessionId: string | null
   snapshot: DesktopSessionSnapshot | null
+  sessionRuns: DesktopRun[]
   transcript: DesktopMessage[]
   permissionRequests: DesktopPermissionRequest[]
   sessionRestoreError: unknown
@@ -58,6 +60,7 @@ export async function loadDesktopRefreshCore(input: {
   })
 
   let snapshot: DesktopSessionSnapshot | null = null
+  let sessionRuns: DesktopRun[] = []
   let transcript: DesktopMessage[] = []
   let permissionRequests: DesktopPermissionRequest[] = []
   let sessionRestoreError: unknown = null
@@ -65,6 +68,8 @@ export async function loadDesktopRefreshCore(input: {
   if (activeSessionId) {
     try {
       snapshot = await input.loaders.loadSession(activeSessionId)
+      const runsData = await input.loaders.loadSessionRuns(activeSessionId)
+      sessionRuns = runsData.runs
       const transcriptData = await input.loaders.loadTranscript(activeSessionId)
       transcript = normalizeTranscript(transcriptData.transcript)
 
@@ -85,6 +90,7 @@ export async function loadDesktopRefreshCore(input: {
     sessions: sessionData.sessions,
     activeSessionId,
     snapshot,
+    sessionRuns,
     transcript,
     permissionRequests,
     sessionRestoreError,

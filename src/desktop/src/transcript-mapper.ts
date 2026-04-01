@@ -1,8 +1,15 @@
-import type { DesktopMessage, DesktopPart } from "./types"
+import type { DesktopMessage, DesktopPart, RunStatus } from "./types"
 import type { DesktopTranscriptMessage, MessagePart } from "./view-types"
 
-export function mapTranscriptMessage(message: DesktopMessage): DesktopTranscriptMessage {
-  const callStatuses = collectToolCallStatuses(message.parts)
+type ToolCallStatus = "pending" | "success" | "error" | "cancelled"
+
+export function mapTranscriptMessage(
+  message: DesktopMessage,
+  input: {
+    runStatusById?: ReadonlyMap<string, RunStatus>
+  } = {},
+): DesktopTranscriptMessage {
+  const callStatuses = collectToolCallStatuses(message.parts, input.runStatusById?.get(message.runId))
   const parts = message.parts
     .map((part) => mapMessagePart(part, callStatuses))
     .filter((part): part is MessagePart => part !== null)
@@ -18,10 +25,17 @@ export function mapTranscriptMessage(message: DesktopMessage): DesktopTranscript
   }
 }
 
-function collectToolCallStatuses(parts: DesktopPart[]) {
-  const statuses = new Map<string, "success" | "error">()
+function collectToolCallStatuses(parts: DesktopPart[], runStatus: RunStatus | undefined) {
+  const statuses = new Map<string, ToolCallStatus>()
+  const callIds: string[] = []
 
   for (const part of parts) {
+    if (part.kind === "tool_call") {
+      const callId = readObjectString(part.data, "callId") ?? part.id
+      callIds.push(callId)
+      continue
+    }
+
     if (part.kind === "tool_result") {
       const callId = readObjectString(part.data, "callId")
       if (callId) {
@@ -38,12 +52,20 @@ function collectToolCallStatuses(parts: DesktopPart[]) {
     }
   }
 
+  for (const callId of callIds) {
+    if (statuses.has(callId)) {
+      continue
+    }
+
+    statuses.set(callId, deriveTerminalToolCallStatus(runStatus))
+  }
+
   return statuses
 }
 
 function mapMessagePart(
   part: DesktopPart,
-  callStatuses: Map<string, "success" | "error">,
+  callStatuses: Map<string, ToolCallStatus>,
 ): MessagePart | null {
   if (part.kind === "tool_call") {
     const callId = readObjectString(part.data, "callId") ?? part.id
@@ -61,6 +83,18 @@ function mapMessagePart(
       type: "tool_result",
       callId: readObjectString(part.data, "callId") ?? part.id,
       result: part.data ?? part.text ?? "",
+    }
+  }
+
+  if (part.kind === "error" && readObjectString(part.data, "source") === "tool") {
+    return {
+      type: "tool_result",
+      callId: readObjectString(part.data, "callId") ?? part.id,
+      result: {
+        ...(part.data && typeof part.data === "object" ? (part.data as Record<string, unknown>) : {}),
+        output: part.text ?? "unknown error",
+      },
+      isError: true,
     }
   }
 
@@ -127,4 +161,16 @@ function readObjectString(value: unknown, key: string) {
 
 function toIsoString(value: number) {
   return new Date(value).toISOString()
+}
+
+function deriveTerminalToolCallStatus(runStatus: RunStatus | undefined): ToolCallStatus {
+  if (runStatus === "cancelled") {
+    return "cancelled"
+  }
+
+  if (runStatus === "completed" || runStatus === "failed") {
+    return "error"
+  }
+
+  return "pending"
 }

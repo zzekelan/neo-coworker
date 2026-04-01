@@ -52,9 +52,9 @@ export type MessagePart =
       toolName: string
       toolInput: unknown
       callId: string
-      status?: "pending" | "success" | "error"
+      status?: "pending" | "success" | "error" | "cancelled"
     }
-  | { type: "tool_result"; callId: string; result: unknown }
+  | { type: "tool_result"; callId: string; result: unknown; isError?: boolean }
 
 export interface DesktopTranscriptMessage {
   id: string

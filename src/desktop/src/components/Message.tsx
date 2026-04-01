@@ -1,5 +1,5 @@
 import React from "react"
-import { AlertCircle, CheckCircle2, Loader2, Terminal } from "lucide-react"
+import { AlertCircle, CheckCircle2, Loader2, Terminal, XCircle } from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { DesktopTranscriptMessage, MessagePart } from "../view-types"
@@ -95,6 +95,7 @@ const MessagePartRenderer: React.FC<{
             {part.status === "pending" ? <Loader2 className="h-4 w-4 animate-spin text-indigo-500" /> : null}
             {part.status === "success" ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : null}
             {part.status === "error" ? <AlertCircle className="h-4 w-4 text-rose-500" /> : null}
+            {part.status === "cancelled" ? <XCircle className="h-4 w-4 text-zinc-400" /> : null}
           </div>
         </div>
         <div className="overflow-x-auto bg-white p-4 text-zinc-700">{renderToolData(part.toolInput)}</div>
@@ -103,9 +104,26 @@ const MessagePartRenderer: React.FC<{
   }
 
   return (
-    <div className="my-3 overflow-hidden rounded-xl border border-zinc-200 bg-white font-mono text-xs shadow-sm">
-      <div className="flex items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-2 font-semibold text-zinc-500">
-        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Result
+    <div
+      className={cn(
+        "my-3 overflow-hidden rounded-xl border bg-white font-mono text-xs shadow-sm",
+        part.isError ? "border-rose-200" : "border-zinc-200",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center gap-2 border-b px-4 py-2 font-semibold",
+          part.isError
+            ? "border-rose-200 bg-rose-50 text-rose-700"
+            : "border-zinc-200 bg-zinc-50 text-zinc-500",
+        )}
+      >
+        {part.isError ? (
+          <AlertCircle className="h-3.5 w-3.5 text-rose-500" />
+        ) : (
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+        )}{" "}
+        {part.isError ? "Error" : "Result"}
       </div>
       <div className="max-h-64 overflow-x-auto p-4 text-zinc-700">{renderToolData(part.result)}</div>
     </div>

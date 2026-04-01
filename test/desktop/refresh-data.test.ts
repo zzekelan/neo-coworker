@@ -84,6 +84,11 @@ describe("desktop refresh data", () => {
             ],
           }
         },
+        async loadSessionRuns() {
+          return {
+            runs: [],
+          }
+        },
         async loadRun() {
           throw new Error("run state should not load when no active run exists")
         },
@@ -96,6 +101,7 @@ describe("desktop refresh data", () => {
 
     expect(refreshData.resolvedWorkspaceRoot).toBe("/workspace/alpha")
     expect(refreshData.activeSessionId).toBe("session-1")
+    expect(refreshData.sessionRuns).toEqual([])
     expect(refreshData.transcript).toHaveLength(1)
     expect(refreshData.sessionRestoreError).toBeNull()
     expect(loadSkillsCalls).toBe(0)

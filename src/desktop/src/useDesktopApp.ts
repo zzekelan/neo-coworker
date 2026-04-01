@@ -6,6 +6,7 @@ import {
   loadWorkspaces,
   loadWorkspaceSkills,
   loadRun,
+  loadSessionRuns,
   loadSession,
   loadWorkspaceSessions,
   loadTranscript,
@@ -41,6 +42,7 @@ type AppState = {
   activeWorkspaceRoot: string | null
   activeSessionId: string | null
   sessionSnapshot: DesktopSessionSnapshot | null
+  sessionRuns: DesktopRun[]
   transcript: DesktopMessage[]
   permissionRequests: DesktopPermissionRequest[]
   connection: ConnectionStatus
@@ -119,6 +121,7 @@ export function useDesktopApp() {
           loadWorkspaceSessions,
           loadWorkspaceSkills,
           loadSession,
+          loadSessionRuns,
           loadTranscript,
           loadRun,
         },
@@ -142,6 +145,7 @@ export function useDesktopApp() {
         activeWorkspaceRoot: refreshData.resolvedWorkspaceRoot,
         activeSessionId: refreshData.activeSessionId,
         sessionSnapshot: refreshData.snapshot,
+        sessionRuns: refreshData.sessionRuns,
         transcript: refreshData.transcript,
         permissionRequests: refreshData.permissionRequests,
         connection: {
@@ -250,6 +254,7 @@ export function useDesktopApp() {
 
       setState((previous) => ({
         ...previous,
+        sessionRuns: upsertSessionRun(previous.sessionRuns, event.run),
         sessionSnapshot: previous.sessionSnapshot
           ? {
               ...previous.sessionSnapshot,
@@ -335,6 +340,7 @@ export function useDesktopApp() {
         skillWarningMessage: null,
         activeSessionId: null,
         sessions: [],
+        sessionRuns: [],
         transcript: [],
         permissionRequests: [],
         sessionSnapshot: null,
@@ -350,6 +356,7 @@ export function useDesktopApp() {
       setState((previous) => ({
         ...previous,
         activeSessionId: sessionId,
+        sessionRuns: [],
       }))
 
       await refresh({
@@ -388,6 +395,7 @@ export function useDesktopApp() {
             activeRun: null,
             status: "idle",
           },
+          sessionRuns: [],
           transcript: [],
           permissionRequests: [],
           actionError: null,
@@ -604,13 +612,14 @@ function createInitialState(input: {
   const activeSessionId = input.persistedSessionId ?? null
 
   if (!window.neoCoworkerDesktop?.requestJson && !window.neoCoworkerDesktop?.apiOrigin) {
-      return {
-        workspaces,
-        skills: [],
-        sessions: [],
+    return {
+      workspaces,
+      skills: [],
+      sessions: [],
       activeWorkspaceRoot,
       activeSessionId,
       sessionSnapshot: null,
+      sessionRuns: [],
       transcript: [],
       permissionRequests: [],
       connection: {
@@ -619,11 +628,11 @@ function createInitialState(input: {
         detail: "Connect this renderer to app-server through the desktop shell.",
       },
       isLoading: false,
-        isSending: false,
-        isManagingWorkspace: false,
-        actionError: null,
-        skillWarningMessage: null,
-      }
+      isSending: false,
+      isManagingWorkspace: false,
+      actionError: null,
+      skillWarningMessage: null,
+    }
   }
 
   return {
@@ -633,6 +642,7 @@ function createInitialState(input: {
     activeWorkspaceRoot,
     activeSessionId,
     sessionSnapshot: null,
+    sessionRuns: [],
     transcript: [],
     permissionRequests: [],
     connection: {
@@ -717,6 +727,12 @@ function upsertPermissionRequest(
     pending.push(request)
   }
   return pending.sort((left, right) => left.createdAt - right.createdAt)
+}
+
+function upsertSessionRun(runs: DesktopRun[], run: DesktopRun) {
+  const withoutCurrent = runs.filter((candidate) => candidate.id !== run.id)
+  withoutCurrent.push(run)
+  return withoutCurrent.sort((left, right) => left.createdAt - right.createdAt)
 }
 
 function summarizePrompt(prompt: string) {

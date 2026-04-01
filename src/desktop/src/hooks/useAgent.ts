@@ -12,6 +12,7 @@ import { mapTranscriptMessage } from "../transcript-mapper"
 
 export function useAgent() {
   const desktop = useDesktopApp()
+  const runStatusById = new Map(desktop.sessionRuns.map((run) => [run.id, run.status]))
 
   return {
     workspaces: desktop.workspaces.map(mapWorkspace),
@@ -33,7 +34,11 @@ export function useAgent() {
     isManagingWorkspace: desktop.isManagingWorkspace,
     skills: desktop.skills.map(mapSkillCatalogEntry),
     session: desktop.sessionSnapshot ? mapSessionSnapshot(desktop.sessionSnapshot) : null,
-    transcript: desktop.transcript.map(mapTranscriptMessage),
+    transcript: desktop.transcript.map((message) =>
+      mapTranscriptMessage(message, {
+        runStatusById,
+      }),
+    ),
     permissionRequests: desktop.permissionRequests.map(mapPermissionRequest),
     isOnline: desktop.connection.state === "online",
     sendMessage(message: string) {

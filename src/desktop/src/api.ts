@@ -183,6 +183,10 @@ export async function loadTranscript(sessionId: string) {
   )
 }
 
+export async function loadSessionRuns(sessionId: string) {
+  return requestApi<{ runs: DesktopRun[] }>(`/sessions/${encodeURIComponent(sessionId)}/runs`)
+}
+
 export async function startRun(input: { sessionId: string; prompt: string }) {
   return requestApi<{ run: DesktopRun; message: Omit<DesktopMessage, "parts"> }>(
     `/sessions/${encodeURIComponent(input.sessionId)}/runs`,
