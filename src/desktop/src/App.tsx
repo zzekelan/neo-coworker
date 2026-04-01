@@ -58,6 +58,7 @@ export default function App() {
           settings={desktopSettings.settings}
           serverMode={desktopSettings.serverMode}
           settingsErrorMessage={desktopSettings.errorMessage}
+          settingsSuccessMessage={desktopSettings.successMessage}
           isApplyingSettings={desktopSettings.isApplying}
           onUpdateSettings={(patch) => {
             void desktopSettings.updateSettings(patch)

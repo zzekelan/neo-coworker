@@ -57,6 +57,10 @@ type DesktopText = {
   }
   settings: {
     title: string
+    close: string
+    general: string
+    llm: string
+    storagePath: string
     language: string
     provider: string
     providerUnset: string
@@ -68,6 +72,7 @@ type DesktopText = {
     externalHint: string
     apply: string
     applying: string
+    applied: string
     stopRunsFirst: string
   }
 }
@@ -131,6 +136,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     },
     settings: {
       title: "Settings",
+      close: "Close",
+      general: "General",
+      llm: "LLM Settings",
+      storagePath: "Stored in .agents/desktop-settings.json",
       language: "Language",
       provider: "LLM provider",
       providerUnset: "Not configured",
@@ -142,6 +151,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       externalHint: "This desktop is connected to an externally managed app-server, so LLM settings are view-only here.",
       apply: "Apply LLM Settings",
       applying: "Applying...",
+      applied: "LLM settings applied successfully.",
       stopRunsFirst: "Stop active runs before applying LLM settings.",
     },
   },
@@ -203,6 +213,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     },
     settings: {
       title: "设置",
+      close: "关闭",
+      general: "通用",
+      llm: "LLM 设置",
+      storagePath: "存储于 .agents/desktop-settings.json",
       language: "语言",
       provider: "LLM 提供商",
       providerUnset: "未设置",
@@ -214,6 +228,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       externalHint: "当前桌面端连接的是外部托管 app-server，因此这里只能查看 LLM 配置，不能修改。",
       apply: "应用 LLM 设置",
       applying: "应用中...",
+      applied: "LLM 设置已成功应用。",
       stopRunsFirst: "请先停止活动 run，再应用 LLM 设置。",
     },
   },

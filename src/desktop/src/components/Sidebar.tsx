@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
-import { AlertCircle, Folder, Loader2, PanelLeftClose, Plus, MessageSquare, ShieldAlert } from "lucide-react"
+import {
+  AlertCircle,
+  Folder,
+  Loader2,
+  MessageSquare,
+  PanelLeftClose,
+  Plus,
+  Settings2,
+  ShieldAlert,
+} from "lucide-react"
 import type { DesktopServerMode, DesktopSettings } from "../desktop-settings"
 import { cn } from "../lib/utils"
 import { useDesktopText } from "../i18n"
@@ -21,6 +30,7 @@ interface SidebarProps {
   settings: DesktopSettings
   serverMode: DesktopServerMode
   settingsErrorMessage: string | null
+  settingsSuccessMessage: string | null
   isApplyingSettings: boolean
   onUpdateSettings: (patch: Partial<DesktopSettings>) => void | Promise<unknown>
   onApplySettings: () => void | Promise<unknown>
@@ -44,6 +54,7 @@ export function Sidebar({
   settings,
   serverMode,
   settingsErrorMessage,
+  settingsSuccessMessage,
   isApplyingSettings,
   onUpdateSettings,
   onApplySettings,
@@ -62,6 +73,7 @@ export function Sidebar({
   } | null>(null)
   const workspaceMenuRef = useRef<HTMLDivElement | null>(null)
   const sessionContextMenuRef = useRef<HTMLDivElement | null>(null)
+  const settingsPanelRef = useRef<HTMLDivElement | null>(null)
   const showWorkspaceSelect = hasVisibleWorkspaceSelect(workspaces.length)
   const activeWorkspace =
     workspaces.find((workspace) => workspace.workspaceRoot === activeWorkspaceRoot) ??
@@ -118,10 +130,36 @@ export function Sidebar({
     }
   }, [sessionContextMenu])
 
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!settingsPanelRef.current?.contains(event.target as Node)) {
+        setIsSettingsOpen(false)
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsSettingsOpen(false)
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown)
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown)
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [isSettingsOpen])
+
   return (
     <div
       className={cn(
-        "h-full shrink-0 overflow-hidden transition-all duration-300 ease-in-out",
+        "h-full shrink-0 transition-all duration-300 ease-in-out",
+        isSettingsOpen ? "overflow-visible" : "overflow-hidden",
         isOpen ? "w-64" : "w-0",
       )}
     >
@@ -305,16 +343,7 @@ export function Sidebar({
             </div>
           </section>
 
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen((previous) => !previous)}
-              className="mb-3 flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-white/80 px-3 py-2.5 text-left text-sm font-medium text-zinc-700 transition-colors hover:bg-white hover:text-zinc-900"
-            >
-              <span>{text.sidebar.settings}</span>
-              <span className="text-xs text-zinc-400">{settings.language === "zh" ? "中文" : "EN"}</span>
-            </button>
-
+          <div ref={settingsPanelRef} className="relative mt-3">
             <SettingsPanel
               isOpen={isSettingsOpen}
               settings={settings}
@@ -322,15 +351,31 @@ export function Sidebar({
               isApplying={isApplyingSettings}
               hasBusySession={hasBusySession}
               errorMessage={settingsErrorMessage}
+              successMessage={settingsSuccessMessage}
               onClose={() => setIsSettingsOpen(false)}
               onUpdateSettings={onUpdateSettings}
               onApplySettings={onApplySettings}
             />
-          </div>
 
-          <div className="flex items-center justify-between px-1 text-[11px] tracking-[0.08em] text-zinc-400 uppercase">
-            <span>{text.sidebar.desktop}</span>
-            <span>{isOnline ? text.sidebar.online : text.sidebar.offline}</span>
+            <div className="flex items-end justify-between px-1 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen((previous) => !previous)}
+                aria-label={text.sidebar.settings}
+                aria-expanded={isSettingsOpen}
+                className={cn(
+                  "group flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white/88 text-zinc-500 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-zinc-900",
+                  isSettingsOpen && "border-zinc-300 bg-white text-zinc-900 shadow-[0_12px_28px_rgba(24,24,27,0.12)]",
+                )}
+              >
+                <Settings2 className={cn("h-4.5 w-4.5 transition-transform", isSettingsOpen && "rotate-45")} />
+              </button>
+
+              <div className="flex flex-col items-end text-[11px] tracking-[0.08em] text-zinc-400 uppercase">
+                <span>{text.sidebar.desktop}</span>
+                <span className="mt-1">{isOnline ? text.sidebar.online : text.sidebar.offline}</span>
+              </div>
+            </div>
           </div>
         </div>
 

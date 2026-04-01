@@ -11,6 +11,7 @@ export function useDesktopSettings() {
   const [serverMode, setServerMode] = useState<DesktopServerMode>("external")
   const [isApplying, setIsApplying] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const saveTokenRef = useRef(0)
 
   useEffect(() => {
@@ -38,11 +39,26 @@ export function useDesktopSettings() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!successMessage) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage(null)
+    }, 2200)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [successMessage])
+
   return {
     settings,
     serverMode,
     isApplying,
     errorMessage,
+    successMessage,
     async updateSettings(patch: Partial<DesktopSettings>) {
       const nextSettings = {
         ...settings,
@@ -50,6 +66,7 @@ export function useDesktopSettings() {
       }
       setSettings(nextSettings)
       setErrorMessage(null)
+      setSuccessMessage(null)
 
       const currentToken = saveTokenRef.current + 1
       saveTokenRef.current = currentToken
@@ -73,11 +90,13 @@ export function useDesktopSettings() {
     async applySettings() {
       setIsApplying(true)
       setErrorMessage(null)
+      setSuccessMessage(null)
 
       try {
         const result = await applyDesktopSettings(settings)
         setSettings(result.settings)
         setServerMode(result.serverMode)
+        setSuccessMessage("applied")
         return result.restarted
       } catch (error) {
         setErrorMessage(toErrorMessage(error))
