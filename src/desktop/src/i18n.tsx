@@ -70,9 +70,11 @@ type DesktopText = {
     timeout: string
     timeoutHint: string
     externalHint: string
-    apply: string
+    applyGeneral: string
+    applyLlm: string
     applying: string
-    applied: string
+    appliedGeneral: string
+    appliedLlm: string
     stopRunsFirst: string
   }
 }
@@ -149,9 +151,11 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       timeout: "Timeout (ms)",
       timeoutHint: "Leave blank to use the provider default timeout.",
       externalHint: "This desktop is connected to an externally managed app-server, so LLM settings are view-only here.",
-      apply: "Apply LLM Settings",
+      applyGeneral: "Apply General Settings",
+      applyLlm: "Apply LLM Settings",
       applying: "Applying...",
-      applied: "LLM settings applied successfully.",
+      appliedGeneral: "General settings applied successfully.",
+      appliedLlm: "LLM settings applied successfully.",
       stopRunsFirst: "Stop active runs before applying LLM settings.",
     },
   },
@@ -226,9 +230,11 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       timeout: "超时（毫秒）",
       timeoutHint: "留空表示使用 provider 默认超时。",
       externalHint: "当前桌面端连接的是外部托管 app-server，因此这里只能查看 LLM 配置，不能修改。",
-      apply: "应用 LLM 设置",
+      applyGeneral: "应用通用设置",
+      applyLlm: "应用 LLM 设置",
       applying: "应用中...",
-      applied: "LLM 设置已成功应用。",
+      appliedGeneral: "通用设置已成功应用。",
+      appliedLlm: "LLM 设置已成功应用。",
       stopRunsFirst: "请先停止活动 run，再应用 LLM 设置。",
     },
   },

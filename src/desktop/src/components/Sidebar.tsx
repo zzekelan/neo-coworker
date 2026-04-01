@@ -12,6 +12,7 @@ import {
 import type { DesktopServerMode, DesktopSettings } from "../desktop-settings"
 import { cn } from "../lib/utils"
 import { useDesktopText } from "../i18n"
+import type { DesktopSettingsSuccessMessage } from "../useDesktopSettings"
 import type { DesktopSession, DesktopWorkspace } from "../view-types"
 import { isBusyRunStatus, shouldBlockSettingsApplyFromBusyState } from "../busy-state"
 import { SettingsPanel } from "./SettingsPanel"
@@ -30,10 +31,11 @@ interface SidebarProps {
   settings: DesktopSettings
   serverMode: DesktopServerMode
   settingsErrorMessage: string | null
-  settingsSuccessMessage: string | null
+  settingsSuccessMessage: DesktopSettingsSuccessMessage | null
   isApplyingSettings: boolean
   onUpdateSettings: (patch: Partial<DesktopSettings>) => void | Promise<unknown>
-  onApplySettings: () => void | Promise<unknown>
+  onApplyGeneralSettings: () => void | Promise<unknown>
+  onApplyLlmSettings: () => void | Promise<unknown>
   isManagingWorkspace: boolean
   isOnline: boolean
   hasAuthoritativeBusyState: boolean
@@ -57,7 +59,8 @@ export function Sidebar({
   settingsSuccessMessage,
   isApplyingSettings,
   onUpdateSettings,
-  onApplySettings,
+  onApplyGeneralSettings,
+  onApplyLlmSettings,
   isManagingWorkspace,
   isOnline,
   hasAuthoritativeBusyState,
@@ -354,7 +357,8 @@ export function Sidebar({
               successMessage={settingsSuccessMessage}
               onClose={() => setIsSettingsOpen(false)}
               onUpdateSettings={onUpdateSettings}
-              onApplySettings={onApplySettings}
+              onApplyGeneralSettings={onApplyGeneralSettings}
+              onApplyLlmSettings={onApplyLlmSettings}
             />
 
             <div className="flex items-end justify-between px-1 pt-2">

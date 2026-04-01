@@ -3,6 +3,7 @@ import { Check, ChevronDown } from "lucide-react"
 import type { DesktopServerMode, DesktopSettings } from "../desktop-settings"
 import { cn } from "../lib/utils"
 import { useDesktopText } from "../i18n"
+import type { DesktopSettingsSuccessMessage } from "../useDesktopSettings"
 
 type SettingsSectionId = "general" | "llm"
 type SelectOption<T extends string> = {
@@ -17,10 +18,11 @@ interface SettingsPanelProps {
   isApplying: boolean
   hasBusySession: boolean
   errorMessage: string | null
-  successMessage: string | null
+  successMessage: DesktopSettingsSuccessMessage | null
   onClose(): void
   onUpdateSettings(patch: Partial<DesktopSettings>): void | Promise<unknown>
-  onApplySettings(): void | Promise<unknown>
+  onApplyGeneralSettings(): void | Promise<unknown>
+  onApplyLlmSettings(): void | Promise<unknown>
 }
 
 export function SettingsPanel({
@@ -33,11 +35,16 @@ export function SettingsPanel({
   successMessage,
   onClose,
   onUpdateSettings,
-  onApplySettings,
+  onApplyGeneralSettings,
+  onApplyLlmSettings,
 }: SettingsPanelProps) {
   const text = useDesktopText()
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("general")
   const llmFieldsDisabled = serverMode !== "managed-local"
-  const applyDisabled = llmFieldsDisabled || isApplying || hasBusySession
+  const isGeneralSection = activeSection === "general"
+  const applyDisabled = isGeneralSection
+    ? isApplying
+    : llmFieldsDisabled || isApplying || hasBusySession
   const sections = useMemo(
     () =>
       [
@@ -54,7 +61,6 @@ export function SettingsPanel({
       ] satisfies Array<{ id: SettingsSectionId; label: string; description: string }>,
     [text],
   )
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>("general")
 
   useEffect(() => {
     if (!isOpen) {
@@ -215,10 +221,16 @@ export function SettingsPanel({
             <button
               type="button"
               disabled={applyDisabled}
-              onClick={() => void onApplySettings()}
+              onClick={() =>
+                void (isGeneralSection ? onApplyGeneralSettings() : onApplyLlmSettings())
+              }
               className="rounded-2xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white shadow-[0_12px_24px_rgba(24,24,27,0.18)] transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isApplying ? text.settings.applying : text.settings.apply}
+              {isApplying
+                ? text.settings.applying
+                : isGeneralSection
+                  ? text.settings.applyGeneral
+                  : text.settings.applyLlm}
             </button>
           </div>
         </div>
@@ -231,7 +243,9 @@ export function SettingsPanel({
         )}
       >
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/95 px-4 py-3 text-center text-sm leading-relaxed text-emerald-700 shadow-[0_16px_30px_rgba(34,197,94,0.12)] backdrop-blur-sm">
-          {text.settings.applied}
+          {successMessage === "general-applied"
+            ? text.settings.appliedGeneral
+            : text.settings.appliedLlm}
         </div>
       </div>
     </div>

@@ -35,7 +35,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
   return (
-    <DesktopTextProvider language={desktopSettings.settings.language}>
+    <DesktopTextProvider language={desktopSettings.appliedSettings.language}>
       <div className="flex h-screen w-full overflow-hidden bg-paper font-sans text-ink selection:bg-accent/20 selection:text-ink">
         <Sidebar
           workspaces={workspaces}
@@ -63,8 +63,11 @@ export default function App() {
           onUpdateSettings={(patch) => {
             void desktopSettings.updateSettings(patch)
           }}
-          onApplySettings={() => {
-            void desktopSettings.applySettings().then((restarted) => {
+          onApplyGeneralSettings={() => {
+            void desktopSettings.applyGeneralSettings()
+          }}
+          onApplyLlmSettings={() => {
+            void desktopSettings.applyLlmSettings().then((restarted) => {
               if (restarted) {
                 void refreshAppState()
               }

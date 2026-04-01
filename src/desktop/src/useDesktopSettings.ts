@@ -6,13 +6,16 @@ import {
   type DesktopSettings,
 } from "./desktop-settings"
 
+export type DesktopSettingsSuccessMessage = "general-applied" | "llm-applied"
+
 export function useDesktopSettings() {
   const [settings, setSettings] = useState<DesktopSettings>(DEFAULT_DESKTOP_SETTINGS)
+  const [appliedSettings, setAppliedSettings] = useState<DesktopSettings>(DEFAULT_DESKTOP_SETTINGS)
   const [serverMode, setServerMode] = useState<DesktopServerMode>("external")
   const [isApplying, setIsApplying] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const saveTokenRef = useRef(0)
+  const [successMessage, setSuccessMessage] = useState<DesktopSettingsSuccessMessage | null>(null)
+  const loadTokenRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -24,6 +27,7 @@ export function useDesktopSettings() {
         }
 
         setSettings(result.settings)
+        setAppliedSettings(result.settings)
         setServerMode(result.serverMode)
       })
       .catch((error) => {
@@ -55,11 +59,12 @@ export function useDesktopSettings() {
 
   return {
     settings,
+    appliedSettings,
     serverMode,
     isApplying,
     errorMessage,
     successMessage,
-    async updateSettings(patch: Partial<DesktopSettings>) {
+    updateSettings(patch: Partial<DesktopSettings>) {
       const nextSettings = {
         ...settings,
         ...patch,
@@ -67,27 +72,33 @@ export function useDesktopSettings() {
       setSettings(nextSettings)
       setErrorMessage(null)
       setSuccessMessage(null)
-
-      const currentToken = saveTokenRef.current + 1
-      saveTokenRef.current = currentToken
+    },
+    async applyGeneralSettings() {
+      setIsApplying(true)
+      setErrorMessage(null)
+      setSuccessMessage(null)
 
       try {
-        const saved = await saveDesktopSettings(nextSettings)
-        if (saveTokenRef.current !== currentToken) {
-          return
+        const currentToken = loadTokenRef.current + 1
+        loadTokenRef.current = currentToken
+        const result = await saveDesktopSettings(settings)
+        if (loadTokenRef.current !== currentToken) {
+          return false
         }
 
-        setSettings(saved.settings)
-        setServerMode(saved.serverMode)
+        setSettings(result.settings)
+        setAppliedSettings(result.settings)
+        setServerMode(result.serverMode)
+        setSuccessMessage("general-applied")
+        return false
       } catch (error) {
-        if (saveTokenRef.current !== currentToken) {
-          return
-        }
-
         setErrorMessage(toErrorMessage(error))
+        return false
+      } finally {
+        setIsApplying(false)
       }
     },
-    async applySettings() {
+    async applyLlmSettings() {
       setIsApplying(true)
       setErrorMessage(null)
       setSuccessMessage(null)
@@ -95,8 +106,12 @@ export function useDesktopSettings() {
       try {
         const result = await applyDesktopSettings(settings)
         setSettings(result.settings)
+        setAppliedSettings({
+          ...result.settings,
+          language: appliedSettings.language,
+        })
         setServerMode(result.serverMode)
-        setSuccessMessage("applied")
+        setSuccessMessage("llm-applied")
         return result.restarted
       } catch (error) {
         setErrorMessage(toErrorMessage(error))
