@@ -3,6 +3,9 @@ docs/task_contract
 docs/project-rules
 docs/ref
 .agents/
+.github/
+.codex
+.playwright-mcp/
 AGENTS.md
 .worktrees/
 node_modules/
