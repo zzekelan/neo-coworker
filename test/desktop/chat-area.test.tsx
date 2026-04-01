@@ -24,7 +24,7 @@ describe("desktop chat area", () => {
 
     expect(source).toContain("const isRunSkillEditingLocked = Boolean(session?.activeRun)")
     expect(source).toContain("if (!sessionSummary || isRunSkillEditingLocked)")
-    expect(panelSource).toContain("Changes apply to future runs only.")
+    expect(panelSource).toContain("text.skillPanel.locked")
   })
 
   test("restores sticky-bottom behavior when sending messages or replying to permissions", () => {

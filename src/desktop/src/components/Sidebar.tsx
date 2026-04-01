@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import { AlertCircle, Folder, Loader2, PanelLeftClose, Plus, MessageSquare, ShieldAlert } from "lucide-react"
+import type { DesktopServerMode, DesktopSettings } from "../desktop-settings"
 import { cn } from "../lib/utils"
+import { useDesktopText } from "../i18n"
 import type { DesktopSession, DesktopWorkspace } from "../view-types"
+import { SettingsPanel } from "./SettingsPanel"
 import { hasVisibleWorkspaceSelect } from "./sidebar-workspace-state"
 
 interface SidebarProps {
@@ -14,6 +17,12 @@ interface SidebarProps {
   createSession: () => void
   createWorkspace: () => Promise<boolean>
   deleteSession: (sessionId: string) => void | Promise<unknown>
+  settings: DesktopSettings
+  serverMode: DesktopServerMode
+  settingsErrorMessage: string | null
+  isApplyingSettings: boolean
+  onUpdateSettings: (patch: Partial<DesktopSettings>) => void | Promise<unknown>
+  onApplySettings: () => void | Promise<unknown>
   isManagingWorkspace: boolean
   isOnline: boolean
   isOpen: boolean
@@ -30,12 +39,19 @@ export function Sidebar({
   createSession,
   createWorkspace,
   deleteSession,
+  settings,
+  serverMode,
+  settingsErrorMessage,
+  isApplyingSettings,
+  onUpdateSettings,
+  onApplySettings,
   isManagingWorkspace,
   isOnline,
   isOpen,
   onToggle,
 }: SidebarProps) {
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [sessionContextMenu, setSessionContextMenu] = useState<{
     sessionId: string
     x: number
@@ -50,6 +66,8 @@ export function Sidebar({
     null
   const contextMenuSession =
     sessions.find((session) => session.id === sessionContextMenu?.sessionId) ?? null
+  const hasBusySession = sessions.some((session) => isBusySessionStatus(session.latestRunStatus))
+  const text = useDesktopText()
 
   useEffect(() => {
     if (!isWorkspaceMenuOpen) {
@@ -124,7 +142,7 @@ export function Sidebar({
           <section className="pb-4">
             <div className="mb-3 flex items-center justify-between px-1">
               <label className="text-[11px] font-semibold tracking-[0.16em] text-zinc-400 uppercase">
-                Workspace
+                {text.sidebar.workspace}
               </label>
               <div
                 className={cn(
@@ -226,7 +244,7 @@ export function Sidebar({
                         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm">
                           <Plus className="h-3.5 w-3.5" />
                         </div>
-                        <span className="truncate font-medium text-zinc-800">New workspace</span>
+                        <span className="truncate font-medium text-zinc-800">{text.sidebar.newWorkspace}</span>
                       </button>
                     </div>
                   </div>
@@ -240,7 +258,7 @@ export function Sidebar({
           <section className="flex min-h-0 flex-1 flex-col pt-4">
             <div className="mb-3 flex items-center justify-between px-1">
               <label className="text-[11px] font-semibold tracking-[0.16em] text-zinc-400 uppercase">
-                Sessions
+                {text.sidebar.sessions}
               </label>
               <button
                 onClick={() => createSession()}
@@ -249,7 +267,7 @@ export function Sidebar({
                 title="New Session"
               >
                 <Plus className="h-3.5 w-3.5" />
-                New
+                {text.sidebar.newSession}
               </button>
             </div>
 
@@ -273,16 +291,39 @@ export function Sidebar({
                 ))}
                 {sessions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-4 text-xs italic text-zinc-500">
-                    No sessions found.
+                    {text.sidebar.noSessions}
                   </div>
                 ) : null}
               </div>
             </div>
           </section>
 
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen((previous) => !previous)}
+              className="mb-3 flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-white/80 px-3 py-2.5 text-left text-sm font-medium text-zinc-700 transition-colors hover:bg-white hover:text-zinc-900"
+            >
+              <span>{text.sidebar.settings}</span>
+              <span className="text-xs text-zinc-400">{settings.language === "zh" ? "中文" : "EN"}</span>
+            </button>
+
+            <SettingsPanel
+              isOpen={isSettingsOpen}
+              settings={settings}
+              serverMode={serverMode}
+              isApplying={isApplyingSettings}
+              hasBusySession={hasBusySession}
+              errorMessage={settingsErrorMessage}
+              onClose={() => setIsSettingsOpen(false)}
+              onUpdateSettings={onUpdateSettings}
+              onApplySettings={onApplySettings}
+            />
+          </div>
+
           <div className="flex items-center justify-between px-1 text-[11px] tracking-[0.08em] text-zinc-400 uppercase">
-            <span>Desktop</span>
-            <span>{isOnline ? "Online" : "Offline"}</span>
+            <span>{text.sidebar.desktop}</span>
+            <span>{isOnline ? text.sidebar.online : text.sidebar.offline}</span>
           </div>
         </div>
 
@@ -303,13 +344,13 @@ export function Sidebar({
                 }
               }}
             >
-              <span>Delete session</span>
+              <span>{text.sidebar.deleteSession}</span>
               <span className="text-[11px] uppercase tracking-wide text-zinc-400">Del</span>
             </button>
             <p className="px-3 py-2 text-xs leading-relaxed text-zinc-500">
               {isBusySessionStatus(contextMenuSession.latestRunStatus)
-                ? "Stop the active run before deleting this session."
-                : "Deletes this session together with its transcript, runs, and trace history."}
+                ? text.sidebar.deleteBlocked
+                : text.sidebar.deleteHint}
             </p>
           </div>
         ) : null}
@@ -324,7 +365,8 @@ function SessionListItem(input: {
   onSelect(): void
   onOpenContextMenu(event: ReactMouseEvent<HTMLButtonElement>): void
 }) {
-  const badge = getSessionStatusBadge(input.session.latestRunStatus)
+  const text = useDesktopText()
+  const badge = getSessionStatusBadge(input.session.latestRunStatus, text)
 
   return (
     <button
@@ -361,10 +403,13 @@ function SessionListItem(input: {
   )
 }
 
-function getSessionStatusBadge(status: DesktopSession["latestRunStatus"]) {
+function getSessionStatusBadge(
+  status: DesktopSession["latestRunStatus"],
+  text: ReturnType<typeof useDesktopText>,
+) {
   if (status === "running") {
     return {
-      label: "Running",
+      label: text.sidebar.running,
       className: "border-sky-200 bg-sky-50 text-sky-700",
       icon: Loader2,
       iconClassName: "animate-spin",
@@ -373,7 +418,7 @@ function getSessionStatusBadge(status: DesktopSession["latestRunStatus"]) {
 
   if (status === "waiting_permission") {
     return {
-      label: "Waiting",
+      label: text.sidebar.waiting,
       className: "border-amber-200 bg-amber-50 text-amber-700",
       icon: ShieldAlert,
       iconClassName: "",
@@ -382,7 +427,7 @@ function getSessionStatusBadge(status: DesktopSession["latestRunStatus"]) {
 
   if (status === "failed") {
     return {
-      label: "Failed",
+      label: text.sidebar.failed,
       className: "border-rose-200 bg-rose-50 text-rose-700",
       icon: AlertCircle,
       iconClassName: "",

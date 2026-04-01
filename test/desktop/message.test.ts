@@ -12,7 +12,7 @@ describe("desktop message", () => {
     expect(source).toContain("<ToolValue fieldName={null} value={part.toolInput} />")
     expect(source).toContain("<ToolValue fieldName={null} value={part.result} />")
     expect(source).toContain("const ExpandableFieldValue")
-    expect(source).toContain("{isExpanded ? \"Show less\" : \"Show more\"}")
+    expect(source).toContain("{isExpanded ? text.message.showLess : text.message.showMore}")
   })
 
   test("collapses large patch text and long multiline values by default", () => {

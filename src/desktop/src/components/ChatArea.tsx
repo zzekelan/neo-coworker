@@ -24,6 +24,7 @@ import { Message } from "./Message"
 import { PermissionRequest } from "./PermissionRequest"
 import { SkillPanel } from "./SkillPanel"
 import { getEffectiveActiveSkills, toggleSkill } from "./skill-state"
+import { useDesktopText } from "../i18n"
 
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
@@ -56,6 +57,7 @@ export function ChatArea({
   errorMessage,
   skillWarningMessage,
 }: ChatAreaProps) {
+  const text = useDesktopText()
   const [input, setInput] = useState("")
   const [isComposing, setIsComposing] = useState(false)
   const [isSkillPanelOpen, setIsSkillPanelOpen] = useState(false)
@@ -245,7 +247,7 @@ export function ChatArea({
           <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
             <Play className="ml-1 h-6 w-6 text-zinc-300" />
           </div>
-          <p className="text-sm font-medium tracking-wide text-zinc-500">Select a session to start</p>
+          <p className="text-sm font-medium tracking-wide text-zinc-500">{text.chat.selectSession}</p>
           {errorMessage ? <p className="mt-3 max-w-sm text-center text-xs text-rose-500">{errorMessage}</p> : null}
         </div>
       </div>
@@ -277,7 +279,7 @@ export function ChatArea({
                 className="flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-600"
               >
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Agent Running
+                {text.chat.agentRunning}
               </motion.div>
             ) : null}
             {isWaiting ? (
@@ -288,7 +290,7 @@ export function ChatArea({
                 className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600"
               >
                 <Info className="h-3 w-3" />
-                Waiting Permission
+                {text.chat.waitingPermission}
               </motion.div>
             ) : null}
           </AnimatePresence>
@@ -307,7 +309,7 @@ export function ChatArea({
             <div className="flex h-12 w-12 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
               <MessageSquare className="h-5 w-5 text-zinc-300" />
             </div>
-            <p className="text-sm text-zinc-500">Start a conversation with NeoCoworker</p>
+            <p className="text-sm text-zinc-500">{text.chat.startConversation}</p>
             {errorMessage ? <p className="max-w-md text-center text-xs text-rose-500">{errorMessage}</p> : null}
           </div>
         ) : (
@@ -338,7 +340,7 @@ export function ChatArea({
               >
                 <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
                 <span className="animate-pulse text-sm font-medium text-zinc-500">
-                  NeoCoworker is thinking...
+                  {text.chat.thinking}
                 </span>
               </motion.div>
             ) : null}
@@ -361,7 +363,7 @@ export function ChatArea({
                 )}
               >
                 <Sparkles className="h-4 w-4" />
-                Skills
+                {text.chat.skills}
                 <ChevronDown
                   className={cn("h-4 w-4 transition-transform", isSkillPanelOpen && "rotate-180")}
                 />
@@ -379,7 +381,7 @@ export function ChatArea({
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-zinc-400">No active skills</span>
+                <span className="text-xs text-zinc-400">{text.chat.noActiveSkills}</span>
               )}
             </div>
 
@@ -404,7 +406,7 @@ export function ChatArea({
                 <input
                   value={skillFilter}
                   onChange={(event) => setSkillFilter(event.target.value)}
-                  placeholder="Filter skills..."
+                  placeholder={text.chat.filterSkills}
                   className="h-11 w-full rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-300"
                 />
               </div>
@@ -427,8 +429,8 @@ export function ChatArea({
               onCompositionEnd={() => setIsComposing(false)}
               placeholder={
                 isBusy
-                  ? "Agent is busy..."
-                  : "Ask NeoCoworker to do something..."
+                  ? text.chat.agentBusyPlaceholder
+                  : text.chat.askPlaceholder
               }
               disabled={isBusy}
               className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent py-4 pr-14 pl-4 text-[15px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-0"

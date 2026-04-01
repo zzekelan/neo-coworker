@@ -8,6 +8,7 @@ import type {
   DesktopSessionSummary,
   DesktopMessage,
 } from "./types"
+import type { DesktopServerMode, DesktopSettings } from "./desktop-settings"
 
 const SERVER_EVENT_TYPES = [
   "heartbeat",
@@ -53,6 +54,51 @@ export async function persistDesktopSelection(input: {
   }
 
   return bridge.persistSelection(input)
+}
+
+export async function loadDesktopSettings() {
+  const bridge = getDesktopBridge()
+
+  if (!bridge.loadDesktopSettings) {
+    return {
+      settings: {
+        language: "en",
+        provider: "openai",
+        apiKey: "",
+        model: "gpt-5",
+        baseURL: "",
+        timeoutMs: "",
+      } satisfies DesktopSettings,
+      serverMode: (bridge.serverMode ?? "external") as DesktopServerMode,
+    }
+  }
+
+  return bridge.loadDesktopSettings()
+}
+
+export async function saveDesktopSettings(input: DesktopSettings) {
+  const bridge = getDesktopBridge()
+  if (!bridge.saveDesktopSettings) {
+    return {
+      settings: input,
+      serverMode: (bridge.serverMode ?? "external") as DesktopServerMode,
+    }
+  }
+
+  return bridge.saveDesktopSettings(input)
+}
+
+export async function applyDesktopSettings(input: DesktopSettings) {
+  const bridge = getDesktopBridge()
+  if (!bridge.applyDesktopSettings) {
+    return {
+      settings: input,
+      serverMode: (bridge.serverMode ?? "external") as DesktopServerMode,
+      restarted: false,
+    }
+  }
+
+  return bridge.applyDesktopSettings(input)
 }
 
 export async function requestApi<T>(path: string, options: RequestOptions = {}): Promise<T> {

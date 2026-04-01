@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from "react"
 import { Loader2, Sparkles, Star, Zap } from "lucide-react"
 import type { DesktopSession, DesktopRun, DesktopSkillCatalogEntry } from "../view-types"
 import { cn } from "../lib/utils"
+import { useDesktopText } from "../i18n"
 import { filterSkillCatalog, getSkillActionState } from "./skill-state"
 
 interface SkillPanelProps {
@@ -31,6 +32,7 @@ export function SkillPanel({
   onStopSkill,
   onSetDefaultSkill,
 }: SkillPanelProps) {
+  const text = useDesktopText()
   const filteredSkills = filterSkillCatalog(skills, query)
 
   return (
@@ -41,9 +43,9 @@ export function SkillPanel({
             <Sparkles className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <p>Skills</p>
+            <p>{text.skillPanel.title}</p>
             <p className="truncate text-xs font-normal text-zinc-500">
-              Browse and manage the active capabilities for this conversation.
+              {text.skillPanel.subtitle}
             </p>
           </div>
         </div>
@@ -57,7 +59,7 @@ export function SkillPanel({
 
       {controlsDisabled ? (
         <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-700">
-          Skill changes are locked while this run is active. Changes apply to future runs only.
+          {text.skillPanel.locked}
         </div>
       ) : null}
 
@@ -69,8 +71,8 @@ export function SkillPanel({
         {filteredSkills.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 px-4 py-6 text-sm text-zinc-500">
             {skills.length === 0
-              ? "No `.agents/skills` were found in this workspace."
-              : "No skills match this filter."}
+              ? text.skillPanel.noWorkspaceSkills
+              : text.skillPanel.noFilteredSkills}
           </div>
         ) : (
           <div className="space-y-2">
@@ -93,12 +95,12 @@ export function SkillPanel({
                         <h3 className="text-sm font-semibold tracking-tight text-zinc-900">{skill.name}</h3>
                         {state.isActive ? (
                           <Badge icon={Zap} tone="active">
-                            Active
+                            {text.skillPanel.active}
                           </Badge>
                         ) : null}
                         {state.isDefault ? (
                           <Badge icon={Star} tone="default">
-                            Default
+                            {text.skillPanel.default}
                           </Badge>
                         ) : null}
                       </div>
@@ -114,7 +116,7 @@ export function SkillPanel({
                           tone="primary"
                         >
                           {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                          Start
+                          {text.skillPanel.start}
                         </ActionButton>
                       ) : null}
 
@@ -125,7 +127,7 @@ export function SkillPanel({
                           tone="secondary"
                         >
                           {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                          Stop
+                          {text.skillPanel.stop}
                         </ActionButton>
                       ) : null}
 
@@ -136,7 +138,7 @@ export function SkillPanel({
                           tone="ghost"
                         >
                           {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                          Set Default
+                          {text.skillPanel.setDefault}
                         </ActionButton>
                       ) : null}
                     </div>

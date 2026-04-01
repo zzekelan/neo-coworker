@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Loader2, Terminal, XCircle } from "lucide-re
 import { motion } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { DesktopTranscriptMessage, MessagePart } from "../view-types"
+import { useDesktopText } from "../i18n"
 import { MarkdownText } from "./MarkdownText"
 
 const DEFAULT_COLLAPSED_CHAR_LIMIT = 280
@@ -65,6 +66,8 @@ const MessagePartRenderer: React.FC<{
   part: MessagePart
   role?: DesktopTranscriptMessage["role"]
 }> = ({ part, role }) => {
+  const text = useDesktopText()
+
   if (part.type === "text") {
     if (role === "assistant") {
       return <MarkdownText text={part.text} className="py-1 text-[15px]" />
@@ -115,7 +118,7 @@ const MessagePartRenderer: React.FC<{
         ) : (
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
         )}{" "}
-        {part.isError ? "Error" : "Result"}
+        {part.isError ? text.message.error : text.message.result}
       </div>
       <div className="max-h-64 overflow-x-auto p-4 text-zinc-700">
         <ToolValue fieldName={null} value={part.result} />
@@ -183,6 +186,7 @@ const ExpandableFieldValue: React.FC<{
   fieldName: string | null
   value: string
 }> = ({ fieldName, value }) => {
+  const text = useDesktopText()
   const isCollapsedByDefault = shouldCollapseFieldValue(fieldName, value)
   const [isExpanded, setIsExpanded] = useState(!isCollapsedByDefault)
 
@@ -204,7 +208,7 @@ const ExpandableFieldValue: React.FC<{
         onClick={() => setIsExpanded((previous) => !previous)}
         className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] font-semibold tracking-wide text-zinc-600 transition-colors hover:bg-zinc-100"
       >
-        {isExpanded ? "Show less" : "Show more"}
+        {isExpanded ? text.message.showLess : text.message.showMore}
       </button>
     </div>
   )

@@ -12,6 +12,11 @@ import {
   readDesktopSelectionState,
   writeDesktopSelectionState,
 } from "./selection-state.mjs"
+import {
+  createDefaultDesktopSettings,
+  readDesktopSettingsState,
+  writeDesktopSettingsState,
+} from "./settings-state.mjs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const desktopRoot = resolve(__dirname, "..")
@@ -19,15 +24,21 @@ const repositoryRoot = resolve(__dirname, "..", "..", "..")
 const preloadPath = resolve(__dirname, "preload.cjs")
 const workspaceRoot = process.env.DESKTOP_WORKSPACE_ROOT || resolve(repositoryRoot, ".agents", "workspace")
 const desktopSelectionStatePath = resolve(repositoryRoot, ".agents", "desktop-state.json")
+const desktopSettingsStatePath = resolve(repositoryRoot, ".agents", "desktop-settings.json")
 const desktopServerDatabasePath =
   process.env.AGENT_SERVER_DB_PATH?.trim() || resolve(repositoryRoot, ".agents", "server.sqlite")
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
+const defaultDesktopSettings = createDefaultDesktopSettings(process.env)
+let desktopSettings = readDesktopSettingsState(desktopSettingsStatePath, defaultDesktopSettings)
 const bunBin = resolveBunExecutable()
 const bootstrapLogPath = process.env.DESKTOP_BOOTSTRAP_LOG?.trim() || null
 
 let appServerHandle = null
 let uiServerHandle = null
 let eventBridgeHandle = null
+let currentServerOrigin = null
+let currentServerMode = "managed-local"
+let mainWindow = null
 let runtimeCleanupPromise = null
 
 app.disableHardwareAcceleration()
@@ -56,16 +67,24 @@ app.whenReady().then(startDesktop).catch((error) => {
 
 async function startDesktop() {
   logBootstrap("ready")
-  const serverOrigin = await resolveServerOrigin()
+  currentServerMode = readConfiguredServerOrigin(process.env.AGENT_SERVER_URL)
+    ? "external"
+    : "managed-local"
+  currentServerOrigin = await resolveServerOrigin({
+    serverMode: currentServerMode,
+    settings: desktopSettings,
+  })
   const uiOrigin = await startUiServer()
   const window = createWindow({
     defaultWorkspaceRoot: workspaceRoot,
     persistedWorkspaceRoot: persistedSelection?.activeWorkspaceRoot ?? null,
     persistedSessionId: persistedSelection?.activeSessionId ?? null,
+    serverMode: currentServerMode,
   })
+  mainWindow = window
 
   ipcMain.handle("neo-coworker:request-json", async (_event, input) => {
-    return requestJson(serverOrigin, input)
+    return requestJson(currentServerOrigin, input)
   })
   ipcMain.handle("neo-coworker:pick-directory", async () => {
     const result = await dialog.showOpenDialog(window, {
@@ -78,12 +97,55 @@ async function startDesktop() {
     writeDesktopSelectionState(desktopSelectionStatePath, selection)
     return true
   })
+  ipcMain.handle("neo-coworker:load-settings", async () => {
+    return {
+      settings: desktopSettings,
+      serverMode: currentServerMode,
+    }
+  })
+  ipcMain.handle("neo-coworker:save-settings", async (_event, settings) => {
+    desktopSettings = writeDesktopSettingsState(
+      desktopSettingsStatePath,
+      settings,
+      defaultDesktopSettings,
+    )
+    return {
+      settings: desktopSettings,
+      serverMode: currentServerMode,
+    }
+  })
+  ipcMain.handle("neo-coworker:apply-settings", async (_event, settings) => {
+    desktopSettings = writeDesktopSettingsState(
+      desktopSettingsStatePath,
+      settings,
+      defaultDesktopSettings,
+    )
 
-  eventBridgeHandle = createEventBridge({
-    serverOrigin,
+    if (currentServerMode !== "managed-local") {
+      return {
+        settings: desktopSettings,
+        serverMode: currentServerMode,
+        restarted: false,
+      }
+    }
+
+    await ensureNoActiveRuns(currentServerOrigin)
+    currentServerOrigin = await restartManagedLocalServer({
+      settings: desktopSettings,
+      window,
+    })
+
+    return {
+      settings: desktopSettings,
+      serverMode: currentServerMode,
+      restarted: true,
+    }
+  })
+
+  await replaceEventBridge({
+    serverOrigin: currentServerOrigin,
     window,
   })
-  eventBridgeHandle.start()
 
   await window.loadURL(uiOrigin)
   logBootstrap(`window.loaded ${uiOrigin}`)
@@ -104,6 +166,7 @@ function createWindow(input) {
       additionalArguments: [
         `--neo-coworker-default-workspace-root=${encodeURIComponent(input.defaultWorkspaceRoot)}`,
         `--neo-coworker-platform=${encodeURIComponent(process.platform)}`,
+        `--neo-coworker-server-mode=${encodeURIComponent(input.serverMode)}`,
         ...(input.persistedWorkspaceRoot
           ? [
               `--neo-coworker-persisted-workspace-root=${encodeURIComponent(
@@ -145,9 +208,9 @@ function closeRuntimeHandles() {
   return runtimeCleanupPromise
 }
 
-async function resolveServerOrigin() {
+async function resolveServerOrigin(input) {
   const configuredOrigin = readConfiguredServerOrigin(process.env.AGENT_SERVER_URL)
-  if (configuredOrigin) {
+  if (input.serverMode === "external") {
     logBootstrap(`server.external ${configuredOrigin}`)
     return configuredOrigin
   }
@@ -156,11 +219,14 @@ async function resolveServerOrigin() {
     throw new Error("AGENT_SERVER_URL is required when DESKTOP_DISABLE_LOCAL_SERVER=1")
   }
 
+  return startManagedLocalServer(input.settings)
+}
+
+async function startManagedLocalServer(settings) {
   const port = await allocateLoopbackPort()
-  const env = buildLoopbackEnv({
-    AGENT_SERVER_HOST: "127.0.0.1",
-    AGENT_SERVER_PORT: String(port),
-    AGENT_SERVER_DB_PATH: desktopServerDatabasePath,
+  const env = buildManagedServerEnv({
+    settings,
+    port,
   })
   logBootstrap(`server.local.start ${port}`)
   const child = spawn(bunBin, ["run", "src/app-server/main.ts"], {
@@ -179,6 +245,75 @@ async function resolveServerOrigin() {
   })
   logBootstrap(`server.local.ready ${startedOrigin}`)
   return startedOrigin
+}
+
+async function replaceEventBridge(input) {
+  await eventBridgeHandle?.close?.()
+  eventBridgeHandle = createEventBridge({
+    serverOrigin: input.serverOrigin,
+    window: input.window,
+  })
+  eventBridgeHandle.start()
+}
+
+async function restartManagedLocalServer(input) {
+  await eventBridgeHandle?.close?.()
+  eventBridgeHandle = null
+  await appServerHandle?.close?.()
+  appServerHandle = null
+
+  const nextOrigin = await startManagedLocalServer(input.settings)
+  await replaceEventBridge({
+    serverOrigin: nextOrigin,
+    window: input.window,
+  })
+
+  return nextOrigin
+}
+
+async function ensureNoActiveRuns(origin) {
+  const response = await requestJson(origin, {
+    path: "/sessions",
+  })
+
+  if (!response.ok) {
+    throw new Error("Desktop could not verify session activity before restarting the local app-server.")
+  }
+
+  const sessions = Array.isArray(response.body?.data?.sessions)
+    ? response.body.data.sessions
+    : []
+  const busySession = sessions.find((session) => isActiveRunStatus(session?.latestRunStatus))
+
+  if (busySession) {
+    throw new Error("Stop the active run before applying LLM settings.")
+  }
+}
+
+function buildManagedServerEnv(input) {
+  const env = buildLoopbackEnv({
+    AGENT_SERVER_HOST: "127.0.0.1",
+    AGENT_SERVER_PORT: String(input.port),
+    AGENT_SERVER_DB_PATH: desktopServerDatabasePath,
+  })
+
+  delete env.LLM_PROVIDER
+  delete env.LLM_API_KEY
+  delete env.LLM_MODEL
+  delete env.LLM_BASE_URL
+  delete env.LLM_TIMEOUT_MS
+
+  env.LLM_PROVIDER = input.settings.provider
+  env.LLM_API_KEY = input.settings.apiKey
+  env.LLM_MODEL = input.settings.model
+  if (input.settings.baseURL) {
+    env.LLM_BASE_URL = input.settings.baseURL
+  }
+  if (input.settings.timeoutMs) {
+    env.LLM_TIMEOUT_MS = input.settings.timeoutMs
+  }
+
+  return env
 }
 
 async function startUiServer() {

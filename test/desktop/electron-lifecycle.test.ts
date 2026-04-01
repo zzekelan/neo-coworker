@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { EventEmitter } from "node:events"
+import { readFileSync } from "node:fs"
 import {
   createChildHandle,
   createQuitCoordinator,
@@ -109,6 +110,22 @@ describe("desktop electron lifecycle", () => {
     expect(assignedHandleCount).toBe(1)
     expect(child.signals).toEqual(["SIGTERM"])
     expect(child.exitCode).toBe(0)
+  })
+
+  test("wires settings bridge handlers and managed app-server restart through the Electron shell", () => {
+    const mainSource = readFileSync("src/desktop/electron/main.mjs", "utf8")
+    const preloadSource = readFileSync("src/desktop/electron/preload.cjs", "utf8")
+
+    expect(mainSource).toContain("neo-coworker:load-settings")
+    expect(mainSource).toContain("neo-coworker:save-settings")
+    expect(mainSource).toContain("neo-coworker:apply-settings")
+    expect(mainSource).toContain("await ensureNoActiveRuns(currentServerOrigin)")
+    expect(mainSource).toContain("currentServerMode !== \"managed-local\"")
+    expect(mainSource).toContain("await restartManagedLocalServer({")
+    expect(preloadSource).toContain("serverMode: readArgument(\"--neo-coworker-server-mode=\")")
+    expect(preloadSource).toContain("loadDesktopSettings()")
+    expect(preloadSource).toContain("saveDesktopSettings(input)")
+    expect(preloadSource).toContain("applyDesktopSettings(input)")
   })
 })
 

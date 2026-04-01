@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react"
 import { Check, ShieldAlert, X } from "lucide-react"
 import { motion } from "framer-motion"
 import type { DesktopPermissionRequest } from "../view-types"
+import { useDesktopText } from "../i18n"
 
 interface Props {
   request: DesktopPermissionRequest
@@ -11,6 +12,7 @@ interface Props {
 
 export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus = false }) => {
   const cardRef = useRef<HTMLDivElement>(null)
+  const text = useDesktopText()
 
   useEffect(() => {
     if (!autoFocus) {
@@ -48,10 +50,9 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
           <ShieldAlert className="h-5 w-5 text-amber-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="mb-1 text-base font-semibold text-zinc-900">Permission Required</h3>
+          <h3 className="mb-1 text-base font-semibold text-zinc-900">{text.permission.title}</h3>
           <p className="mb-4 text-sm leading-relaxed text-zinc-500">
-            The agent is requesting permission to execute{" "}
-            <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-700">{request.toolName}</span>.
+            {text.permission.requestTool(request.toolName)}
           </p>
 
           <div className="mb-5 rounded-lg border border-zinc-200 bg-zinc-50 p-3 font-mono text-xs text-zinc-700">
@@ -64,14 +65,14 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
               className="flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800"
             >
               <Check className="h-4 w-4" />
-              Allow
+              {text.permission.allow}
             </button>
             <button
               onClick={() => void onReply(request.id, "deny")}
               className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
             >
               <X className="h-4 w-4" />
-              Deny
+              {text.permission.deny}
             </button>
           </div>
         </div>

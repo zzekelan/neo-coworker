@@ -5,6 +5,7 @@ const BRIDGE_STATE = {
   platform: readArgument("--neo-coworker-platform=") ?? process.platform,
   persistedWorkspaceRoot: readArgument("--neo-coworker-persisted-workspace-root="),
   persistedSessionId: readArgument("--neo-coworker-persisted-session-id="),
+  serverMode: readArgument("--neo-coworker-server-mode="),
 }
 
 contextBridge.exposeInMainWorld("neoCoworkerDesktop", {
@@ -17,6 +18,15 @@ contextBridge.exposeInMainWorld("neoCoworkerDesktop", {
   },
   persistSelection(input) {
     return ipcRenderer.invoke("neo-coworker:persist-selection", input)
+  },
+  loadDesktopSettings() {
+    return ipcRenderer.invoke("neo-coworker:load-settings")
+  },
+  saveDesktopSettings(input) {
+    return ipcRenderer.invoke("neo-coworker:save-settings", input)
+  },
+  applyDesktopSettings(input) {
+    return ipcRenderer.invoke("neo-coworker:apply-settings", input)
   },
 })
 
