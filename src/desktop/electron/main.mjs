@@ -138,10 +138,7 @@ async function startDesktop() {
       })
       unavailableServerMessage = null
     } catch (error) {
-      currentServerOrigin = null
-      unavailableServerMessage = toErrorMessage(error)
-      logBootstrap(`server.unavailable ${sanitizeBootstrapMessage(unavailableServerMessage)}`)
-      console.error(unavailableServerMessage)
+      await setManagedLocalServerUnavailable(error)
       throw error
     }
 
@@ -164,9 +161,7 @@ async function startDesktop() {
     })
   } catch (error) {
     currentServerOrigin = null
-    unavailableServerMessage = toErrorMessage(error)
-    logBootstrap(`server.unavailable ${sanitizeBootstrapMessage(unavailableServerMessage)}`)
-    console.error(unavailableServerMessage)
+    recordUnavailableServer(error)
   }
 
   await window.loadURL(uiOrigin)
@@ -294,6 +289,26 @@ async function restartManagedLocalServer(input) {
   return nextOrigin
 }
 
+async function setManagedLocalServerUnavailable(error) {
+  if (currentServerMode !== "managed-local") {
+    return false
+  }
+
+  currentServerOrigin = null
+  recordUnavailableServer(error)
+
+  const handle = eventBridgeHandle
+  eventBridgeHandle = null
+  await handle?.close?.()
+  return true
+}
+
+function recordUnavailableServer(error) {
+  unavailableServerMessage = toErrorMessage(error)
+  logBootstrap(`server.unavailable ${sanitizeBootstrapMessage(unavailableServerMessage)}`)
+  console.error(unavailableServerMessage)
+}
+
 async function ensureNoActiveRuns(origin) {
   if (!origin) {
     return
@@ -302,6 +317,10 @@ async function ensureNoActiveRuns(origin) {
   const response = await requestJson(origin, {
     path: "/sessions",
   })
+
+  if (response.status === 503) {
+    return
+  }
 
   if (!response.ok) {
     throw new Error("Desktop could not verify session activity before restarting the local app-server.")
@@ -420,11 +439,10 @@ function createEventBridge(input) {
 
     request.on("response", (response) => {
       if (response.statusCode !== 200) {
-        input.window.webContents.send("neo-coworker:event-error", {
+        handleBridgeError({
           status: response.statusCode ?? 0,
         })
         response.resume()
-        scheduleReconnect()
         return
       }
 
@@ -451,27 +469,37 @@ function createEventBridge(input) {
 
       response.on("end", () => {
         if (!closed) {
-          input.window.webContents.send("neo-coworker:event-error", { reason: "stream-ended" })
-          scheduleReconnect()
+          handleBridgeError({ reason: "stream-ended" })
         }
       })
 
       response.on("error", (error) => {
         if (!closed) {
-          input.window.webContents.send("neo-coworker:event-error", { reason: error.message })
-          scheduleReconnect()
+          handleBridgeError({ reason: error.message })
         }
       })
     })
 
     request.on("error", (error) => {
       if (!closed) {
-        input.window.webContents.send("neo-coworker:event-error", { reason: error.message })
-        scheduleReconnect()
+        handleBridgeError({ reason: error.message })
       }
     })
 
     request.end()
+  }
+
+  function handleBridgeError(detail) {
+    input.window.webContents.send("neo-coworker:event-error", detail)
+
+    if (currentServerMode === "managed-local") {
+      void setManagedLocalServerUnavailable(
+        detail.reason ?? `Managed local app-server bridge failed with status ${detail.status ?? 0}.`,
+      )
+      return
+    }
+
+    scheduleReconnect()
   }
 
   return {
@@ -487,11 +515,20 @@ async function requestJson(origin, input) {
 
   const url = new URL(input.path, origin)
   const body = input.body === undefined ? undefined : JSON.stringify(input.body)
-  const response = await requestUrl(url, {
-    method: input.method ?? (body === undefined ? "GET" : "POST"),
-    headers: body === undefined ? {} : { "content-type": "application/json" },
-    body,
-  })
+  let response
+
+  try {
+    response = await requestUrl(url, {
+      method: input.method ?? (body === undefined ? "GET" : "POST"),
+      headers: body === undefined ? {} : { "content-type": "application/json" },
+      body,
+    })
+  } catch (error) {
+    if (await setManagedLocalServerUnavailable(error)) {
+      return createUnavailableServerResponse()
+    }
+    throw error
+  }
 
   return {
     ok: response.status >= 200 && response.status < 300,

@@ -58,6 +58,9 @@ export function useAgent() {
     },
     errorMessage: desktop.actionError,
     skillWarningMessage: desktop.skillWarningMessage,
+    refreshAppState() {
+      return desktop.refreshAppState()
+    },
   }
 }
 
@@ -68,7 +71,7 @@ function mapWorkspace(
     id: workspace.workspaceRoot,
     name: workspace.name,
     workspaceRoot: workspace.workspaceRoot,
-    hasBusySession: workspace.sessions.some((session) => isBusyRunStatus(session.latestRunStatus)),
+    hasBusySession: workspace.hasBusySession,
   }
 }
 
@@ -135,8 +138,4 @@ function mapPermissionRequest(
 
 function toIsoString(value: number) {
   return new Date(value).toISOString()
-}
-
-function isBusyRunStatus(status: import("../types").RunStatus | null) {
-  return status === "queued" || status === "running" || status === "waiting_permission"
 }

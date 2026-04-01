@@ -652,8 +652,13 @@ function buildWorkspaceSummary(input: {
     name: basename(input.workspaceRoot),
     latestActivityAt,
     sessionCount: sessions.length,
+    hasBusySession: sessions.some((session) => isBusySessionRunStatus(session.latestRunStatus)),
     sessions: sessions.slice(0, 6),
   }
+}
+
+function isBusySessionRunStatus(status: SessionSummary["latestRunStatus"]) {
+  return status === "queued" || status === "running" || status === "waiting_permission"
 }
 
 class WorkspaceDirectoryNotFoundError extends Error {

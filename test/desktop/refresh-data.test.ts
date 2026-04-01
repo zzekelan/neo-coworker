@@ -15,6 +15,7 @@ describe("desktop refresh data", () => {
                 name: "alpha",
                 latestActivityAt: 10,
                 sessionCount: 1,
+                hasBusySession: false,
                 sessions: [],
               },
             ],

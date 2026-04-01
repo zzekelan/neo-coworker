@@ -38,7 +38,7 @@ describe("desktop chat area", () => {
     expect(source).toContain("disabled={isInputLocked}")
     expect(source).toContain("setInput(\"\")")
     expect(source).toContain("const handlePermissionReply = (requestId: string, decision: \"allow\" | \"deny\") => {")
-    expect(source).toContain("void onReplyPermission(requestId, decision)")
+    expect(source).toContain("return onReplyPermission(requestId, decision)")
   })
 
   test("closes the skill panel on outside click and defers Enter submission during IME composition", () => {

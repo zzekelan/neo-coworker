@@ -7,6 +7,8 @@ describe("desktop settings panel", () => {
     const hookSource = readFileSync("src/desktop/src/useDesktopSettings.ts", "utf8")
 
     expect(appSource).toContain("<DesktopTextProvider language={desktopSettings.settings.language}>")
+    expect(appSource).toContain("void desktopSettings.applySettings().then((restarted) => {")
+    expect(appSource).toContain("void refreshAppState()")
     expect(hookSource).toContain("loadDesktopSettings()")
     expect(hookSource).toContain("saveDesktopSettings(nextSettings)")
     expect(hookSource).toContain("applyDesktopSettings(settings)")

@@ -818,6 +818,7 @@ describe("server HTTP API and SSE", () => {
       name: "alpha",
       latestActivityAt: latestAlphaSession.updatedAt,
       sessionCount: 2,
+      hasBusySession: false,
     })
     expect(alphaWorkspace.sessions).toEqual(alphaSessionsResponse.body.data.sessions)
 
@@ -832,6 +833,7 @@ describe("server HTTP API and SSE", () => {
       name: "alpha",
       latestActivityAt: latestAlphaSession.updatedAt,
       sessionCount: 2,
+      hasBusySession: false,
     })
     expect(firstWorkspace.sessions).toEqual(alphaSessionsResponse.body.data.sessions)
     expectWorkspaceContract(secondWorkspace, {
@@ -839,6 +841,7 @@ describe("server HTTP API and SSE", () => {
       name: "beta",
       latestActivityAt: betaSession.updatedAt,
       sessionCount: 1,
+      hasBusySession: false,
     })
     expect(secondWorkspace.sessions).toEqual([betaSession])
 
@@ -858,8 +861,52 @@ describe("server HTTP API and SSE", () => {
       name: "gamma",
       latestActivityAt: 0,
       sessionCount: 0,
+      hasBusySession: false,
     })
     expect(openedEmptyWorkspace.body.data.workspace.sessions).toEqual([])
+  })
+
+  test("reports workspace busy state even when the active run sits outside the preview sessions", async () => {
+    const harness = await createHarness(
+      "server-workspace-busy-preview",
+      createTurnProvider([
+        async function* () {
+          await Bun.sleep(400)
+        },
+      ]),
+    )
+
+    const busySessionResponse = await requestJson(harness.server, "POST", "/workspace/sessions", {
+      workspaceRoot: harness.workspaceRoot,
+      title: "Busy hidden session",
+    })
+    const busySessionId = busySessionResponse.body.data.session.id as string
+
+    const busyRunResponse = await requestJson(harness.server, "POST", `/sessions/${busySessionId}/runs`, {
+      prompt: "Keep this run active",
+    })
+    const busyRunId = busyRunResponse.body.data.run.id as string
+    await waitForRunStatus(harness.server, busyRunId, "running")
+
+    for (let index = 0; index < 6; index += 1) {
+      const createResponse = await requestJson(harness.server, "POST", "/workspace/sessions", {
+        workspaceRoot: harness.workspaceRoot,
+        title: `Idle ${index + 1}`,
+      })
+      expect(createResponse.status).toBe(201)
+    }
+
+    const workspaceResponse = await requestJson(harness.server, "GET", "/workspaces")
+    expect(workspaceResponse.status).toBe(200)
+
+    const [workspace] = workspaceResponse.body.data.workspaces as Array<Record<string, any>>
+    expectWorkspaceContract(workspace, {
+      workspaceRoot: harness.workspaceRoot,
+      sessionCount: 7,
+      hasBusySession: true,
+    })
+    expect(workspace.sessions).toHaveLength(6)
+    expect(workspace.sessions.some((session: Record<string, any>) => session.id === busySessionId)).toBe(false)
   })
 
   test("deletes idle sessions atomically and rejects busy sessions", async () => {
@@ -1541,6 +1588,7 @@ function createMonotonicClock(start = 1_000) {
 }
 
 const desktopWorkspaceKeys = [
+  "hasBusySession",
   "latestActivityAt",
   "name",
   "sessionCount",
@@ -1569,6 +1617,7 @@ function expectWorkspaceContract(
   expect(typeof workspace.name).toBe("string")
   expect(typeof workspace.latestActivityAt).toBe("number")
   expect(typeof workspace.sessionCount).toBe("number")
+  expect(typeof workspace.hasBusySession).toBe("boolean")
   expect(Array.isArray(workspace.sessions)).toBe(true)
   expect(workspace).toMatchObject(expected)
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { Check, ShieldAlert, X } from "lucide-react"
 import { motion } from "framer-motion"
 import type { DesktopPermissionRequest } from "../view-types"
@@ -6,12 +6,13 @@ import { useDesktopText } from "../i18n"
 
 interface Props {
   request: DesktopPermissionRequest
-  onReply: (id: string, decision: "allow" | "deny") => void | Promise<unknown>
+  onReply: (id: string, decision: "allow" | "deny") => boolean | Promise<boolean>
   autoFocus?: boolean
 }
 
 export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus = false }) => {
   const cardRef = useRef<HTMLDivElement>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const text = useDesktopText()
 
   useEffect(() => {
@@ -22,8 +23,26 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
     cardRef.current?.focus()
   }, [autoFocus])
 
+  useEffect(() => {
+    if (request.status !== "pending") {
+      setIsSubmitting(false)
+    }
+  }, [request.id, request.status])
+
   if (request.status !== "pending") {
     return null
+  }
+
+  const submitReply = async (decision: "allow" | "deny") => {
+    if (isSubmitting) {
+      return
+    }
+
+    setIsSubmitting(true)
+    const applied = await onReply(request.id, decision)
+    if (applied === false) {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -33,14 +52,18 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
       animate={{ opacity: 1, scale: 1 }}
       tabIndex={0}
       onKeyDown={(event) => {
+        if (isSubmitting) {
+          return
+        }
+
         if (event.key === "Enter") {
           event.preventDefault()
-          void onReply(request.id, "allow")
+          void submitReply("allow")
         }
 
         if (event.key === "Escape") {
           event.preventDefault()
-          void onReply(request.id, "deny")
+          void submitReply("deny")
         }
       }}
       className="my-6 max-w-3xl rounded-xl border border-zinc-200 bg-white p-5 shadow-sm"
@@ -61,14 +84,16 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => void onReply(request.id, "allow")}
+              disabled={isSubmitting}
+              onClick={() => void submitReply("allow")}
               className="flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800"
             >
               <Check className="h-4 w-4" />
               {text.permission.allow}
             </button>
             <button
-              onClick={() => void onReply(request.id, "deny")}
+              disabled={isSubmitting}
+              onClick={() => void submitReply("deny")}
               className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
             >
               <X className="h-4 w-4" />

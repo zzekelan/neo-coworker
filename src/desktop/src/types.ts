@@ -3,6 +3,7 @@ export type DesktopWorkspaceSummary = {
   name: string
   latestActivityAt: number
   sessionCount: number
+  hasBusySession: boolean
   sessions: DesktopSessionSummary[]
 }
 

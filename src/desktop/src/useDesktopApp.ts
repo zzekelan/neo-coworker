@@ -23,7 +23,7 @@ import {
   upsertTranscriptMessage,
   upsertTranscriptMessagePart,
 } from "./transcript-state"
-import { loadDesktopRefreshCore } from "./refresh-data"
+import { loadDesktopRefreshCore, mergeWorkspaces } from "./refresh-data"
 import type {
   ConnectionStatus,
   DesktopMessage,
@@ -79,12 +79,27 @@ export function useDesktopApp() {
     activeSessionId: state.activeSessionId,
   })
   const refreshTokenRef = useRef(0)
+  const workspaceRefreshTokenRef = useRef(0)
+
+  const setSelectionRef = (nextSelection: {
+    activeWorkspaceRoot: string | null
+    activeSessionId: string | null
+  }) => {
+    selectionRef.current = nextSelection
+  }
+
+  const rememberWorkspaces = (workspaces: DesktopWorkspaceSummary[]) => {
+    knownWorkspacesRef.current = new Map(
+      workspaces.map((workspace) => [workspace.workspaceRoot, workspace]),
+    )
+    return workspaces
+  }
 
   useEffect(() => {
-    selectionRef.current = {
+    setSelectionRef({
       activeWorkspaceRoot: state.activeWorkspaceRoot,
       activeSessionId: state.activeSessionId,
-    }
+    })
   }, [state.activeWorkspaceRoot, state.activeSessionId])
 
   useEffect(() => {
@@ -134,6 +149,12 @@ export function useDesktopApp() {
       if (currentToken !== refreshTokenRef.current) {
         return
       }
+
+      rememberWorkspaces(refreshData.workspaces)
+      setSelectionRef({
+        activeWorkspaceRoot: refreshData.resolvedWorkspaceRoot,
+        activeSessionId: refreshData.activeSessionId,
+      })
 
       setState((previous) => ({
         ...previous,
@@ -196,6 +217,28 @@ export function useDesktopApp() {
     }
   })
 
+  const syncWorkspaces = useEffectEvent(async () => {
+    const currentToken = workspaceRefreshTokenRef.current + 1
+    workspaceRefreshTokenRef.current = currentToken
+
+    try {
+      const workspaceData = await loadWorkspaces()
+      if (currentToken !== workspaceRefreshTokenRef.current) {
+        return
+      }
+
+      const workspaces = rememberWorkspaces(
+        mergeWorkspaces(workspaceData.workspaces, knownWorkspacesRef.current),
+      )
+      setState((previous) => ({
+        ...previous,
+        workspaces,
+      }))
+    } catch {
+      // Keep the current workspace list until a full refresh succeeds.
+    }
+  })
+
   const handleEvent = useEffectEvent((event: DesktopServerEvent) => {
     const { activeWorkspaceRoot, activeSessionId } = selectionRef.current
 
@@ -217,7 +260,6 @@ export function useDesktopApp() {
     ) {
       setState((previous) => ({
         ...previous,
-        workspaces: upsertWorkspaceSession(previous.workspaces, event.session),
         sessions: upsertSession(previous.sessions, event.session),
         sessionSnapshot:
           previous.activeSessionId === event.session.id
@@ -229,32 +271,33 @@ export function useDesktopApp() {
               }
             : previous.sessionSnapshot,
       }))
+      void syncWorkspaces()
       return
     }
 
     if (event.type === "session.created" || event.type === "session.updated") {
-      setState((previous) => ({
-        ...previous,
-        workspaces: upsertWorkspaceSession(previous.workspaces, event.session),
-      }))
+      void syncWorkspaces()
       return
     }
 
     if (event.type === "session.deleted") {
-      setState((previous) => {
-        const deletingActiveSession = previous.activeSessionId === event.sessionId
-        const nextSessions =
-          previous.activeWorkspaceRoot === event.workspaceRoot
-            ? previous.sessions.filter((session) => session.id !== event.sessionId)
-            : previous.sessions
-        const nextActiveSessionId = deletingActiveSession ? nextSessions[0]?.id ?? null : previous.activeSessionId
+      const deletingActiveSession = activeSessionId === event.sessionId
+      const nextSessions =
+        activeWorkspaceRoot === event.workspaceRoot
+          ? state.sessions.filter((session) => session.id !== event.sessionId)
+          : state.sessions
+      const nextActiveSessionId = deletingActiveSession ? nextSessions[0]?.id ?? null : activeSessionId
 
+      if (deletingActiveSession) {
+        setSelectionRef({
+          activeWorkspaceRoot,
+          activeSessionId: nextActiveSessionId,
+        })
+      }
+
+      setState((previous) => {
         return {
           ...previous,
-          workspaces: removeWorkspaceSession(previous.workspaces, {
-            sessionId: event.sessionId,
-            workspaceRoot: event.workspaceRoot,
-          }),
           sessions: nextSessions,
           activeSessionId: nextActiveSessionId,
           sessionSnapshot: deletingActiveSession ? null : previous.sessionSnapshot,
@@ -264,6 +307,7 @@ export function useDesktopApp() {
           isSending: deletingActiveSession ? false : previous.isSending,
         }
       })
+      void syncWorkspaces()
 
       void refresh({
         workspaceRoot: activeWorkspaceRoot,
@@ -376,6 +420,10 @@ export function useDesktopApp() {
 
   const actions = {
     async selectWorkspace(workspaceRoot: string) {
+      setSelectionRef({
+        activeWorkspaceRoot: workspaceRoot,
+        activeSessionId: null,
+      })
       setState((previous) => ({
         ...previous,
         activeWorkspaceRoot: workspaceRoot,
@@ -396,6 +444,10 @@ export function useDesktopApp() {
     },
 
     async selectSession(sessionId: string) {
+      setSelectionRef({
+        activeWorkspaceRoot: selectionRef.current.activeWorkspaceRoot,
+        activeSessionId: sessionId,
+      })
       setState((previous) => ({
         ...previous,
         activeSessionId: sessionId,
@@ -427,9 +479,12 @@ export function useDesktopApp() {
           workspaceRoot,
         })
 
+        setSelectionRef({
+          activeWorkspaceRoot: workspaceRoot,
+          activeSessionId: created.session.id,
+        })
         setState((previous) => ({
           ...previous,
-          workspaces: upsertWorkspaceSession(previous.workspaces, created.session),
           sessions: upsertSession(previous.sessions, created.session),
           activeWorkspaceRoot: workspaceRoot,
           activeSessionId: created.session.id,
@@ -534,9 +589,12 @@ export function useDesktopApp() {
 
           sessionId = created.session.id
 
+          setSelectionRef({
+            activeWorkspaceRoot: workspaceRoot,
+            activeSessionId: created.session.id,
+          })
           setState((previous) => ({
             ...previous,
-            workspaces: upsertWorkspaceSession(previous.workspaces, created.session),
             sessions: upsertSession(previous.sessions, created.session),
             activeWorkspaceRoot: workspaceRoot,
             activeSessionId: created.session.id,
@@ -597,11 +655,13 @@ export function useDesktopApp() {
           sessionId: selectionRef.current.activeSessionId,
           preserveTranscript: true,
         })
+        return true
       } catch (error) {
         setState((previous) => ({
           ...previous,
           actionError: toErrorMessage(error),
         }))
+        return false
       }
     },
 
@@ -614,7 +674,6 @@ export function useDesktopApp() {
 
         setState((previous) => ({
           ...previous,
-          workspaces: upsertWorkspaceSession(previous.workspaces, updated.session),
           sessions:
             previous.activeWorkspaceRoot === updated.session.workspaceRoot
               ? upsertSession(previous.sessions, updated.session)
@@ -652,15 +711,17 @@ export function useDesktopApp() {
       try {
         await deleteSessionRequest(sessionId)
 
+        if (selectionRef.current.activeSessionId === sessionId) {
+          setSelectionRef({
+            activeWorkspaceRoot: selectionRef.current.activeWorkspaceRoot,
+            activeSessionId: nextActiveSessionId,
+          })
+        }
         setState((previous) => {
           const deletingActiveSession = previous.activeSessionId === sessionId
 
           return {
             ...previous,
-            workspaces: removeWorkspaceSession(previous.workspaces, {
-              sessionId,
-              workspaceRoot: deletedSessionWorkspaceRoot(previous.workspaces, sessionId),
-            }),
             sessions: previous.sessions.filter((candidate) => candidate.id !== sessionId),
             activeSessionId: deletingActiveSession ? nextActiveSessionId : previous.activeSessionId,
             sessionSnapshot: deletingActiveSession ? null : previous.sessionSnapshot,
@@ -685,6 +746,12 @@ export function useDesktopApp() {
         }))
         return false
       }
+    },
+    async refreshAppState() {
+      await refresh({
+        workspaceRoot: selectionRef.current.activeWorkspaceRoot,
+        sessionId: selectionRef.current.activeSessionId,
+      })
     },
   }
 
@@ -782,6 +849,7 @@ function createDefaultWorkspace(workspaceRoot: string): DesktopWorkspaceSummary 
     name: workspaceRoot.split(/[\\/]/).filter(Boolean).at(-1) ?? workspaceRoot,
     latestActivityAt: 0,
     sessionCount: 0,
+    hasBusySession: false,
     sessions: [],
   }
 }
@@ -816,80 +884,6 @@ function upsertSession(
   const withoutCurrent = sessions.filter((candidate) => candidate.id !== session.id)
   withoutCurrent.push(session)
   return withoutCurrent.sort((left, right) => right.updatedAt - left.updatedAt)
-}
-
-function upsertWorkspaceSession(
-  workspaces: DesktopWorkspaceSummary[],
-  session: DesktopSessionSummary,
-) {
-  const nextWorkspaces = workspaces.map((workspace) => {
-    if (workspace.workspaceRoot !== session.workspaceRoot) {
-      return workspace
-    }
-
-    const sessions = upsertSession(workspace.sessions, session)
-    return {
-      ...workspace,
-      sessions,
-      sessionCount: sessions.length,
-      latestActivityAt: Math.max(0, ...sessions.map((candidate) => candidate.updatedAt)),
-    }
-  })
-
-  if (nextWorkspaces.some((workspace) => workspace.workspaceRoot === session.workspaceRoot)) {
-    return nextWorkspaces.sort((left, right) => right.latestActivityAt - left.latestActivityAt)
-  }
-
-  return [
-    ...nextWorkspaces,
-    {
-      ...createDefaultWorkspace(session.workspaceRoot),
-      sessions: [session],
-      sessionCount: 1,
-      latestActivityAt: session.updatedAt,
-    },
-  ].sort((left, right) => right.latestActivityAt - left.latestActivityAt)
-}
-
-function removeWorkspaceSession(
-  workspaces: DesktopWorkspaceSummary[],
-  input: {
-    sessionId: string
-    workspaceRoot: string | null
-  },
-) {
-  if (!input.workspaceRoot) {
-    return workspaces
-  }
-
-  return workspaces
-    .map((workspace) => {
-      if (workspace.workspaceRoot !== input.workspaceRoot) {
-        return workspace
-      }
-
-      const sessions = workspace.sessions.filter((session) => session.id !== input.sessionId)
-      return {
-        ...workspace,
-        sessions,
-        sessionCount: sessions.length,
-        latestActivityAt: Math.max(0, ...sessions.map((candidate) => candidate.updatedAt)),
-      }
-    })
-    .sort((left, right) => right.latestActivityAt - left.latestActivityAt)
-}
-
-function deletedSessionWorkspaceRoot(
-  workspaces: DesktopWorkspaceSummary[],
-  sessionId: string,
-) {
-  for (const workspace of workspaces) {
-    if (workspace.sessions.some((session) => session.id === sessionId)) {
-      return workspace.workspaceRoot
-    }
-  }
-
-  return null
 }
 
 function upsertPermissionRequest(

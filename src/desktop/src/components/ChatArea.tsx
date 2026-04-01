@@ -34,7 +34,7 @@ interface ChatAreaProps {
   permissionRequests: DesktopPermissionRequest[]
   onSendMessage: (msg: string) => void | Promise<unknown>
   onCancelRun: () => void | Promise<unknown>
-  onReplyPermission: (id: string, decision: "allow" | "deny") => void | Promise<unknown>
+  onReplyPermission: (id: string, decision: "allow" | "deny") => boolean | Promise<boolean>
   onSetSessionActiveSkills: (sessionId: string, activeSkills: string[]) => void | Promise<unknown>
   isSidebarOpen: boolean
   onToggleSidebar: () => void
@@ -241,7 +241,7 @@ export function ChatArea({
 
   const handlePermissionReply = (requestId: string, decision: "allow" | "deny") => {
     stickTranscriptToBottom()
-    void onReplyPermission(requestId, decision)
+    return onReplyPermission(requestId, decision)
   }
 
   const isInputLocked = isBusy || isSubmittingMessage

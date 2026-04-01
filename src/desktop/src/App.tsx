@@ -28,6 +28,7 @@ export default function App() {
     setSessionActiveSkills,
     errorMessage,
     skillWarningMessage,
+    refreshAppState,
   } = useAgent()
   const desktopSettings = useDesktopSettings()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -61,7 +62,11 @@ export default function App() {
             void desktopSettings.updateSettings(patch)
           }}
           onApplySettings={() => {
-            void desktopSettings.applySettings()
+            void desktopSettings.applySettings().then((restarted) => {
+              if (restarted) {
+                void refreshAppState()
+              }
+            })
           }}
           isManagingWorkspace={isManagingWorkspace}
           isOnline={isOnline}
