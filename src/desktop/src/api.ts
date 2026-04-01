@@ -14,6 +14,7 @@ const SERVER_EVENT_TYPES = [
   "heartbeat",
   "session.created",
   "session.updated",
+  "session.deleted",
   "run.created",
   "run.updated",
   "message.created",

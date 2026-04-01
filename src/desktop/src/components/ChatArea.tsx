@@ -244,6 +244,8 @@ export function ChatArea({
     void onReplyPermission(requestId, decision)
   }
 
+  const isInputLocked = isBusy || isSubmittingMessage
+
   if (!sessionSummary) {
     return (
       <div className="relative flex flex-1 flex-col bg-white">
@@ -447,7 +449,7 @@ export function ChatArea({
                   ? text.chat.agentBusyPlaceholder
                   : text.chat.askPlaceholder
               }
-              disabled={isBusy}
+              disabled={isInputLocked}
               className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent py-4 pr-14 pl-4 text-[15px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-0"
               rows={1}
               onKeyDown={(event) => {

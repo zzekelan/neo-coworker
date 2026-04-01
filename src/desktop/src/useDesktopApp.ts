@@ -217,6 +217,7 @@ export function useDesktopApp() {
     ) {
       setState((previous) => ({
         ...previous,
+        workspaces: upsertWorkspaceSession(previous.workspaces, event.session),
         sessions: upsertSession(previous.sessions, event.session),
         sessionSnapshot:
           previous.activeSessionId === event.session.id
@@ -228,6 +229,47 @@ export function useDesktopApp() {
               }
             : previous.sessionSnapshot,
       }))
+      return
+    }
+
+    if (event.type === "session.created" || event.type === "session.updated") {
+      setState((previous) => ({
+        ...previous,
+        workspaces: upsertWorkspaceSession(previous.workspaces, event.session),
+      }))
+      return
+    }
+
+    if (event.type === "session.deleted") {
+      setState((previous) => {
+        const deletingActiveSession = previous.activeSessionId === event.sessionId
+        const nextSessions =
+          previous.activeWorkspaceRoot === event.workspaceRoot
+            ? previous.sessions.filter((session) => session.id !== event.sessionId)
+            : previous.sessions
+        const nextActiveSessionId = deletingActiveSession ? nextSessions[0]?.id ?? null : previous.activeSessionId
+
+        return {
+          ...previous,
+          workspaces: removeWorkspaceSession(previous.workspaces, {
+            sessionId: event.sessionId,
+            workspaceRoot: event.workspaceRoot,
+          }),
+          sessions: nextSessions,
+          activeSessionId: nextActiveSessionId,
+          sessionSnapshot: deletingActiveSession ? null : previous.sessionSnapshot,
+          sessionRuns: deletingActiveSession ? [] : previous.sessionRuns,
+          transcript: deletingActiveSession ? [] : previous.transcript,
+          permissionRequests: deletingActiveSession ? [] : previous.permissionRequests,
+          isSending: deletingActiveSession ? false : previous.isSending,
+        }
+      })
+
+      void refresh({
+        workspaceRoot: activeWorkspaceRoot,
+        sessionId: activeSessionId === event.sessionId ? null : activeSessionId,
+        preserveTranscript: activeSessionId !== event.sessionId,
+      })
       return
     }
 
@@ -387,6 +429,7 @@ export function useDesktopApp() {
 
         setState((previous) => ({
           ...previous,
+          workspaces: upsertWorkspaceSession(previous.workspaces, created.session),
           sessions: upsertSession(previous.sessions, created.session),
           activeWorkspaceRoot: workspaceRoot,
           activeSessionId: created.session.id,
@@ -493,6 +536,7 @@ export function useDesktopApp() {
 
           setState((previous) => ({
             ...previous,
+            workspaces: upsertWorkspaceSession(previous.workspaces, created.session),
             sessions: upsertSession(previous.sessions, created.session),
             activeWorkspaceRoot: workspaceRoot,
             activeSessionId: created.session.id,
@@ -570,9 +614,13 @@ export function useDesktopApp() {
 
         setState((previous) => ({
           ...previous,
-          sessions: upsertSession(previous.sessions, updated.session),
+          workspaces: upsertWorkspaceSession(previous.workspaces, updated.session),
+          sessions:
+            previous.activeWorkspaceRoot === updated.session.workspaceRoot
+              ? upsertSession(previous.sessions, updated.session)
+              : previous.sessions,
           sessionSnapshot:
-            previous.sessionSnapshot?.session.id === updated.session.id
+            previous.activeSessionId === updated.session.id && previous.sessionSnapshot
               ? {
                   ...previous.sessionSnapshot,
                   session: updated.session,
@@ -583,7 +631,7 @@ export function useDesktopApp() {
 
         await refresh({
           workspaceRoot: selectionRef.current.activeWorkspaceRoot,
-          sessionId: updated.session.id,
+          sessionId: selectionRef.current.activeSessionId,
           preserveTranscript: true,
         })
       } catch (error) {
@@ -609,6 +657,10 @@ export function useDesktopApp() {
 
           return {
             ...previous,
+            workspaces: removeWorkspaceSession(previous.workspaces, {
+              sessionId,
+              workspaceRoot: deletedSessionWorkspaceRoot(previous.workspaces, sessionId),
+            }),
             sessions: previous.sessions.filter((candidate) => candidate.id !== sessionId),
             activeSessionId: deletingActiveSession ? nextActiveSessionId : previous.activeSessionId,
             sessionSnapshot: deletingActiveSession ? null : previous.sessionSnapshot,
@@ -764,6 +816,80 @@ function upsertSession(
   const withoutCurrent = sessions.filter((candidate) => candidate.id !== session.id)
   withoutCurrent.push(session)
   return withoutCurrent.sort((left, right) => right.updatedAt - left.updatedAt)
+}
+
+function upsertWorkspaceSession(
+  workspaces: DesktopWorkspaceSummary[],
+  session: DesktopSessionSummary,
+) {
+  const nextWorkspaces = workspaces.map((workspace) => {
+    if (workspace.workspaceRoot !== session.workspaceRoot) {
+      return workspace
+    }
+
+    const sessions = upsertSession(workspace.sessions, session)
+    return {
+      ...workspace,
+      sessions,
+      sessionCount: sessions.length,
+      latestActivityAt: Math.max(0, ...sessions.map((candidate) => candidate.updatedAt)),
+    }
+  })
+
+  if (nextWorkspaces.some((workspace) => workspace.workspaceRoot === session.workspaceRoot)) {
+    return nextWorkspaces.sort((left, right) => right.latestActivityAt - left.latestActivityAt)
+  }
+
+  return [
+    ...nextWorkspaces,
+    {
+      ...createDefaultWorkspace(session.workspaceRoot),
+      sessions: [session],
+      sessionCount: 1,
+      latestActivityAt: session.updatedAt,
+    },
+  ].sort((left, right) => right.latestActivityAt - left.latestActivityAt)
+}
+
+function removeWorkspaceSession(
+  workspaces: DesktopWorkspaceSummary[],
+  input: {
+    sessionId: string
+    workspaceRoot: string | null
+  },
+) {
+  if (!input.workspaceRoot) {
+    return workspaces
+  }
+
+  return workspaces
+    .map((workspace) => {
+      if (workspace.workspaceRoot !== input.workspaceRoot) {
+        return workspace
+      }
+
+      const sessions = workspace.sessions.filter((session) => session.id !== input.sessionId)
+      return {
+        ...workspace,
+        sessions,
+        sessionCount: sessions.length,
+        latestActivityAt: Math.max(0, ...sessions.map((candidate) => candidate.updatedAt)),
+      }
+    })
+    .sort((left, right) => right.latestActivityAt - left.latestActivityAt)
+}
+
+function deletedSessionWorkspaceRoot(
+  workspaces: DesktopWorkspaceSummary[],
+  sessionId: string,
+) {
+  for (const workspace of workspaces) {
+    if (workspace.sessions.some((session) => session.id === sessionId)) {
+      return workspace.workspaceRoot
+    }
+  }
+
+  return null
 }
 
 function upsertPermissionRequest(

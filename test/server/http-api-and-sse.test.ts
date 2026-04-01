@@ -951,6 +951,33 @@ describe("server HTTP API and SSE", () => {
     expect(removedTraceAfterRestart.body.error.message).toContain(`Unknown run: ${idleRunId}`)
   })
 
+  test("emits a session.deleted SSE event when a session is removed", async () => {
+    const harness = await createHarness("server-session-delete-sse", createTurnProvider([]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+      title: "Delete over SSE",
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const subscriber = await connectSse(harness.server)
+    await subscriber.next((event) => event.event === "heartbeat")
+
+    const deleteResponse = await requestJson(harness.server, "DELETE", `/sessions/${sessionId}`)
+    expect(deleteResponse.status).toBe(200)
+
+    expect(await subscriber.next((event) => event.event === "session.deleted")).toMatchObject({
+      event: "session.deleted",
+      data: {
+        type: "session.deleted",
+        sessionId,
+        workspaceRoot: harness.workspaceRoot,
+      },
+    })
+
+    await subscriber.close()
+  })
+
   test("skill state endpoints update session defaults but do not expose run-level mutation", async () => {
     const harness = await createHarness("server-skill-state-update", createTurnProvider([
       async function* () {

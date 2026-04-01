@@ -31,6 +31,7 @@ describe("desktop sidebar", () => {
     const source = readFileSync("src/desktop/src/components/Sidebar.tsx", "utf8")
 
     expect(source).toContain("const [isSettingsOpen, setIsSettingsOpen] = useState(false)")
+    expect(source).toContain("workspaces.some((workspace) => workspace.hasBusySession)")
     expect(source).toContain("<SettingsPanel")
     expect(source).toContain("text.sidebar.settings")
     expect(source).toContain("settings.language === \"zh\" ? \"中文\" : \"EN\"")

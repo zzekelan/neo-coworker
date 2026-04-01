@@ -2,6 +2,7 @@ export interface DesktopWorkspace {
   id: string
   name: string
   workspaceRoot: string
+  hasBusySession: boolean
 }
 
 export interface DesktopSession {

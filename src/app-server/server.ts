@@ -90,6 +90,7 @@ export function createAgentServer(input: {
     createRuntimeImpl: input.createRuntimeImpl,
     repository: input.repository,
     permissionRepository: input.permissionRepository,
+    deleteSessionImpl: input.deleteSessionImpl,
     exportRunTraceImpl: input.exportRunTraceImpl,
     listSkillCatalogImpl: input.listSkillCatalogImpl,
     allowDetachedPermissionRecovery: input.allowDetachedPermissionRecovery ?? true,
@@ -214,7 +215,7 @@ export function createAgentServer(input: {
           throw new Error("Session deletion is not configured for this server instance")
         }
 
-        input.deleteSessionImpl(sessionStateMatch.sessionId)
+        app.sessions.delete(sessionStateMatch.sessionId)
         return jsonResponse(200, {
           data: {
             sessionId: sessionStateMatch.sessionId,

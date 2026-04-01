@@ -34,6 +34,8 @@ describe("desktop chat area", () => {
     expect(source).toContain("shouldStickToBottomRef.current = true")
     expect(source).toContain("await sessionSkillQueueRef.current.queue?.flush()")
     expect(source).toContain("const sent = await onSendMessage(nextInput)")
+    expect(source).toContain("const isInputLocked = isBusy || isSubmittingMessage")
+    expect(source).toContain("disabled={isInputLocked}")
     expect(source).toContain("setInput(\"\")")
     expect(source).toContain("const handlePermissionReply = (requestId: string, decision: \"allow\" | \"deny\") => {")
     expect(source).toContain("void onReplyPermission(requestId, decision)")

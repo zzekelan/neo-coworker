@@ -122,6 +122,14 @@ export type SessionEvent = {
   reason?: string
 }
 
+export type SessionDeletedEvent = {
+  id: string
+  time: number
+  type: "session.deleted"
+  sessionId: string
+  workspaceRoot: string
+}
+
 export type RunEvent = {
   id: string
   time: number
@@ -162,6 +170,7 @@ export type RuntimeErrorEvent = {
 export type DesktopServerEvent =
   | HeartbeatEvent
   | SessionEvent
+  | SessionDeletedEvent
   | RunEvent
   | MessageEvent
   | PartEvent

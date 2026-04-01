@@ -35,6 +35,11 @@ export type ServerEventPayload =
       reason?: string
     })
   | {
+      type: "session.deleted"
+      sessionId: string
+      workspaceRoot: string
+    }
+  | {
       type: "run.created" | "run.updated"
       run: StoredRun
     }
@@ -417,6 +422,7 @@ export function createServerApp(input: {
   repository: StorageRepository
   permissionRepository: PermissionRepository
   createRuntimeImpl: CreateServerAppRuntime
+  deleteSessionImpl?: (sessionId: string) => void
   exportRunTraceImpl?: (runId: string) => ExportedRunTrace | null
   listSkillCatalogImpl?: (workspaceRoot: string) => Promise<
     Array<{
@@ -553,6 +559,19 @@ export function createServerApp(input: {
       },
       transcript(sessionId: string) {
         return sessionProvider.transcript.listSessionTranscript(sessionId)
+      },
+      delete(sessionId: string) {
+        if (!input.deleteSessionImpl) {
+          throw new Error("Session deletion is not configured for this server instance")
+        }
+
+        const session = repository.sessions.get(sessionId)
+        input.deleteSessionImpl(sessionId)
+        eventBus.publish({
+          type: "session.deleted",
+          sessionId,
+          workspaceRoot: session.workspaceRoot,
+        })
       },
     },
     workspaces: {

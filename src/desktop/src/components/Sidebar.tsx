@@ -66,7 +66,9 @@ export function Sidebar({
     null
   const contextMenuSession =
     sessions.find((session) => session.id === sessionContextMenu?.sessionId) ?? null
-  const hasBusySession = sessions.some((session) => isBusySessionStatus(session.latestRunStatus))
+  const hasBusySession =
+    sessions.some((session) => isBusySessionStatus(session.latestRunStatus)) ||
+    workspaces.some((workspace) => workspace.hasBusySession)
   const text = useDesktopText()
 
   useEffect(() => {
