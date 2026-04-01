@@ -54,6 +54,67 @@ type DesktopText = {
     error: string
     showMore: string
     showLess: string
+    viewDetails: string
+    hideDetails: string
+    running: string
+    completed: string
+    failed: string
+    cancelled: string
+    noAdditionalDetails: string
+    details: string
+    output: string
+    errorDetails: string
+    additionalData: string
+    items: string
+    workspace: string
+    usingTool(toolName: string): string
+    toolWorking: string
+    readingFile: string
+    writingFile: string
+    editingFile: string
+    runningCommand: string
+    searchingWeb: string
+    openingWebpage: string
+    searchingCodebase: string
+    scanningFiles: string
+    findingMatchingFiles: string
+    updatingSkills: string
+    commandDidNotComplete: string
+    fileActionDidNotComplete: string
+    toolActionDidNotComplete: string
+    fileReady: string
+    fileUpdated: string
+    editApplied: string
+    commandFinished: string
+    searchFinished: string
+    pageLoaded: string
+    codeSearchFinished: string
+    skillsUpdated: string
+    toolFinished: string
+    openingFileContents: string
+    savingFileChanges: string
+    applyingFocusedEdit: string
+    executingShellCommand: string
+    lookingUpWebInfo: string
+    loadingWebpage: string
+    searchingRepoCode: string
+    scanningMatchingText: string
+    lookingForMatchingFiles: string
+    toolReturnedError: string
+    fileContentReady: string
+    fileChangeApplied: string
+    commandCompleted: string
+    toolCompleted: string
+    openingPath(path: string): string
+    savingPath(path: string): string
+    editingPath(path: string): string
+    runningCommandText(command: string): string
+    searchingFor(query: string): string
+    openingUrl(url: string): string
+    lookingForCode(query: string): string
+    findingMatches(query: string): string
+    returnedItems(count: number): string
+    returnedNamedItems(count: number, singular: string, plural: string): string
   }
   settings: {
     title: string
@@ -135,6 +196,89 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       error: "Error",
       showMore: "Show more",
       showLess: "Show less",
+      viewDetails: "View details",
+      hideDetails: "Hide details",
+      running: "In progress",
+      completed: "Completed",
+      failed: "Failed",
+      cancelled: "Cancelled",
+      noAdditionalDetails: "No additional details.",
+      details: "Details",
+      output: "Output",
+      errorDetails: "Error details",
+      additionalData: "Additional data",
+      items: "Items",
+      workspace: "Workspace",
+      usingTool(toolName: string) {
+        return `Using ${toolName}`
+      },
+      toolWorking: "Working with a tool.",
+      readingFile: "Reading file",
+      writingFile: "Writing file",
+      editingFile: "Editing file",
+      runningCommand: "Running command",
+      searchingWeb: "Searching the web",
+      openingWebpage: "Opening webpage",
+      searchingCodebase: "Searching codebase",
+      scanningFiles: "Scanning files",
+      findingMatchingFiles: "Finding matching files",
+      updatingSkills: "Updating skills",
+      commandDidNotComplete: "Command did not complete",
+      fileActionDidNotComplete: "File action did not complete",
+      toolActionDidNotComplete: "Tool action did not complete",
+      fileReady: "File ready",
+      fileUpdated: "File updated",
+      editApplied: "Edit applied",
+      commandFinished: "Command finished",
+      searchFinished: "Search finished",
+      pageLoaded: "Page loaded",
+      codeSearchFinished: "Code search finished",
+      skillsUpdated: "Skills updated",
+      toolFinished: "Tool finished",
+      openingFileContents: "Opening a file to inspect its contents.",
+      savingFileChanges: "Saving changes to a file.",
+      applyingFocusedEdit: "Applying a focused edit.",
+      executingShellCommand: "Executing a shell command.",
+      lookingUpWebInfo: "Looking up information on the web.",
+      loadingWebpage: "Loading a webpage.",
+      searchingRepoCode: "Searching the repository for matching code.",
+      scanningMatchingText: "Scanning files for matching text.",
+      lookingForMatchingFiles: "Looking for files that match a pattern.",
+      toolReturnedError: "The tool returned an error.",
+      fileContentReady: "The file content is ready.",
+      fileChangeApplied: "The requested file change was applied.",
+      commandCompleted: "The command completed.",
+      toolCompleted: "The tool completed successfully.",
+      openingPath(path: string) {
+        return `Opening ${path}.`
+      },
+      savingPath(path: string) {
+        return `Saving changes to ${path}.`
+      },
+      editingPath(path: string) {
+        return `Editing ${path}.`
+      },
+      runningCommandText(command: string) {
+        return `Running \`${command}\`.`
+      },
+      searchingFor(query: string) {
+        return `Searching for "${query}".`
+      },
+      openingUrl(url: string) {
+        return `Opening ${url}.`
+      },
+      lookingForCode(query: string) {
+        return `Looking for "${query}" in the codebase.`
+      },
+      findingMatches(query: string) {
+        return `Finding matches for "${query}".`
+      },
+      returnedItems(count: number) {
+        return count === 1 ? "Returned 1 item." : `Returned ${count} items.`
+      },
+      returnedNamedItems(count: number, singular: string, plural: string) {
+        return count === 1 ? `Returned 1 ${singular}.` : `Returned ${count} ${plural}.`
+      },
     },
     settings: {
       title: "Settings",
@@ -214,6 +358,89 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       error: "错误",
       showMore: "展开",
       showLess: "收起",
+      viewDetails: "查看详情",
+      hideDetails: "收起详情",
+      running: "进行中",
+      completed: "已完成",
+      failed: "失败",
+      cancelled: "已取消",
+      noAdditionalDetails: "没有更多详情。",
+      details: "详情",
+      output: "输出",
+      errorDetails: "错误详情",
+      additionalData: "附加数据",
+      items: "条目",
+      workspace: "工作区",
+      usingTool(toolName: string) {
+        return `使用 ${toolName}`
+      },
+      toolWorking: "正在使用工具处理。",
+      readingFile: "正在读取文件",
+      writingFile: "正在写入文件",
+      editingFile: "正在编辑文件",
+      runningCommand: "正在运行命令",
+      searchingWeb: "正在搜索网页",
+      openingWebpage: "正在打开网页",
+      searchingCodebase: "正在搜索代码库",
+      scanningFiles: "正在扫描文件",
+      findingMatchingFiles: "正在查找匹配文件",
+      updatingSkills: "正在更新技能",
+      commandDidNotComplete: "命令未成功完成",
+      fileActionDidNotComplete: "文件操作未成功完成",
+      toolActionDidNotComplete: "工具操作未成功完成",
+      fileReady: "文件已准备好",
+      fileUpdated: "文件已更新",
+      editApplied: "修改已应用",
+      commandFinished: "命令已完成",
+      searchFinished: "搜索已完成",
+      pageLoaded: "页面已加载",
+      codeSearchFinished: "代码搜索已完成",
+      skillsUpdated: "技能已更新",
+      toolFinished: "工具已完成",
+      openingFileContents: "正在打开文件并查看内容。",
+      savingFileChanges: "正在把更改保存到文件。",
+      applyingFocusedEdit: "正在应用一次定向修改。",
+      executingShellCommand: "正在执行 shell 命令。",
+      lookingUpWebInfo: "正在从网页检索信息。",
+      loadingWebpage: "正在加载网页。",
+      searchingRepoCode: "正在仓库中搜索匹配的代码。",
+      scanningMatchingText: "正在扫描文件中的匹配文本。",
+      lookingForMatchingFiles: "正在查找符合模式的文件。",
+      toolReturnedError: "工具返回了错误。",
+      fileContentReady: "文件内容已就绪。",
+      fileChangeApplied: "请求的文件更改已应用。",
+      commandCompleted: "命令已完成。",
+      toolCompleted: "工具已成功完成。",
+      openingPath(path: string) {
+        return `正在打开 ${path}。`
+      },
+      savingPath(path: string) {
+        return `正在将更改保存到 ${path}。`
+      },
+      editingPath(path: string) {
+        return `正在编辑 ${path}。`
+      },
+      runningCommandText(command: string) {
+        return `正在运行 \`${command}\`。`
+      },
+      searchingFor(query: string) {
+        return `正在搜索“${query}”。`
+      },
+      openingUrl(url: string) {
+        return `正在打开 ${url}。`
+      },
+      lookingForCode(query: string) {
+        return `正在代码库中查找“${query}”。`
+      },
+      findingMatches(query: string) {
+        return `正在查找“${query}”的匹配项。`
+      },
+      returnedItems(count: number) {
+        return count === 1 ? "返回了 1 条结果。" : `返回了 ${count} 条结果。`
+      },
+      returnedNamedItems(count: number, singular: string, plural: string) {
+        return count === 1 ? `返回了 1 个${singular}。` : `返回了 ${count} 个${plural}。`
+      },
     },
     settings: {
       title: "设置",
