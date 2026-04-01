@@ -27,6 +27,11 @@ import { SkillPanel } from "./SkillPanel"
 import { getEffectiveActiveSkills, toggleSkill } from "./skill-state"
 import { useDesktopText } from "../i18n"
 
+const SKILL_DRAWER_TRANSITION = {
+  duration: 0.22,
+  ease: [0.22, 1, 0.36, 1] as const,
+}
+
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
   session: DesktopSessionSnapshot | null
@@ -368,9 +373,13 @@ export function ChatArea({
       </div>
 
       <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-white via-white/80 to-transparent p-4">
-        <div className="relative mx-auto max-w-4xl">
+        <motion.div layout transition={SKILL_DRAWER_TRANSITION} className="relative mx-auto max-w-4xl">
           <div ref={skillPanelShellRef}>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
+            <motion.div
+              layout="position"
+              transition={SKILL_DRAWER_TRANSITION}
+              className="mb-3 flex flex-wrap items-center gap-2"
+            >
               <button
                 type="button"
                 onClick={() => setIsSkillPanelOpen((previous) => !previous)}
@@ -384,7 +393,7 @@ export function ChatArea({
                 <Sparkles className="h-4 w-4" />
                 {text.chat.skills}
                 <ChevronDown
-                  className={cn("h-4 w-4 transition-transform", isSkillPanelOpen && "rotate-180")}
+                  className={cn("h-4 w-4 transition-transform", !isSkillPanelOpen && "rotate-180")}
                 />
               </button>
 
@@ -402,37 +411,49 @@ export function ChatArea({
               ) : (
                 <span className="text-xs text-zinc-400">{text.chat.noActiveSkills}</span>
               )}
-            </div>
+            </motion.div>
 
-            {isSkillPanelOpen ? (
-              <SkillPanel
-                skills={skills}
-                query={skillFilter}
-                session={sessionSummaryWithOptimisticSkills}
-                activeRun={session?.activeRun}
-                controlsDisabled={isRunSkillEditingLocked}
-                busySkillName={busySkillName}
-                errorMessage={skillErrorMessage}
-                warningMessage={skillWarningMessage}
-                onStartSkill={(skillName) => updateSkillSet(skillName, true)}
-                onStopSkill={(skillName) => updateSkillSet(skillName, false)}
-                onSetDefaultSkill={setDefaultSkill}
-              />
-            ) : null}
-
-            {isSkillPanelOpen ? (
-              <div className="mb-3">
-                <input
-                  value={skillFilter}
-                  onChange={(event) => setSkillFilter(event.target.value)}
-                  placeholder={text.chat.filterSkills}
-                  className="h-11 w-full rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-300"
-                />
-              </div>
-            ) : null}
+            <AnimatePresence initial={false}>
+              {isSkillPanelOpen ? (
+                <motion.div
+                  key="skill-panel-shell"
+                  initial={{ height: 0, opacity: 0, y: 12 }}
+                  animate={{ height: "auto", opacity: 1, y: 0 }}
+                  exit={{ height: 0, opacity: 0, y: 12 }}
+                  transition={SKILL_DRAWER_TRANSITION}
+                  className="overflow-hidden"
+                >
+                  <motion.div layout transition={SKILL_DRAWER_TRANSITION}>
+                    <SkillPanel
+                      skills={skills}
+                      query={skillFilter}
+                      session={sessionSummaryWithOptimisticSkills}
+                      activeRun={session?.activeRun}
+                      controlsDisabled={isRunSkillEditingLocked}
+                      busySkillName={busySkillName}
+                      errorMessage={skillErrorMessage}
+                      warningMessage={skillWarningMessage}
+                      onStartSkill={(skillName) => updateSkillSet(skillName, true)}
+                      onStopSkill={(skillName) => updateSkillSet(skillName, false)}
+                      onSetDefaultSkill={setDefaultSkill}
+                    />
+                    <div className="mb-3">
+                      <input
+                        value={skillFilter}
+                        onChange={(event) => setSkillFilter(event.target.value)}
+                        placeholder={text.chat.filterSkills}
+                        className="h-11 w-full rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-300"
+                      />
+                    </div>
+                  </motion.div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
 
-          <form
+          <motion.form
+            layout
+            transition={SKILL_DRAWER_TRANSITION}
             onSubmit={handleSubmit}
             className={cn(
               "relative flex items-end gap-2 overflow-hidden rounded-2xl border bg-white shadow-sm transition-all",
@@ -487,8 +508,8 @@ export function ChatArea({
                 </button>
               )}
             </div>
-          </form>
-        </div>
+          </motion.form>
+        </motion.div>
       </div>
     </div>
   )
