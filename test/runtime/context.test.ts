@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { buildModelPromptSections, buildModelTurnInput, buildTranscriptMessages } from "../../src/model"
 
 describe("context builder", () => {
+  const basePrompt = "You are Neo Coworker, a versatile day-to-day work assistant."
+
   test("injects explicit prompt sections for skills and transcript without duplicating tool descriptions", () => {
     const input = buildModelTurnInput({
-      systemPrompt: "You are the agent runtime.",
+      systemPrompt: basePrompt,
       skillCatalog: [
         {
           name: "reviewer",
@@ -22,7 +24,7 @@ describe("context builder", () => {
       ],
     })
 
-    expect(input.system).toContain("You are the agent runtime.")
+    expect(input.system).toContain(basePrompt)
     expect(input.system).toContain("Skill catalog:")
     expect(input.system).toContain(".agents/skills/reviewer/SKILL.md")
     expect(input.system).toContain("Active skill instructions:")
@@ -35,7 +37,7 @@ describe("context builder", () => {
 
   test("renders empty skill sections explicitly when nothing is active", () => {
     const sections = buildModelPromptSections({
-      systemPrompt: "You are the agent runtime.",
+      systemPrompt: basePrompt,
       skillCatalog: [],
       activeSkills: [],
       tools: [],
@@ -47,7 +49,7 @@ describe("context builder", () => {
 
   test("keeps active skill instructions at the end of the system prompt", () => {
     const input = buildModelTurnInput({
-      systemPrompt: "You are the agent runtime.",
+      systemPrompt: basePrompt,
       skillCatalog: [
         {
           name: "reviewer",
@@ -62,7 +64,7 @@ describe("context builder", () => {
 
     expect(input.system).toBe(
       [
-        "You are the agent runtime.",
+        basePrompt,
         "Skill catalog:\n- reviewer: Review carefully (.agents/skills/reviewer/SKILL.md)",
         "Active skill instructions:\n\n## reviewer\nFocus on bugs first.",
       ].join("\n\n"),

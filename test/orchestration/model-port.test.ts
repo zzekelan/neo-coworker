@@ -3,6 +3,8 @@ import { createFakeProvider, createModelProvider } from "../../src/model"
 import type { OrchestrationModelPort } from "../../src/orchestration"
 
 describe("orchestration model port", () => {
+  const basePrompt = "You are Neo Coworker, a versatile day-to-day work assistant."
+
   test("projects transcript and tools through the orchestration-facing port", async () => {
     const requests: Array<{
       system: string
@@ -23,7 +25,7 @@ describe("orchestration model port", () => {
 
     const events = []
     for await (const event of model.streamTurn({
-      systemPrompt: "You are the agent runtime.",
+      systemPrompt: basePrompt,
       skillCatalog: [
         {
           name: "reviewer",
