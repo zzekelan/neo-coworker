@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react"
 import {
   ArrowUp,
   ChevronDown,
-  Info,
   Loader2,
   MessageSquare,
   PanelLeft,
@@ -89,7 +88,6 @@ export function ChatArea({
   })
   const activeRunStatus = session?.activeRun?.status ?? null
   const isRunning = activeRunStatus === "running"
-  const isWaiting = activeRunStatus === "waiting_permission"
   const isBusy = isBusyRunStatus(activeRunStatus)
   const isRunSkillEditingLocked = Boolean(session?.activeRun)
   const sessionSummaryWithOptimisticSkills =
@@ -309,30 +307,6 @@ export function ChatArea({
           <h2 className="font-semibold tracking-tight text-zinc-800">
             {sessionSummary.title || "Untitled Session"}
           </h2>
-          <AnimatePresence mode="wait">
-            {isRunning ? (
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 10 }}
-                className="flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-600"
-              >
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {text.chat.agentRunning}
-              </motion.div>
-            ) : null}
-            {isWaiting ? (
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 10 }}
-                className="flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600"
-              >
-                <Info className="h-3 w-3" />
-                {text.chat.waitingPermission}
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
         </div>
       </div>
 
