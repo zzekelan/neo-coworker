@@ -401,7 +401,6 @@ export function Sidebar({
               }}
             >
               <span>{text.sidebar.deleteSession}</span>
-              <span className="text-[11px] uppercase tracking-wide text-zinc-400">Del</span>
             </button>
           </div>
         ) : null}
