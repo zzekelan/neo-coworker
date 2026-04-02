@@ -341,7 +341,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     },
     skillPanel: {
       title: "技能",
-      subtitle: "浏览并管理这段对话可用的能力。",
+      subtitle: "浏览并管理这段对话可用的技能。",
       locked: "当前 run 进行中，技能变更已锁定。现在的修改只会影响后续 run。",
       noWorkspaceSkills: "这个工作区下没有找到 `.agents/skills`。",
       noFilteredSkills: "没有匹配当前筛选条件的技能。",
