@@ -403,11 +403,6 @@ export function Sidebar({
               <span>{text.sidebar.deleteSession}</span>
               <span className="text-[11px] uppercase tracking-wide text-zinc-400">Del</span>
             </button>
-            <p className="px-3 py-2 text-xs leading-relaxed text-zinc-500">
-              {isBusyRunStatus(contextMenuSession.latestRunStatus)
-                ? text.sidebar.deleteBlocked
-                : text.sidebar.deleteHint}
-            </p>
           </div>
         ) : null}
       </div>
