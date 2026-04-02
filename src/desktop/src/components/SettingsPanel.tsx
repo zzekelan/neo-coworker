@@ -197,13 +197,13 @@ export function SettingsPanel({
             )}
 
             <div className="mt-5 space-y-3">
-              {serverMode !== "managed-local" ? (
+              {activeSection === "llm" && serverMode !== "managed-local" ? (
                 <p className="rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2.5 text-xs leading-relaxed text-amber-700">
                   {text.settings.externalHint}
                 </p>
               ) : null}
 
-              {hasBusySession ? (
+              {activeSection === "llm" && hasBusySession ? (
                 <p className="rounded-2xl border border-sky-200 bg-sky-50/90 px-3 py-2.5 text-xs leading-relaxed text-sky-700">
                   {text.settings.stopRunsFirst}
                 </p>
