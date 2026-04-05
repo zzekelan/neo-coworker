@@ -365,6 +365,57 @@ describe("runtime observability", () => {
       ]),
     )
   })
+
+  test("records microcompact telemetry when projection clears older tool results", async () => {
+    const harness = await createHarness("trace-microcompact", false)
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_microcompact_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(600),
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_microcompact",
+      messageId: "message_trace_microcompact",
+      prompt: "Continue after the earlier shell work",
+    })
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            yield { type: "text.delta", text: "Compact enough to continue." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      contextWindow: 200,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    expect(readEventTypes(trace?.events ?? [])).toContain("microcompact.applied")
+    const microcompactEvent = trace?.events.find((event) => event.eventType === "microcompact.applied")
+    expect(microcompactEvent?.data).toMatchObject({
+      clearedCount: 2,
+      retainedCount: 5,
+      estimatedTokensSaved: expect.any(Number),
+    })
+  })
 })
 
 async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
@@ -457,6 +508,61 @@ function startPromptRun(input: {
   })
 
   return started
+}
+
+function seedCompletedRunWithToolResults(input: {
+  repository: SessionRepository
+  sessionId: string
+  runId: string
+  toolName: string
+  resultCount: number
+  output: string
+}) {
+  input.repository.runs.create({
+    id: input.runId,
+    sessionId: input.sessionId,
+    trigger: "prompt",
+    status: "completed",
+  })
+  const userMessage = input.repository.messages.create({
+    id: `${input.runId}_user`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "user",
+    sequence: 0,
+  })
+  input.repository.parts.create({
+    id: `${input.runId}_user_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: userMessage.id,
+    kind: "text",
+    sequence: 0,
+    text: "Previous tool-heavy work",
+  })
+  const assistantMessage = input.repository.messages.create({
+    id: `${input.runId}_assistant`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "assistant",
+    sequence: 1,
+  })
+
+  for (let index = 0; index < input.resultCount; index += 1) {
+    input.repository.parts.create({
+      id: `${input.runId}_tool_result_${index}`,
+      sessionId: input.sessionId,
+      runId: input.runId,
+      messageId: assistantMessage.id,
+      kind: "tool_result",
+      sequence: index,
+      text: `${input.output}\n#${index}`,
+      data: {
+        callId: `${input.runId}_call_${index}`,
+        toolName: input.toolName,
+      },
+    })
+  }
 }
 
 function createTurnProvider(

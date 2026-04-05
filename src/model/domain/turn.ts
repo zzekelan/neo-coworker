@@ -23,6 +23,7 @@ export type ModelProjectionInput = {
   skillCatalog: ModelSkillCatalogEntry[]
   activeSkills: ModelActiveSkill[]
   systemReminders?: string[]
+  contextWindow?: number
   tools: ModelTool[]
   transcript: ModelTranscriptMessage[]
 }

@@ -8,9 +8,11 @@ export type {
   ProviderTurnRequest,
 } from "./ports/provider"
 export {
+  MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT,
   SYSTEM_REMINDER_NOTICE,
   buildStaticSystemPrompt,
   buildModelPromptSections,
+  buildModelTurnProjection,
   buildModelTurnInput,
   buildTranscriptMessages,
   projectModelTurn,

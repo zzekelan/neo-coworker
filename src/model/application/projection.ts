@@ -2,6 +2,7 @@ import type {
   ModelActiveSkill,
   ModelMessage,
   ModelMessagePart,
+  ModelTool,
   ModelProjectionInput,
   ModelSkillCatalogEntry,
   ModelTextPart,
@@ -9,9 +10,23 @@ import type {
   ModelTranscriptPart,
   ModelTurnRequest,
 } from "../domain"
+import { estimateModelTurnUsage } from "./token-usage"
 
 export const SYSTEM_REMINDER_NOTICE =
   "Tool results and user messages may include <system-reminder> tags. They are automatically added by the system, and bear no direct relation to the specific tool results or user messages in which they appear."
+export const MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT = "[Old tool result content cleared]"
+const MICROCOMPACT_TRIGGER_RATIO = 0.6
+const MICROCOMPACT_RETAINED_TOOL_RESULTS = 5
+const MICROCOMPACT_COMPRESSIBLE_TOOL_NAMES = new Set([
+  "grep",
+  "glob",
+  "shell",
+  "webfetch",
+  "websearch",
+  "read",
+  "edit",
+  "write",
+])
 
 export type ModelPromptSections = {
   baseSystemPrompt: string
@@ -19,15 +34,63 @@ export type ModelPromptSections = {
   systemReminderMessages: string[]
 }
 
+export type ModelMicrocompactSummary = {
+  clearedCount: number
+  retainedCount: number
+  estimatedTokensSaved: number
+}
+
+export type ModelTurnProjection = {
+  request: Pick<ModelTurnRequest, "system" | "messages" | "tools">
+  microcompact: ModelMicrocompactSummary | null
+}
+
 export function buildModelTurnInput(input: ModelProjectionInput) {
+  return buildModelTurnProjection(input).request
+}
+
+export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurnProjection {
   const sections = buildModelPromptSections(input)
-  const messages = buildTranscriptMessages(input.transcript)
-  messages.push(...buildSystemReminderMessages(sections.systemReminderMessages))
+  const reminderMessages = buildSystemReminderMessages(sections.systemReminderMessages)
+  const system = buildStaticSystemPrompt(sections)
+  const unmodifiedRequest = {
+    system,
+    messages: [...buildTranscriptMessages(input.transcript), ...reminderMessages],
+    tools: input.tools,
+  } satisfies Pick<ModelTurnRequest, "system" | "messages" | "tools">
+
+  const microcompact = buildMicrocompactSummary({
+    transcript: input.transcript,
+    contextWindow: input.contextWindow,
+    system,
+    tools: input.tools,
+    reminderMessages,
+    unmodifiedRequest,
+  })
+
+  if (!microcompact) {
+    return {
+      request: unmodifiedRequest,
+      microcompact: null,
+    }
+  }
 
   return {
-    system: buildStaticSystemPrompt(sections),
-    messages,
-    tools: input.tools,
+    request: {
+      system,
+      messages: [
+        ...buildTranscriptMessages(input.transcript, {
+          clearedToolResults: microcompact.clearedToolResults,
+        }),
+        ...reminderMessages,
+      ],
+      tools: input.tools,
+    },
+    microcompact: {
+      clearedCount: microcompact.clearedCount,
+      retainedCount: microcompact.retainedCount,
+      estimatedTokensSaved: microcompact.estimatedTokensSaved,
+    },
   }
 }
 
@@ -51,12 +114,17 @@ export function projectModelTurn(
   input: ModelProjectionInput & Pick<ModelTurnRequest, "signal">,
 ): ModelTurnRequest {
   return {
-    ...buildModelTurnInput(input),
+    ...buildModelTurnProjection(input).request,
     signal: input.signal,
   }
 }
 
-export function buildTranscriptMessages(transcript: ModelTranscriptMessage[]): ModelMessage[] {
+export function buildTranscriptMessages(
+  transcript: ModelTranscriptMessage[],
+  options: {
+    clearedToolResults?: ReadonlySet<ModelTranscriptPart>
+  } = {},
+): ModelMessage[] {
   const messages: ModelMessage[] = []
   const resolvedToolCallIds = collectResolvedToolCallIds(transcript)
 
@@ -64,7 +132,7 @@ export function buildTranscriptMessages(transcript: ModelTranscriptMessage[]): M
     const role = message.role === "synthetic" ? "assistant" : message.role
 
     if (role === "assistant") {
-      messages.push(...buildAssistantMessages(message, resolvedToolCallIds))
+      messages.push(...buildAssistantMessages(message, resolvedToolCallIds, options))
       continue
     }
 
@@ -92,6 +160,9 @@ export function buildTranscriptMessages(transcript: ModelTranscriptMessage[]): M
 function buildAssistantMessages(
   message: ModelTranscriptMessage,
   resolvedToolCallIds: ReadonlySet<string>,
+  options: {
+    clearedToolResults?: ReadonlySet<ModelTranscriptPart>
+  },
 ): ModelMessage[] {
   const assistantParts: ModelMessagePart[] = []
   const toolMessages: ModelMessage[] = []
@@ -116,7 +187,7 @@ function buildAssistantMessages(
     if (part.kind === "tool_result") {
       toolMessages.push({
         role: "tool",
-        parts: [renderToolResultPart(part)],
+        parts: [renderToolResultPart(part, options)],
       })
       continue
     }
@@ -214,13 +285,20 @@ function renderToolCallPart(part: ModelTranscriptPart) {
   }
 }
 
-function renderToolResultPart(part: ModelTranscriptPart) {
+function renderToolResultPart(
+  part: ModelTranscriptPart,
+  options: {
+    clearedToolResults?: ReadonlySet<ModelTranscriptPart>
+  } = {},
+) {
   const data = readObject(part.data)
   return {
     type: "tool_result" as const,
     toolName: readString(data, "toolName") ?? "unknown",
     callId: readString(data, "callId") ?? "unknown_call",
-    output: part.text ?? readString(data, "output") ?? "",
+    output: options.clearedToolResults?.has(part)
+      ? MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT
+      : part.text ?? readString(data, "output") ?? "",
   }
 }
 
@@ -305,4 +383,82 @@ function renderActiveSkillSection(activeSkills: ModelActiveSkill[]) {
     "Active skill instructions:",
     ...activeSkills.map((skill) => `## ${skill.name}\n${skill.instructions}`),
   ].join("\n\n")
+}
+
+function buildMicrocompactSummary(input: {
+  transcript: ModelTranscriptMessage[]
+  contextWindow: number | undefined
+  system: string
+  tools: ModelTool[]
+  reminderMessages: ModelMessage[]
+  unmodifiedRequest: Pick<ModelTurnRequest, "system" | "messages" | "tools">
+}) {
+  if (!input.contextWindow || input.contextWindow < 1) {
+    return null
+  }
+
+  const unmodifiedInputTokens = estimateModelTurnUsage({
+    request: input.unmodifiedRequest,
+    outputEvents: [],
+  }).inputTokens
+  if (unmodifiedInputTokens <= input.contextWindow * MICROCOMPACT_TRIGGER_RATIO) {
+    return null
+  }
+
+  const compressibleToolResults = collectCompressibleToolResults(input.transcript)
+  if (compressibleToolResults.length <= MICROCOMPACT_RETAINED_TOOL_RESULTS) {
+    return null
+  }
+
+  const retainedToolResults = compressibleToolResults.slice(-MICROCOMPACT_RETAINED_TOOL_RESULTS)
+  const clearedToolResults = new Set(
+    compressibleToolResults.filter((part) => !retainedToolResults.includes(part)),
+  )
+  const compactedRequest = {
+    system: input.system,
+    messages: [
+      ...buildTranscriptMessages(input.transcript, {
+        clearedToolResults,
+      }),
+      ...input.reminderMessages,
+    ],
+    tools: input.tools,
+  } satisfies Pick<ModelTurnRequest, "system" | "messages" | "tools">
+  const compactedInputTokens = estimateModelTurnUsage({
+    request: compactedRequest,
+    outputEvents: [],
+  }).inputTokens
+
+  return {
+    clearedToolResults,
+    clearedCount: clearedToolResults.size,
+    retainedCount: compressibleToolResults.length - clearedToolResults.size,
+    estimatedTokensSaved: Math.max(0, unmodifiedInputTokens - compactedInputTokens),
+  }
+}
+
+function collectCompressibleToolResults(transcript: ModelTranscriptMessage[]) {
+  const compressibleToolResults: ModelTranscriptPart[] = []
+
+  for (const message of transcript) {
+    for (const part of message.parts) {
+      if (!isCompressibleToolResult(part)) {
+        continue
+      }
+
+      compressibleToolResults.push(part)
+    }
+  }
+
+  return compressibleToolResults
+}
+
+function isCompressibleToolResult(part: ModelTranscriptPart) {
+  if (part.kind !== "tool_result") {
+    return false
+  }
+
+  const data = readObject(part.data)
+  const toolName = readString(data, "toolName")
+  return toolName !== null && MICROCOMPACT_COMPRESSIBLE_TOOL_NAMES.has(toolName)
 }

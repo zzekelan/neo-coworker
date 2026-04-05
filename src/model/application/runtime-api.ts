@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import {
   buildSystemReminderPayloadText,
+  buildModelTurnProjection,
   buildStaticSystemPrompt,
   buildModelPromptSections,
   projectModelTurn,
@@ -55,6 +56,7 @@ export function createModelProvider(input: {
             runId: request.runId,
             turnKey: request.turnKey,
           })
+          const projected = buildModelTurnProjection(request)
           const sections = buildModelPromptSections({
             systemPrompt: request.systemPrompt,
             skillCatalog: request.skillCatalog,
@@ -63,6 +65,17 @@ export function createModelProvider(input: {
           })
           const systemPrompt = buildStaticSystemPrompt(sections)
           const systemReminderPayload = buildSystemReminderPayloadText(sections.systemReminderMessages)
+          if (projected.microcompact) {
+            input.observer?.recordModelEvent?.({
+              type: "microcompact.applied",
+              sessionId: request.sessionId,
+              runId: request.runId,
+              turnKey: request.turnKey ?? `${request.runId}:turn_unkeyed`,
+              clearedCount: projected.microcompact.clearedCount,
+              retainedCount: projected.microcompact.retainedCount,
+              estimatedTokensSaved: projected.microcompact.estimatedTokensSaved,
+            })
+          }
           input.observer?.recordModelEvent?.({
             type: "model.prompt.assembled",
             sessionId: request.sessionId,
@@ -80,21 +93,16 @@ export function createModelProvider(input: {
           // Observability must not alter the model request path.
         }
       }
-      const projected = input.runtime.projectTurn({
-        systemPrompt: request.systemPrompt,
-        skillCatalog: request.skillCatalog,
-        activeSkills: request.activeSkills,
-        systemReminders: request.systemReminders,
-        tools: request.tools,
-        transcript: request.transcript,
-        signal: request.signal,
-      })
+      const projected = buildModelTurnProjection(request)
 
       const outputEvents: Array<Extract<ModelEvent, { type: "text.delta" | "tool.call" }>> = []
       let observedUsage = false
 
       try {
-        for await (const event of input.runtime.streamTurn(projected)) {
+        for await (const event of input.runtime.streamTurn({
+          ...projected.request,
+          signal: request.signal,
+        })) {
           if (event.type === "usage") {
             observedUsage = true
             observeTurnUsage({
@@ -115,7 +123,7 @@ export function createModelProvider(input: {
       } catch (error) {
         if (!observedUsage && outputEvents.length > 0) {
           const estimatedUsage = estimateModelTurnUsage({
-            request: projected,
+            request: projected.request,
             outputEvents,
           })
           observeTurnUsage({
@@ -131,7 +139,7 @@ export function createModelProvider(input: {
 
       if (!observedUsage) {
         const estimatedUsage = estimateModelTurnUsage({
-          request: projected,
+          request: projected.request,
           outputEvents,
         })
         observeTurnUsage({

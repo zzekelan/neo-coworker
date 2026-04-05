@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT,
   SYSTEM_REMINDER_NOTICE,
   createFakeProvider,
   createModelProvider,
@@ -89,5 +90,103 @@ describe("orchestration model port", () => {
         tools: [{ name: "read", description: "Read a file" }],
       },
     ])
+  })
+
+  test("microcompacts older compressible tool results and records telemetry", async () => {
+    const requests: Array<{
+      messages: Array<{
+        role: string
+        parts: Array<Record<string, unknown>>
+      }>
+    }> = []
+    const observedEvents: unknown[] = []
+    const model: OrchestrationModelPort = createModelProvider({
+      observer: {
+        recordModelEvent(event) {
+          observedEvents.push(event)
+        },
+      },
+      runtime: createFakeProvider({
+        onRequest(request) {
+          requests.push({
+            messages: request.messages as Array<{
+              role: string
+              parts: Array<Record<string, unknown>>
+            }>,
+          })
+        },
+      }),
+    })
+
+    const transcript = Array.from({ length: 7 }, (_, index) => ({
+      id: `message_${index}`,
+      sessionId: "session_1",
+      runId: "run_prior",
+      role: "assistant" as const,
+      sequence: index,
+      createdAt: index + 1,
+      parts: [
+        {
+          id: `part_${index}`,
+          sessionId: "session_1",
+          runId: "run_prior",
+          messageId: `message_${index}`,
+          kind: "tool_result",
+          sequence: 0,
+          text: `shell result ${index}\n${"x".repeat(600)}`,
+          data: {
+            callId: `call_${index}`,
+            toolName: "shell",
+          },
+          createdAt: index + 1,
+        },
+      ],
+    }))
+
+    const events = []
+    for await (const event of model.streamTurn({
+      systemPrompt: basePrompt,
+      skillCatalog: [],
+      activeSkills: [],
+      contextWindow: 200,
+      tools: [],
+      transcript,
+      sessionId: "session_1",
+      runId: "run_microcompact",
+      turnKey: "run_microcompact:turn_1",
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "usage",
+        source: "estimated",
+      }),
+    ])
+    expect(observedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "microcompact.applied",
+          clearedCount: 2,
+          retainedCount: 5,
+          estimatedTokensSaved: expect.any(Number),
+        }),
+      ]),
+    )
+
+    const toolOutputs = requests[0]?.messages
+      .filter((message) => message.role === "tool")
+      .map((message) => message.parts[0]?.output)
+
+    expect(toolOutputs?.slice(0, 2)).toEqual([
+      MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT,
+      MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT,
+    ])
+    expect(toolOutputs?.slice(-5)).toEqual(
+      Array.from({ length: 5 }, (_, index) => expect.stringContaining(`shell result ${index + 2}`)),
+    )
+    expect(transcript[0]?.parts[0]?.text).toContain("shell result 0")
   })
 })

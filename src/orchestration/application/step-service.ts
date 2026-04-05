@@ -304,6 +304,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             skillCatalog,
             activeSkills,
             systemReminders,
+            contextWindow: input.contextWindow.getContextWindow() || DEFAULT_CONTEXT_WINDOW_SIZE,
             tools: stepInput.tools.list(),
             transcript,
             sessionId: stepInput.sessionId,

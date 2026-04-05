@@ -4,6 +4,14 @@ export type ModelObserverEvent = {
   runId: string
   turnKey?: string
 } | {
+  type: "microcompact.applied"
+  sessionId: string
+  runId: string
+  turnKey: string
+  clearedCount: number
+  retainedCount: number
+  estimatedTokensSaved: number
+} | {
   type: "model.prompt.assembled"
   sessionId: string
   runId: string
