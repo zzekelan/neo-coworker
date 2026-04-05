@@ -16,6 +16,11 @@ type ProviderConfig = {
   timeout?: number
 }
 
+type ContextWindowMetadata = {
+  contextWindow: number
+  source: "provider" | "env" | "default"
+}
+
 type OpenAIClientConfig = Pick<ProviderConfig, "apiKey" | "baseURL" | "timeout">
 type ModelProviderFactory = (input: {
   model: string
@@ -64,6 +69,18 @@ function parseTimeout(value: string | undefined) {
 
   if (!/^\d+$/.test(value)) {
     throw new Error("LLM_TIMEOUT_MS must be a valid integer when provided")
+  }
+
+  return Number.parseInt(value, 10)
+}
+
+function parsePositiveInteger(value: string | undefined, variableName: string) {
+  if (value == null) {
+    return undefined
+  }
+
+  if (!/^\d+$/.test(value) || value === "0") {
+    throw new Error(`${variableName} must be a valid positive integer when provided`)
   }
 
   return Number.parseInt(value, 10)
@@ -123,6 +140,49 @@ export function resolveDefaultProviderConfig(
   }
 }
 
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+const DEFAULT_CONTEXT_WINDOW_SIZE = 128_000
+
+export async function resolveContextWindowSize(input: {
+  env?: Record<string, string | undefined>
+  fetchImpl?: typeof fetch
+} = {}): Promise<ContextWindowMetadata> {
+  const env = input.env ?? process.env
+  const fetchImpl = input.fetchImpl ?? fetch
+  const override = parsePositiveInteger(readEnvValue(env, "LLM_CONTEXT_WINDOW"), "LLM_CONTEXT_WINDOW")
+
+  if (override) {
+    return {
+      contextWindow: override,
+      source: "env",
+    }
+  }
+
+  const config = resolveDefaultProviderConfig(env)
+  let metadata: number | null = null
+
+  try {
+    metadata = await fetchContextWindowMetadata({
+      config,
+      fetchImpl,
+    })
+  } catch {
+    metadata = null
+  }
+
+  if (metadata) {
+    return {
+      contextWindow: metadata,
+      source: "provider",
+    }
+  }
+
+  return {
+    contextWindow: DEFAULT_CONTEXT_WINDOW_SIZE,
+    source: "default",
+  }
+}
+
 export async function createDefaultProvider(
   input: DefaultProviderInput = {},
 ): Promise<ModelProvider> {
@@ -159,4 +219,67 @@ export async function createDefaultProvider(
     client,
     observer: input.modelObserver,
   })
+}
+
+async function fetchContextWindowMetadata(input: {
+  config: ProviderConfig
+  fetchImpl: typeof fetch
+}) {
+  const baseURL = input.config.baseURL ?? DEFAULT_OPENAI_BASE_URL
+  const requestUrl = new URL(
+    `models/${encodeURIComponent(input.config.model)}`,
+    ensureTrailingSlash(baseURL),
+  )
+  const response = await input.fetchImpl(requestUrl, {
+    headers: {
+      Authorization: `Bearer ${input.config.apiKey}`,
+      Accept: "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    return null
+  }
+
+  const payload = await response.json()
+  return readContextWindowFromPayload(payload)
+}
+
+function ensureTrailingSlash(value: string) {
+  return value.endsWith("/") ? value : `${value}/`
+}
+
+function readContextWindowFromPayload(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object") {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+
+  return (
+    readNumericField(record, "context_length") ??
+    readNumericField(record, "contextLength") ??
+    readNumericField(record, "context_window") ??
+    readNumericField(record, "contextWindow") ??
+    readNestedNumericField(record, "data", "context_length") ??
+    readNestedNumericField(record, "data", "context_window")
+  )
+}
+
+function readNestedNumericField(
+  record: Record<string, unknown>,
+  parentKey: string,
+  childKey: string,
+) {
+  const value = record[parentKey]
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  return readNumericField(value as Record<string, unknown>, childKey)
+}
+
+function readNumericField(record: Record<string, unknown>, key: string) {
+  const value = record[key]
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null
 }

@@ -98,6 +98,18 @@ export class RunActiveSkillsUpdateStateError extends SessionRunServiceError {
   }
 }
 
+export class RunTokenUsageUpdateStateError extends SessionRunServiceError {
+  readonly runId: string
+  readonly status: StoredRun["status"]
+
+  constructor(input: { runId: string; status: StoredRun["status"] }) {
+    super(`Run ${input.runId} cannot update token usage from status ${input.status}`)
+    this.name = "RunTokenUsageUpdateStateError"
+    this.runId = input.runId
+    this.status = input.status
+  }
+}
+
 export type CreateSessionRunServiceInput = {
   repository: SessionRepository
   now?: () => number
@@ -236,12 +248,35 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
     return repository.runs.updateActiveSkills(inputValue)
   }
 
+  function recordRunTokenUsage(inputValue: {
+    runId: string
+    inputTokens: number
+    outputTokens: number
+    tokenUsageSource: StoredRun["tokenUsageSource"]
+  }) {
+    const run = repository.runs.get(inputValue.runId)
+    if (!isActiveRunStatus(run.status)) {
+      throw new RunTokenUsageUpdateStateError({
+        runId: run.id,
+        status: run.status,
+      })
+    }
+
+    return repository.runs.updateTokenUsage({
+      runId: run.id,
+      inputTokens: run.inputTokens + normalizeTokenCount(inputValue.inputTokens),
+      outputTokens: run.outputTokens + normalizeTokenCount(inputValue.outputTokens),
+      tokenUsageSource: mergeTokenUsageSource(run.tokenUsageSource, inputValue.tokenUsageSource),
+    })
+  }
+
   return {
     getSessionState,
     startRun,
     retryRun,
     transitionRunToRunning,
     updateRunActiveSkills,
+    recordRunTokenUsage,
     resumeRun(runId: string) {
       return transitionRunToRunning(runId)
     },
@@ -305,4 +340,27 @@ function entityExists(read: () => unknown) {
 
 function isUniqueConstraintError(error: unknown) {
   return error instanceof Error && /unique|constraint/i.test(error.message)
+}
+
+function normalizeTokenCount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0
+  }
+
+  return Math.round(value)
+}
+
+function mergeTokenUsageSource(
+  current: StoredRun["tokenUsageSource"],
+  next: StoredRun["tokenUsageSource"],
+) {
+  if (!next) {
+    return current
+  }
+
+  if (!current) {
+    return next
+  }
+
+  return current === next ? current : "estimated"
 }

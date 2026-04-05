@@ -86,6 +86,18 @@ describe("openai-compatible provider", () => {
           },
         ],
       },
+      {
+        id: "chatcmpl_1",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "kimi-k2.5",
+        choices: [],
+        usage: {
+          prompt_tokens: 14,
+          completion_tokens: 6,
+          total_tokens: 20,
+        } as unknown as OpenAI.CompletionUsage,
+      } as OpenAI.Chat.ChatCompletionChunk,
     ] satisfies OpenAI.Chat.ChatCompletionChunk[]
 
     const provider = createOpenAICompatibleProvider({
@@ -135,6 +147,9 @@ describe("openai-compatible provider", () => {
       model: "kimi-k2.5",
       messages: [{ role: "system", content: "system" }, { role: "user", content: "inspect README.md" }],
       stream: true,
+      stream_options: {
+        include_usage: true,
+      },
       tools: [
         {
           type: "function",
@@ -162,6 +177,12 @@ describe("openai-compatible provider", () => {
         callId: "call_1",
         name: "read",
         inputText: '{"path":"README.md"}',
+      },
+      {
+        type: "usage",
+        source: "provider",
+        inputTokens: 14,
+        outputTokens: 6,
       },
     ])
   })
@@ -366,6 +387,9 @@ describe("openai-compatible provider", () => {
         },
       ],
       stream: true,
+      stream_options: {
+        include_usage: true,
+      },
       tools: [],
     })
   })

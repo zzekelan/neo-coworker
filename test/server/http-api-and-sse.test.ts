@@ -86,6 +86,9 @@ describe("server HTTP API and SSE", () => {
       trigger: "prompt",
       status: "queued",
       activeSkills: [],
+      inputTokens: 0,
+      outputTokens: 0,
+      tokenUsageSource: null,
     })
 
     const runId = startedRun.body.data.run.id as string
@@ -106,6 +109,9 @@ describe("server HTTP API and SSE", () => {
       latestRun: {
         id: runId,
         status: "completed",
+        inputTokens: expect.any(Number),
+        outputTokens: expect.any(Number),
+        tokenUsageSource: "estimated",
       },
       activeRun: null,
       status: "idle",
@@ -129,6 +135,9 @@ describe("server HTTP API and SSE", () => {
       expect.objectContaining({
         id: runId,
         status: "completed",
+        inputTokens: expect.any(Number),
+        outputTokens: expect.any(Number),
+        tokenUsageSource: "estimated",
       }),
     ])
 

@@ -45,6 +45,17 @@ export function createOpenAIEventNormalizer() {
         ]
       }
 
+      if (event.type === "response.completed" && event.response.usage) {
+        return [
+          {
+            type: "usage",
+            source: "provider",
+            inputTokens: event.response.usage.input_tokens,
+            outputTokens: event.response.usage.output_tokens,
+          },
+        ]
+      }
+
       return []
     },
   }
@@ -86,6 +97,15 @@ export function createOpenAICompatibleEventNormalizer() {
         if (choice.finish_reason === "tool_calls") {
           events.push(...flushOpenAICompatibleToolCalls(toolCalls))
         }
+      }
+
+      if (chunk.usage) {
+        events.push({
+          type: "usage",
+          source: "provider",
+          inputTokens: chunk.usage.prompt_tokens,
+          outputTokens: chunk.usage.completion_tokens,
+        })
       }
 
       return events

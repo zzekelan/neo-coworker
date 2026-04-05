@@ -3,6 +3,7 @@ import { buildCli } from "../src/cli"
 import {
   createDefaultSearchBackend,
   resolveDefaultProviderConfig,
+  resolveContextWindowSize,
   resolveSearchBackendConfig,
 } from "../src/bootstrap"
 
@@ -152,5 +153,75 @@ describe("bootstrap", () => {
     const searchBackend = createDefaultSearchBackend({})
 
     expect(searchBackend).toBeDefined()
+  })
+
+  test("prefers LLM_CONTEXT_WINDOW over provider metadata lookups", async () => {
+    const result = await resolveContextWindowSize({
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "gpt-5",
+        LLM_CONTEXT_WINDOW: "8192",
+      },
+      fetchImpl: async () => {
+        throw new Error("fetch should not be called when LLM_CONTEXT_WINDOW is set")
+      },
+    })
+
+    expect(result).toEqual({
+      contextWindow: 8192,
+      source: "env",
+    })
+  })
+
+  test("reads provider-reported context window metadata when available", async () => {
+    let requestedUrl = ""
+    let requestedHeaders: HeadersInit | undefined
+
+    const result = await resolveContextWindowSize({
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "fake-model",
+        LLM_BASE_URL: "https://example.invalid/v1",
+      },
+      fetchImpl: async (input, init) => {
+        requestedUrl = String(input)
+        requestedHeaders = init?.headers
+
+        return new Response(JSON.stringify({ context_length: 65536 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      },
+    })
+
+    expect(result).toEqual({
+      contextWindow: 65536,
+      source: "provider",
+    })
+    expect(requestedUrl).toBe("https://example.invalid/v1/models/fake-model")
+    expect(requestedHeaders).toEqual({
+      Authorization: "Bearer test-key",
+      Accept: "application/json",
+    })
+  })
+
+  test("falls back to the default context window when provider metadata is unavailable", async () => {
+    const result = await resolveContextWindowSize({
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "gpt-5",
+      },
+      fetchImpl: async () => {
+        throw new Error("network down")
+      },
+    })
+
+    expect(result).toEqual({
+      contextWindow: 128000,
+      source: "default",
+    })
   })
 })

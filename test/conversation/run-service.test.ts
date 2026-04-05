@@ -6,6 +6,7 @@ import { join } from "node:path"
 import {
   InvalidRunStatusTransitionError,
   RunActiveSkillsUpdateStateError,
+  RunTokenUsageUpdateStateError,
   SessionBusyError,
   createSessionRunService,
 } from "../../src/session"
@@ -355,6 +356,63 @@ describe("session run service", () => {
       }),
     ).toThrow(RunActiveSkillsUpdateStateError)
     expect(repository.runs.get(started.run.id).activeSkills).toEqual(["reviewer", "writer"])
+  })
+
+  test("accumulates run token usage while the run is active", () => {
+    const { repository, service } = createTestSubject("run-token-usage", [11, 22, 33, 44, 55])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    const started = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    const queuedUsage = service.recordRunTokenUsage({
+      runId: started.run.id,
+      inputTokens: 10,
+      outputTokens: 2,
+      tokenUsageSource: "provider",
+    })
+
+    expect(queuedUsage).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 2,
+      tokenUsageSource: "provider",
+    })
+
+    service.transitionRunToRunning(started.run.id)
+
+    const runningUsage = service.recordRunTokenUsage({
+      runId: started.run.id,
+      inputTokens: 5,
+      outputTokens: 7,
+      tokenUsageSource: "estimated",
+    })
+
+    expect(runningUsage).toMatchObject({
+      inputTokens: 15,
+      outputTokens: 9,
+      tokenUsageSource: "estimated",
+    })
+
+    service.completeRun(started.run.id)
+
+    expect(() =>
+      service.recordRunTokenUsage({
+        runId: started.run.id,
+        inputTokens: 1,
+        outputTokens: 1,
+        tokenUsageSource: "provider",
+      }),
+    ).toThrow(RunTokenUsageUpdateStateError)
   })
 })
 

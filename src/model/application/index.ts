@@ -31,8 +31,10 @@ export type {
   ModelTextPart,
   ModelTool,
   ModelToolCallPart,
+  ModelTokenUsageSource,
   ModelToolResultPart,
   ModelTranscriptMessage,
   ModelTranscriptPart,
   ModelTurnRequest,
+  ModelUsageEvent,
 } from "../domain"

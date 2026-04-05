@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { Database } from "bun:sqlite"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -307,6 +308,90 @@ describe("storage schema", () => {
           4,
         ),
     ).toThrow(/CHECK|constraint/i)
+  })
+
+  test("migrates v5 run records to include token usage columns", () => {
+    const databasePath = createDatabasePath("run-token-migration")
+    const seeded = trackDatabase(new Database(databasePath, { create: true, strict: true }))
+
+    seeded.exec(`
+      PRAGMA foreign_keys = ON;
+
+      CREATE TABLE session (
+        id TEXT PRIMARY KEY,
+        directory TEXT NOT NULL,
+        workspace_root TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        title TEXT NOT NULL DEFAULT 'New session',
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        latest_user_message_preview TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]'
+      );
+
+      CREATE TABLE run (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        trigger TEXT NOT NULL CHECK (trigger IN ('cli', 'prompt', 'command', 'shell', 'retry', 'summarize', 'init')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'waiting_permission', 'completed', 'failed', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        session_sequence INTEGER NOT NULL DEFAULT -1,
+        started_at INTEGER,
+        finished_at INTEGER,
+        error_text TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]',
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        UNIQUE (id, session_id)
+      );
+
+      CREATE UNIQUE INDEX run_session_sequence_idx
+      ON run (session_id, session_sequence)
+      WHERE session_sequence >= 0;
+
+      CREATE TRIGGER run_assign_session_sequence_after_insert
+      AFTER INSERT ON run
+      FOR EACH ROW
+      WHEN NEW.session_sequence < 0
+      BEGIN
+        UPDATE run
+        SET session_sequence = (
+          SELECT COALESCE(MAX(session_sequence), -1) + 1
+          FROM run
+          WHERE session_id = NEW.session_id
+            AND id <> NEW.id
+            AND session_sequence >= 0
+        )
+        WHERE id = NEW.id;
+      END;
+
+      PRAGMA user_version = 5;
+
+      INSERT INTO session (id, directory, workspace_root, created_at, title, updated_at, latest_user_message_preview, active_skills_json)
+      VALUES ('session_1', '/workspace', '/workspace', 1, 'Session', 1, NULL, '[]');
+
+      INSERT INTO run (id, session_id, trigger, status, created_at, active_skills_json)
+      VALUES ('run_1', 'session_1', 'cli', 'queued', 2, '[]');
+    `)
+    seeded.close(false)
+    openDatabases.pop()
+
+    const migrated = trackDatabase(openStorageDatabase(databasePath))
+    const columns = migrated.query("PRAGMA table_info(run)").all() as Array<{ name: string }>
+    const usage = migrated
+      .query("SELECT input_tokens, output_tokens, token_usage_source FROM run WHERE id = 'run_1'")
+      .get() as {
+      input_tokens: number
+      output_tokens: number
+      token_usage_source: string | null
+    }
+
+    expect(columns.map((column) => column.name)).toContain("input_tokens")
+    expect(columns.map((column) => column.name)).toContain("output_tokens")
+    expect(columns.map((column) => column.name)).toContain("token_usage_source")
+    expect(usage).toEqual({
+      input_tokens: 0,
+      output_tokens: 0,
+      token_usage_source: null,
+    })
   })
 
   test("schema initialization failures surface as explicit setup errors", () => {

@@ -127,7 +127,12 @@ describe("agent loop", () => {
     expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Summary complete." }])
     expect(events.map((event) => event.type)).toContain("tool.call.completed")
     expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
-    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      status: "completed",
+      tokenUsageSource: "estimated",
+      inputTokens: expect.any(Number),
+      outputTokens: expect.any(Number),
+    })
   })
 
   test("supports multiple model and tool cycles inside one durable run", async () => {

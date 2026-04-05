@@ -86,12 +86,14 @@ describe("runtime observability", () => {
       "message.started",
       "tool.executed",
       "tool.call.completed",
+      "model.turn.usage",
       "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
       "model.prompt.assembled",
       "message.started",
       "message.delta",
+      "model.turn.usage",
       "run.completed",
     ])
   })
@@ -209,12 +211,14 @@ describe("runtime observability", () => {
       "message.started",
       "tool.executed",
       "tool.call.completed",
+      "model.turn.usage",
       "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
       "model.prompt.assembled",
       "message.started",
       "message.delta",
+      "model.turn.usage",
       "run.completed",
     ])
 
@@ -236,7 +240,11 @@ describe("runtime observability", () => {
         now: harness.now,
       })
 
-      expect(reopenedRepository.runs.get(started.run.id).status).toBe("completed")
+      expect(reopenedRepository.runs.get(started.run.id)).toMatchObject({
+        status: "completed",
+        tokenUsageSource: "estimated",
+        inputTokens: expect.any(Number),
+      })
       expect(
         reopenedObservability.exportRunTrace(started.run.id)?.events.map((event) => event.eventType),
       ).toEqual(initialTrace?.events.map((event) => event.eventType))

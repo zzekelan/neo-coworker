@@ -1,3 +1,5 @@
+import type { ModelUsageEvent } from "./usage"
+
 export type ModelEvent =
   | {
       type: "text.delta"
@@ -9,3 +11,4 @@ export type ModelEvent =
       name: string
       inputText: string
     }
+  | ModelUsageEvent

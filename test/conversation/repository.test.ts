@@ -545,6 +545,52 @@ describe("storage repository", () => {
     })
   })
 
+  test("updates run token usage without changing other run fields", () => {
+    const { repository } = createTestRepository("run-token-usage-update", {
+      now: () => 50,
+    })
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "running",
+      createdAt: 2,
+      startedAt: 3,
+      activeSkills: ["reviewer"],
+      inputTokens: 7,
+      outputTokens: 11,
+      tokenUsageSource: "provider",
+    })
+
+    const updated = repository.runs.updateTokenUsage({
+      runId: "run_1",
+      inputTokens: 13,
+      outputTokens: 17,
+      tokenUsageSource: "estimated",
+    })
+
+    expect(updated).toMatchObject({
+      id: "run_1",
+      status: "running",
+      startedAt: 3,
+      activeSkills: ["reviewer"],
+      inputTokens: 13,
+      outputTokens: 17,
+      tokenUsageSource: "estimated",
+    })
+    expect(repository.sessions.get("session_1")).toMatchObject({
+      updatedAt: 50,
+    })
+  })
+
   test("surfaces explicit not-found errors for reads and updates", () => {
     const { repository } = createTestRepository("not-found")
 

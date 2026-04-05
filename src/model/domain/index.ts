@@ -1,5 +1,9 @@
 export type { ModelEvent } from "./event"
 export type {
+  ModelTokenUsageSource,
+  ModelUsageEvent,
+} from "./usage"
+export type {
   ModelMessage,
   ModelMessagePart,
   ModelTextPart,

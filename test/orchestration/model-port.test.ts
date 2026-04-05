@@ -46,7 +46,14 @@ describe("orchestration model port", () => {
       events.push(event)
     }
 
-    expect(events).toEqual([])
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "usage",
+        source: "estimated",
+        outputTokens: 0,
+        inputTokens: expect.any(Number),
+      }),
+    ])
     expect(requests).toEqual([
       {
         system: expect.stringContaining("Skill catalog:"),

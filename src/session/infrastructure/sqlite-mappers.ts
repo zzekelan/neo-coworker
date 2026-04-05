@@ -2,6 +2,7 @@ import type {
   MessageRole,
   PartKind,
   RunStatus,
+  RunTokenUsageSource,
   RunTrigger,
   StoredMessage,
   StoredPart,
@@ -31,6 +32,9 @@ export type RunRow = {
   finished_at: number | null
   error_text: string | null
   active_skills_json: string
+  input_tokens: number
+  output_tokens: number
+  token_usage_source: RunTokenUsageSource | null
 }
 
 export type MessageRow = {
@@ -96,6 +100,9 @@ export function mapRunRow(row: RunRow): StoredRun {
     finishedAt: row.finished_at,
     errorText: row.error_text,
     activeSkills: parseJson(row.active_skills_json) as string[],
+    inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens,
+    tokenUsageSource: row.token_usage_source,
   }
 }
 

@@ -28,6 +28,12 @@ export type OrchestrationModelEvent =
       name: string
       inputText: string
     }
+  | {
+      type: "usage"
+      inputTokens: number
+      outputTokens: number
+      source: "provider" | "estimated"
+    }
 
 export type OrchestrationModelPort = {
   streamTurn(request: OrchestrationModelTurnRequest): AsyncIterable<OrchestrationModelEvent>

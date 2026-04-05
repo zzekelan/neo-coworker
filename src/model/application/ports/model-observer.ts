@@ -13,6 +13,14 @@ export type ModelObserverEvent = {
   activeSkillCount: number
   activeSkillSectionHash: string
   activeSkillSectionLength: number
+} | {
+  type: "model.turn.usage"
+  sessionId: string
+  runId: string
+  turnKey: string
+  inputTokens: number
+  outputTokens: number
+  tokenUsageSource: "provider" | "estimated"
 }
 
 export type ModelObserverPort = {

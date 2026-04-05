@@ -49,6 +49,17 @@ describe("openai provider", () => {
         sequence_number: 4,
         delta: "Hello",
       },
+      {
+        type: "response.completed",
+        sequence_number: 5,
+        response: {
+          usage: {
+            input_tokens: 12,
+            output_tokens: 7,
+            total_tokens: 19,
+          },
+        } as unknown as OpenAI.Responses.Response,
+      } as OpenAI.Responses.ResponseStreamEvent,
     ] satisfies OpenAI.Responses.ResponseStreamEvent[]
 
     const provider = createOpenAIProvider({
@@ -99,6 +110,12 @@ describe("openai provider", () => {
       inputText: "{\"path\":\"README.md\"}",
     })
     expect(events).toContainEqual({ type: "text.delta", text: "Hello" })
+    expect(events).toContainEqual({
+      type: "usage",
+      source: "provider",
+      inputTokens: 12,
+      outputTokens: 7,
+    })
   })
 
   test("serializes structured tool transcript into responses input items", async () => {

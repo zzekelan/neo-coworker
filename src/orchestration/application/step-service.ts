@@ -317,6 +317,16 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
               continue
             }
 
+            if (item.type === "usage") {
+              input.session.recordRunTokenUsage({
+                runId: stepInput.runId,
+                inputTokens: item.inputTokens,
+                outputTokens: item.outputTokens,
+                tokenUsageSource: item.source,
+              })
+              continue
+            }
+
             if (stepInput.signal.aborted) {
               throw createAbortError()
             }

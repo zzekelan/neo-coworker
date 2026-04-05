@@ -20,6 +20,9 @@ export const RUN_STATUSES = [
 export type RunTrigger = (typeof RUN_TRIGGERS)[number]
 export type RunStatus = (typeof RUN_STATUSES)[number]
 export const RUN_ACTIVE_SKILLS_MAX_LENGTH = 100
+export const RUN_TOKEN_USAGE_SOURCES = ["provider", "estimated"] as const
+
+export type RunTokenUsageSource = (typeof RUN_TOKEN_USAGE_SOURCES)[number]
 
 export type StoredRun = {
   id: string
@@ -31,6 +34,9 @@ export type StoredRun = {
   finishedAt: number | null
   errorText: string | null
   activeSkills: string[]
+  inputTokens: number
+  outputTokens: number
+  tokenUsageSource: RunTokenUsageSource | null
 }
 
 export function normalizeRunActiveSkills(activeSkills: readonly string[] | null | undefined) {

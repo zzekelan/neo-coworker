@@ -34,6 +34,7 @@ import {
   type TranscriptMessage,
   type UpdatePartContentInput,
   type UpdateRunStatusInput,
+  type UpdateRunTokenUsageInput,
   type UpdateSessionInput,
 } from "../application/ports/repository"
 import {
@@ -61,6 +62,9 @@ const ACTIVE_RUN_STATUSES = ["queued", "running", "waiting_permission"] as const
 const activeRunStatusCheck = ACTIVE_RUN_STATUSES.map((status) => `'${status}'`).join(", ")
 const runStatusCheck = RUN_STATUSES.map((status) => `'${status}'`).join(", ")
 const runTriggerCheck = RUN_TRIGGERS.map((trigger) => `'${trigger}'`).join(", ")
+const runTokenUsageSourceCheck = ["provider", "estimated"]
+  .map((source) => `'${source}'`)
+  .join(", ")
 const messageRoleCheck = MESSAGE_ROLES.map((role) => `'${role}'`).join(", ")
 const partKindCheck = PART_KINDS.map((kind) => `'${kind}'`).join(", ")
 const permissionStatusCheck = ["pending", "approved", "denied", "cancelled"]
@@ -234,6 +238,23 @@ const sessionMigrations = [
       `,
     ],
   },
+  {
+    version: 6,
+    statements: [
+      `
+        ALTER TABLE run
+        ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0
+      `,
+      `
+        ALTER TABLE run
+        ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0
+      `,
+      `
+        ALTER TABLE run
+        ADD COLUMN token_usage_source TEXT CHECK (token_usage_source IN (${runTokenUsageSourceCheck}))
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {
@@ -320,7 +341,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
   function getRunRow(runId: string) {
     return database
       .query(
-        "SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text, active_skills_json FROM run WHERE id = ?",
+        "SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text, active_skills_json, input_tokens, output_tokens, token_usage_source FROM run WHERE id = ?",
       )
       .get(runId) as RunRow | null
   }
@@ -330,7 +351,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
-            , active_skills_json
+            , active_skills_json, input_tokens, output_tokens, token_usage_source
           FROM run
           WHERE session_id = ?
           ORDER BY created_at ASC, session_sequence ASC
@@ -344,7 +365,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
-            , active_skills_json
+            , active_skills_json, input_tokens, output_tokens, token_usage_source
           FROM run
           WHERE session_id = ?
           ORDER BY created_at DESC, session_sequence DESC
@@ -359,7 +380,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
-            , active_skills_json
+            , active_skills_json, input_tokens, output_tokens, token_usage_source
           FROM run
           WHERE session_id = ? AND status IN (${activeRunStatusCheck})
           ORDER BY created_at DESC, session_sequence DESC
@@ -549,6 +570,9 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         finishedAt: run.finishedAt ?? null,
         errorText: run.errorText ?? null,
         activeSkills: normalizeRunActiveSkills(run.activeSkills),
+        inputTokens: run.inputTokens ?? 0,
+        outputTokens: run.outputTokens ?? 0,
+        tokenUsageSource: run.tokenUsageSource ?? null,
       }
 
       database
@@ -563,8 +587,11 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
               started_at,
               finished_at,
               error_text,
-              active_skills_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              active_skills_json,
+              input_tokens,
+              output_tokens,
+              token_usage_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -577,6 +604,9 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           record.finishedAt,
           record.errorText,
           serializeJson(record.activeSkills),
+          record.inputTokens,
+          record.outputTokens,
+          record.tokenUsageSource,
         )
 
       return record
@@ -637,6 +667,33 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       database
         .query("UPDATE run SET active_skills_json = ? WHERE id = ?")
         .run(serializeJson(record.activeSkills), record.id)
+
+      sessions.update({
+        sessionId: record.sessionId,
+        updatedAt: now(),
+      })
+
+      return record
+    },
+    updateTokenUsage(update: UpdateRunTokenUsageInput) {
+      const current = requireRun(update.runId)
+      const record: StoredRun = {
+        ...current,
+        inputTokens: update.inputTokens,
+        outputTokens: update.outputTokens,
+        tokenUsageSource: update.tokenUsageSource,
+      }
+
+      database
+        .query(
+          "UPDATE run SET input_tokens = ?, output_tokens = ?, token_usage_source = ? WHERE id = ?",
+        )
+        .run(
+          record.inputTokens,
+          record.outputTokens,
+          record.tokenUsageSource,
+          record.id,
+        )
 
       sessions.update({
         sessionId: record.sessionId,

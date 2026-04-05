@@ -179,6 +179,9 @@ export function createOpenAICompatibleProvider(input: {
             ...toChatCompletionMessages(request.messages),
           ],
           stream: true,
+          stream_options: {
+            include_usage: true,
+          },
           tools: (request.tools as OpenAICompatibleTools["0"][]).map(toChatCompletionTool),
         },
         { signal: request.signal },

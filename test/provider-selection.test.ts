@@ -60,7 +60,14 @@ describe("provider selection", () => {
       events.push(event)
     }
 
-    expect(events).toEqual([])
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "usage",
+        source: "estimated",
+        outputTokens: 0,
+        inputTokens: expect.any(Number),
+      }),
+    ])
     expect(receivedBody).toEqual({
       model: "gpt-5",
       input: [],
@@ -131,7 +138,14 @@ describe("provider selection", () => {
       events.push(event)
     }
 
-    expect(events).toEqual([])
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "usage",
+        source: "estimated",
+        outputTokens: 0,
+        inputTokens: expect.any(Number),
+      }),
+    ])
     expect(receivedBody).toEqual({
       model: "kimi-k2.5",
       messages: [
@@ -145,6 +159,9 @@ describe("provider selection", () => {
         },
       ],
       stream: true,
+      stream_options: {
+        include_usage: true,
+      },
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal: expect.any(AbortSignal) })
@@ -208,7 +225,7 @@ describe("provider selection", () => {
           observabilityRepository.runEvents
             .listByRun("run_local_provider")
             .map((event) => event.eventType),
-        ).toEqual(["model.turn.requested", "model.prompt.assembled"])
+        ).toEqual(["model.turn.requested", "model.prompt.assembled", "model.turn.usage"])
       } finally {
         database.close(false)
       }

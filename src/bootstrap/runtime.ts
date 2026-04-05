@@ -267,7 +267,10 @@ export function createCliRuntime(input: CliRuntimeInput) {
 
 function createSessionPort(input: {
   repository: StorageRepository
-  session: Pick<SessionProvider["runs"], "transitionToRunning" | "complete" | "fail" | "cancel">
+  session: Pick<
+    SessionProvider["runs"],
+    "transitionToRunning" | "complete" | "fail" | "cancel" | "recordTokenUsage"
+  >
 }): OrchestrationSessionPort {
   return {
     storageIdentity: input.repository.storageIdentity,
@@ -303,6 +306,9 @@ function createSessionPort(input: {
     },
     updateMessagePart(update) {
       return input.repository.parts.updateContent(update)
+    },
+    recordRunTokenUsage(update) {
+      return input.session.recordTokenUsage(update)
     },
     transitionRunToRunning(runId) {
       return input.session.transitionToRunning(runId)

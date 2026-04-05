@@ -31,6 +31,9 @@ export type OrchestrationRunRecord = {
   sessionId: string
   status: OrchestrationRunStatus
   activeSkills: string[]
+  inputTokens: number
+  outputTokens: number
+  tokenUsageSource: "provider" | "estimated" | null
 }
 
 export type OrchestrationMessageRecord = {
@@ -70,6 +73,12 @@ export type OrchestrationSessionPort = {
     text?: string | null
     data?: unknown
   }): OrchestrationPartRecord
+  recordRunTokenUsage(input: {
+    runId: string
+    inputTokens: number
+    outputTokens: number
+    tokenUsageSource: "provider" | "estimated"
+  }): OrchestrationRunRecord
   transitionRunToRunning(runId: string): OrchestrationRunRecord
   completeRun(runId: string): OrchestrationRunRecord
   failRun(input: {

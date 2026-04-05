@@ -23,6 +23,7 @@ export type RunStatus =
   | "completed"
   | "failed"
   | "cancelled"
+export type RunTokenUsageSource = "provider" | "estimated"
 
 export type StoredSession = {
   id: string
@@ -45,6 +46,9 @@ export type StoredRun = {
   finishedAt: number | null
   errorText: string | null
   activeSkills: string[]
+  inputTokens: number
+  outputTokens: number
+  tokenUsageSource: RunTokenUsageSource | null
 }
 
 export type StoredMessage = {
@@ -103,6 +107,9 @@ export type CreateRunInput = {
   finishedAt?: number | null
   errorText?: string | null
   activeSkills?: string[]
+  inputTokens?: number
+  outputTokens?: number
+  tokenUsageSource?: RunTokenUsageSource | null
 }
 
 export type UpdateRunStatusInput = {
@@ -116,6 +123,13 @@ export type UpdateRunStatusInput = {
 export type UpdateRunActiveSkillsInput = {
   runId: string
   activeSkills: string[]
+}
+
+export type UpdateRunTokenUsageInput = {
+  runId: string
+  inputTokens: number
+  outputTokens: number
+  tokenUsageSource: RunTokenUsageSource | null
 }
 
 export type CreateMessageInput = {
@@ -213,6 +227,7 @@ export type SessionRepository = {
     getActiveBySession(sessionId: string): StoredRun | null
     updateStatus(update: UpdateRunStatusInput): StoredRun
     updateActiveSkills(update: UpdateRunActiveSkillsInput): StoredRun
+    updateTokenUsage(update: UpdateRunTokenUsageInput): StoredRun
   }
   messages: {
     create(message: CreateMessageInput): StoredMessage
