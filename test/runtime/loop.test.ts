@@ -561,6 +561,267 @@ describe("agent loop", () => {
     ).toEqual(["Previous shell-heavy work", "Continue after manual compaction"])
   })
 
+  test("restores active skills and recent read files after auto compaction", async () => {
+    const harness = await createHarness("auto-compact-recovery", true)
+    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+
+    await mkdir(skillDirectory, { recursive: true })
+    await Bun.write(
+      join(skillDirectory, "SKILL.md"),
+      [
+        "name: reviewer",
+        "description: Review code changes carefully",
+        "",
+        "Focus on bugs first.",
+      ].join("\n"),
+    )
+
+    harness.repository.sessions.update({
+      sessionId: harness.session.id,
+      activeSkills: ["reviewer"],
+    })
+
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_read_recovery",
+            name: "read",
+            inputText: '{"path":"README.md"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Read completed before compaction." }
+        },
+        async function* () {
+          yield {
+            type: "text.delta",
+            text: [
+              "Primary Request",
+              "Continue after compaction with recovered context.",
+              "",
+              "Key Concepts",
+              "Recovered reminders should restore important context.",
+              "",
+              "Files & Code",
+              "README.md remains relevant after compaction.",
+              "",
+              "Errors & Fixes",
+              "None.",
+              "",
+              "Problem Solving",
+              "Compact first, then answer with the restored context.",
+              "",
+              "User Messages",
+              "Continue after auto compaction",
+              "",
+              "Pending Tasks",
+              "Finish the response.",
+              "",
+              "Current Work",
+              "Resuming after compaction.",
+              "",
+              "Next Steps",
+              "Answer the user.",
+            ].join("\n"),
+          }
+        },
+        async function* (request) {
+          const reminderText = readMessageTexts(request.messages).join("\n\n")
+          expect(reminderText).toContain("## reviewer")
+          expect(reminderText).toContain("Focus on bugs first.")
+          expect(reminderText).toContain("Recent file context:")
+          expect(reminderText).toContain("### README.md")
+          expect(reminderText).toContain("This fixture exists for the read-only tool tests.")
+
+          yield { type: "text.delta", text: "Recovered context is back." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      contextWindow: 15_000,
+      now: harness.now,
+    })
+
+    const readRun = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_auto_compact_recovery_read",
+      messageId: "message_auto_compact_recovery_read",
+      prompt: "Read README before compaction",
+    })
+    const readHandle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: readRun.run.id,
+    })
+    await collectEvents(readHandle.events)
+
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_auto_compact_recovery_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_auto_compact_recovery",
+      messageId: "message_auto_compact_recovery",
+      prompt: "Continue after auto compaction",
+    })
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+
+    expect(requests).toHaveLength(4)
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "compaction.completed",
+          trigger: "auto",
+          summarizeRunId: expect.any(String),
+        }),
+      ]),
+    )
+    expect(readRequestText(requests[3]!).join("\n")).not.toContain("shell output")
+  })
+
+  test("restores active skills and recent read files on the next prompt after manual compaction", async () => {
+    const harness = await createHarness("manual-compact-recovery", true)
+    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+
+    await mkdir(skillDirectory, { recursive: true })
+    await Bun.write(
+      join(skillDirectory, "SKILL.md"),
+      [
+        "name: reviewer",
+        "description: Review code changes carefully",
+        "",
+        "Focus on bugs first.",
+      ].join("\n"),
+    )
+
+    harness.repository.sessions.update({
+      sessionId: harness.session.id,
+      activeSkills: ["reviewer"],
+    })
+
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_read_manual_recovery",
+            name: "read",
+            inputText: '{"path":"README.md"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Read completed before manual compaction." }
+        },
+        async function* () {
+          yield {
+            type: "text.delta",
+            text: [
+              "Primary Request",
+              "Compact the session and resume later.",
+              "",
+              "Key Concepts",
+              "Manual compaction should preserve the key context.",
+              "",
+              "Files & Code",
+              "README.md remains relevant after manual compaction.",
+              "",
+              "Errors & Fixes",
+              "None.",
+              "",
+              "Problem Solving",
+              "Compact now and continue on the next prompt.",
+              "",
+              "User Messages",
+              "Compact now",
+              "",
+              "Pending Tasks",
+              "Answer the follow-up prompt.",
+              "",
+              "Current Work",
+              "Compacting before the next prompt.",
+              "",
+              "Next Steps",
+              "Resume after compaction.",
+            ].join("\n"),
+          }
+        },
+        async function* (request) {
+          const reminderText = readMessageTexts(request.messages).join("\n\n")
+          expect(reminderText).toContain("## reviewer")
+          expect(reminderText).toContain("Focus on bugs first.")
+          expect(reminderText).toContain("Recent file context:")
+          expect(reminderText).toContain("### README.md")
+          expect(reminderText).toContain("This fixture exists for the read-only tool tests.")
+
+          yield { type: "text.delta", text: "Recovered after manual compaction." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      contextWindow: 15_000,
+      now: harness.now,
+    })
+
+    const readRun = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_manual_compact_recovery_read",
+      messageId: "message_manual_compact_recovery_read",
+      prompt: "Read README before manual compaction",
+    })
+    const readHandle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: readRun.run.id,
+    })
+    await collectEvents(readHandle.events)
+
+    const compactRun = startCommandRun({
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_manual_compact_recovery_compact",
+    })
+    const compactHandle = await runtime.compactSession({
+      sessionId: harness.session.id,
+      runId: compactRun.run.id,
+    })
+    await collectEvents(compactHandle.events)
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_manual_compact_recovery",
+      messageId: "message_manual_compact_recovery",
+      prompt: "Continue after manual compaction",
+    })
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    expect(requests).toHaveLength(4)
+    expect(readRequestText(requests[3]!).join("\n")).toContain("Continue after manual compaction")
+  })
+
   test("projects workspace skill catalog and run active skills into model turns", async () => {
     const harness = await createHarness("skill-context", false)
     const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")

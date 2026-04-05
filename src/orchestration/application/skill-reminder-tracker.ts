@@ -5,7 +5,7 @@ import type {
 } from "./ports/skill"
 
 type SkillReminderEntry = {
-  kind: "catalog" | "instructions"
+  kind: "catalog" | "instructions" | "recovery"
   text: string
 }
 
@@ -60,6 +60,18 @@ export function createSkillReminderTracker() {
       })
 
       return freshSkills.map((skill) => skill.name)
+    },
+    appendRecoveryReminder(sessionId: string, text: string) {
+      const reminder = text.trim()
+      if (!reminder) {
+        return
+      }
+
+      const state = getSessionState(sessionStates, sessionId)
+      state.entries.push({
+        kind: "recovery",
+        text: reminder,
+      })
     },
     resolveActiveSkills(sessionId: string, activeSkillNames: readonly string[]): OrchestrationActiveSkill[] {
       const state = getSessionState(sessionStates, sessionId)

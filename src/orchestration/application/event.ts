@@ -16,14 +16,14 @@ export type OrchestrationRuntimeEvent =
   | {
       type: "skill.load.requested"
       skillName: string
-      reason: "activation" | "prompt"
+      reason: "activation" | "prompt" | "recovery"
     }
   | {
       type: "skill.load.completed"
       skillName: string
       skillPath: string
       instructionsLength: number
-      reason: "activation" | "prompt"
+      reason: "activation" | "prompt" | "recovery"
     }
   | {
       type: "skill.activated"

@@ -467,6 +467,124 @@ describe("runtime observability", () => {
     ])
   })
 
+  test("records recovery skill loads after auto compaction", async () => {
+    const harness = await createHarness("trace-compaction-recovery", false)
+    const skillDirectory = join(harness.session.workspaceRoot, ".agents", "skills", "reviewer")
+
+    await mkdir(skillDirectory, { recursive: true })
+    await Bun.write(
+      join(skillDirectory, "SKILL.md"),
+      [
+        "name: reviewer",
+        "description: Review code changes carefully",
+        "",
+        "Focus on bugs first.",
+      ].join("\n"),
+    )
+
+    harness.repository.sessions.update({
+      sessionId: harness.session.id,
+      activeSkills: ["reviewer"],
+    })
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction_recovery_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction_recovery",
+      messageId: "message_trace_compaction_recovery",
+      prompt: "Continue after recovered compaction",
+    })
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            yield {
+              type: "text.delta",
+              text: [
+                "Primary Request",
+                "Continue after recovered compaction.",
+                "",
+                "Key Concepts",
+                "Reload active skills after compaction.",
+                "",
+                "Files & Code",
+                "README.md",
+                "",
+                "Errors & Fixes",
+                "None.",
+                "",
+                "Problem Solving",
+                "Compact first, then continue.",
+                "",
+                "User Messages",
+                "Continue after recovered compaction",
+                "",
+                "Pending Tasks",
+                "Finish the response.",
+                "",
+                "Current Work",
+                "Replying after compaction.",
+                "",
+                "Next Steps",
+                "Send the final response.",
+              ].join("\n"),
+            }
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Recovered compaction trace recorded." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      contextWindow: 13_050,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    const loadRequestedEvents = (trace?.events ?? []).filter(
+      (event) => event.eventType === "skill.load.requested",
+    )
+    const loadCompletedEvents = (trace?.events ?? []).filter(
+      (event) => event.eventType === "skill.load.completed",
+    )
+
+    expect(loadRequestedEvents).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          skillName: "reviewer",
+          reason: "recovery",
+        }),
+      }),
+    ])
+    expect(loadCompletedEvents).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          skillName: "reviewer",
+          skillPath: ".agents/skills/reviewer/SKILL.md",
+          reason: "recovery",
+        }),
+      }),
+    ])
+  })
+
   test("opens the compaction circuit breaker after three automatic failures", async () => {
     const harness = await createHarness("trace-compaction-breaker", false)
     seedCompletedRunWithToolResults({

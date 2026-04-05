@@ -13,6 +13,7 @@ import {
   buildContextUsageSnapshot,
   DEFAULT_CONTEXT_WINDOW_SIZE,
 } from "./context-usage"
+import { createRecentFileTracker } from "./recent-file-tracker"
 import { createSkillReminderTracker } from "./skill-reminder-tracker"
 
 type OrchestrationEventEmitter = (event: RuntimeEvent) => void
@@ -223,6 +224,62 @@ function shouldRetryModelRequest(input: {
 export function createOrchestrationStepService(input: CreateOrchestrationStepServiceInput) {
   const now = input.now ?? Date.now
   const skillReminders = createSkillReminderTracker()
+  const recentFiles = createRecentFileTracker()
+
+  async function loadPendingActiveSkills(inputValue: {
+    sessionId: string
+    activeSkillNames: readonly string[]
+    workspaceRoot: string
+    emit: OrchestrationEventEmitter
+    reason: "prompt" | "recovery"
+  }) {
+    const loadedSkills = []
+
+    for (const skillName of skillReminders.listPendingActiveSkillNames(
+      inputValue.sessionId,
+      inputValue.activeSkillNames,
+    )) {
+      inputValue.emit({
+        type: "skill.load.requested",
+        skillName,
+        reason: inputValue.reason,
+      })
+      const loadedSkill = await input.skill.loadSkill({
+        workspaceRoot: inputValue.workspaceRoot,
+        name: skillName,
+      })
+      inputValue.emit({
+        type: "skill.load.completed",
+        skillName: loadedSkill.name,
+        skillPath: loadedSkill.path,
+        instructionsLength: loadedSkill.instructions.length,
+        reason: inputValue.reason,
+      })
+      loadedSkills.push(loadedSkill)
+    }
+
+    skillReminders.injectActiveSkills(inputValue.sessionId, loadedSkills)
+  }
+
+  async function recoverCompactedContext(inputValue: {
+    sessionId: string
+    workspaceRoot: string
+    emit: OrchestrationEventEmitter
+  }) {
+    const session = input.session.getSession(inputValue.sessionId)
+    await loadPendingActiveSkills({
+      sessionId: inputValue.sessionId,
+      activeSkillNames: session.activeSkills,
+      workspaceRoot: inputValue.workspaceRoot,
+      emit: inputValue.emit,
+      reason: "recovery",
+    })
+
+    const recentFileReminder = recentFiles.buildRecoveryReminder(inputValue.sessionId)
+    if (recentFileReminder) {
+      skillReminders.appendRecoveryReminder(inputValue.sessionId, recentFileReminder)
+    }
+  }
 
   return {
     isAbortError,
@@ -316,6 +373,11 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       })
       if (autoCompaction.compacted) {
         skillReminders.resetAfterCompaction(stepInput.sessionId)
+        await recoverCompactedContext({
+          sessionId: stepInput.sessionId,
+          workspaceRoot: stepInput.workspaceRoot,
+          emit: stepInput.emit,
+        })
         transcript = input.session.listTranscript(stepInput.sessionId)
       }
 
@@ -327,31 +389,15 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           catalogSkillCount: exposedCatalogSkillNames.length,
         })
       }
-      const loadedPromptSkills = []
-      for (const skillName of skillReminders.listPendingActiveSkillNames(
-        stepInput.sessionId,
-        run.activeSkills,
-      )) {
-        stepInput.emit({
-          type: "skill.load.requested",
-          skillName,
-          reason: "prompt",
-        })
-        const loadedSkill = await input.skill.loadSkill({
-          workspaceRoot: stepInput.workspaceRoot,
-          name: skillName,
-        })
-        stepInput.emit({
-          type: "skill.load.completed",
-          skillName: loadedSkill.name,
-          skillPath: loadedSkill.path,
-          instructionsLength: loadedSkill.instructions.length,
-          reason: "prompt",
-        })
-        loadedPromptSkills.push(loadedSkill)
-      }
-      skillReminders.injectActiveSkills(stepInput.sessionId, loadedPromptSkills)
-      const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, run.activeSkills)
+      const sessionActiveSkills = input.session.getSession(stepInput.sessionId).activeSkills
+      await loadPendingActiveSkills({
+        sessionId: stepInput.sessionId,
+        activeSkillNames: sessionActiveSkills,
+        workspaceRoot: stepInput.workspaceRoot,
+        emit: stepInput.emit,
+        reason: "prompt",
+      })
+      const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, sessionActiveSkills)
       const systemReminders = skillReminders.buildSystemReminders(stepInput.sessionId)
       if (autoCompaction.compacted) {
         const tokensAfter = input.model.projectTurn?.({
@@ -473,7 +519,9 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
               item,
               assistantTurn,
               emit: stepInput.emit,
+              sessionId: stepInput.sessionId,
               signal: stepInput.signal,
+              recentFiles,
               tools: stepInput.tools,
               workspaceRoot: stepInput.workspaceRoot,
             })
@@ -607,12 +655,21 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           trigger: "manual",
         })
         skillReminders.resetAfterCompaction(compactionInput.sessionId)
+        await recoverCompactedContext({
+          sessionId: compactionInput.sessionId,
+          workspaceRoot: compactionInput.workspaceRoot,
+          emit: compactionInput.emit,
+        })
         const compactedTranscript = input.session.listTranscript(compactionInput.sessionId)
+        const sessionActiveSkills = input.session.getSession(compactionInput.sessionId).activeSkills
         const projectionAfter = projectCompactionInputTokens({
           model: input.model,
           systemPrompt: compactionInput.systemPrompt,
           skillCatalog,
-          activeSkills: skillReminders.resolveActiveSkills(compactionInput.sessionId, run.activeSkills),
+          activeSkills: skillReminders.resolveActiveSkills(
+            compactionInput.sessionId,
+            sessionActiveSkills,
+          ),
           systemReminders: skillReminders.buildSystemReminders(compactionInput.sessionId),
           contextWindow,
           tools: availableTools,
@@ -697,7 +754,9 @@ async function executeToolCall(input: {
   item: ToolCallEvent
   assistantTurn: ReturnType<typeof createAssistantTurnRecorder>
   emit: OrchestrationEventEmitter
+  sessionId: string
   signal: AbortSignal
+  recentFiles: ReturnType<typeof createRecentFileTracker>
   tools: OrchestrationToolPort
   workspaceRoot: string
 }): Promise<ToolCallOutcome> {
@@ -744,6 +803,17 @@ async function executeToolCall(input: {
       name: input.item.name,
       output: result.output,
     })
+    if (input.item.name === "read") {
+      const readArgs = readObject(args)
+      const path = readString(readArgs, "path")
+      if (path) {
+        input.recentFiles.recordRead({
+          sessionId: input.sessionId,
+          path,
+          content: result.output,
+        })
+      }
+    }
     return "continue"
   } catch (error) {
     if (isAbortError(error, input.signal)) {
