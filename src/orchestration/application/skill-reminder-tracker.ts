@@ -70,7 +70,19 @@ export function createSkillReminderTracker() {
     },
     buildSystemReminders(sessionId: string) {
       const state = getSessionState(sessionStates, sessionId)
+      if (
+        state.entries.length === 0 &&
+        state.sentSkillNames.size === 0 &&
+        state.injectedSkills.size === 0
+      ) {
+        return undefined
+      }
       return state.entries.map((entry) => entry.text)
+    },
+    resetAfterCompaction(sessionId: string) {
+      const state = getSessionState(sessionStates, sessionId)
+      state.injectedSkills.clear()
+      state.entries = []
     },
   }
 }

@@ -7,6 +7,7 @@ export const PART_KINDS = [
   "step_finish",
   "error",
   "patch",
+  "compaction_boundary",
 ] as const
 
 export type PartKind = (typeof PART_KINDS)[number]

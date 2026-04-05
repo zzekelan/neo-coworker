@@ -363,6 +363,49 @@ describe("storage schema", () => {
         WHERE id = NEW.id;
       END;
 
+      CREATE TABLE message (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'synthetic')),
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, run_id, session_id),
+        UNIQUE (run_id, sequence)
+      );
+
+      CREATE TABLE part (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('text', 'reasoning', 'tool_call', 'tool_result', 'step_start', 'step_finish', 'error', 'patch')),
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        text_value TEXT,
+        data_json TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, message_id, run_id, session_id),
+        UNIQUE (message_id, sequence)
+      );
+
+      CREATE TABLE permission_request (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        resolved_at INTEGER,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE
+      );
+
       PRAGMA user_version = 5;
 
       INSERT INTO session (id, directory, workspace_root, created_at, title, updated_at, latest_user_message_preview, active_skills_json)
@@ -392,6 +435,151 @@ describe("storage schema", () => {
       output_tokens: 0,
       token_usage_source: null,
     })
+  })
+
+  test("migrates v6 part records to allow compaction boundaries", () => {
+    const databasePath = createDatabasePath("compaction-boundary-migration")
+    const seeded = trackDatabase(new Database(databasePath, { create: true, strict: true }))
+
+    seeded.exec(`
+      PRAGMA foreign_keys = ON;
+
+      CREATE TABLE session (
+        id TEXT PRIMARY KEY,
+        directory TEXT NOT NULL,
+        workspace_root TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        title TEXT NOT NULL DEFAULT 'New session',
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        latest_user_message_preview TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]'
+      );
+
+      CREATE TABLE run (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        trigger TEXT NOT NULL CHECK (trigger IN ('cli', 'prompt', 'command', 'shell', 'retry', 'summarize', 'init')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'waiting_permission', 'completed', 'failed', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        session_sequence INTEGER NOT NULL DEFAULT -1,
+        started_at INTEGER,
+        finished_at INTEGER,
+        error_text TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]',
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        token_usage_source TEXT CHECK (token_usage_source IN ('provider', 'estimated')),
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        UNIQUE (id, session_id)
+      );
+
+      CREATE UNIQUE INDEX run_session_sequence_idx
+      ON run (session_id, session_sequence)
+      WHERE session_sequence >= 0;
+
+      CREATE TRIGGER run_assign_session_sequence_after_insert
+      AFTER INSERT ON run
+      FOR EACH ROW
+      WHEN NEW.session_sequence < 0
+      BEGIN
+        UPDATE run
+        SET session_sequence = (
+          SELECT COALESCE(MAX(session_sequence), -1) + 1
+          FROM run
+          WHERE session_id = NEW.session_id
+            AND id <> NEW.id
+            AND session_sequence >= 0
+        )
+        WHERE id = NEW.id;
+      END;
+
+      CREATE TABLE message (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'synthetic')),
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, run_id, session_id),
+        UNIQUE (run_id, sequence)
+      );
+
+      CREATE TABLE part (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('text', 'reasoning', 'tool_call', 'tool_result', 'step_start', 'step_finish', 'error', 'patch')),
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        text_value TEXT,
+        data_json TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, message_id, run_id, session_id),
+        UNIQUE (message_id, sequence)
+      );
+
+      CREATE TABLE permission_request (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        resolved_at INTEGER,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE
+      );
+
+      PRAGMA user_version = 6;
+
+      INSERT INTO session (id, directory, workspace_root, created_at, title, updated_at, latest_user_message_preview, active_skills_json)
+      VALUES ('session_1', '/workspace', '/workspace', 1, 'Session', 1, NULL, '[]');
+
+      INSERT INTO run (id, session_id, trigger, status, created_at, active_skills_json, input_tokens, output_tokens, token_usage_source)
+      VALUES ('run_1', 'session_1', 'prompt', 'completed', 2, '[]', 0, 0, NULL);
+
+      INSERT INTO message (id, session_id, run_id, role, sequence, created_at)
+      VALUES ('message_1', 'session_1', 'run_1', 'assistant', 0, 3);
+
+      INSERT INTO part (id, session_id, run_id, message_id, kind, sequence, text_value, data_json, created_at)
+      VALUES ('part_1', 'session_1', 'run_1', 'message_1', 'text', 0, 'existing summary', NULL, 4);
+    `)
+    seeded.close(false)
+    openDatabases.pop()
+
+    const migrated = trackDatabase(openStorageDatabase(databasePath))
+    const kinds = migrated
+      .query("SELECT kind FROM part ORDER BY sequence ASC")
+      .all() as Array<{ kind: string }>
+
+    expect(() =>
+      migrated
+        .query(
+          "INSERT INTO part (id, session_id, run_id, message_id, kind, sequence, text_value, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          "part_boundary",
+          "session_1",
+          "run_1",
+          "message_1",
+          "compaction_boundary",
+          1,
+          null,
+          '{"summarizeRunId":"run_summary"}',
+          5,
+        ),
+    ).not.toThrow()
+    const insertedKinds = migrated
+      .query("SELECT kind FROM part ORDER BY sequence ASC")
+      .all() as Array<{ kind: string }>
+    expect(kinds.map((row) => row.kind)).toEqual(["text"])
+    expect(insertedKinds.map((row) => row.kind)).toEqual(["text", "compaction_boundary"])
   })
 
   test("schema initialization failures surface as explicit setup errors", () => {

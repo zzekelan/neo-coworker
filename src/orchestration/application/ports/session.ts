@@ -29,6 +29,7 @@ export type OrchestrationSessionRecord = {
 export type OrchestrationRunRecord = {
   id: string
   sessionId: string
+  createdAt: number
   status: OrchestrationRunStatus
   activeSkills: string[]
   inputTokens: number
@@ -52,7 +53,27 @@ export type OrchestrationSessionPort = {
   getSession(sessionId: string): OrchestrationSessionRecord
   getRun(runId: string): OrchestrationRunRecord
   listTranscript(sessionId: string): OrchestrationTranscriptMessage[]
+  createRun(input: {
+    id: string
+    sessionId: string
+    trigger: "summarize"
+    status: OrchestrationRunStatus
+    createdAt: number
+    startedAt?: number | null
+    finishedAt?: number | null
+    errorText?: string | null
+    activeSkills?: string[]
+    inputTokens?: number
+    outputTokens?: number
+    tokenUsageSource?: "provider" | "estimated" | null
+  }): OrchestrationRunRecord
   createAssistantMessage(input: {
+    sessionId: string
+    runId: string
+    sequence: number
+    createdAt: number
+  }): OrchestrationMessageRecord
+  createSyntheticMessage(input: {
     sessionId: string
     runId: string
     sequence: number

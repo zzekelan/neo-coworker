@@ -319,6 +319,118 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
+  test("auto compacts prior transcript into a synthetic boundary summary before continuing", async () => {
+    const harness = await createHarness("auto-compact", true)
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_auto_compact_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_auto_compact",
+      messageId: "message_auto_compact",
+      prompt: "Continue after the earlier shell work",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "text.delta",
+            text: [
+              "<analysis>drop me</analysis>",
+              "Primary Request",
+              "Keep working on the shell-heavy task.",
+              "",
+              "Key Concepts",
+              "Use the compacted summary instead of the original tool output.",
+              "",
+              "Files & Code",
+              "README.md",
+              "",
+              "Errors & Fixes",
+              "None.",
+              "",
+              "Problem Solving",
+              "Summarize and continue.",
+              "",
+              "User Messages",
+              "Continue after the earlier shell work",
+              "",
+              "Pending Tasks",
+              "Finish the answer.",
+              "",
+              "Current Work",
+              "Preparing the next reply.",
+              "",
+              "Next Steps",
+              "Answer the user.",
+            ].join("\n")
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Compaction complete." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      contextWindow: 15_000,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const runs = harness.repository.runs.listBySession(harness.session.id)
+    const summarizeRun = runs.find((run) => run.trigger === "summarize")
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const boundaryMessage = activeRunMessages.find((message) =>
+      message.parts.some((part) => part.kind === "compaction_boundary"),
+    )
+
+    expect(requests).toHaveLength(2)
+    expect(readRequestText(requests[0]!).join("\n")).toContain(
+      "Return plain text with exactly these nine section headings",
+    )
+    expect(readRequestText(requests[1]!).join("\n")).toContain("Primary Request")
+    expect(readRequestText(requests[1]!).join("\n")).not.toContain("shell output")
+    expect(summarizeRun).toMatchObject({
+      status: "completed",
+      trigger: "summarize",
+      tokenUsageSource: "estimated",
+      inputTokens: expect.any(Number),
+      outputTokens: expect.any(Number),
+    })
+    expect(boundaryMessage?.role).toBe("synthetic")
+    expect(boundaryMessage?.parts.map((part) => part.kind)).toEqual(["compaction_boundary", "text"])
+    expect(boundaryMessage?.parts[0]).toMatchObject({
+      kind: "compaction_boundary",
+      data: {
+        summarizeRunId: summarizeRun?.id,
+        tokensBefore: expect.any(Number),
+        tokensAfter: expect.any(Number),
+        compressionRatio: expect.any(Number),
+        trigger: "auto",
+      },
+    })
+    expect(boundaryMessage?.parts[1]).toMatchObject({
+      kind: "text",
+      text: expect.stringContaining("Primary Request"),
+    })
+    expect(String(boundaryMessage?.parts[1]?.text ?? "")).not.toContain("<analysis>")
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
   test("projects workspace skill catalog and run active skills into model turns", async () => {
     const harness = await createHarness("skill-context", false)
     const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
@@ -1363,6 +1475,61 @@ function seedCompletedRun(input: {
     sequence: 0,
     text: input.assistantText,
   })
+}
+
+function seedCompletedRunWithToolResults(input: {
+  repository: StorageRepository
+  sessionId: string
+  runId: string
+  toolName: string
+  resultCount: number
+  output: string
+}) {
+  input.repository.runs.create({
+    id: input.runId,
+    sessionId: input.sessionId,
+    trigger: "prompt",
+    status: "completed",
+  })
+  const userMessage = input.repository.messages.create({
+    id: `${input.runId}_user`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "user",
+    sequence: 0,
+  })
+  input.repository.parts.create({
+    id: `${input.runId}_user_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: userMessage.id,
+    kind: "text",
+    sequence: 0,
+    text: "Previous shell-heavy work",
+  })
+  const assistantMessage = input.repository.messages.create({
+    id: `${input.runId}_assistant`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "assistant",
+    sequence: 1,
+  })
+
+  for (let index = 0; index < input.resultCount; index += 1) {
+    input.repository.parts.create({
+      id: `${input.runId}_tool_result_${index}`,
+      sessionId: input.sessionId,
+      runId: input.runId,
+      messageId: assistantMessage.id,
+      kind: "tool_result",
+      sequence: index,
+      text: `${input.output}\n#${index}`,
+      data: {
+        callId: `${input.runId}_call_${index}`,
+        toolName: input.toolName,
+      },
+    })
+  }
 }
 
 function createTurnProvider(

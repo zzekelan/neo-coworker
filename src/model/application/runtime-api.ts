@@ -39,6 +39,9 @@ export type ModelProviderRequest = ModelProjectionInput &
   }
 
 export type ModelProvider = {
+  projectTurn(request: ModelProjectionInput): {
+    inputTokens: number
+  }
   streamTurn(request: ModelProviderRequest): AsyncIterable<ModelEvent>
 }
 
@@ -47,6 +50,16 @@ export function createModelProvider(input: {
   observer?: ModelObserverPort
 }): ModelProvider {
   return {
+    projectTurn(request) {
+      const projected = buildModelTurnProjection(request)
+      const usage = estimateModelTurnUsage({
+        request: projected.request,
+        outputEvents: [],
+      })
+      return {
+        inputTokens: usage.inputTokens,
+      }
+    },
     async *streamTurn(request) {
       if (request.sessionId && request.runId) {
         try {

@@ -366,6 +366,187 @@ describe("runtime observability", () => {
     )
   })
 
+  test("records compaction lifecycle on the parent run and summarize run traces", async () => {
+    const harness = await createHarness("trace-compaction", false)
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction",
+      messageId: "message_trace_compaction",
+      prompt: "Continue after compaction",
+    })
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            yield {
+              type: "text.delta",
+              text: [
+                "Primary Request",
+                "Continue after compaction.",
+                "",
+                "Key Concepts",
+                "Summaries replace earlier transcript chunks.",
+                "",
+                "Files & Code",
+                "README.md",
+                "",
+                "Errors & Fixes",
+                "None.",
+                "",
+                "Problem Solving",
+                "Compact first, then continue.",
+                "",
+                "User Messages",
+                "Continue after compaction",
+                "",
+                "Pending Tasks",
+                "Finish the response.",
+                "",
+                "Current Work",
+                "Replying after compaction.",
+                "",
+                "Next Steps",
+                "Send the final response.",
+              ].join("\n"),
+            }
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Compaction trace recorded." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      contextWindow: 15_000,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const summarizeRun = harness.repository
+      .runs
+      .listBySession(harness.session.id)
+      .find((run) => run.trigger === "summarize")
+    const parentTrace = harness.observability.exportRunTrace(started.run.id)
+    const summarizeTrace = summarizeRun
+      ? harness.observability.exportRunTrace(summarizeRun.id)
+      : null
+
+    expect(readEventTypes(parentTrace?.events ?? [])).toContain("compaction.completed")
+    expect(
+      parentTrace?.events.find((event) => event.eventType === "compaction.completed")?.data,
+    ).toMatchObject({
+      summarizeRunId: summarizeRun?.id,
+      tokensBefore: expect.any(Number),
+      tokensAfter: expect.any(Number),
+      compressionRatio: expect.any(Number),
+    })
+    expect(readEventTypes(summarizeTrace?.events ?? [])).toEqual([
+      "run.started",
+      "model.turn.requested",
+      "model.prompt.assembled",
+      "model.turn.usage",
+      "run.completed",
+    ])
+  })
+
+  test("opens the compaction circuit breaker after three automatic failures", async () => {
+    const harness = await createHarness("trace-compaction-breaker", false)
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction_breaker_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            throw new Error("summary down 1")
+          },
+          async function* () {
+            yield { type: "text.delta", text: "First run still replied." }
+          },
+          async function* () {
+            throw new Error("summary down 2")
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Second run still replied." }
+          },
+          async function* () {
+            throw new Error("summary down 3")
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Third run still replied." }
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Fourth run skipped compaction." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      contextWindow: 15_000,
+      now: harness.now,
+    })
+
+    for (const suffix of ["one", "two", "three", "four"] as const) {
+      const started = startPromptRun({
+        repository: harness.repository,
+        service: harness.service,
+        sessionId: harness.session.id,
+        runId: `run_trace_compaction_breaker_${suffix}`,
+        messageId: `message_trace_compaction_breaker_${suffix}`,
+        prompt: `Continue after ${suffix}`,
+      })
+      const handle = await runtime.run({
+        sessionId: harness.session.id,
+        runId: started.run.id,
+      })
+      await collectEvents(handle.events)
+    }
+
+    const summarizeRuns = harness.repository
+      .runs
+      .listBySession(harness.session.id)
+      .filter((run) => run.trigger === "summarize")
+    const thirdTrace = harness.observability.exportRunTrace("run_trace_compaction_breaker_three")
+    const fourthTrace = harness.observability.exportRunTrace("run_trace_compaction_breaker_four")
+
+    expect(summarizeRuns).toHaveLength(3)
+    expect(summarizeRuns.map((run) => run.status)).toEqual(["failed", "failed", "failed"])
+    expect(readEventTypes(thirdTrace?.events ?? [])).toEqual(
+      expect.arrayContaining([
+        "compaction.failed",
+        "compaction.circuit_breaker.triggered",
+      ]),
+    )
+    expect(readEventTypes(fourthTrace?.events ?? [])).not.toContain("compaction.failed")
+    expect(readEventTypes(fourthTrace?.events ?? [])).not.toContain("compaction.completed")
+  })
+
   test("records microcompact telemetry when projection clears older tool results", async () => {
     const harness = await createHarness("trace-microcompact", false)
     seedCompletedRunWithToolResults({

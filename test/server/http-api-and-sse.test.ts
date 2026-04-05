@@ -163,6 +163,57 @@ describe("server HTTP API and SSE", () => {
     ])
   })
 
+  test("hides summarize runs from session snapshots and run listings", async () => {
+    const harness = await createHarness("server-hide-summarize", createTurnProvider([]))
+    const session = harness.repository.sessions.create({
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: harness.now(),
+    })
+    harness.repository.runs.create({
+      id: "run_visible",
+      sessionId: session.id,
+      trigger: "prompt",
+      status: "completed",
+      createdAt: harness.now(),
+    })
+    harness.repository.runs.create({
+      id: "run_summary_hidden",
+      sessionId: session.id,
+      trigger: "summarize",
+      status: "completed",
+      createdAt: harness.now(),
+    })
+
+    const sessionState = await requestJson(harness.server, "GET", `/sessions/${session.id}`)
+    expect(sessionState.status).toBe(200)
+    expect(sessionState.body.data).toMatchObject({
+      latestRun: {
+        id: "run_visible",
+        trigger: "prompt",
+      },
+      activeRun: null,
+    })
+
+    const listedSessions = await requestJson(harness.server, "GET", "/sessions")
+    expect(listedSessions.status).toBe(200)
+    expect(listedSessions.body.data.sessions).toEqual([
+      expect.objectContaining({
+        id: session.id,
+        latestRunStatus: "completed",
+      }),
+    ])
+
+    const listedRuns = await requestJson(harness.server, "GET", `/sessions/${session.id}/runs`)
+    expect(listedRuns.status).toBe(200)
+    expect(listedRuns.body.data.runs).toEqual([
+      expect.objectContaining({
+        id: "run_visible",
+        trigger: "prompt",
+      }),
+    ])
+  })
+
   test("exports a completed run trace over HTTP", async () => {
     const harness = await createHarness("server-http-trace", createTurnProvider([
       async function* () {

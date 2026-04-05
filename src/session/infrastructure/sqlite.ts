@@ -255,6 +255,59 @@ const sessionMigrations = [
       `,
     ],
   },
+  {
+    version: 7,
+    statements: [
+      `
+        CREATE TABLE part_v7 (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          message_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN (${partKindCheck})),
+          sequence INTEGER NOT NULL CHECK (sequence >= 0),
+          text_value TEXT,
+          data_json TEXT,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+          FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+          FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+          UNIQUE (id, message_id, run_id, session_id),
+          UNIQUE (message_id, sequence)
+        )
+      `,
+      `
+        INSERT INTO part_v7 (
+          id,
+          session_id,
+          run_id,
+          message_id,
+          kind,
+          sequence,
+          text_value,
+          data_json,
+          created_at
+        )
+        SELECT
+          id,
+          session_id,
+          run_id,
+          message_id,
+          kind,
+          sequence,
+          text_value,
+          data_json,
+          created_at
+        FROM part
+      `,
+      `
+        DROP TABLE part
+      `,
+      `
+        ALTER TABLE part_v7 RENAME TO part
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {

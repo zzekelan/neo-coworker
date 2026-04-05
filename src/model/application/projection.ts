@@ -50,17 +50,18 @@ export function buildModelTurnInput(input: ModelProjectionInput) {
 }
 
 export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurnProjection {
+  const replayTranscript = sliceTranscriptFromLatestCompactionBoundary(input.transcript)
   const sections = buildModelPromptSections(input)
   const reminderMessages = buildSystemReminderMessages(sections.systemReminderMessages)
   const system = buildStaticSystemPrompt(sections)
   const unmodifiedRequest = {
     system,
-    messages: [...buildTranscriptMessages(input.transcript), ...reminderMessages],
+    messages: [...buildTranscriptMessages(replayTranscript), ...reminderMessages],
     tools: input.tools,
   } satisfies Pick<ModelTurnRequest, "system" | "messages" | "tools">
 
   const microcompact = buildMicrocompactSummary({
-    transcript: input.transcript,
+    transcript: replayTranscript,
     contextWindow: input.contextWindow,
     system,
     tools: input.tools,
@@ -76,13 +77,13 @@ export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurn
   }
 
   return {
-    request: {
-      system,
-      messages: [
-        ...buildTranscriptMessages(input.transcript, {
-          clearedToolResults: microcompact.clearedToolResults,
-        }),
-        ...reminderMessages,
+      request: {
+        system,
+        messages: [
+          ...buildTranscriptMessages(replayTranscript, {
+            clearedToolResults: microcompact.clearedToolResults,
+          }),
+          ...reminderMessages,
       ],
       tools: input.tools,
     },
@@ -125,10 +126,11 @@ export function buildTranscriptMessages(
     clearedToolResults?: ReadonlySet<ModelTranscriptPart>
   } = {},
 ): ModelMessage[] {
+  const replayTranscript = sliceTranscriptFromLatestCompactionBoundary(transcript)
   const messages: ModelMessage[] = []
-  const resolvedToolCallIds = collectResolvedToolCallIds(transcript)
+  const resolvedToolCallIds = collectResolvedToolCallIds(replayTranscript)
 
-  for (const message of transcript) {
+  for (const message of replayTranscript) {
     const role = message.role === "synthetic" ? "assistant" : message.role
 
     if (role === "assistant") {
@@ -155,6 +157,19 @@ export function buildTranscriptMessages(
   }
 
   return messages
+}
+
+function sliceTranscriptFromLatestCompactionBoundary(transcript: ModelTranscriptMessage[]) {
+  let boundaryIndex = -1
+
+  for (let index = transcript.length - 1; index >= 0; index -= 1) {
+    if (transcript[index]?.parts.some((part) => part.kind === "compaction_boundary")) {
+      boundaryIndex = index
+      break
+    }
+  }
+
+  return boundaryIndex < 0 ? transcript : transcript.slice(boundaryIndex)
 }
 
 function buildAssistantMessages(
@@ -343,7 +358,7 @@ function buildSystemReminderMessages(messages: string[]): ModelMessage[] {
 function buildSystemReminderTexts(
   input: Pick<ModelProjectionInput, "skillCatalog" | "activeSkills" | "systemReminders">,
 ) {
-  if (input.systemReminders && input.systemReminders.length > 0) {
+  if (input.systemReminders !== undefined) {
     return input.systemReminders.filter((message): message is string => message.trim().length > 0)
   }
 

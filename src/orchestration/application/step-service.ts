@@ -7,6 +7,7 @@ import type { OrchestrationModelPort } from "./ports/model"
 import type { OrchestrationContextWindowPort } from "./ports/context-window"
 import type { OrchestrationSkillPort } from "./ports/skill"
 import type { OrchestrationToolPort } from "./ports/tool"
+import type { OrchestrationRuntimeObserverPort } from "./ports/runtime-observer"
 import type { RuntimeEvent } from "./event"
 import {
   buildContextUsageSnapshot,
@@ -21,6 +22,7 @@ type CreateOrchestrationStepServiceInput = {
   model: OrchestrationModelPort
   contextWindow: OrchestrationContextWindowPort
   skill: OrchestrationSkillPort
+  runtimeObserver?: OrchestrationRuntimeObserverPort
   now?: () => number
 }
 
@@ -50,6 +52,40 @@ type AssistantError = {
 }
 
 const MODEL_REQUEST_MAX_ATTEMPTS = 3
+const AUTO_COMPACTION_TOKEN_BUFFER = 13_000
+const AUTO_COMPACTION_FAILURE_LIMIT = 3
+const SUMMARIZE_RUN_CREATED_AT_OFFSET = 1
+const SUMMARY_SECTION_TITLES = [
+  "Primary Request",
+  "Key Concepts",
+  "Files & Code",
+  "Errors & Fixes",
+  "Problem Solving",
+  "User Messages",
+  "Pending Tasks",
+  "Current Work",
+  "Next Steps",
+] as const
+const COMPACTION_SUMMARY_PROMPT = [
+  "Summarize the conversation so the next model turn can continue the same work after context compaction.",
+  "Return plain text with exactly these nine section headings, in this order:",
+  ...SUMMARY_SECTION_TITLES.map((title) => `- ${title}`),
+  "Preserve concrete user intent, decisions, file paths, code changes, failures, pending work, and the current next action.",
+  "Do not include an <analysis> block in the final answer.",
+].join("\n")
+
+type CompactionMode = "auto" | "manual"
+
+type AutoCompactionResult =
+  | {
+      compacted: false
+    }
+  | {
+      compacted: true
+      boundaryPartId: string
+      summarizeRunId: string
+      tokensBefore: number
+    }
 
 function isAbortError(error: unknown, signal: AbortSignal) {
   return signal.aborted || (error instanceof Error && error.name === "AbortError")
@@ -242,10 +278,32 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           error: string
         }
     > {
-      const transcript = input.session.listTranscript(stepInput.sessionId)
+      const contextWindow = input.contextWindow.getContextWindow() || DEFAULT_CONTEXT_WINDOW_SIZE
+      let transcript = input.session.listTranscript(stepInput.sessionId)
       const run = input.session.getRun(stepInput.runId)
-      const turnKey = createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId))
       const skillCatalog = await input.skill.listCatalog(stepInput.workspaceRoot)
+      const availableTools = stepInput.tools.list()
+      const autoCompaction = await maybeAutoCompact({
+        session: input.session,
+        model: input.model,
+        runtimeObserver: input.runtimeObserver,
+        skillReminders,
+        contextWindow,
+        sessionId: stepInput.sessionId,
+        run,
+        transcript,
+        systemPrompt: stepInput.systemPrompt,
+        skillCatalog,
+        tools: availableTools,
+        signal: stepInput.signal,
+        emit: stepInput.emit,
+        now,
+      })
+      if (autoCompaction.compacted) {
+        skillReminders.resetAfterCompaction(stepInput.sessionId)
+        transcript = input.session.listTranscript(stepInput.sessionId)
+      }
+
       const exposedCatalogSkillNames = skillReminders.exposeCatalog(stepInput.sessionId, skillCatalog)
       if (exposedCatalogSkillNames.length > 0) {
         stepInput.emit({
@@ -280,6 +338,40 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       skillReminders.injectActiveSkills(stepInput.sessionId, loadedPromptSkills)
       const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, run.activeSkills)
       const systemReminders = skillReminders.buildSystemReminders(stepInput.sessionId)
+      if (autoCompaction.compacted) {
+        const tokensAfter = input.model.projectTurn?.({
+          systemPrompt: stepInput.systemPrompt,
+          skillCatalog,
+          activeSkills,
+          systemReminders,
+          contextWindow,
+          tools: availableTools,
+          transcript,
+          sessionId: stepInput.sessionId,
+          runId: stepInput.runId,
+          turnKey: createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId)),
+        }).inputTokens
+        const compressionRatio = calculateCompressionRatio(autoCompaction.tokensBefore, tokensAfter ?? 0)
+        input.session.updateMessagePart({
+          partId: autoCompaction.boundaryPartId,
+          data: {
+            tokensBefore: autoCompaction.tokensBefore,
+            tokensAfter: tokensAfter ?? 0,
+            compressionRatio,
+            summarizeRunId: autoCompaction.summarizeRunId,
+            trigger: "auto",
+          },
+        })
+        stepInput.emit({
+          type: "compaction.completed",
+          summarizeRunId: autoCompaction.summarizeRunId,
+          tokensBefore: autoCompaction.tokensBefore,
+          tokensAfter: tokensAfter ?? 0,
+          compressionRatio,
+        })
+      }
+
+      const turnKey = createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId))
       const assistantTurn = createAssistantTurnRecorder({
         session: input.session,
         sessionId: stepInput.sessionId,
@@ -304,8 +396,8 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             skillCatalog,
             activeSkills,
             systemReminders,
-            contextWindow: input.contextWindow.getContextWindow() || DEFAULT_CONTEXT_WINDOW_SIZE,
-            tools: stepInput.tools.list(),
+            contextWindow,
+            tools: availableTools,
             transcript,
             sessionId: stepInput.sessionId,
             runId: stepInput.runId,
@@ -344,7 +436,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
               })
               const contextUsage = buildContextUsageSnapshot({
                 contextTokens: item.inputTokens + item.outputTokens,
-                contextWindow: input.contextWindow.getContextWindow() || DEFAULT_CONTEXT_WINDOW_SIZE,
+                contextWindow,
                 source: item.source,
               })
               stepInput.emit({
@@ -622,4 +714,449 @@ function readActiveTextPart(part: OrchestrationPartRecord) {
     id: part.id,
     text: part.text ?? "",
   }
+}
+
+async function maybeAutoCompact(input: {
+  session: OrchestrationSessionPort
+  model: OrchestrationModelPort
+  runtimeObserver?: OrchestrationRuntimeObserverPort
+  skillReminders: ReturnType<typeof createSkillReminderTracker>
+  contextWindow: number
+  sessionId: string
+  run: ReturnType<OrchestrationSessionPort["getRun"]>
+  transcript: OrchestrationTranscriptMessage[]
+  systemPrompt: string
+  skillCatalog: Awaited<ReturnType<OrchestrationSkillPort["listCatalog"]>>
+  tools: ReturnType<OrchestrationToolPort["list"]>
+  signal: AbortSignal
+  emit: OrchestrationEventEmitter
+  now: () => number
+}): Promise<AutoCompactionResult> {
+  if (!input.model.projectTurn) {
+    return { compacted: false }
+  }
+
+  const projected = input.model.projectTurn({
+    systemPrompt: input.systemPrompt,
+    skillCatalog: input.skillCatalog,
+    activeSkills: input.skillReminders.resolveActiveSkills(input.sessionId, input.run.activeSkills),
+    systemReminders: input.skillReminders.buildSystemReminders(input.sessionId),
+    contextWindow: input.contextWindow,
+    tools: input.tools,
+    transcript: input.transcript,
+    sessionId: input.sessionId,
+    runId: input.run.id,
+    turnKey: createTurnKey(input.run.id, getNextMessageSequence(input.transcript, input.run.id)),
+  })
+
+  if (!shouldAutoCompact(projected.inputTokens, input.contextWindow)) {
+    return { compacted: false }
+  }
+
+  const breakerState = readAutoCompactionState(input.transcript)
+  if (breakerState.open) {
+    return { compacted: false }
+  }
+
+  const summarizeRunId = `run_${crypto.randomUUID()}`
+  const summarizeStartedAt = input.now()
+  recordObservedRuntimeEvent({
+    runtimeObserver: input.runtimeObserver,
+    sessionId: input.sessionId,
+    runId: summarizeRunId,
+    occurredAt: summarizeStartedAt,
+    event: {
+      type: "run.started",
+      runId: summarizeRunId,
+    },
+  })
+
+  try {
+    const summary = await summarizeTranscript({
+      model: input.model,
+      contextWindow: input.contextWindow,
+      sessionId: input.sessionId,
+      summarizeRunId,
+      transcript: input.transcript,
+      signal: input.signal,
+    })
+    const summarizeFinishedAt = input.now()
+    input.session.createRun({
+      id: summarizeRunId,
+      sessionId: input.sessionId,
+      trigger: "summarize",
+      status: "completed",
+      createdAt: buildSummarizeRunCreatedAt(input.run.createdAt),
+      startedAt: summarizeStartedAt,
+      finishedAt: summarizeFinishedAt,
+      activeSkills: input.run.activeSkills,
+      inputTokens: summary.usage.inputTokens,
+      outputTokens: summary.usage.outputTokens,
+      tokenUsageSource: summary.usage.tokenUsageSource,
+    })
+    recordObservedRuntimeEvent({
+      runtimeObserver: input.runtimeObserver,
+      sessionId: input.sessionId,
+      runId: summarizeRunId,
+      occurredAt: summarizeFinishedAt,
+      event: {
+        type: "run.completed",
+        runId: summarizeRunId,
+      },
+    })
+
+    const syntheticMessage = appendSyntheticMessageParts({
+      session: input.session,
+      sessionId: input.sessionId,
+      runId: input.run.id,
+      now: input.now,
+      parts: [
+        {
+          kind: "compaction_boundary",
+          data: {
+            tokensBefore: projected.inputTokens,
+            tokensAfter: 0,
+            compressionRatio: 0,
+            summarizeRunId,
+            trigger: "auto",
+          },
+        },
+        {
+          kind: "text",
+          text: summary.text,
+        },
+      ],
+    })
+
+    return {
+      compacted: true,
+      boundaryPartId: syntheticMessage.parts[0]!.id,
+      summarizeRunId,
+      tokensBefore: projected.inputTokens,
+    }
+  } catch (error) {
+    if (isAbortError(error, input.signal)) {
+      throw error
+    }
+
+    if (isDetachedError(error)) {
+      throw error
+    }
+
+    const errorText = getErrorMessage(error)
+    const summarizeFinishedAt = input.now()
+    input.session.createRun({
+      id: summarizeRunId,
+      sessionId: input.sessionId,
+      trigger: "summarize",
+      status: "failed",
+      createdAt: buildSummarizeRunCreatedAt(input.run.createdAt),
+      startedAt: summarizeStartedAt,
+      finishedAt: summarizeFinishedAt,
+      errorText,
+      activeSkills: input.run.activeSkills,
+    })
+    recordObservedRuntimeEvent({
+      runtimeObserver: input.runtimeObserver,
+      sessionId: input.sessionId,
+      runId: summarizeRunId,
+      occurredAt: summarizeFinishedAt,
+      event: {
+        type: "run.failed",
+        runId: summarizeRunId,
+        error: errorText,
+      },
+    })
+
+    const attemptCount = breakerState.consecutiveFailures + 1
+    appendSyntheticMessageParts({
+      session: input.session,
+      sessionId: input.sessionId,
+      runId: input.run.id,
+      now: input.now,
+      parts: [
+        {
+          kind: "error",
+          text: `Automatic compaction failed: ${errorText}`,
+          data: {
+            source: "compaction",
+            eventType: "compaction.failed",
+            trigger: "auto",
+            error: errorText,
+            attemptCount,
+            summarizeRunId,
+          },
+        },
+      ],
+    })
+    input.emit({
+      type: "compaction.failed",
+      error: errorText,
+      attemptCount,
+      summarizeRunId,
+    })
+
+    if (attemptCount >= AUTO_COMPACTION_FAILURE_LIMIT) {
+      const breakerText =
+        "⚠️ Automatic compaction has been paused. Run /compact successfully to re-enable it."
+      appendSyntheticMessageParts({
+        session: input.session,
+        sessionId: input.sessionId,
+        runId: input.run.id,
+        now: input.now,
+        parts: [
+          {
+            kind: "error",
+            text: breakerText,
+            data: {
+              source: "compaction",
+              eventType: "compaction.circuit_breaker.triggered",
+              consecutiveFailures: attemptCount,
+              lastError: errorText,
+              resolution: "manual_compact",
+            },
+          },
+        ],
+      })
+      input.emit({
+        type: "compaction.circuit_breaker.triggered",
+        consecutiveFailures: attemptCount,
+        lastError: errorText,
+        resolution: "manual_compact",
+      })
+    }
+
+    return {
+      compacted: false,
+    }
+  }
+}
+
+async function summarizeTranscript(input: {
+  model: OrchestrationModelPort
+  contextWindow: number
+  sessionId: string
+  summarizeRunId: string
+  transcript: OrchestrationTranscriptMessage[]
+  signal: AbortSignal
+}) {
+  let summaryText = ""
+  let usage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    tokenUsageSource: null as "provider" | "estimated" | null,
+  }
+
+  const summaryTranscript = [
+    ...input.transcript,
+    {
+      runId: input.summarizeRunId,
+      role: "user" as const,
+      sequence: Number.MAX_SAFE_INTEGER,
+      parts: [
+        {
+          kind: "text",
+          text: COMPACTION_SUMMARY_PROMPT,
+        },
+      ],
+    },
+  ]
+
+  for await (const event of input.model.streamTurn({
+    systemPrompt:
+      "You compress conversation state into a compact continuation summary for the next model turn.",
+    skillCatalog: [],
+    activeSkills: [],
+    systemReminders: [],
+    contextWindow: input.contextWindow,
+    tools: [],
+    transcript: summaryTranscript,
+    sessionId: input.sessionId,
+    runId: input.summarizeRunId,
+    turnKey: `${input.summarizeRunId}:turn_0`,
+    signal: input.signal,
+  })) {
+    if (event.type === "text.delta") {
+      summaryText += event.text
+      continue
+    }
+
+    if (event.type === "usage") {
+      usage = {
+        inputTokens: event.inputTokens,
+        outputTokens: event.outputTokens,
+        tokenUsageSource: event.source,
+      }
+      continue
+    }
+
+    throw new Error(`Summarize run requested unexpected tool ${event.name}`)
+  }
+
+  const sanitizedText = stripAnalysisBlocks(summaryText).trim()
+  if (sanitizedText.length === 0) {
+    throw new Error("Summarize run produced an empty summary")
+  }
+
+  return {
+    text: sanitizedText,
+    usage,
+  }
+}
+
+function shouldAutoCompact(inputTokens: number, contextWindow: number) {
+  if (contextWindow <= AUTO_COMPACTION_TOKEN_BUFFER) {
+    return false
+  }
+
+  return inputTokens > contextWindow - AUTO_COMPACTION_TOKEN_BUFFER
+}
+
+function buildSummarizeRunCreatedAt(parentRunCreatedAt: number) {
+  return Math.max(0, parentRunCreatedAt - SUMMARIZE_RUN_CREATED_AT_OFFSET)
+}
+
+function calculateCompressionRatio(tokensBefore: number, tokensAfter: number) {
+  if (tokensBefore <= 0) {
+    return 0
+  }
+
+  return Math.max(0, Number(((tokensBefore - tokensAfter) / tokensBefore).toFixed(4)))
+}
+
+function stripAnalysisBlocks(text: string) {
+  return text.replace(/<analysis>[\s\S]*?<\/analysis>/gi, "")
+}
+
+function appendSyntheticMessageParts(input: {
+  session: OrchestrationSessionPort
+  sessionId: string
+  runId: string
+  now: () => number
+  parts: Array<{
+    kind: string
+    text?: string | null
+    data?: unknown
+  }>
+}) {
+  const sequence = getNextMessageSequence(input.session.listTranscript(input.sessionId), input.runId)
+  const message = input.session.createSyntheticMessage({
+    sessionId: input.sessionId,
+    runId: input.runId,
+    sequence,
+    createdAt: input.now(),
+  })
+  const createdParts = input.parts.map((part, index) =>
+    input.session.createMessagePart({
+      sessionId: input.sessionId,
+      runId: input.runId,
+      messageId: message.id,
+      kind: part.kind,
+      sequence: index,
+      text: part.text,
+      data: part.data,
+      createdAt: input.now(),
+    }),
+  )
+
+  return {
+    message,
+    parts: createdParts,
+  }
+}
+
+function readAutoCompactionState(transcript: OrchestrationTranscriptMessage[]) {
+  let consecutiveFailures = 0
+  let lastError: string | null = null
+
+  for (let messageIndex = transcript.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = transcript[messageIndex]
+    if (!message) {
+      continue
+    }
+
+    for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+      const part = message.parts[partIndex]
+      if (!part) {
+        continue
+      }
+
+      if (part.kind === "compaction_boundary") {
+        return {
+          open: false,
+          consecutiveFailures: 0,
+          lastError: null,
+        }
+      }
+
+      if (part.kind !== "error") {
+        continue
+      }
+
+      const data = readObject(part.data)
+      if (readString(data, "source") !== "compaction") {
+        continue
+      }
+
+      const eventType = readString(data, "eventType")
+      if (eventType === "compaction.circuit_breaker.triggered") {
+        return {
+          open: true,
+          consecutiveFailures: Math.max(
+            consecutiveFailures,
+            readNumber(data, "consecutiveFailures") ?? AUTO_COMPACTION_FAILURE_LIMIT,
+          ),
+          lastError: readString(data, "lastError") ?? part.text ?? lastError,
+        }
+      }
+
+      if (
+        eventType === "compaction.failed" &&
+        readString(data, "trigger") === "auto"
+      ) {
+        consecutiveFailures += 1
+        lastError = readString(data, "error") ?? part.text ?? lastError
+        if (consecutiveFailures >= AUTO_COMPACTION_FAILURE_LIMIT) {
+          return {
+            open: true,
+            consecutiveFailures,
+            lastError,
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    open: false,
+    consecutiveFailures,
+    lastError,
+  }
+}
+
+function recordObservedRuntimeEvent(input: {
+  runtimeObserver?: OrchestrationRuntimeObserverPort
+  sessionId: string
+  runId: string
+  event: RuntimeEvent
+  occurredAt: number
+}) {
+  input.runtimeObserver?.recordRuntimeEvent?.({
+    sessionId: input.sessionId,
+    runId: input.runId,
+    event: input.event,
+    occurredAt: input.occurredAt,
+  })
+}
+
+function readObject(value: unknown) {
+  return value != null && typeof value === "object" ? (value as Record<string, unknown>) : null
+}
+
+function readString(value: Record<string, unknown> | null, key: string) {
+  return typeof value?.[key] === "string" ? (value[key] as string) : null
+}
+
+function readNumber(value: Record<string, unknown> | null, key: string) {
+  return typeof value?.[key] === "number" ? (value[key] as number) : null
 }

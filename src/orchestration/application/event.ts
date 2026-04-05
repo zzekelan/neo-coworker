@@ -54,6 +54,25 @@ export type OrchestrationRuntimeEvent =
       source: "provider" | "estimated" | null
     }
   | {
+      type: "compaction.completed"
+      summarizeRunId: string
+      tokensBefore: number
+      tokensAfter: number
+      compressionRatio: number
+    }
+  | {
+      type: "compaction.failed"
+      error: string
+      attemptCount: number
+      summarizeRunId: string
+    }
+  | {
+      type: "compaction.circuit_breaker.triggered"
+      consecutiveFailures: number
+      lastError: string
+      resolution: "manual_compact"
+    }
+  | {
       type: "permission.requested"
       requestId: string
       toolName: string

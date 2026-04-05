@@ -38,5 +38,8 @@ export type OrchestrationModelEvent =
     }
 
 export type OrchestrationModelPort = {
+  projectTurn?(request: Omit<OrchestrationModelTurnRequest, "signal">): {
+    inputTokens: number
+  }
   streamTurn(request: OrchestrationModelTurnRequest): AsyncIterable<OrchestrationModelEvent>
 }

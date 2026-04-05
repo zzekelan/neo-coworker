@@ -157,8 +157,8 @@ export function buildSessionSnapshot(
   } = {},
 ): SessionSnapshot {
   const session = repository.sessions.get(sessionId)
-  const latestRun = repository.runs.getLatestBySession(sessionId)
-  const activeRun = repository.runs.getActiveBySession(sessionId)
+  const latestRun = getLatestVisibleRunBySession(repository, sessionId)
+  const activeRun = getVisibleRun(repository.runs.getActiveBySession(sessionId))
 
   return {
     session: {
@@ -170,6 +170,28 @@ export function buildSessionSnapshot(
     contextUsage: input.contextUsage ?? null,
     status: activeRun ? "busy" : "idle",
   }
+}
+
+function getVisibleRun(run: StoredRun | null) {
+  return run?.trigger === "summarize" ? null : run
+}
+
+function getLatestVisibleRunBySession(
+  repository: Pick<StorageRepository, "runs">,
+  sessionId: string,
+) {
+  return repository
+    .runs
+    .listBySession(sessionId)
+    .filter((run) => run.trigger !== "summarize")
+    .at(-1) ?? null
+}
+
+function listVisibleRunsBySession(
+  repository: Pick<StorageRepository, "runs">,
+  sessionId: string,
+) {
+  return repository.runs.listBySession(sessionId).filter((run) => run.trigger !== "summarize")
 }
 
 export function createServerEventBus(input: { now?: () => number } = {}) {
@@ -254,6 +276,10 @@ export function createObservedRepository(input: {
   }
 
   function publishRunCreated(run: StoredRun) {
+    if (run.trigger === "summarize") {
+      return
+    }
+
     events.publish({
       type: "run.created",
       run,
@@ -262,6 +288,10 @@ export function createObservedRepository(input: {
   }
 
   function publishRunUpdated(run: StoredRun) {
+    if (run.trigger === "summarize") {
+      return
+    }
+
     events.publish({
       type: "run.updated",
       run,
@@ -564,7 +594,7 @@ export function createServerApp(input: {
       list() {
         return repository.sessions.list().map((session) => ({
           ...session,
-          latestRunStatus: repository.runs.getLatestBySession(session.id)?.status ?? null,
+          latestRunStatus: getLatestVisibleRunBySession(repository, session.id)?.status ?? null,
         }))
       },
       get(sessionId: string) {
@@ -588,7 +618,7 @@ export function createServerApp(input: {
         })
         return {
           ...updated,
-          latestRunStatus: repository.runs.getLatestBySession(updated.id)?.status ?? null,
+          latestRunStatus: getLatestVisibleRunBySession(repository, updated.id)?.status ?? null,
         }
       },
       transcript(sessionId: string) {
@@ -617,7 +647,7 @@ export function createServerApp(input: {
     runs: {
       start: startRun,
       list(sessionId: string) {
-        return repository.runs.listBySession(sessionId)
+        return listVisibleRunsBySession(repository, sessionId)
       },
       get(runId: string) {
         const run = repository.runs.get(runId)

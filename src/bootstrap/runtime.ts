@@ -290,11 +290,36 @@ function createSessionPort(input: {
     listTranscript(sessionId) {
       return input.repository.messages.listSessionTranscript(sessionId)
     },
+    createRun(run) {
+      return input.repository.runs.create({
+        id: run.id,
+        sessionId: run.sessionId,
+        trigger: run.trigger,
+        status: run.status,
+        createdAt: run.createdAt,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt,
+        errorText: run.errorText,
+        activeSkills: run.activeSkills,
+        inputTokens: run.inputTokens,
+        outputTokens: run.outputTokens,
+        tokenUsageSource: run.tokenUsageSource,
+      })
+    },
     createAssistantMessage(message) {
       return input.repository.messages.create({
         sessionId: message.sessionId,
         runId: message.runId,
         role: "assistant",
+        sequence: message.sequence,
+        createdAt: message.createdAt,
+      })
+    },
+    createSyntheticMessage(message) {
+      return input.repository.messages.create({
+        sessionId: message.sessionId,
+        runId: message.runId,
+        role: "synthetic",
         sequence: message.sequence,
         createdAt: message.createdAt,
       })

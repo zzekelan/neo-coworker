@@ -256,4 +256,96 @@ describe("context builder", () => {
       },
     ])
   })
+
+  test("replays only from the latest compaction boundary message", () => {
+    const messages = buildTranscriptMessages([
+      {
+        id: "message_old",
+        sessionId: "session_1",
+        runId: "run_old",
+        role: "user",
+        sequence: 0,
+        createdAt: 1,
+        parts: [
+          {
+            id: "part_old",
+            sessionId: "session_1",
+            runId: "run_old",
+            messageId: "message_old",
+            kind: "text",
+            sequence: 0,
+            text: "Old context that should be dropped",
+            data: null,
+            createdAt: 2,
+          },
+        ],
+      },
+      {
+        id: "message_boundary",
+        sessionId: "session_1",
+        runId: "run_active",
+        role: "synthetic",
+        sequence: 1,
+        createdAt: 3,
+        parts: [
+          {
+            id: "part_boundary",
+            sessionId: "session_1",
+            runId: "run_active",
+            messageId: "message_boundary",
+            kind: "compaction_boundary",
+            sequence: 0,
+            text: null,
+            data: {
+              summarizeRunId: "run_summary",
+            },
+            createdAt: 4,
+          },
+          {
+            id: "part_summary",
+            sessionId: "session_1",
+            runId: "run_active",
+            messageId: "message_boundary",
+            kind: "text",
+            sequence: 1,
+            text: "Primary Request\nKeep moving forward.",
+            data: null,
+            createdAt: 5,
+          },
+        ],
+      },
+      {
+        id: "message_new",
+        sessionId: "session_1",
+        runId: "run_active",
+        role: "user",
+        sequence: 2,
+        createdAt: 6,
+        parts: [
+          {
+            id: "part_new",
+            sessionId: "session_1",
+            runId: "run_active",
+            messageId: "message_new",
+            kind: "text",
+            sequence: 0,
+            text: "What changed after compaction?",
+            data: null,
+            createdAt: 7,
+          },
+        ],
+      },
+    ])
+
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "Primary Request\nKeep moving forward." }],
+      },
+      {
+        role: "user",
+        parts: [{ type: "text", text: "What changed after compaction?" }],
+      },
+    ])
+  })
 })

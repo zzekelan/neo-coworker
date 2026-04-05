@@ -76,6 +76,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     model: input.model,
     contextWindow,
     skill: input.skill,
+    runtimeObserver: input.runtimeObserver,
     now,
   })
 
