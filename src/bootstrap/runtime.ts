@@ -43,6 +43,7 @@ import type {
 import {
   createOrchestrationActiveRunRegistry,
   createOrchestrationRuntimeApi,
+  DEFAULT_CONTEXT_WINDOW_SIZE,
   resolvePermissionPolicy,
   type OrchestrationActiveRunRegistry,
   type RunHandle,
@@ -68,6 +69,7 @@ type RuntimeInput = {
   >
   activeRuns?: OrchestrationActiveRunRegistry
   systemPrompt?: string
+  contextWindow?: number
   now?: () => number
 }
 
@@ -100,6 +102,11 @@ export function createRuntime(input: RuntimeInput) {
 
   return createOrchestrationRuntimeApi({
     model: input.provider,
+    contextWindow: {
+      getContextWindow() {
+        return input.contextWindow ?? DEFAULT_CONTEXT_WINDOW_SIZE
+      },
+    },
     session: createSessionPort({
       repository: input.repository,
       session: sessionProvider.runs,

@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import type {
+  DesktopContextUsage,
   DesktopPermissionRequest,
   DesktopSession,
   DesktopSessionSnapshot,
@@ -39,6 +40,7 @@ interface ChatAreaProps {
   skills: DesktopSkillCatalogEntry[]
   transcript: DesktopTranscriptMessage[]
   permissionRequests: DesktopPermissionRequest[]
+  contextUsage: DesktopContextUsage | null
   onSendMessage: (msg: string) => void | Promise<unknown>
   onCancelRun: () => void | Promise<unknown>
   onReplyPermission: (id: string, decision: "allow" | "deny") => boolean | Promise<boolean>
@@ -57,6 +59,7 @@ export function ChatArea({
   skills,
   transcript,
   permissionRequests,
+  contextUsage,
   onSendMessage,
   onCancelRun,
   onReplyPermission,
@@ -308,6 +311,10 @@ export function ChatArea({
             {sessionSummary.title || "Untitled Session"}
           </h2>
         </div>
+
+        {contextUsage ? (
+          <ContextBudgetBar usage={contextUsage} />
+        ) : null}
       </div>
 
       <div
@@ -505,6 +512,46 @@ export function ChatArea({
 
 function isNearTranscriptBottom(element: HTMLDivElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
+}
+
+function ContextBudgetBar(input: { usage: DesktopContextUsage }) {
+  const text = useDesktopText()
+  const percent = Math.max(0, Math.min(100, Math.round(input.usage.utilizationPercent)))
+  const isHigh = percent >= 80
+  const isCritical = percent >= 95
+
+  return (
+    <div
+      className="flex items-center gap-2.5"
+      title={`${input.usage.contextTokens.toLocaleString()} / ${input.usage.contextWindow.toLocaleString()} tokens`}
+    >
+      <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-zinc-100">
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 rounded-full transition-all duration-500 ease-out",
+            isCritical
+              ? "bg-rose-500"
+              : isHigh
+                ? "bg-amber-500"
+                : "bg-zinc-400",
+          )}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <span
+        className={cn(
+          "whitespace-nowrap text-[11px] font-medium tabular-nums",
+          isCritical
+            ? "text-rose-600"
+            : isHigh
+              ? "text-amber-600"
+              : "text-zinc-400",
+        )}
+      >
+        {text.chat.contextUsed(percent)}
+      </span>
+    </div>
+  )
 }
 
 function EmptyChatState(input: {

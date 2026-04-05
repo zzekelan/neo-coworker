@@ -23,6 +23,7 @@ export function renderServerEvent(state: CliRenderState, event: ServerEvent) {
     case "heartbeat":
     case "session.created":
     case "session.updated":
+    case "context.usage.updated":
     case "permission.updated":
     case "runtime.error":
     case "run.created":

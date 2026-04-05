@@ -126,6 +126,17 @@ describe("agent loop", () => {
     })
     expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Summary complete." }])
     expect(events.map((event) => event.type)).toContain("tool.call.completed")
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "context.usage.updated",
+        sessionId: harness.session.id,
+        runId: started.run.id,
+        contextTokens: expect.any(Number),
+        contextWindow: 128_000,
+        utilizationPercent: expect.any(Number),
+        source: "estimated",
+      }),
+    )
     expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
     expect(harness.repository.runs.get(started.run.id)).toMatchObject({
       status: "completed",

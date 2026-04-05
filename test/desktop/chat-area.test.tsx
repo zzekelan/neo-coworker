@@ -55,4 +55,20 @@ describe("desktop chat area", () => {
     expect(source).toContain("!event.nativeEvent.isComposing")
     expect(source).toContain("disabled={!input.trim() || isComposing || isSubmittingMessage}")
   })
+
+  test("renders a context budget bar with adaptive severity when usage data is present", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("contextUsage: DesktopContextUsage | null")
+    expect(source).toContain("ContextBudgetBar")
+    expect(source).toContain("{contextUsage ? (")
+    expect(source).toContain("const percent = Math.max(0, Math.min(100, Math.round(input.usage.utilizationPercent)))")
+    expect(source).toContain("const isHigh = percent >= 80")
+    expect(source).toContain("const isCritical = percent >= 95")
+    expect(source).toContain("bg-rose-500")
+    expect(source).toContain("bg-amber-500")
+    expect(source).toContain("bg-zinc-400")
+    expect(source).toContain("text.chat.contextUsed(percent)")
+    expect(source).toContain("style={{ width: `${percent}%` }}")
+  })
 })

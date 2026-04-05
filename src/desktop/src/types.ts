@@ -99,10 +99,18 @@ export type DesktopPermissionRequest = {
   resolvedAt: number | null
 }
 
+export type DesktopContextUsageSnapshot = {
+  contextTokens: number
+  contextWindow: number
+  utilizationPercent: number
+  source: "provider" | "estimated" | null
+}
+
 export type DesktopSessionSnapshot = {
   session: DesktopSessionSummary
   latestRun: DesktopRun | null
   activeRun: DesktopRun | null
+  contextUsage: DesktopContextUsageSnapshot | null
   status: "idle" | "busy"
 }
 
@@ -168,6 +176,18 @@ export type RuntimeErrorEvent = {
   error: string
 }
 
+export type ContextUsageEvent = {
+  id: string
+  time: number
+  type: "context.usage.updated"
+  sessionId: string
+  runId: string
+  contextTokens: number
+  contextWindow: number
+  utilizationPercent: number
+  source: "provider" | "estimated" | null
+}
+
 export type DesktopServerEvent =
   | HeartbeatEvent
   | SessionEvent
@@ -177,6 +197,7 @@ export type DesktopServerEvent =
   | PartEvent
   | PermissionEvent
   | RuntimeErrorEvent
+  | ContextUsageEvent
 
 export type ConnectionState = "offline" | "connecting" | "online" | "error"
 

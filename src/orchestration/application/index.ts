@@ -1,4 +1,5 @@
 export type { OrchestrationModelEvent, OrchestrationModelPort, OrchestrationModelTurnRequest } from "./ports/model"
+export type { OrchestrationContextWindowPort } from "./ports/context-window"
 export type {
   OrchestrationPendingPermissionRequest,
   OrchestrationPermissionCoordinator,
@@ -57,3 +58,9 @@ export {
 export type { OrchestrationRuntimeEvent, RuntimeEvent } from "./event"
 export { OrchestrationRunSchema, RunSchema } from "./run"
 export type { OrchestrationRun, Run } from "./run"
+export {
+  buildContextUsageSnapshot,
+  buildEmptyContextUsageSnapshot,
+  DEFAULT_CONTEXT_WINDOW_SIZE,
+} from "./context-usage"
+export type { ContextUsageSnapshot, ContextUsageSource } from "./context-usage"

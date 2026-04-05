@@ -45,6 +45,15 @@ export type OrchestrationRuntimeEvent =
       error: string
     }
   | {
+      type: "context.usage.updated"
+      sessionId: string
+      runId: string
+      contextTokens: number
+      contextWindow: number
+      utilizationPercent: number
+      source: "provider" | "estimated" | null
+    }
+  | {
       type: "permission.requested"
       requestId: string
       toolName: string

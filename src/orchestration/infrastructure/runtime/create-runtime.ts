@@ -1,6 +1,8 @@
 import { createOrchestrationStepService } from "../../application/step-service"
+import { DEFAULT_CONTEXT_WINDOW_SIZE } from "../../application/context-usage"
 import type { RuntimeEvent } from "../../application/event"
 import type { OrchestrationRunHandle } from "../../application/handle"
+import type { OrchestrationContextWindowPort } from "../../application/ports/context-window"
 import type { OrchestrationModelPort } from "../../application/ports/model"
 import type {
   OrchestrationPermissionPort,
@@ -40,6 +42,7 @@ export type CreateOrchestrationRuntimeApiInput = {
   model: OrchestrationModelPort
   session: OrchestrationSessionPort
   skill: OrchestrationSkillPort
+  contextWindow?: OrchestrationContextWindowPort
   permission: OrchestrationPermissionPort
   tools: OrchestrationToolPortFactory
   activeRuns: OrchestrationActiveRunRegistry
@@ -63,9 +66,15 @@ type PendingToolCallSnapshot = {
 export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeApiInput) {
   const now = input.now ?? Date.now
   const activeRuns = input.activeRuns
+  const contextWindow = input.contextWindow ?? {
+    getContextWindow() {
+      return DEFAULT_CONTEXT_WINDOW_SIZE
+    },
+  }
   const stepService = createOrchestrationStepService({
     session: input.session,
     model: input.model,
+    contextWindow,
     skill: input.skill,
     now,
   })

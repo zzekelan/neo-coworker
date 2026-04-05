@@ -87,6 +87,7 @@ describe("runtime observability", () => {
       "tool.executed",
       "tool.call.completed",
       "model.turn.usage",
+      "context.usage.updated",
       "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
@@ -94,6 +95,7 @@ describe("runtime observability", () => {
       "message.started",
       "message.delta",
       "model.turn.usage",
+      "context.usage.updated",
       "run.completed",
     ])
   })
@@ -212,6 +214,7 @@ describe("runtime observability", () => {
       "tool.executed",
       "tool.call.completed",
       "model.turn.usage",
+      "context.usage.updated",
       "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
@@ -219,6 +222,7 @@ describe("runtime observability", () => {
       "message.started",
       "message.delta",
       "model.turn.usage",
+      "context.usage.updated",
       "run.completed",
     ])
 

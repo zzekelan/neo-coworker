@@ -29,6 +29,7 @@ export default function App() {
     setSessionActiveSkills,
     errorMessage,
     skillWarningMessage,
+    contextUsage,
     refreshAppState,
   } = useAgent()
   const desktopSettings = useDesktopSettings()
@@ -87,6 +88,7 @@ export default function App() {
             skills={skills}
             transcript={transcript}
             permissionRequests={permissionRequests}
+            contextUsage={contextUsage}
             onSendMessage={sendMessage}
             onCancelRun={cancelRun}
             onReplyPermission={replyPermission}

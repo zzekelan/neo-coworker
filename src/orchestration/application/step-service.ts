@@ -4,15 +4,21 @@ import type {
   OrchestrationTranscriptMessage,
 } from "./ports/session"
 import type { OrchestrationModelPort } from "./ports/model"
+import type { OrchestrationContextWindowPort } from "./ports/context-window"
 import type { OrchestrationSkillPort } from "./ports/skill"
 import type { OrchestrationToolPort } from "./ports/tool"
 import type { RuntimeEvent } from "./event"
+import {
+  buildContextUsageSnapshot,
+  DEFAULT_CONTEXT_WINDOW_SIZE,
+} from "./context-usage"
 
 type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 
 type CreateOrchestrationStepServiceInput = {
   session: OrchestrationSessionPort
   model: OrchestrationModelPort
+  contextWindow: OrchestrationContextWindowPort
   skill: OrchestrationSkillPort
   now?: () => number
 }
@@ -323,6 +329,17 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
                 inputTokens: item.inputTokens,
                 outputTokens: item.outputTokens,
                 tokenUsageSource: item.source,
+              })
+              const contextUsage = buildContextUsageSnapshot({
+                contextTokens: item.inputTokens + item.outputTokens,
+                contextWindow: input.contextWindow.getContextWindow() || DEFAULT_CONTEXT_WINDOW_SIZE,
+                source: item.source,
+              })
+              stepInput.emit({
+                type: "context.usage.updated",
+                sessionId: stepInput.sessionId,
+                runId: stepInput.runId,
+                ...contextUsage,
               })
               continue
             }

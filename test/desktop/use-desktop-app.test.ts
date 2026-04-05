@@ -34,4 +34,23 @@ describe("desktop app state flow", () => {
     expect(source).toContain("sessionId: activeSessionId === event.sessionId ? null : activeSessionId")
     expect(source).toContain("async refreshAppState()")
   })
+
+  test("stores context usage from events and clears it on terminal run or session switch", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    expect(source).toContain("contextUsage: ContextUsageState | null")
+    expect(source).toContain("event.type === \"context.usage.updated\"")
+    expect(source).toContain("contextTokens: event.contextTokens")
+    expect(source).toContain("contextWindow: event.contextWindow")
+    expect(source).toContain("utilizationPercent: event.utilizationPercent")
+    expect(source).toContain("source: event.source")
+    expect(source).toContain("contextUsage: terminal ? null : previous.contextUsage")
+    expect(source).toContain("contextUsage: null,\n      })")
+  })
+
+  test("hydrates contextUsage from the REST session snapshot on refresh", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    expect(source).toContain("contextUsage: refreshData.snapshot?.contextUsage ?? null")
+  })
 })

@@ -7,6 +7,7 @@ import type {
   DesktopSkillCatalogEntry,
   DesktopWorkspace,
   DesktopTranscriptMessage,
+  DesktopContextUsage,
 } from "../view-types"
 import { mapTranscriptMessage } from "../transcript-mapper"
 
@@ -59,6 +60,7 @@ export function useAgent() {
     },
     errorMessage: desktop.actionError,
     skillWarningMessage: desktop.skillWarningMessage,
+    contextUsage: desktop.contextUsage ? mapContextUsage(desktop.contextUsage) : null,
     refreshAppState() {
       return desktop.refreshAppState()
     },
@@ -139,4 +141,15 @@ function mapPermissionRequest(
 
 function toIsoString(value: number) {
   return new Date(value).toISOString()
+}
+
+function mapContextUsage(
+  usage: { contextTokens: number; contextWindow: number; utilizationPercent: number; source: "provider" | "estimated" | null },
+): DesktopContextUsage {
+  return {
+    contextTokens: usage.contextTokens,
+    contextWindow: usage.contextWindow,
+    utilizationPercent: usage.utilizationPercent,
+    source: usage.source,
+  }
 }

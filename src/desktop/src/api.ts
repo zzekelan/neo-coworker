@@ -22,6 +22,7 @@ const SERVER_EVENT_TYPES = [
   "permission.requested",
   "permission.updated",
   "runtime.error",
+  "context.usage.updated",
 ] as const
 
 type JsonRequestInput = {

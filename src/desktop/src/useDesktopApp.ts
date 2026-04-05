@@ -47,12 +47,20 @@ type AppState = {
   transcript: DesktopMessage[]
   permissionRequests: DesktopPermissionRequest[]
   connection: ConnectionStatus
+  contextUsage: ContextUsageState | null
   hasAuthoritativeWorkspaceBusyState: boolean
   isLoading: boolean
   isSending: boolean
   isManagingWorkspace: boolean
   actionError: string | null
   skillWarningMessage: string | null
+}
+
+type ContextUsageState = {
+  contextTokens: number
+  contextWindow: number
+  utilizationPercent: number
+  source: "provider" | "estimated" | null
 }
 
 type RefreshOptions = {
@@ -171,6 +179,7 @@ export function useDesktopApp() {
         sessionRuns: refreshData.sessionRuns,
         transcript: refreshData.transcript,
         permissionRequests: refreshData.permissionRequests,
+        contextUsage: refreshData.snapshot?.contextUsage ?? null,
         connection: {
           state: "online",
           label: "Connected to app-server",
@@ -358,6 +367,7 @@ export function useDesktopApp() {
             }
           : previous.sessionSnapshot,
         permissionRequests: terminal ? [] : previous.permissionRequests,
+        contextUsage: terminal ? null : previous.contextUsage,
         isSending: !terminal && event.run.status !== "waiting_permission",
       }))
 
@@ -385,6 +395,18 @@ export function useDesktopApp() {
         ...previous,
         actionError: event.error,
         isSending: false,
+      }))
+    }
+
+    if (event.type === "context.usage.updated" && event.sessionId === activeSessionId) {
+      setState((previous) => ({
+        ...previous,
+        contextUsage: {
+          contextTokens: event.contextTokens,
+          contextWindow: event.contextWindow,
+          utilizationPercent: event.utilizationPercent,
+          source: event.source,
+        },
       }))
     }
   })
@@ -443,6 +465,7 @@ export function useDesktopApp() {
         transcript: [],
         permissionRequests: [],
         sessionSnapshot: null,
+        contextUsage: null,
       }))
 
       await refresh({
@@ -460,6 +483,7 @@ export function useDesktopApp() {
         ...previous,
         activeSessionId: sessionId,
         sessionRuns: [],
+        contextUsage: null,
       }))
 
       await refresh({
@@ -801,6 +825,7 @@ function createInitialState(input: {
       isManagingWorkspace: false,
       actionError: null,
       skillWarningMessage: null,
+      contextUsage: null,
     }
   }
 
@@ -825,6 +850,7 @@ function createInitialState(input: {
     isManagingWorkspace: false,
     actionError: null,
     skillWarningMessage: null,
+    contextUsage: null,
   }
 }
 

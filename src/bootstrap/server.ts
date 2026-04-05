@@ -13,7 +13,7 @@ import {
   type ObservabilityRepository,
 } from "../observability"
 import { createWorkspaceSkillRuntime } from "../skill"
-import { createDefaultProvider } from "./provider"
+import { createDefaultProvider, resolveContextWindowSize } from "./provider"
 import { createDefaultSearchBackend } from "./search"
 import { createRuntime } from "./runtime"
 
@@ -77,6 +77,9 @@ export async function createStandaloneServerComposition(input: {
       repository: observabilityRepository,
       now,
     })
+    const contextWindow = await resolveContextWindowSize({
+      env,
+    })
     const provider = await (input.createDefaultProviderImpl ?? createDefaultProvider)({
       env,
       modelObserver: observability.modelObserver,
@@ -114,6 +117,7 @@ export async function createStandaloneServerComposition(input: {
           permissionRepository: runtimeInput.permissionRepository,
           observability,
           searchBackend,
+          contextWindow: contextWindow.contextWindow,
           now: runtimeInput.now,
         })
       },

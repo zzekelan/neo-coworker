@@ -11,6 +11,7 @@ import {
   createObservabilityRuntimeApi,
   createCliStorageComposition,
   createRuntime,
+  resolveContextWindowSize,
   resolveAgentServerOrigin,
   resolveDefaultProviderConfig,
   type DefaultProviderInput,
@@ -79,6 +80,17 @@ export function buildCli(input: BuildCliInput = {}) {
       }
 
       try {
+        const shouldResolveContextWindow =
+          input.provider == null &&
+          input.createClient == null &&
+          input.createOpenAIProviderImpl == null &&
+          input.createOpenAICompatibleProviderImpl == null
+        const contextWindow =
+          shouldResolveContextWindow
+            ? (await resolveContextWindowSize({
+                env: input.env,
+              })).contextWindow
+            : undefined
         const provider =
           input.provider ??
           (await createDefaultProvider({
@@ -102,6 +114,7 @@ export function buildCli(input: BuildCliInput = {}) {
               ...runtimeInput,
               observability,
               searchBackend,
+              contextWindow,
             })
           },
           createLocalStorageImpl(workspaceRoot) {

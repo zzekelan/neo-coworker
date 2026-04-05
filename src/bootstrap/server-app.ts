@@ -10,6 +10,7 @@ import {
   type StoredSession,
 } from "../session"
 import {
+  type ContextUsageSnapshot,
   PermissionRequestNotAwaitingActiveRuntimeError,
   type OrchestrationRuntimeApi,
 } from "../orchestration"
@@ -26,6 +27,7 @@ export type SessionSnapshot = {
   }
   latestRun: StoredRun | null
   activeRun: StoredRun | null
+  contextUsage: ContextUsageSnapshot | null
   status: "idle" | "busy"
 }
 
@@ -64,6 +66,15 @@ export type ServerEventPayload =
       sessionId: string
       runId: string
       error: string
+    }
+  | {
+      type: "context.usage.updated"
+      sessionId: string
+      runId: string
+      contextTokens: number
+      contextWindow: number
+      utilizationPercent: number
+      source: "provider" | "estimated" | null
     }
   | {
       type: "heartbeat"
@@ -141,6 +152,9 @@ type ServerEventBus = ReturnType<typeof createServerEventBus>
 export function buildSessionSnapshot(
   repository: Pick<StorageRepository, "sessions" | "runs">,
   sessionId: string,
+  input: {
+    contextUsage?: ContextUsageSnapshot | null
+  } = {},
 ): SessionSnapshot {
   const session = repository.sessions.get(sessionId)
   const latestRun = repository.runs.getLatestBySession(sessionId)
@@ -153,6 +167,7 @@ export function buildSessionSnapshot(
     },
     latestRun,
     activeRun,
+    contextUsage: input.contextUsage ?? null,
     status: activeRun ? "busy" : "idle",
   }
 }
@@ -222,6 +237,7 @@ export function createObservedRepository(input: {
   repository: StorageRepository
   permissionRepository: PermissionRepository
   events: ServerEventBus
+  getContextUsage?: (sessionId: string) => ContextUsageSnapshot | null
 }) {
   const repository = input.repository
   const permissionRepository = input.permissionRepository
@@ -230,7 +246,9 @@ export function createObservedRepository(input: {
   function publishSessionUpdated(sessionId: string, reason: string) {
     events.publish({
       type: "session.updated",
-      ...buildSessionSnapshot(repository, sessionId),
+      ...buildSessionSnapshot(repository, sessionId, {
+        contextUsage: input.getContextUsage?.(sessionId) ?? null,
+      }),
       reason,
     })
   }
@@ -268,7 +286,9 @@ export function createObservedRepository(input: {
         const created = repository.sessions.create(session)
         events.publish({
           type: "session.created",
-          ...buildSessionSnapshot(repository, created.id),
+          ...buildSessionSnapshot(repository, created.id, {
+            contextUsage: input.getContextUsage?.(created.id) ?? null,
+          }),
         })
         return created
       },
@@ -292,6 +312,11 @@ export function createObservedRepository(input: {
       },
       updateActiveSkills(update) {
         const updated = repository.runs.updateActiveSkills(update)
+        publishRunUpdated(updated)
+        return updated
+      },
+      updateTokenUsage(update) {
+        const updated = repository.runs.updateTokenUsage(update)
         publishRunUpdated(updated)
         return updated
       },
@@ -438,10 +463,14 @@ export function createServerApp(input: {
   const eventBus = createServerEventBus({
     now,
   })
+  const contextUsageBySession = new Map<string, ContextUsageSnapshot>()
   const observed = createObservedRepository({
     repository: input.repository,
     permissionRepository: input.permissionRepository,
     events: eventBus,
+    getContextUsage(sessionId) {
+      return contextUsageBySession.get(sessionId) ?? null
+    },
   })
   const repository = observed.repository
   const permissionRepository = observed.permissionRepository
@@ -493,7 +522,10 @@ export function createServerApp(input: {
       runId: started.run.id,
     })
 
-    const drained = drainRunHandle(handle).finally(() => {
+    const drained = drainRunHandle(handle, {
+      events: eventBus,
+      contextUsageBySession,
+    }).finally(() => {
       activeRuns.delete(started.run.id)
     })
 
@@ -536,7 +568,9 @@ export function createServerApp(input: {
         }))
       },
       get(sessionId: string) {
-        return buildSessionSnapshot(repository, sessionId)
+        return buildSessionSnapshot(repository, sessionId, {
+          contextUsage: contextUsageBySession.get(sessionId) ?? null,
+        })
       },
       updateActiveSkills(inputValue: { sessionId: string; activeSkills: string[] }) {
         const activeRun = repository.runs.getActiveBySession(inputValue.sessionId)
@@ -566,6 +600,7 @@ export function createServerApp(input: {
         }
 
         const session = repository.sessions.get(sessionId)
+        contextUsageBySession.delete(sessionId)
         input.deleteSessionImpl(sessionId)
         eventBus.publish({
           type: "session.deleted",
@@ -659,10 +694,34 @@ export function createServerApp(input: {
   }
 }
 
-async function drainRunHandle(handle: Awaited<ReturnType<ServerAppRuntime["run"]>>) {
+async function drainRunHandle(
+  handle: Awaited<ReturnType<ServerAppRuntime["run"]>>,
+  input: {
+    events: ServerEventBus
+    contextUsageBySession: Map<string, ContextUsageSnapshot>
+  },
+) {
   try {
-    for await (const _event of handle.events) {
-      // Runtime state changes are emitted from observed repository writes.
+    for await (const event of handle.events) {
+      if (event.type !== "context.usage.updated") {
+        continue
+      }
+
+      input.contextUsageBySession.set(event.sessionId, {
+        contextTokens: event.contextTokens,
+        contextWindow: event.contextWindow,
+        utilizationPercent: event.utilizationPercent,
+        source: event.source,
+      })
+      input.events.publish({
+        type: "context.usage.updated",
+        sessionId: event.sessionId,
+        runId: event.runId,
+        contextTokens: event.contextTokens,
+        contextWindow: event.contextWindow,
+        utilizationPercent: event.utilizationPercent,
+        source: event.source,
+      })
     }
   } catch {
     // Runtime failures are persisted through repository updates.

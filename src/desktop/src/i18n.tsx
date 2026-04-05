@@ -32,6 +32,7 @@ type DesktopText = {
     agentBusyPlaceholder: string
     askPlaceholder: string
     skills: string
+    contextUsed(percent: number): string
   }
   skillPanel: {
     title: string
@@ -174,6 +175,9 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       agentBusyPlaceholder: "NeoCoworker is busy...",
       askPlaceholder: "Ask NeoCoworker to do something...",
       skills: "Skills",
+      contextUsed(percent: number) {
+        return `${percent}% context used`
+      },
     },
     skillPanel: {
       title: "Skills",
@@ -338,6 +342,9 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       agentBusyPlaceholder: "NeoCoworker 正忙...",
       askPlaceholder: "让 NeoCoworker 帮你做点什么...",
       skills: "技能",
+      contextUsed(percent: number) {
+        return `已使用 ${percent}% 上下文`
+      },
     },
     skillPanel: {
       title: "技能",

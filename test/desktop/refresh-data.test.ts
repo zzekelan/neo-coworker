@@ -1,6 +1,62 @@
 import { describe, expect, test } from "bun:test"
 import { loadDesktopRefreshCore } from "../../src/desktop/src/refresh-data"
 
+function createMinimalLoaders(overrides: Record<string, unknown> = {}) {
+  const sessionSummary = {
+    id: "session-1",
+    directory: "/workspace/alpha",
+    workspaceRoot: "/workspace/alpha",
+    createdAt: 1,
+    title: "Alpha session",
+    updatedAt: 2,
+    latestUserMessagePreview: "hello",
+    activeSkills: [],
+    latestRunStatus: null,
+  }
+
+  return {
+    async loadWorkspaces() {
+      return {
+        workspaces: [
+          {
+            workspaceRoot: "/workspace/alpha",
+            name: "alpha",
+            latestActivityAt: 10,
+            sessionCount: 1,
+            hasBusySession: false,
+            sessions: [],
+          },
+        ],
+      }
+    },
+    async loadWorkspaceSessions() {
+      return { sessions: [sessionSummary] }
+    },
+    async loadWorkspaceSkills() {
+      return { skills: [] }
+    },
+    async loadSession() {
+      return {
+        session: sessionSummary,
+        latestRun: null,
+        activeRun: null,
+        contextUsage: null,
+        status: "idle" as const,
+        ...overrides,
+      }
+    },
+    async loadTranscript() {
+      return { transcript: [] }
+    },
+    async loadSessionRuns() {
+      return { runs: [] }
+    },
+    async loadRun() {
+      throw new Error("no active run")
+    },
+  }
+}
+
 describe("desktop refresh data", () => {
   test("keeps session restore on the main path when workspace skills fail later", async () => {
     let loadSkillsCalls = 0
@@ -57,6 +113,7 @@ describe("desktop refresh data", () => {
             },
             latestRun: null,
             activeRun: null,
+            contextUsage: null,
             status: "idle",
           }
         },
@@ -114,5 +171,36 @@ describe("desktop refresh data", () => {
       warningMessage: "Could not load workspace skills: ENOENT: broken skill symlink",
     })
     expect(loadSkillsCalls).toBe(1)
+  })
+
+  test("passes contextUsage from the session snapshot through to the result", async () => {
+    const contextUsage = {
+      contextTokens: 42_000,
+      contextWindow: 128_000,
+      utilizationPercent: 33,
+      source: "provider" as const,
+    }
+
+    const refreshData = await loadDesktopRefreshCore({
+      loaders: createMinimalLoaders({ contextUsage }),
+      knownWorkspaces: new Map(),
+      requestedWorkspaceRoot: "/workspace/alpha",
+      preferredSessionId: "session-1",
+    })
+
+    expect(refreshData.snapshot).not.toBeNull()
+    expect(refreshData.snapshot!.contextUsage).toEqual(contextUsage)
+  })
+
+  test("snapshot contextUsage is null when server returns no context usage", async () => {
+    const refreshData = await loadDesktopRefreshCore({
+      loaders: createMinimalLoaders({ contextUsage: null }),
+      knownWorkspaces: new Map(),
+      requestedWorkspaceRoot: "/workspace/alpha",
+      preferredSessionId: "session-1",
+    })
+
+    expect(refreshData.snapshot).not.toBeNull()
+    expect(refreshData.snapshot!.contextUsage).toBeNull()
   })
 })

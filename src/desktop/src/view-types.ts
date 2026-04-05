@@ -38,6 +38,7 @@ export interface DesktopSessionSnapshot {
   }
   latestRun?: DesktopRun
   activeRun?: DesktopRun
+  contextUsage?: DesktopContextUsage | null
   status: "idle" | "busy"
 }
 
@@ -75,4 +76,11 @@ export interface DesktopPermissionRequest {
   reason: string
   createdAt: string
   resolvedAt: string | null
+}
+
+export interface DesktopContextUsage {
+  contextTokens: number
+  contextWindow: number
+  utilizationPercent: number
+  source: "provider" | "estimated" | null
 }

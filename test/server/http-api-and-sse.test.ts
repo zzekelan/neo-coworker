@@ -114,6 +114,12 @@ describe("server HTTP API and SSE", () => {
         tokenUsageSource: "estimated",
       },
       activeRun: null,
+      contextUsage: {
+        contextTokens: expect.any(Number),
+        contextWindow: 128_000,
+        utilizationPercent: expect.any(Number),
+        source: "estimated",
+      },
       status: "idle",
     })
 
@@ -334,6 +340,12 @@ describe("server HTTP API and SSE", () => {
       expect.arrayContaining([
         { event: "run.updated", id: runId, status: "running" },
         { event: "message.part.updated", id: expect.any(String), kind: "text" },
+        {
+          event: "context.usage.updated",
+          id: runId,
+          utilizationPercent: expect.any(Number),
+          source: "estimated",
+        },
         { event: "run.updated", id: runId, status: "completed" },
       ]),
     )
@@ -1204,6 +1216,46 @@ describe("server HTTP API and SSE", () => {
 
     await subscriberB.close()
   })
+
+  test("context.usage.updated event type is accepted by the server event bus contract", async () => {
+    const harness = await createHarness("server-context-usage-contract", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "done" }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Check context usage contract",
+      },
+    )
+    const runId = startedRun.body.data.run.id as string
+    await waitForRunStatus(harness.server, runId, "completed")
+
+    // Verify that contextUsage event type is part of the server event contract
+    // by checking the types file includes the discriminant.
+    const { readFileSync } = await import("node:fs")
+    const serverAppSource = readFileSync("src/bootstrap/server-app.ts", "utf8")
+    expect(serverAppSource).toContain("type: \"context.usage.updated\"")
+    expect(serverAppSource).toContain("contextTokens: number")
+    expect(serverAppSource).toContain("contextWindow: number")
+    expect(serverAppSource).toContain("utilizationPercent: number")
+
+    const desktopApiSource = readFileSync("src/desktop/src/api.ts", "utf8")
+    expect(desktopApiSource).toContain("\"context.usage.updated\"")
+
+    const desktopTypesSource = readFileSync("src/desktop/src/types.ts", "utf8")
+    expect(desktopTypesSource).toContain("type: \"context.usage.updated\"")
+    expect(desktopTypesSource).toContain("ContextUsageEvent")
+  })
 })
 
 async function createHarness(
@@ -1540,12 +1592,15 @@ function simplifyRelevantEvents(events: SseEnvelope[], runId: string) {
   return events
     .filter((event) =>
       event.event === "run.updated" ||
-      event.event === "message.part.updated",
+      event.event === "message.part.updated" ||
+      event.event === "context.usage.updated",
     )
     .filter((event) =>
       event.event === "run.updated"
         ? event.data.run.id === runId
-        : event.data.part.runId === runId,
+        : event.event === "message.part.updated"
+          ? event.data.part.runId === runId
+          : event.data.runId === runId,
     )
     .map((event) => {
       if (event.event === "run.updated") {
@@ -1553,6 +1608,15 @@ function simplifyRelevantEvents(events: SseEnvelope[], runId: string) {
           event: event.event,
           id: event.data.run.id,
           status: event.data.run.status,
+        }
+      }
+
+      if (event.event === "context.usage.updated") {
+        return {
+          event: event.event,
+          id: event.data.runId,
+          utilizationPercent: event.data.utilizationPercent,
+          source: event.data.source,
         }
       }
 
