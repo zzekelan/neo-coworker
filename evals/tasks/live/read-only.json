@@ -3,6 +3,7 @@
   "providerMode": "live",
   "prompt": "Read README.md and summarize it briefly. Do not modify any files.",
   "workspaceFixture": "workspaces/basic",
+  "autoReplyPermission": "deny",
   "traceExpectation": {
     "requiredEventTypes": [
       "run.started",

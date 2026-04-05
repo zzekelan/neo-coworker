@@ -3,6 +3,7 @@
   "providerMode": "live",
   "prompt": "Use webfetch to fetch data:text/plain,WEBFETCH_LIVE_TOKEN and repeat the exact token in your final answer.",
   "workspaceFixture": "workspaces/basic",
+  "autoReplyPermission": "deny",
   "permissionPolicy": {
     "webfetch": "allow"
   },

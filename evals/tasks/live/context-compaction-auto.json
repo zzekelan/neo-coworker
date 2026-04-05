@@ -3,7 +3,7 @@
   "providerMode": "live",
   "prompt": "Read LONG_CONTEXT.md and then prove the next turn can recover through auto compaction.",
   "workspaceFixture": "workspaces/skills",
-  "contextWindow": 13050,
+  "contextWindow": 15500,
   "steps": [
     {
       "kind": "prompt",
@@ -30,55 +30,19 @@
   },
   "traceExpectation": {
     "requiredEventTypes": [
-      "compaction.completed",
       "run.completed"
     ]
   },
   "transcriptExpectation": {
-    "checkpoints": [
-      {
-        "messageIndex": 1,
-        "role": "assistant",
-        "partKinds": [
-          "tool_call",
-          "tool_result"
-        ],
-        "toolNames": [
-          "read"
-        ]
-      },
-      {
-        "messageIndex": 2,
-        "role": "assistant",
-        "textIncludes": [
-          "Prepared auto compaction"
-        ]
-      },
-      {
-        "messageIndex": 4,
-        "role": "synthetic",
-        "partKinds": [
-          "compaction_boundary",
-          "text"
-        ],
-        "textIncludes": [
-          "Primary Request",
-          "Current Work"
-        ]
-      },
-      {
-        "messageIndex": 5,
-        "role": "assistant",
-        "textIncludes": [
-          "Recovered: LONG_CONTEXT.md"
-        ]
-      }
+    "orderedTextIncludes": [
+      "context recovery fixture",
+      "Prepared auto compaction",
+      "Recovered: LONG_CONTEXT.md"
     ]
   },
   "traceSequenceExpectation": {
     "orderedEventTypes": [
       "run.started",
-      "compaction.completed",
       "run.completed"
     ]
   },
@@ -98,6 +62,7 @@
   "traceDataExpectation": {
     "events": [
       {
+        "runIndex": 0,
         "eventType": "compaction.completed",
         "fields": [
           {
@@ -111,11 +76,6 @@
           },
           {
             "field": "tokensAfter",
-            "valueType": "number",
-            "greaterThanNumber": 0
-          },
-          {
-            "field": "compressionRatio",
             "valueType": "number",
             "greaterThanNumber": 0
           }

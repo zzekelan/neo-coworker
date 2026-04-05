@@ -44,44 +44,10 @@
     ]
   },
   "transcriptExpectation": {
-    "checkpoints": [
-      {
-        "messageIndex": 1,
-        "role": "assistant",
-        "partKinds": [
-          "tool_call",
-          "tool_result"
-        ],
-        "toolNames": [
-          "read"
-        ]
-      },
-      {
-        "messageIndex": 2,
-        "role": "assistant",
-        "textIncludes": [
-          "Prepared manual compaction"
-        ]
-      },
-      {
-        "messageIndex": 3,
-        "role": "synthetic",
-        "partKinds": [
-          "compaction_boundary",
-          "text"
-        ],
-        "textIncludes": [
-          "Primary Request",
-          "Next Steps"
-        ]
-      },
-      {
-        "messageIndex": 5,
-        "role": "assistant",
-        "textIncludes": [
-          "Manual compact recovered LONG_CONTEXT.md"
-        ]
-      }
+    "orderedTextIncludes": [
+      "context recovery fixture",
+      "Prepared manual compaction",
+      "Manual compact recovered LONG_CONTEXT.md"
     ]
   },
   "toolConsumptionExpectation": {

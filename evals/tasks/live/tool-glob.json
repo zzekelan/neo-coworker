@@ -3,6 +3,7 @@
   "providerMode": "live",
   "prompt": "Use glob to find the file named ALPHA_NOTES.md. Return the exact relative path you found.",
   "workspaceFixture": "workspaces/tooling",
+  "autoReplyPermission": "deny",
   "traceExpectation": {
     "requiredEventTypes": [
       "run.started",

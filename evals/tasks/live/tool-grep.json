@@ -3,6 +3,7 @@
   "providerMode": "live",
   "prompt": "Use grep to find ORANGE_FALCON_TOKEN. Reply with the exact relative path and the token.",
   "workspaceFixture": "workspaces/tooling",
+  "autoReplyPermission": "deny",
   "traceExpectation": {
     "requiredEventTypes": [
       "run.started",

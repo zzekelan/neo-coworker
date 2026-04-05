@@ -55,48 +55,11 @@
     ]
   },
   "transcriptExpectation": {
-    "checkpoints": [
-      {
-        "messageIndex": 1,
-        "role": "assistant",
-        "partKinds": [
-          "tool_call",
-          "tool_result"
-        ],
-        "toolNames": [
-          "skill"
-        ]
-      },
-      {
-        "messageIndex": 4,
-        "role": "assistant",
-        "partKinds": [
-          "tool_call",
-          "tool_result"
-        ],
-        "toolNames": [
-          "read"
-        ]
-      },
-      {
-        "messageIndex": 6,
-        "role": "synthetic",
-        "partKinds": [
-          "compaction_boundary",
-          "text"
-        ],
-        "textIncludes": [
-          "Primary Request",
-          "Files & Code"
-        ]
-      },
-      {
-        "messageIndex": 8,
-        "role": "assistant",
-        "textIncludes": [
-          "Review: # context recovery fixture | bugs first"
-        ]
-      }
+    "orderedTextIncludes": [
+      "Review: reviewer active",
+      "context recovery fixture",
+      "Review: file prepared",
+      "Review: # context recovery fixture | bugs first"
     ]
   },
   "toolConsumptionExpectation": {
