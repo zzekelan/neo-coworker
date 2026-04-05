@@ -168,6 +168,10 @@ export type CreateQueuedRunWithInitiatingMessageInput = {
   }
 }
 
+export type CreateQueuedRunInput = {
+  run: Omit<CreateRunInput, "status">
+}
+
 export type CreateQueuedRunWithInitiatingMessageAndPartInput =
   CreateQueuedRunWithInitiatingMessageInput & {
     part: Omit<CreatePartInput, "sessionId" | "runId" | "messageId">
@@ -239,6 +243,7 @@ export type SessionRepository = {
     get(partId: string): StoredPart
     updateContent(update: UpdatePartContentInput): StoredPart
   }
+  createQueuedRun(input: CreateQueuedRunInput): { run: StoredRun }
   createQueuedRunWithInitiatingMessage(
     input: CreateQueuedRunWithInitiatingMessageInput,
   ): { run: StoredRun; message: StoredMessage }

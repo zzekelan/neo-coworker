@@ -214,6 +214,215 @@ describe("server HTTP API and SSE", () => {
     ])
   })
 
+  test("starts a manual compaction command run and streams the compaction artifacts", async () => {
+    const harness = await createHarness("server-manual-compact", createTurnProvider([
+      async function* () {
+        yield {
+          type: "text.delta",
+          text: [
+            "Primary Request",
+            "Keep working on the shell-heavy task.",
+            "",
+            "Key Concepts",
+            "Use the compacted summary instead of the original tool output.",
+            "",
+            "Files & Code",
+            "placeholder.txt",
+            "",
+            "Errors & Fixes",
+            "None.",
+            "",
+            "Problem Solving",
+            "Compact on demand.",
+            "",
+            "User Messages",
+            "Continue after manual compaction",
+            "",
+            "Pending Tasks",
+            "Finish the answer.",
+            "",
+            "Current Work",
+            "Compacting before the next turn.",
+            "",
+            "Next Steps",
+            "Answer the user.",
+          ].join("\n"),
+        }
+      },
+    ]))
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId,
+      runId: "run_server_manual_compact_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+
+    const subscriber = await connectSse(harness.server)
+
+    try {
+      const started = await requestJson(
+        harness.server,
+        "POST",
+        `/sessions/${sessionId}/compact`,
+      )
+      expect(started.status).toBe(201)
+      expect(started.body.data.run).toMatchObject({
+        sessionId,
+        trigger: "command",
+        status: "queued",
+      })
+
+      const runId = started.body.data.run.id as string
+      const events = await collectEventsUntil(
+        subscriber,
+        (event) => event.event === "run.updated" && event.data.run.id === runId && event.data.run.status === "completed",
+      )
+      const completed = await waitForRunStatus(harness.server, runId, "completed")
+      const sessionState = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+      const transcript = await requestJson(harness.server, "GET", `/sessions/${sessionId}/transcript`)
+
+      expect(completed.run).toMatchObject({
+        id: runId,
+        trigger: "command",
+        status: "completed",
+      })
+      expect(sessionState.body.data.contextUsage).toMatchObject({
+        contextTokens: expect.any(Number),
+        contextWindow: 128_000,
+        utilizationPercent: expect.any(Number),
+        source: "estimated",
+      })
+      expect(
+        transcript.body.data.transcript.filter((message: { role: string }) => message.role === "user"),
+      ).toMatchObject([
+        {
+          runId: "run_server_manual_compact_history",
+          role: "user",
+          parts: [{ kind: "text", text: "Previous shell-heavy work" }],
+        },
+      ])
+      expect(transcript.body.data.transcript).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            runId,
+            role: "synthetic",
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                kind: "compaction_boundary",
+                data: expect.objectContaining({
+                  trigger: "manual",
+                  summarizeRunId: expect.any(String),
+                }),
+              }),
+            ]),
+          }),
+        ]),
+      )
+      expect(simplifyRelevantEvents(events, runId)).toEqual(
+        expect.arrayContaining([
+          {
+            event: "run.updated",
+            id: runId,
+            status: "running",
+          },
+          {
+            event: "run.updated",
+            id: runId,
+            status: "completed",
+          },
+          {
+            event: "message.part.updated",
+            id: expect.any(String),
+            kind: "compaction_boundary",
+          },
+        ]),
+      )
+    } finally {
+      await subscriber.close()
+    }
+  })
+
+  test("returns already_compacting when a manual compaction command is already running", async () => {
+    let releaseSummary!: () => void
+    const continueSummary = new Promise<void>((resolve) => {
+      releaseSummary = resolve
+    })
+    const harness = await createHarness("server-manual-compact-duplicate", createTurnProvider([
+      async function* () {
+        await continueSummary
+        yield { type: "text.delta", text: "Primary Request\nA compact summary." }
+      },
+    ]))
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId,
+      runId: "run_server_manual_compact_duplicate_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+
+    const started = await requestJson(harness.server, "POST", `/sessions/${sessionId}/compact`)
+    const runId = started.body.data.run.id as string
+    await waitForRunStatus(harness.server, runId, "running")
+
+    const duplicate = await requestJson(harness.server, "POST", `/sessions/${sessionId}/compact`)
+    expect(duplicate.status).toBe(409)
+    expect(duplicate.body.error).toMatchObject({
+      code: "already_compacting",
+    })
+
+    releaseSummary()
+    await waitForRunStatus(harness.server, runId, "completed")
+  })
+
+  test("returns invalid_state when a normal run is already active and /compact is requested", async () => {
+    let releasePrompt!: () => void
+    const continuePrompt = new Promise<void>((resolve) => {
+      releasePrompt = resolve
+    })
+    const harness = await createHarness("server-manual-compact-busy", createTurnProvider([
+      async function* () {
+        await continuePrompt
+        yield { type: "text.delta", text: "Prompt finished." }
+      },
+    ]))
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Keep the session busy",
+      },
+    )
+    const runId = startedRun.body.data.run.id as string
+    await waitForRunStatus(harness.server, runId, "running")
+
+    const compact = await requestJson(harness.server, "POST", `/sessions/${sessionId}/compact`)
+    expect(compact.status).toBe(409)
+    expect(compact.body.error).toMatchObject({
+      code: "invalid_state",
+    })
+
+    releasePrompt()
+    await waitForRunStatus(harness.server, runId, "completed")
+  })
+
   test("exports a completed run trace over HTTP", async () => {
     const harness = await createHarness("server-http-trace", createTurnProvider([
       async function* () {
@@ -1772,4 +1981,60 @@ function expectSessionContract(
     true,
   )
   expect(session).toMatchObject(expected)
+}
+
+function seedCompletedRunWithToolResults(input: {
+  repository: SessionRepository
+  sessionId: string
+  runId: string
+  toolName: string
+  resultCount: number
+  output: string
+}) {
+  input.repository.runs.create({
+    id: input.runId,
+    sessionId: input.sessionId,
+    trigger: "prompt",
+    status: "completed",
+  })
+  const userMessage = input.repository.messages.create({
+    id: `${input.runId}_user`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "user",
+    sequence: 0,
+  })
+  input.repository.parts.create({
+    id: `${input.runId}_user_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: userMessage.id,
+    kind: "text",
+    sequence: 0,
+    text: "Previous shell-heavy work",
+  })
+  const assistantMessage = input.repository.messages.create({
+    id: `${input.runId}_assistant`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "assistant",
+    sequence: 1,
+  })
+
+  for (let index = 0; index < input.resultCount; index += 1) {
+    input.repository.parts.create({
+      id: `${input.runId}_tool_result_${index}`,
+      sessionId: input.sessionId,
+      runId: input.runId,
+      messageId: assistantMessage.id,
+      kind: "tool_result",
+      sequence: index,
+      text: `${input.output}\n#${index}`,
+      data: {
+        callId: `${input.runId}_call_${index}`,
+        toolName: input.toolName,
+        output: `${input.output}\n#${index}`,
+      },
+    })
+  }
 }

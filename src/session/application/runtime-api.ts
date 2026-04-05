@@ -14,6 +14,7 @@ export function createSessionRuntimeApi(input: SessionRuntimeApiInput) {
     runs: {
       getSessionState: runService.getSessionState,
       start: runService.startRun,
+      startCommand: runService.startCommandRun,
       retry: runService.retryRun,
       transitionToRunning: runService.transitionRunToRunning,
       resume: runService.resumeRun,

@@ -13,6 +13,7 @@ import {
   RUN_TRIGGERS,
   type ServerEvent,
   ServerShuttingDownError,
+  SessionAlreadyCompactingError,
   SessionBusyError,
   SessionConflictError as StorageConflictError,
   SessionNotFoundError as StorageNotFoundError,
@@ -272,6 +273,13 @@ export function createAgentServer(input: {
 
         return jsonResponse(201, {
           data: started,
+        })
+      }
+
+      const sessionCompactMatch = matchPath(path, ["sessions", ":sessionId", "compact"])
+      if (request.method === "POST" && sessionCompactMatch) {
+        return jsonResponse(201, {
+          data: await app.runs.compact(sessionCompactMatch.sessionId),
         })
       }
 
@@ -535,6 +543,14 @@ function mapHttpError(error: unknown) {
     return {
       status: 409,
       code: "invalid_state",
+      message: error.message,
+    }
+  }
+
+  if (error instanceof SessionAlreadyCompactingError) {
+    return {
+      status: 409,
+      code: "already_compacting",
       message: error.message,
     }
   }

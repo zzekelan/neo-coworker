@@ -427,4 +427,74 @@ describe("openai-compatible provider", () => {
       })(),
     ).rejects.toThrow("Unsupported Zod schema type for openai-compatible tools: ZodUnion")
   })
+
+  test("serializes effect-wrapped tool schemas by unwrapping to the underlying object shape", async () => {
+    let receivedBody: unknown
+
+    const provider = createOpenAICompatibleProvider({
+      model: "kimi-k2.5",
+      client: {
+        chat: {
+          completions: {
+            async create(body) {
+              receivedBody = body
+              return (async function* () {})()
+            },
+          },
+        },
+      },
+    })
+
+    const skillToolSchema = z.object({
+      action: z.enum(["activate", "list"]).optional(),
+      name: z.string().trim().min(1).optional(),
+    }).superRefine((_value, _ctx) => {})
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [
+        {
+          name: "skill",
+          description: "List or activate a skill",
+          inputSchema: skillToolSchema,
+        },
+      ],
+      signal: new AbortController().signal,
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.5",
+      messages: [{ role: "system", content: "system" }],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "skill",
+            description: "List or activate a skill",
+            parameters: {
+              type: "object",
+              properties: {
+                action: {
+                  type: "string",
+                  enum: ["activate", "list"],
+                },
+                name: {
+                  type: "string",
+                },
+              },
+              required: [],
+              additionalProperties: false,
+            },
+          },
+        },
+      ],
+    })
+  })
 })

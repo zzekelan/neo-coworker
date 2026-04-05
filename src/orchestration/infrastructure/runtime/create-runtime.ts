@@ -511,6 +511,79 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         },
       }
     },
+    async compactSession(runInput: OrchestrationRunInput): Promise<OrchestrationRunHandle> {
+      const execution = createActiveRunExecution({
+        sessionId: runInput.sessionId,
+        runId: runInput.runId,
+      })
+
+      void (async () => {
+        try {
+          stepService.initializeRun({
+            sessionId: execution.session.id,
+            runId: runInput.runId,
+            emit: execution.emit,
+          })
+          const outcome = await stepService.compactSession({
+            sessionId: execution.session.id,
+            runId: runInput.runId,
+            tools: execution.tools,
+            workspaceRoot: execution.session.workspaceRoot,
+            systemPrompt: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+            signal: execution.controller.signal,
+            emit: execution.emit,
+          })
+
+          if (outcome.status === "failed") {
+            stepService.failRun({
+              runId: runInput.runId,
+              error: outcome.error,
+              emit: execution.emit,
+            })
+            return
+          }
+
+          if (outcome.status === "cancelled") {
+            stepService.cancelRun({
+              runId: runInput.runId,
+              emit: execution.emit,
+            })
+            return
+          }
+
+          stepService.completeRun({
+            runId: runInput.runId,
+            emit: execution.emit,
+          })
+        } catch (error) {
+          if (stepService.isAbortError(error, execution.controller.signal)) {
+            stepService.cancelRun({
+              runId: runInput.runId,
+              emit: execution.emit,
+            })
+            return
+          }
+
+          stepService.failRun({
+            runId: runInput.runId,
+            error: stepService.getErrorMessage(error),
+            emit: execution.emit,
+          })
+        }
+      })().finally(() => {
+        execution.cleanup()
+      })
+
+      return {
+        events: execution.queue.stream(),
+        cancel() {
+          cancelRun(runInput.runId)
+        },
+        respondPermission(response: OrchestrationPermissionResponse) {
+          respondPermission(response)
+        },
+      }
+    },
     detachRun,
     resumeDetachedPermission,
     respondPermission,

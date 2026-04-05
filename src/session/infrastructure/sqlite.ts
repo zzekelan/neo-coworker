@@ -19,6 +19,7 @@ import {
   type CreateAssistantMessageWithFirstPartInput,
   type CreateMessageInput,
   type CreatePartInput,
+  type CreateQueuedRunInput,
   type CreateQueuedRunWithInitiatingMessageAndPartInput,
   type CreateQueuedRunWithInitiatingMessageInput,
   type CreateRunInput,
@@ -966,6 +967,22 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     },
   )
 
+  const createQueuedRunTransaction = database.transaction((value: CreateQueuedRunInput) => {
+    const activeRun = getActiveRunRowBySession(value.run.sessionId)
+    if (activeRun) {
+      throw new SessionConflictError(
+        `Session ${value.run.sessionId} already has active run ${activeRun.id}`,
+      )
+    }
+
+    const run = runs.create({
+      ...value.run,
+      status: "queued",
+    })
+
+    return { run }
+  })
+
   const createQueuedRunWithInitiatingMessageAndPartTransaction = database.transaction(
     (value: CreateQueuedRunWithInitiatingMessageAndPartInput) => {
       const { run, message } = createQueuedRunWithInitiatingMessageTransaction(value)
@@ -1034,6 +1051,9 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     runs,
     messages,
     parts,
+    createQueuedRun(input: CreateQueuedRunInput) {
+      return createQueuedRunTransaction(input)
+    },
     createQueuedRunWithInitiatingMessage(input: CreateQueuedRunWithInitiatingMessageInput) {
       return createQueuedRunWithInitiatingMessageTransaction(input)
     },

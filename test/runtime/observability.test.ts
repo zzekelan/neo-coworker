@@ -430,7 +430,7 @@ describe("runtime observability", () => {
       repository: harness.repository,
       permissionRepository: harness.permissionRepository,
       observability: harness.observability,
-      contextWindow: 15_000,
+      contextWindow: 13_050,
       now: harness.now,
     })
 
@@ -545,6 +545,193 @@ describe("runtime observability", () => {
     )
     expect(readEventTypes(fourthTrace?.events ?? [])).not.toContain("compaction.failed")
     expect(readEventTypes(fourthTrace?.events ?? [])).not.toContain("compaction.completed")
+  })
+
+  test("manual compaction success resets the breaker so later runs can auto compact again", async () => {
+    const harness = await createHarness("trace-compaction-manual-reset", false)
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction_manual_reset_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+    const denseSummaryBlock = Array.from({ length: 80 }, () => "placeholder.txt").join("\n")
+
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            throw new Error("summary down 1")
+          },
+          async function* () {
+            yield { type: "text.delta", text: "First run still replied." }
+          },
+          async function* () {
+            throw new Error("summary down 2")
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Second run still replied." }
+          },
+          async function* () {
+            throw new Error("summary down 3")
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Third run still replied." }
+          },
+          async function* () {
+            yield {
+              type: "text.delta",
+              text: [
+                "Primary Request",
+                "Keep working after the manual compact.",
+                "",
+                "Key Concepts",
+                "The breaker should reset after a successful manual compaction.",
+                "",
+                "Files & Code",
+                denseSummaryBlock,
+                "",
+                "Errors & Fixes",
+                "Three automatic compactions failed earlier.",
+                "",
+                "Problem Solving",
+                "Run a manual compact, then retry automatic compaction on the next prompt.",
+                "",
+                "User Messages",
+                "Compact manually",
+                "",
+                "Pending Tasks",
+                "Send the follow-up reply.",
+                "",
+                "Current Work",
+                "Repairing the breaker state.",
+                "",
+                "Next Steps",
+                "Answer the user.",
+              ].join("\n"),
+            }
+          },
+          async function* () {
+            yield {
+              type: "text.delta",
+              text: [
+                "Primary Request",
+                "Keep working after the breaker reset.",
+                "",
+                "Key Concepts",
+                "Automatic compaction is allowed again.",
+                "",
+                "Files & Code",
+                "placeholder.txt",
+                "",
+                "Errors & Fixes",
+                "The manual compact succeeded.",
+                "",
+                "Problem Solving",
+                "Auto compact again before replying.",
+                "",
+                "User Messages",
+                "Continue after the breaker reset",
+                "",
+                "Pending Tasks",
+                "Send the final answer.",
+                "",
+                "Current Work",
+                "Preparing the reply.",
+                "",
+                "Next Steps",
+                "Answer the user.",
+              ].join("\n"),
+            }
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Auto compaction resumed." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      contextWindow: 15_000,
+      now: harness.now,
+    })
+
+    for (const suffix of ["one", "two", "three"] as const) {
+      const started = startPromptRun({
+        repository: harness.repository,
+        service: harness.service,
+        sessionId: harness.session.id,
+        runId: `run_trace_compaction_manual_reset_${suffix}`,
+        messageId: `message_trace_compaction_manual_reset_${suffix}`,
+        prompt: `Continue after ${suffix}`,
+      })
+      const handle = await runtime.run({
+        sessionId: harness.session.id,
+        runId: started.run.id,
+      })
+      await collectEvents(handle.events)
+    }
+
+    const manualRun = startCommandRun({
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction_manual_reset_manual",
+    })
+    const manualHandle = await runtime.compactSession({
+      sessionId: harness.session.id,
+      runId: manualRun.run.id,
+    })
+    await collectEvents(manualHandle.events)
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction_manual_reset_followup_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "post-compact shell output\n" + "y".repeat(4_000),
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_compaction_manual_reset_four",
+      messageId: "message_trace_compaction_manual_reset_four",
+      prompt: "Continue after the breaker reset",
+    })
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const summarizeRuns = harness.repository
+      .runs
+      .listBySession(harness.session.id)
+      .filter((run) => run.trigger === "summarize")
+    const fourthTrace = harness.observability.exportRunTrace(
+      "run_trace_compaction_manual_reset_four",
+    )
+
+    expect(harness.repository.runs.get(manualRun.run.id)).toMatchObject({
+      trigger: "command",
+      status: "completed",
+    })
+    expect(summarizeRuns).toHaveLength(5)
+    expect(summarizeRuns.map((run) => run.status)).toEqual([
+      "failed",
+      "failed",
+      "failed",
+      "completed",
+      "completed",
+    ])
+    expect(readEventTypes(fourthTrace?.events ?? [])).toContain("compaction.completed")
+    expect(readEventTypes(fourthTrace?.events ?? [])).not.toContain(
+      "compaction.circuit_breaker.triggered",
+    )
   })
 
   test("records microcompact telemetry when projection clears older tool results", async () => {
@@ -689,6 +876,17 @@ function startPromptRun(input: {
   })
 
   return started
+}
+
+function startCommandRun(input: {
+  service: ReturnType<typeof createSessionRunService>
+  sessionId: string
+  runId: string
+}) {
+  return input.service.startCommandRun({
+    sessionId: input.sessionId,
+    runId: input.runId,
+  })
 }
 
 function seedCompletedRunWithToolResults(input: {

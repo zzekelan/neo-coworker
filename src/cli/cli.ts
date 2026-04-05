@@ -2,6 +2,8 @@ import {
   isTerminalRunStatus,
   type OrchestrationModelPort,
   type PermissionDecision,
+  SessionAlreadyCompactingError,
+  SessionBusyError,
   type ServerEvent,
   type StoredPermissionRequest,
   type StoredSession,
@@ -600,6 +602,54 @@ async function runChatCli(input: {
         continue
       }
 
+      if (trimmed === "/compact") {
+        if (!currentSessionId) {
+          input.io.write("status> no session to compact\n")
+          continue
+        }
+
+        try {
+          const compactResult = await runCompactCommand({
+            client: input.clientHandle.client,
+            io: input.io,
+            workspaceRoot: input.workspaceRoot,
+            sessionId: currentSessionId,
+            getExitRequested() {
+              return exitRequested
+            },
+            setActivePermissionPrompt(value) {
+              activePermissionPrompt = value
+            },
+            setActiveRunId(value) {
+              activeRunId = value
+              if (value) {
+                cancelDispatched = false
+                cancelError = null
+              }
+            },
+          })
+
+          activePermissionPrompt = null
+          activeRunId = null
+
+          if (cancelError) {
+            throw cancelError
+          }
+
+          if (compactResult === "exit") {
+            break
+          }
+        } catch (error) {
+          if (!isRecoverableCommandError(error)) {
+            throw error
+          }
+
+          input.io.write(`error> ${error.message}\n`)
+        }
+
+        continue
+      }
+
       if (trimmed.startsWith("/")) {
         input.io.write(`status> unknown command: ${trimmed}\n`)
         continue
@@ -708,6 +758,57 @@ async function runChatTurn(input: {
   }
 }
 
+async function runCompactCommand(input: {
+  client: AgentServerClient
+  io: CliIO
+  workspaceRoot: string
+  sessionId: string
+  getExitRequested(): boolean
+  setActivePermissionPrompt(value: PendingPermissionReply | null): void
+  setActiveRunId(value: string | null): void
+}) {
+  const renderer = createCliChatRenderer({
+    io: input.io,
+    workspaceRoot: input.workspaceRoot,
+  })
+
+  const subscription = await input.client.subscribe()
+
+  try {
+    const started = await input.client.compactSession(input.sessionId)
+    input.setActiveRunId(started.run.id)
+
+    const watched = await watchChatRun({
+      client: input.client,
+      io: input.io,
+      runId: started.run.id,
+      subscription,
+      renderer,
+      getExitRequested: input.getExitRequested,
+      setActivePermissionPrompt: input.setActivePermissionPrompt,
+    })
+
+    if (watched.exitedWhileBlocked) {
+      return "exit" as const
+    }
+
+    if (watched.terminalStatus == null) {
+      const currentRun = await input.client.getRun(started.run.id)
+
+      if (!isTerminalRunStatus(currentRun.run.status)) {
+        throw new Error(`Run ${started.run.id} ended without reaching a terminal state`)
+      }
+    }
+
+    return "continue" as const
+  } finally {
+    input.setActivePermissionPrompt(null)
+    input.setActiveRunId(null)
+    renderer.finish()
+    await subscription.close()
+  }
+}
+
 async function resumeExistingChatSession(input: {
   sessionId: string
   client: AgentServerClient
@@ -755,6 +856,7 @@ async function resumeExistingChatSession(input: {
     renderer.hydrateTranscript({
       transcript,
       activeRunId: activeRun.id,
+      activeRunTrigger: activeRun.trigger,
       renderLiveActivity: activeRun.status === "running",
     })
     input.setActiveRunId(activeRun.id)
@@ -946,6 +1048,15 @@ function formatSessionActivityTime(timestamp: number) {
 
 function isIgnorableCancelError(error: unknown) {
   return error instanceof AgentServerClientError && error.code === "invalid_state"
+}
+
+function isRecoverableCommandError(error: unknown): error is Error {
+  return (
+    error instanceof SessionBusyError ||
+    error instanceof SessionAlreadyCompactingError ||
+    (error instanceof AgentServerClientError &&
+      (error.code === "invalid_state" || error.code === "already_compacting"))
+  )
 }
 
 function isAbortError(error: unknown) {

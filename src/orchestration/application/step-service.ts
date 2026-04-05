@@ -36,6 +36,8 @@ type ExecuteOrchestrationStepInput = {
   emit: OrchestrationEventEmitter
 }
 
+type ExecuteCompactionInput = ExecuteOrchestrationStepInput
+
 type ToolCallEvent = {
   type: "tool.call"
   callId: string
@@ -86,6 +88,19 @@ type AutoCompactionResult =
       summarizeRunId: string
       tokensBefore: number
     }
+
+type CompactionProjectionInput = {
+  model: OrchestrationModelPort
+  systemPrompt: string
+  skillCatalog: Awaited<ReturnType<OrchestrationSkillPort["listCatalog"]>>
+  activeSkills: ReturnType<ReturnType<typeof createSkillReminderTracker>["resolveActiveSkills"]>
+  systemReminders: ReturnType<ReturnType<typeof createSkillReminderTracker>["buildSystemReminders"]>
+  contextWindow: number
+  tools: ReturnType<OrchestrationToolPort["list"]>
+  transcript: OrchestrationTranscriptMessage[]
+  sessionId: string
+  runId: string
+}
 
 function isAbortError(error: unknown, signal: AbortSignal) {
   return signal.aborted || (error instanceof Error && error.name === "AbortError")
@@ -364,6 +379,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         })
         stepInput.emit({
           type: "compaction.completed",
+          trigger: "auto",
           summarizeRunId: autoCompaction.summarizeRunId,
           tokensBefore: autoCompaction.tokensBefore,
           tokensAfter: tokensAfter ?? 0,
@@ -508,6 +524,166 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
       return {
         status: requestedTool ? ("repeat" as const) : ("complete" as const),
+      }
+    },
+    async compactSession(compactionInput: ExecuteCompactionInput): Promise<
+      | {
+          status: "completed" | "cancelled"
+        }
+      | {
+          status: "failed"
+          error: string
+        }
+    > {
+      const contextWindow = input.contextWindow.getContextWindow() || DEFAULT_CONTEXT_WINDOW_SIZE
+      const run = input.session.getRun(compactionInput.runId)
+      const skillCatalog = await input.skill.listCatalog(compactionInput.workspaceRoot)
+      const availableTools = compactionInput.tools.list()
+      const transcript = input.session.listTranscript(compactionInput.sessionId)
+
+      if (!input.model.projectTurn) {
+        const error = "Manual compaction is unavailable because token projection is not configured."
+        appendCompactionFailureArtifacts({
+          session: input.session,
+          sessionId: compactionInput.sessionId,
+          runId: compactionInput.runId,
+          trigger: "manual",
+          error,
+          attemptCount: 1,
+          summarizeRunId: null,
+          emit: compactionInput.emit,
+          now,
+        })
+        return {
+          status: "failed",
+          error,
+        }
+      }
+
+      if (transcript.length === 0) {
+        const error = "Session has no transcript to compact."
+        appendCompactionFailureArtifacts({
+          session: input.session,
+          sessionId: compactionInput.sessionId,
+          runId: compactionInput.runId,
+          trigger: "manual",
+          error,
+          attemptCount: 1,
+          summarizeRunId: null,
+          emit: compactionInput.emit,
+          now,
+        })
+        return {
+          status: "failed",
+          error,
+        }
+      }
+
+      const projectedBefore = projectCompactionInputTokens({
+        model: input.model,
+        systemPrompt: compactionInput.systemPrompt,
+        skillCatalog,
+        activeSkills: skillReminders.resolveActiveSkills(compactionInput.sessionId, run.activeSkills),
+        systemReminders: skillReminders.buildSystemReminders(compactionInput.sessionId),
+        contextWindow,
+        tools: availableTools,
+        transcript,
+        sessionId: compactionInput.sessionId,
+        runId: compactionInput.runId,
+      })
+
+      try {
+        const manualCompaction = await performCompactionRun({
+          session: input.session,
+          model: input.model,
+          runtimeObserver: input.runtimeObserver,
+          contextWindow,
+          sessionId: compactionInput.sessionId,
+          run,
+          transcript,
+          signal: compactionInput.signal,
+          now,
+          tokensBefore: projectedBefore.inputTokens,
+          trigger: "manual",
+        })
+        skillReminders.resetAfterCompaction(compactionInput.sessionId)
+        const compactedTranscript = input.session.listTranscript(compactionInput.sessionId)
+        const projectionAfter = projectCompactionInputTokens({
+          model: input.model,
+          systemPrompt: compactionInput.systemPrompt,
+          skillCatalog,
+          activeSkills: skillReminders.resolveActiveSkills(compactionInput.sessionId, run.activeSkills),
+          systemReminders: skillReminders.buildSystemReminders(compactionInput.sessionId),
+          contextWindow,
+          tools: availableTools,
+          transcript: compactedTranscript,
+          sessionId: compactionInput.sessionId,
+          runId: compactionInput.runId,
+        })
+        input.session.updateMessagePart({
+          partId: manualCompaction.boundaryPartId,
+          data: {
+            tokensBefore: manualCompaction.tokensBefore,
+            tokensAfter: projectionAfter.inputTokens,
+            compressionRatio: calculateCompressionRatio(
+              manualCompaction.tokensBefore,
+              projectionAfter.inputTokens,
+            ),
+            summarizeRunId: manualCompaction.summarizeRunId,
+            trigger: "manual",
+          },
+        })
+        compactionInput.emit({
+          type: "compaction.completed",
+          trigger: "manual",
+          summarizeRunId: manualCompaction.summarizeRunId,
+          tokensBefore: manualCompaction.tokensBefore,
+          tokensAfter: projectionAfter.inputTokens,
+          compressionRatio: calculateCompressionRatio(
+            manualCompaction.tokensBefore,
+            projectionAfter.inputTokens,
+          ),
+        })
+        compactionInput.emit({
+          type: "context.usage.updated",
+          sessionId: compactionInput.sessionId,
+          runId: compactionInput.runId,
+          ...buildContextUsageSnapshot({
+            contextTokens: projectionAfter.inputTokens,
+            contextWindow,
+            source: "estimated",
+          }),
+        })
+        return {
+          status: "completed",
+        }
+      } catch (error) {
+        if (isAbortError(error, compactionInput.signal)) {
+          return {
+            status: "cancelled",
+          }
+        }
+
+        if (isDetachedError(error)) {
+          throw error
+        }
+
+        const message = getErrorMessage(error)
+        appendCompactionFailureArtifacts({
+          session: input.session,
+          sessionId: compactionInput.sessionId,
+          runId: compactionInput.runId,
+          trigger: "manual",
+          error: message,
+          attemptCount: 1,
+          summarizeRunId: readCompactionSummarizeRunId(error),
+          emit: compactionInput.emit,
+          now,
+        })
+        return {
+          status: "failed",
+          error: message,
+        }
       }
     },
   }
@@ -758,6 +934,123 @@ async function maybeAutoCompact(input: {
     return { compacted: false }
   }
 
+  try {
+    const syntheticMessage = await performCompactionRun({
+      session: input.session,
+      model: input.model,
+      runtimeObserver: input.runtimeObserver,
+      contextWindow: input.contextWindow,
+      sessionId: input.sessionId,
+      run: input.run,
+      transcript: input.transcript,
+      signal: input.signal,
+      now: input.now,
+      tokensBefore: projected.inputTokens,
+      trigger: "auto",
+    })
+    return {
+      compacted: true,
+      boundaryPartId: syntheticMessage.boundaryPartId,
+      summarizeRunId: syntheticMessage.summarizeRunId,
+      tokensBefore: projected.inputTokens,
+    }
+  } catch (error) {
+    if (isAbortError(error, input.signal)) {
+      throw error
+    }
+
+    if (isDetachedError(error)) {
+      throw error
+    }
+
+    const errorText = getErrorMessage(error)
+    const attemptCount = breakerState.consecutiveFailures + 1
+    appendCompactionFailureArtifacts({
+      session: input.session,
+      sessionId: input.sessionId,
+      runId: input.run.id,
+      trigger: "auto",
+      error: errorText,
+      attemptCount,
+      summarizeRunId: readCompactionSummarizeRunId(error),
+      emit: input.emit,
+      now: input.now,
+    })
+
+    if (attemptCount >= AUTO_COMPACTION_FAILURE_LIMIT) {
+      const breakerText =
+        "⚠️ Automatic compaction has been paused. Run /compact successfully to re-enable it."
+      appendSyntheticMessageParts({
+        session: input.session,
+        sessionId: input.sessionId,
+        runId: input.run.id,
+        now: input.now,
+        parts: [
+          {
+            kind: "error",
+            text: breakerText,
+            data: {
+              source: "compaction",
+              eventType: "compaction.circuit_breaker.triggered",
+              consecutiveFailures: attemptCount,
+              lastError: errorText,
+              resolution: "manual_compact",
+            },
+          },
+        ],
+      })
+      input.emit({
+        type: "compaction.circuit_breaker.triggered",
+        consecutiveFailures: attemptCount,
+        lastError: errorText,
+        resolution: "manual_compact",
+      })
+    }
+
+    return {
+      compacted: false,
+    }
+  }
+}
+
+class CompactionRunError extends Error {
+  readonly summarizeRunId: string
+
+  constructor(input: { message: string; summarizeRunId: string }) {
+    super(input.message)
+    this.name = "CompactionRunError"
+    this.summarizeRunId = input.summarizeRunId
+  }
+}
+
+function projectCompactionInputTokens(input: CompactionProjectionInput) {
+  return input.model.projectTurn?.({
+    systemPrompt: input.systemPrompt,
+    skillCatalog: input.skillCatalog,
+    activeSkills: input.activeSkills,
+    systemReminders: input.systemReminders,
+    contextWindow: input.contextWindow,
+    tools: input.tools,
+    transcript: input.transcript,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    turnKey: createTurnKey(input.runId, getNextMessageSequence(input.transcript, input.runId)),
+  }) ?? { inputTokens: 0 }
+}
+
+async function performCompactionRun(input: {
+  session: OrchestrationSessionPort
+  model: OrchestrationModelPort
+  runtimeObserver?: OrchestrationRuntimeObserverPort
+  contextWindow: number
+  sessionId: string
+  run: ReturnType<OrchestrationSessionPort["getRun"]>
+  transcript: OrchestrationTranscriptMessage[]
+  signal: AbortSignal
+  now: () => number
+  tokensBefore: number
+  trigger: CompactionMode
+}) {
   const summarizeRunId = `run_${crypto.randomUUID()}`
   const summarizeStartedAt = input.now()
   recordObservedRuntimeEvent({
@@ -814,11 +1107,11 @@ async function maybeAutoCompact(input: {
         {
           kind: "compaction_boundary",
           data: {
-            tokensBefore: projected.inputTokens,
+            tokensBefore: input.tokensBefore,
             tokensAfter: 0,
             compressionRatio: 0,
             summarizeRunId,
-            trigger: "auto",
+            trigger: input.trigger,
           },
         },
         {
@@ -829,10 +1122,9 @@ async function maybeAutoCompact(input: {
     })
 
     return {
-      compacted: true,
       boundaryPartId: syntheticMessage.parts[0]!.id,
       summarizeRunId,
-      tokensBefore: projected.inputTokens,
+      tokensBefore: input.tokensBefore,
     }
   } catch (error) {
     if (isAbortError(error, input.signal)) {
@@ -868,68 +1160,57 @@ async function maybeAutoCompact(input: {
       },
     })
 
-    const attemptCount = breakerState.consecutiveFailures + 1
-    appendSyntheticMessageParts({
-      session: input.session,
-      sessionId: input.sessionId,
-      runId: input.run.id,
-      now: input.now,
-      parts: [
-        {
-          kind: "error",
-          text: `Automatic compaction failed: ${errorText}`,
-          data: {
-            source: "compaction",
-            eventType: "compaction.failed",
-            trigger: "auto",
-            error: errorText,
-            attemptCount,
-            summarizeRunId,
-          },
-        },
-      ],
-    })
-    input.emit({
-      type: "compaction.failed",
-      error: errorText,
-      attemptCount,
+    throw new CompactionRunError({
+      message: errorText,
       summarizeRunId,
     })
-
-    if (attemptCount >= AUTO_COMPACTION_FAILURE_LIMIT) {
-      const breakerText =
-        "⚠️ Automatic compaction has been paused. Run /compact successfully to re-enable it."
-      appendSyntheticMessageParts({
-        session: input.session,
-        sessionId: input.sessionId,
-        runId: input.run.id,
-        now: input.now,
-        parts: [
-          {
-            kind: "error",
-            text: breakerText,
-            data: {
-              source: "compaction",
-              eventType: "compaction.circuit_breaker.triggered",
-              consecutiveFailures: attemptCount,
-              lastError: errorText,
-              resolution: "manual_compact",
-            },
-          },
-        ],
-      })
-      input.emit({
-        type: "compaction.circuit_breaker.triggered",
-        consecutiveFailures: attemptCount,
-        lastError: errorText,
-        resolution: "manual_compact",
-      })
-    }
-
-    return {
-      compacted: false,
-    }
   }
+}
+
+function appendCompactionFailureArtifacts(input: {
+  session: OrchestrationSessionPort
+  sessionId: string
+  runId: string
+  trigger: CompactionMode
+  error: string
+  attemptCount: number
+  summarizeRunId: string | null
+  emit: OrchestrationEventEmitter
+  now: () => number
+}) {
+  const label =
+    input.trigger === "auto" ? "Automatic compaction failed" : "Manual compaction failed"
+  appendSyntheticMessageParts({
+    session: input.session,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    now: input.now,
+    parts: [
+      {
+        kind: "error",
+        text: `${label}: ${input.error}`,
+        data: {
+          source: "compaction",
+          eventType: "compaction.failed",
+          trigger: input.trigger,
+          error: input.error,
+          attemptCount: input.attemptCount,
+          summarizeRunId: input.summarizeRunId,
+        },
+      },
+    ],
+  })
+  input.emit({
+    type: "compaction.failed",
+    trigger: input.trigger,
+    error: input.error,
+    attemptCount: input.attemptCount,
+    summarizeRunId: input.summarizeRunId,
+  })
+}
+
+function readCompactionSummarizeRunId(error: unknown) {
+  return error instanceof CompactionRunError ? error.summarizeRunId : null
 }
 
 async function summarizeTranscript(input: {

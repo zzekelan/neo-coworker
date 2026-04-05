@@ -53,4 +53,74 @@ describe("desktop app state flow", () => {
 
     expect(source).toContain("contextUsage: refreshData.snapshot?.contextUsage ?? null")
   })
+
+  test("intercepts /compact as a command instead of sending it as a prompt", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    expect(source).toContain('if (trimmedPrompt === "/compact")')
+    expect(source).toContain("return actions.compactSession()")
+  })
+
+  test("compactSession calls the dedicated compact endpoint and does not create a user message", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    expect(source).toContain("async compactSession()")
+    expect(source).toContain("await compactSession(sessionId)")
+    expect(source).toContain("preserveTranscript: true")
+  })
+
+  test("compactSession requires an active session and surfaces an error if none exists", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    const compactBlock = source.slice(
+      source.indexOf("async compactSession()"),
+      source.indexOf("async cancelRun()"),
+    )
+
+    expect(compactBlock).toContain("selectionRef.current.activeSessionId")
+    expect(compactBlock).toContain("if (!sessionId)")
+    expect(compactBlock).toContain("No active session to compact.")
+    expect(compactBlock).toContain("return false")
+  })
+
+  test("compactSession sets isSending while running and clears it on error", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    const compactBlock = source.slice(
+      source.indexOf("async compactSession()"),
+      source.indexOf("async cancelRun()"),
+    )
+
+    expect(compactBlock).toContain("isSending: true")
+    expect(compactBlock).toContain("actionError: null")
+    expect(compactBlock).toContain("isSending: false")
+    expect(compactBlock).toContain("actionError: toErrorMessage(error)")
+  })
+
+  test("compactSession does not auto-create a session when none is active", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    const compactBlock = source.slice(
+      source.indexOf("async compactSession()"),
+      source.indexOf("async cancelRun()"),
+    )
+
+    expect(compactBlock).not.toContain("createSession")
+  })
+})
+
+describe("desktop api client", () => {
+  test("exposes a compactSession function that POSTs to the compact endpoint", () => {
+    const source = readFileSync("src/desktop/src/api.ts", "utf8")
+
+    expect(source).toContain("export async function compactSession(sessionId: string)")
+    expect(source).toContain("/sessions/${encodeURIComponent(sessionId)}/compact")
+    expect(source).toContain('method: "POST"')
+  })
+
+  test("compactSession returns the run from the envelope", () => {
+    const source = readFileSync("src/desktop/src/api.ts", "utf8")
+
+    expect(source).toContain("requestApi<{ run: DesktopRun }>(")
+  })
 })

@@ -15,6 +15,7 @@ type ReadActivity = {
 
 type ThinkingActivity = {
   kind: "thinking"
+  label: string
 }
 
 type ToolActivity = {
@@ -142,7 +143,7 @@ export function createCliChatRenderer(input: {
     }
 
     if (activity.kind === "thinking") {
-      finishStatus("thinking")
+      finishStatus(activity.label)
       return
     }
 
@@ -246,9 +247,10 @@ export function createCliChatRenderer(input: {
       if (!state.activeActivity && !state.assistantLineOpen) {
         state.activeActivity = {
           kind: "thinking",
+          label: describeRunningStatus(run.trigger),
         }
         state.activeActivityVisible = true
-        startStatus("thinking")
+        startStatus(describeRunningStatus(run.trigger))
       }
       return
     }
@@ -271,6 +273,10 @@ export function createCliChatRenderer(input: {
       closeAssistantLine()
       write("status> cancelled\n")
     }
+  }
+
+  function describeRunningStatus(trigger: StoredRun["trigger"]) {
+    return trigger === "command" ? "compacting session" : "thinking"
   }
 
   function seedTranscriptState(transcript: TranscriptMessage[]) {
@@ -484,6 +490,7 @@ export function createCliChatRenderer(input: {
   function replayActiveRunSnapshot(inputValue: {
     transcript: TranscriptMessage[]
     runId: string
+    runTrigger: StoredRun["trigger"]
     renderLiveActivity: boolean
   }) {
     let resumedText: string | null = null
@@ -549,9 +556,10 @@ export function createCliChatRenderer(input: {
       if (!resumedText && inputValue.renderLiveActivity) {
         state.activeActivity = {
           kind: "thinking",
+          label: describeRunningStatus(inputValue.runTrigger),
         }
         state.activeActivityVisible = true
-        startStatus("thinking")
+        startStatus(describeRunningStatus(inputValue.runTrigger))
       }
 
       return
@@ -578,6 +586,7 @@ export function createCliChatRenderer(input: {
     hydrateTranscript(inputValue: {
       transcript: TranscriptMessage[]
       activeRunId?: string
+      activeRunTrigger?: StoredRun["trigger"]
       renderLiveActivity?: boolean
     }) {
       seedTranscriptState(inputValue.transcript)
@@ -608,6 +617,7 @@ export function createCliChatRenderer(input: {
       replayActiveRunSnapshot({
         transcript: inputValue.transcript,
         runId: inputValue.activeRunId,
+        runTrigger: inputValue.activeRunTrigger ?? "prompt",
         renderLiveActivity: inputValue.renderLiveActivity ?? false,
       })
     },

@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react"
 import {
   cancelRun,
+  compactSession,
   createSession,
   deleteSession as deleteSessionRequest,
   getDesktopBridge,
@@ -592,6 +593,10 @@ export function useDesktopApp() {
         return false
       }
 
+      if (trimmedPrompt === "/compact") {
+        return actions.compactSession()
+      }
+
       const workspaceRoot = resolveWorkspaceRoot({
         activeWorkspaceRoot: selectionRef.current.activeWorkspaceRoot,
         workspaces: state.workspaces,
@@ -640,6 +645,41 @@ export function useDesktopApp() {
 
         await refresh({
           workspaceRoot,
+          sessionId,
+          preserveTranscript: true,
+        })
+        return true
+      } catch (error) {
+        setState((previous) => ({
+          ...previous,
+          isSending: false,
+          actionError: toErrorMessage(error),
+        }))
+        return false
+      }
+    },
+
+    async compactSession() {
+      const sessionId = selectionRef.current.activeSessionId
+      if (!sessionId) {
+        setState((previous) => ({
+          ...previous,
+          actionError: "No active session to compact.",
+        }))
+        return false
+      }
+
+      setState((previous) => ({
+        ...previous,
+        isSending: true,
+        actionError: null,
+      }))
+
+      try {
+        await compactSession(sessionId)
+
+        await refresh({
+          workspaceRoot: selectionRef.current.activeWorkspaceRoot,
           sessionId,
           preserveTranscript: true,
         })

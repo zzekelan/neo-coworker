@@ -100,6 +100,12 @@ function unwrapSchema(schema: ZodTypeAny): ZodTypeAny {
     return unwrapSchema((schema as ZodTypeAny & { unwrap(): ZodTypeAny }).unwrap())
   }
 
+  if (typeName === "ZodEffects") {
+    return unwrapSchema(
+      (schema as ZodTypeAny & { _def: { schema: ZodTypeAny } })._def.schema,
+    )
+  }
+
   return schema
 }
 

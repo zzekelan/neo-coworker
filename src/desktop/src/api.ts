@@ -278,6 +278,15 @@ export async function cancelRun(runId: string) {
   })
 }
 
+export async function compactSession(sessionId: string) {
+  return requestApi<{ run: DesktopRun }>(
+    `/sessions/${encodeURIComponent(sessionId)}/compact`,
+    {
+      method: "POST",
+    },
+  )
+}
+
 export async function replyPermission(input: { requestId: string; decision: "allow" | "deny" }) {
   return requestApi<{ run: DesktopRun; permissionRequest: DesktopPermissionRequest }>(
     `/permissions/${encodeURIComponent(input.requestId)}/reply`,

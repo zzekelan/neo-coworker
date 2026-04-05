@@ -55,6 +55,7 @@ export type OrchestrationRuntimeEvent =
     }
   | {
       type: "compaction.completed"
+      trigger: "auto" | "manual"
       summarizeRunId: string
       tokensBefore: number
       tokensAfter: number
@@ -62,9 +63,10 @@ export type OrchestrationRuntimeEvent =
     }
   | {
       type: "compaction.failed"
+      trigger: "auto" | "manual"
       error: string
       attemptCount: number
-      summarizeRunId: string
+      summarizeRunId: string | null
     }
   | {
       type: "compaction.circuit_breaker.triggered"

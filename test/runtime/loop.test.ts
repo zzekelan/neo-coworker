@@ -431,6 +431,136 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
+  test("manual compaction runs as a command and trims the next prompt turn", async () => {
+    const harness = await createHarness("manual-compact", true)
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_manual_compact_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "text.delta",
+            text: [
+              "Primary Request",
+              "Keep working on the shell-heavy task.",
+              "",
+              "Key Concepts",
+              "Use the compacted summary instead of the original tool output.",
+              "",
+              "Files & Code",
+              "README.md",
+              "",
+              "Errors & Fixes",
+              "None.",
+              "",
+              "Problem Solving",
+              "Summarize on demand, then continue.",
+              "",
+              "User Messages",
+              "Continue after manual compaction",
+              "",
+              "Pending Tasks",
+              "Finish the answer.",
+              "",
+              "Current Work",
+              "Compacting before the next turn.",
+              "",
+              "Next Steps",
+              "Answer the user.",
+            ].join("\n"),
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Manual compaction reply." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      contextWindow: 15_000,
+      now: harness.now,
+    })
+
+    const compactRun = startCommandRun({
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_manual_compact",
+    })
+    const compactHandle = await runtime.compactSession({
+      sessionId: harness.session.id,
+      runId: compactRun.run.id,
+    })
+    const compactEvents = await collectEvents(compactHandle.events)
+    const compactTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const compactBoundary = compactTranscript.find(
+      (message) =>
+        message.runId === compactRun.run.id &&
+        message.parts.some((part) => part.kind === "compaction_boundary"),
+    )
+
+    expect(harness.repository.runs.get(compactRun.run.id)).toMatchObject({
+      trigger: "command",
+      status: "completed",
+    })
+    expect(compactEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "compaction.completed",
+          trigger: "manual",
+          summarizeRunId: expect.any(String),
+        }),
+        expect.objectContaining({
+          type: "context.usage.updated",
+          runId: compactRun.run.id,
+          source: "estimated",
+        }),
+      ]),
+    )
+    expect(compactBoundary?.role).toBe("synthetic")
+    expect(compactBoundary?.parts[0]).toMatchObject({
+      kind: "compaction_boundary",
+      data: {
+        trigger: "manual",
+        summarizeRunId: expect.any(String),
+      },
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_after_manual_compact",
+      messageId: "message_after_manual_compact",
+      prompt: "Continue after manual compaction",
+    })
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    expect(requests).toHaveLength(2)
+    expect(readRequestText(requests[0]!).join("\n")).toContain(
+      "Return plain text with exactly these nine section headings",
+    )
+    expect(readRequestText(requests[1]!).join("\n")).toContain("Primary Request")
+    expect(readRequestText(requests[1]!).join("\n")).toContain("Continue after manual compaction")
+    expect(readRequestText(requests[1]!).join("\n")).not.toContain("shell output")
+    expect(
+      harness.repository.messages
+        .listSessionTranscript(harness.session.id)
+        .filter((message) => message.role === "user")
+        .map((message) => message.parts[0]?.text),
+    ).toEqual(["Previous shell-heavy work", "Continue after manual compaction"])
+  })
+
   test("projects workspace skill catalog and run active skills into model turns", async () => {
     const harness = await createHarness("skill-context", false)
     const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
@@ -1428,6 +1558,17 @@ function startPromptRun(input: {
   })
 
   return started
+}
+
+function startCommandRun(input: {
+  service: ReturnType<typeof createSessionRunService>
+  sessionId: string
+  runId: string
+}) {
+  return input.service.startCommandRun({
+    sessionId: input.sessionId,
+    runId: input.runId,
+  })
 }
 
 function seedCompletedRun(input: {

@@ -43,6 +43,9 @@ export type AgentServerClient = {
     run: StoredRun
     message: StoredMessage
   }>
+  compactSession(sessionId: string): Promise<{
+    run: StoredRun
+  }>
   getRun(runId: string): Promise<{
     run: StoredRun
     permissionRequests: StoredPermissionRequest[]
@@ -156,6 +159,13 @@ export function createAgentServerClient(input: {
           prompt: inputValue.prompt,
           trigger: inputValue.trigger,
         }),
+      })
+    },
+    compactSession(sessionId) {
+      return requestJson<{
+        run: StoredRun
+      }>(`/sessions/${encodeURIComponent(sessionId)}/compact`, {
+        method: "POST",
       })
     },
     getRun(runId) {
@@ -327,6 +337,9 @@ export async function createLocalCliServerClient(input: {
           prompt: runInput.prompt,
           trigger: runInput.trigger,
         })
+      },
+      async compactSession(sessionId) {
+        return app.runs.compact(sessionId)
       },
       async getRun(runId) {
         return app.runs.get(runId)

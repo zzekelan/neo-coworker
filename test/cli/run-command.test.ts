@@ -12,6 +12,7 @@ import {
 import type { OrchestrationModelPort } from "../../src/orchestration"
 import { createPermissionRepository } from "../../src/permission"
 import { createAgentServerClient, runCli } from "../../src/cli"
+import { AgentServerClientError } from "../../src/cli/cli-server-client"
 import { createAgentServer } from "../../src/app-server"
 import { createCliStorageComposition, createRuntime } from "../../src/bootstrap"
 import {
@@ -681,6 +682,118 @@ describe("chat command", () => {
     expect(rendered).toContain("assistant> First reply.")
     expect(countOccurrences(rendered, "you> Second prompt")).toBe(1)
     expect(rendered).toContain("assistant> Second reply.")
+  })
+
+  test("/compact starts a command run, renders compaction progress, and does not persist a user prompt", async () => {
+    const harness = await createHarness("cli-chat-manual-compact", createTurnProvider([
+      async function* () {
+        yield {
+          type: "text.delta",
+          text: [
+            "Primary Request",
+            "Keep working on the shell-heavy task.",
+            "",
+            "Key Concepts",
+            "Use the compacted summary instead of the original tool output.",
+            "",
+            "Files & Code",
+            "placeholder.txt",
+            "",
+            "Errors & Fixes",
+            "None.",
+            "",
+            "Problem Solving",
+            "Compact on demand.",
+            "",
+            "User Messages",
+            "Continue after manual compaction",
+            "",
+            "Pending Tasks",
+            "Finish the answer.",
+            "",
+            "Current Work",
+            "Compacting before the next turn.",
+            "",
+            "Next Steps",
+            "Answer the user.",
+          ].join("\n"),
+        }
+      },
+    ]))
+    const session = await harness.client.createSession({
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+    })
+    seedCompletedRunWithToolResults({
+      repository: harness.repository,
+      sessionId: session.id,
+      runId: "run_cli_manual_compact_history",
+      toolName: "shell",
+      resultCount: 7,
+      output: "shell output\n" + "x".repeat(4_000),
+    })
+    const output: string[] = []
+
+    await runCli({
+      argv: ["chat", "--session", session.id],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["/compact", "/exit"]),
+    })
+
+    const rendered = output.join("")
+    const commandRuns = harness.repository
+      .runs
+      .listBySession(session.id)
+      .filter((run) => run.trigger === "command")
+
+    expect(commandRuns).toEqual([
+      expect.objectContaining({
+        status: "completed",
+      }),
+    ])
+    expect(rendered).toContain("| compacting session")
+    expect(rendered).toContain("✓ compacting session")
+    expect(rendered).toContain("--- session compacted")
+    expect(
+      harness.repository.messages
+        .listSessionTranscript(session.id)
+        .filter((message) => message.role === "user")
+        .map((message) => message.parts[0]?.text),
+    ).toEqual(["Previous shell-heavy work"])
+  })
+
+  test("/compact reports busy and already_compacting errors without exiting chat", async () => {
+    const harness = await createHarness("cli-chat-manual-compact-errors", createTurnProvider([]))
+    const session = await harness.client.createSession({
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+    })
+    const output: string[] = []
+    let compactAttempt = 0
+    const client = {
+      ...harness.client,
+      async compactSession() {
+        compactAttempt += 1
+        throw new AgentServerClientError({
+          status: 409,
+          code: compactAttempt === 1 ? "invalid_state" : "already_compacting",
+          message: compactAttempt === 1 ? "Session is busy" : "Session is already compacting",
+        })
+      },
+    }
+
+    await runCli({
+      argv: ["chat", "--session", session.id],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client,
+      io: createIo(output, ["/compact", "/compact", "/exit"]),
+    })
+
+    expect(output.join("")).toContain("error> Session is busy")
+    expect(output.join("")).toContain("error> Session is already compacting")
   })
 
   test("/resume only lists sessions in the current workspace and sorts by recent activity", async () => {
@@ -1974,6 +2087,62 @@ async function createHarness(
       },
       origin: "http://server.test",
     }),
+  }
+}
+
+function seedCompletedRunWithToolResults(input: {
+  repository: ReturnType<typeof createStorageRepository>
+  sessionId: string
+  runId: string
+  toolName: string
+  resultCount: number
+  output: string
+}) {
+  input.repository.runs.create({
+    id: input.runId,
+    sessionId: input.sessionId,
+    trigger: "prompt",
+    status: "completed",
+  })
+  const userMessage = input.repository.messages.create({
+    id: `${input.runId}_user`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "user",
+    sequence: 0,
+  })
+  input.repository.parts.create({
+    id: `${input.runId}_user_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: userMessage.id,
+    kind: "text",
+    sequence: 0,
+    text: "Previous shell-heavy work",
+  })
+  const assistantMessage = input.repository.messages.create({
+    id: `${input.runId}_assistant`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "assistant",
+    sequence: 1,
+  })
+
+  for (let index = 0; index < input.resultCount; index += 1) {
+    input.repository.parts.create({
+      id: `${input.runId}_tool_result_${index}`,
+      sessionId: input.sessionId,
+      runId: input.runId,
+      messageId: assistantMessage.id,
+      kind: "tool_result",
+      sequence: index,
+      text: `${input.output}\n#${index}`,
+      data: {
+        callId: `${input.runId}_call_${index}`,
+        toolName: input.toolName,
+        output: `${input.output}\n#${index}`,
+      },
+    })
   }
 }
 

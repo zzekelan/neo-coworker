@@ -450,7 +450,12 @@ export function createObservedRepository(input: {
 
 export type ServerAppRuntime = Pick<
   OrchestrationRuntimeApi,
-  "run" | "cancelRun" | "detachRun" | "respondPermission" | "resumeDetachedPermission"
+  | "run"
+  | "compactSession"
+  | "cancelRun"
+  | "detachRun"
+  | "respondPermission"
+  | "resumeDetachedPermission"
 >
 
 export type CreateServerAppRuntime = (input: {
@@ -470,6 +475,18 @@ export class RunTraceNotFoundError extends Error {
   constructor(runId: string) {
     super(`Run trace ${runId} was not found`)
     this.name = "RunTraceNotFoundError"
+  }
+}
+
+export class SessionAlreadyCompactingError extends Error {
+  readonly sessionId: string
+  readonly runId: string
+
+  constructor(input: { sessionId: string; runId: string }) {
+    super(`Session ${input.sessionId} is already compacting via run ${input.runId}`)
+    this.name = "SessionAlreadyCompactingError"
+    this.sessionId = input.sessionId
+    this.runId = input.runId
   }
 }
 
@@ -521,6 +538,7 @@ export function createServerApp(input: {
       drained: Promise<void>
     }
   >()
+  const activeCompactions = new Map<string, string>()
   let closing: Promise<void> | null = null
 
   async function startRun(runInput: {
@@ -570,6 +588,59 @@ export function createServerApp(input: {
     })
 
     return started
+  }
+
+  async function compactSession(sessionId: string) {
+    if (closing) {
+      throw new ServerShuttingDownError()
+    }
+
+    const activeCompactionRunId = activeCompactions.get(sessionId)
+    if (activeCompactionRunId) {
+      throw new SessionAlreadyCompactingError({
+        sessionId,
+        runId: activeCompactionRunId,
+      })
+    }
+
+    const started = sessionProvider.runs.startCommand({
+      sessionId,
+      trigger: "command",
+      createdAt: now(),
+    })
+    activeCompactions.set(sessionId, started.run.id)
+
+    try {
+      const handle = await runtime.compactSession({
+        sessionId,
+        runId: started.run.id,
+      })
+
+      const drained = drainRunHandle(handle, {
+        events: eventBus,
+        contextUsageBySession,
+      }).finally(() => {
+        activeRuns.delete(started.run.id)
+        if (activeCompactions.get(sessionId) === started.run.id) {
+          activeCompactions.delete(sessionId)
+        }
+      })
+
+      activeRuns.set(started.run.id, {
+        cancel() {
+          handle.cancel()
+        },
+        detach() {},
+        drained,
+      })
+
+      return started
+    } catch (error) {
+      if (activeCompactions.get(sessionId) === started.run.id) {
+        activeCompactions.delete(sessionId)
+      }
+      throw error
+    }
   }
 
   return {
@@ -646,6 +717,7 @@ export function createServerApp(input: {
     },
     runs: {
       start: startRun,
+      compact: compactSession,
       list(sessionId: string) {
         return listVisibleRunsBySession(repository, sessionId)
       },

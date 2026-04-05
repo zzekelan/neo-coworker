@@ -35,6 +35,13 @@ export type RetryRunInput = StartRunInput & {
   sourceRunId: string
 }
 
+export type StartCommandRunInput = Omit<
+  StartRunInput,
+  "messageId" | "messageCreatedAt" | "promptText" | "promptPartCreatedAt"
+> & {
+  trigger?: "command"
+}
+
 export class SessionRunServiceError extends Error {
   constructor(message: string) {
     super(message)
@@ -232,6 +239,47 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
     }
   }
 
+  function startCommandRun(run: StartCommandRunInput) {
+    const activeRun = repository.runs.getActiveBySession(run.sessionId)
+    if (activeRun) {
+      throw new SessionBusyError({
+        sessionId: run.sessionId,
+        activeRunId: activeRun.id,
+      })
+    }
+
+    const session = repository.sessions.get(run.sessionId)
+
+    assertStartRunIdentityAvailable(repository, run)
+
+    try {
+      return repository.createQueuedRun({
+        run: {
+          id: run.runId,
+          sessionId: run.sessionId,
+          trigger: run.trigger ?? "command",
+          createdAt: run.createdAt,
+          activeSkills: session.activeSkills,
+        },
+      })
+    } catch (error) {
+      const identityConflict = getStartRunIdentityConflict(repository, run)
+      if (identityConflict && isUniqueConstraintError(error)) {
+        throw identityConflict
+      }
+
+      if (error instanceof SessionConflictError) {
+        const latestActiveRun = repository.runs.getActiveBySession(run.sessionId)
+        throw new SessionBusyError({
+          sessionId: run.sessionId,
+          activeRunId: latestActiveRun?.id ?? null,
+        })
+      }
+
+      throw error
+    }
+  }
+
   function transitionRunToRunning(runId: string) {
     return runStateMachine.transitionRunStatus(runId, "running")
   }
@@ -273,6 +321,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
   return {
     getSessionState,
     startRun,
+    startCommandRun,
     retryRun,
     transitionRunToRunning,
     updateRunActiveSkills,
