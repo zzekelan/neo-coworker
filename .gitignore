@@ -10,3 +10,4 @@ AGENTS.md
 .worktrees/
 node_modules/
 .env
+.sisyphus/

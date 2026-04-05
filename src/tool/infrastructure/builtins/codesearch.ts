@@ -13,8 +13,12 @@ import {
 } from "./errors"
 
 const CodesearchArgsSchema = z.object({
-  query: z.string().trim().min(1, "Query must not be empty"),
-})
+  query: z.string().trim().min(1, "Query must not be empty").describe(
+    "Technical search query for API, library, or code-oriented information, such as `zod describe json schema openai tools` or `bun spawn stdout pipe example`.",
+  ),
+}).describe(
+  "Search technical documentation and code-oriented external context through the configured backend. Use this for library APIs, framework behavior, exact error strings, or implementation patterns when repository-local search is not enough. This tool requires permission and depends on the external search backend being configured. Pass a targeted technical query with library names, APIs, or error text for the best results.",
+)
 
 export function createCodesearchTool(input: {
   requestPermission: RequestToolPermission
@@ -22,7 +26,8 @@ export function createCodesearchTool(input: {
 }): ToolDefinition {
   return {
     name: "codesearch",
-    description: "Search technical docs and API-oriented context",
+    description:
+      "Search technical documentation and code-oriented external context through the configured backend. Use this for library APIs, framework behavior, exact error strings, or implementation patterns when repository-local search is not enough. This tool requires permission and depends on the external search backend being configured. Pass a targeted technical query with library names, APIs, or error text for the best results.",
     inputSchema: CodesearchArgsSchema,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)

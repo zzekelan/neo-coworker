@@ -3,6 +3,11 @@ import type {
   OrchestrationLoadedSkill,
   OrchestrationSkillCatalogEntry,
 } from "./ports/skill"
+import { countTokens } from "gpt-tokenizer/model/gpt-4o"
+
+const MAX_SKILL_RECOVERY_TOKENS = 25_000
+const MAX_TOKENS_PER_SKILL = 5_000
+const TRUNCATION_MARKER = "\n...[truncated]"
 
 type SkillReminderEntry = {
   kind: "catalog" | "instructions" | "recovery"
@@ -64,17 +69,26 @@ export function createSkillReminderTracker() {
         return []
       }
 
-      for (const skill of freshSkills) {
+      const skillsToInject =
+        input.reason === "recovery"
+          ? truncateRecoverySkills(freshSkills)
+          : freshSkills
+
+      if (skillsToInject.length === 0) {
+        return []
+      }
+
+      for (const skill of skillsToInject) {
         state.injectedSkills.set(skill.name, skill)
       }
 
       state.pendingEntries.push({
         kind: "instructions",
-        text: renderActiveSkillReminder(freshSkills),
-        skillNames: freshSkills.map((skill) => skill.name),
+        text: renderActiveSkillReminder(skillsToInject),
+        skillNames: skillsToInject.map((skill) => skill.name),
       })
 
-      return freshSkills.map((skill) => skill.name)
+      return skillsToInject.map((skill) => skill.name)
     },
     appendRecoveryReminder(input: {
       sessionId: string
@@ -166,4 +180,50 @@ function renderActiveSkillReminder(activeSkills: readonly OrchestrationActiveSki
     ...activeSkills.map((skill) => `## ${skill.name}\n${skill.instructions}`),
     "</system-reminder>",
   ].join("\n")
+}
+
+function truncateRecoverySkills(skills: readonly OrchestrationLoadedSkill[]) {
+  const selected: OrchestrationLoadedSkill[] = []
+  let remainingTokens = MAX_SKILL_RECOVERY_TOKENS
+
+  for (const skill of skills) {
+    const truncatedInstructions = truncateToTokenLimit(skill.instructions, MAX_TOKENS_PER_SKILL)
+    const tokenCount = countTokens(truncatedInstructions)
+
+    if (tokenCount > remainingTokens) {
+      break
+    }
+
+    selected.push({
+      ...skill,
+      instructions: truncatedInstructions,
+    })
+    remainingTokens -= tokenCount
+  }
+
+  return selected
+}
+
+function truncateToTokenLimit(text: string, maxTokens: number): string {
+  if (countTokens(text) <= maxTokens) {
+    return text
+  }
+
+  let low = 0
+  let high = text.length
+  let best = ""
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const candidate = `${text.slice(0, middle).trimEnd()}${TRUNCATION_MARKER}`
+    if (countTokens(candidate) <= maxTokens) {
+      best = candidate
+      low = middle + 1
+      continue
+    }
+
+    high = middle - 1
+  }
+
+  return best || text.slice(0, Math.max(0, high)).trimEnd()
 }

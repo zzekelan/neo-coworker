@@ -284,7 +284,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
     return runStateMachine.transitionRunStatus(runId, "running")
   }
 
-  function updateRunActiveSkills(inputValue: { runId: string; activeSkills: string[] }) {
+  function addRunActiveSkills(inputValue: { runId: string; activeSkills: string[] }) {
     const run = repository.runs.get(inputValue.runId)
     if (!isActiveRunStatus(run.status)) {
       throw new RunActiveSkillsUpdateStateError({
@@ -293,7 +293,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
       })
     }
 
-    return repository.runs.updateActiveSkills(inputValue)
+    return repository.runs.addActiveSkills(inputValue)
   }
 
   function recordRunTokenUsage(inputValue: {
@@ -324,7 +324,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
     startCommandRun,
     retryRun,
     transitionRunToRunning,
-    updateRunActiveSkills,
+    addRunActiveSkills,
     recordRunTokenUsage,
     resumeRun(runId: string) {
       return transitionRunToRunning(runId)

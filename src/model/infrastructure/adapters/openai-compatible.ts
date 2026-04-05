@@ -96,8 +96,14 @@ function toChatCompletionMessages(messages: ModelMessage[]): OpenAICompatibleMes
 function unwrapSchema(schema: ZodTypeAny): ZodTypeAny {
   const typeName = schema._def.typeName as string
 
-  if (typeName === "ZodOptional" || typeName === "ZodNullable" || typeName === "ZodDefault") {
+  if (typeName === "ZodOptional" || typeName === "ZodNullable") {
     return unwrapSchema((schema as ZodTypeAny & { unwrap(): ZodTypeAny }).unwrap())
+  }
+
+  if (typeName === "ZodDefault") {
+    return unwrapSchema(
+      (schema as ZodTypeAny & { _def: { innerType: ZodTypeAny } })._def.innerType,
+    )
   }
 
   if (typeName === "ZodEffects") {
@@ -109,51 +115,77 @@ function unwrapSchema(schema: ZodTypeAny): ZodTypeAny {
   return schema
 }
 
+function readSchemaDescription(schema: ZodTypeAny): string | undefined {
+  const directDescription = (schema._def as { description?: unknown }).description
+
+  if (typeof directDescription === "string" && directDescription.length > 0) {
+    return directDescription
+  }
+
+  const unwrapped = unwrapSchema(schema)
+  const unwrappedDescription = (unwrapped._def as { description?: unknown }).description
+
+  if (typeof unwrappedDescription === "string" && unwrappedDescription.length > 0) {
+    return unwrappedDescription
+  }
+
+  return undefined
+}
+
+function withDescription(
+  schema: Record<string, unknown>,
+  zodSchema: ZodTypeAny,
+): Record<string, unknown> {
+  const description = readSchemaDescription(zodSchema)
+
+  return description ? { ...schema, description } : schema
+}
+
 function toJsonSchema(schema: ZodTypeAny): Record<string, unknown> {
   const unwrapped = unwrapSchema(schema)
   const typeName = unwrapped._def.typeName as string
 
   switch (typeName) {
     case "ZodString":
-      return { type: "string" }
+      return withDescription({ type: "string" }, schema)
     case "ZodNumber":
-      return { type: "number" }
+      return withDescription({ type: "number" }, schema)
     case "ZodBoolean":
-      return { type: "boolean" }
+      return withDescription({ type: "boolean" }, schema)
     case "ZodLiteral":
-      return {
+      return withDescription({
         type: typeof (unwrapped as ZodTypeAny & { _def: { value: unknown } })._def.value,
         enum: [(unwrapped as ZodTypeAny & { _def: { value: unknown } })._def.value],
-      }
+      }, schema)
     case "ZodEnum":
-      return {
+      return withDescription({
         type: "string",
         enum: (unwrapped as ZodTypeAny & { _def: { values: string[] } })._def.values,
-      }
+      }, schema)
     case "ZodArray":
-      return {
+      return withDescription({
         type: "array",
         items: toJsonSchema(
           (unwrapped as ZodTypeAny & { _def: { type: ZodTypeAny } })._def.type,
         ),
-      }
+      }, schema)
     case "ZodObject": {
       const objectSchema = unwrapped as ZodTypeAny & {
         shape: Record<string, ZodTypeAny>
       }
       const properties = Object.fromEntries(
-        Object.entries(objectSchema.shape).map(([key, value]) => [key, toJsonSchema(value)]),
+        Object.entries(objectSchema.shape).map(([key, value]) => [key, withDescription(toJsonSchema(value), value)]),
       )
       const required = Object.entries(objectSchema.shape)
         .filter(([, value]) => !value.isOptional())
         .map(([key]) => key)
 
-      return {
+      return withDescription({
         type: "object",
         properties,
         required,
         additionalProperties: false,
-      }
+      }, schema)
     }
     default:
       return unsupportedSchema(unwrapped)
@@ -188,7 +220,7 @@ export function createOpenAICompatibleProvider(input: {
           stream_options: {
             include_usage: true,
           },
-          tools: (request.tools as OpenAICompatibleTools["0"][]).map(toChatCompletionTool),
+          tools: request.tools.map(toChatCompletionTool) as OpenAICompatibleTools,
         },
         { signal: request.signal },
       )

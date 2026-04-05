@@ -16,7 +16,6 @@ import {
 import { createRecentFileTracker } from "./recent-file-tracker"
 import {
   createSkillReminderTracker,
-  type SkillReminderBatch,
 } from "./skill-reminder-tracker"
 
 type OrchestrationEventEmitter = (event: RuntimeEvent) => void
@@ -58,7 +57,7 @@ type AssistantError = {
 }
 
 const MODEL_REQUEST_MAX_ATTEMPTS = 3
-const AUTO_COMPACTION_TOKEN_BUFFER = 13_000
+const AUTO_COMPACTION_TOKEN_BUFFER = 12_500
 const AUTO_COMPACTION_FAILURE_LIMIT = 3
 const SUMMARIZE_RUN_CREATED_AT_OFFSET = 1
 const SUMMARY_SECTION_TITLES = [
@@ -1333,7 +1332,7 @@ async function summarizeTranscript(input: {
 
   for await (const event of input.model.streamTurn({
     systemPrompt:
-      "You compress conversation state into a compact continuation summary for the next model turn.",
+      "You compress conversation state into a compact continuation summary for the next model turn. Keep it self-contained and concrete.",
     skillCatalog: [],
     activeSkills: [],
     systemReminders: [],

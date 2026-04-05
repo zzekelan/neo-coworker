@@ -339,7 +339,7 @@ describe("session run service", () => {
       messageCreatedAt: 3,
     })
 
-    const updatedWhileQueued = service.updateRunActiveSkills({
+    const updatedWhileQueued = service.addRunActiveSkills({
       runId: started.run.id,
       activeSkills: [" reviewer ", "writer", "reviewer"],
     })
@@ -350,7 +350,7 @@ describe("session run service", () => {
     service.completeRun(started.run.id)
 
     expect(() =>
-      service.updateRunActiveSkills({
+      service.addRunActiveSkills({
         runId: started.run.id,
         activeSkills: ["designer"],
       }),

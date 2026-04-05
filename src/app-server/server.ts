@@ -53,7 +53,7 @@ const createWorkspaceSessionBodySchema = z.object({
   title: z.string().trim().min(1).max(60).optional(),
 })
 
-const updateActiveSkillsBodySchema = z.object({
+const addActiveSkillsBodySchema = z.object({
   activeSkills: z.array(z.string().trim().min(1)).max(100),
 })
 
@@ -241,10 +241,10 @@ export function createAgentServer(input: {
 
       const sessionActiveSkillsMatch = matchPath(path, ["sessions", ":sessionId", "active-skills"])
       if (request.method === "POST" && sessionActiveSkillsMatch) {
-        const body = await readJsonBody(request, updateActiveSkillsBodySchema)
+        const body = await readJsonBody(request, addActiveSkillsBodySchema)
         return jsonResponse(200, {
           data: {
-            session: app.sessions.updateActiveSkills({
+            session: app.sessions.addActiveSkills({
               sessionId: sessionActiveSkillsMatch.sessionId,
               activeSkills: body.activeSkills,
             }),

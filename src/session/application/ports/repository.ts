@@ -230,7 +230,7 @@ export type SessionRepository = {
     getLatestBySession(sessionId: string): StoredRun | null
     getActiveBySession(sessionId: string): StoredRun | null
     updateStatus(update: UpdateRunStatusInput): StoredRun
-    updateActiveSkills(update: UpdateRunActiveSkillsInput): StoredRun
+    addActiveSkills(update: UpdateRunActiveSkillsInput): StoredRun
     updateTokenUsage(update: UpdateRunTokenUsageInput): StoredRun
   }
   messages: {

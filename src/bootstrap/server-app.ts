@@ -340,8 +340,8 @@ export function createObservedRepository(input: {
         publishRunUpdated(updated)
         return updated
       },
-      updateActiveSkills(update) {
-        const updated = repository.runs.updateActiveSkills(update)
+      addActiveSkills(update) {
+        const updated = repository.runs.addActiveSkills(update)
         publishRunUpdated(updated)
         return updated
       },
@@ -673,7 +673,7 @@ export function createServerApp(input: {
           contextUsage: contextUsageBySession.get(sessionId) ?? null,
         })
       },
-      updateActiveSkills(inputValue: { sessionId: string; activeSkills: string[] }) {
+      addActiveSkills(inputValue: { sessionId: string; activeSkills: string[] }) {
         const activeRun = repository.runs.getActiveBySession(inputValue.sessionId)
         if (activeRun) {
           throw new SessionBusyError({

@@ -529,7 +529,7 @@ describe("storage repository", () => {
       startedAt: 3,
     })
 
-    const updated = repository.runs.updateActiveSkills({
+    const updated = repository.runs.addActiveSkills({
       runId: "run_1",
       activeSkills: [" reviewer ", "writer", "reviewer"],
     })

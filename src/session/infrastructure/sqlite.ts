@@ -711,7 +711,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
 
       return record
     },
-    updateActiveSkills(update) {
+    addActiveSkills(update) {
       const current = requireRun(update.runId)
       const record: StoredRun = {
         ...current,

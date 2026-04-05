@@ -3,7 +3,7 @@ import { countTokens } from "gpt-tokenizer/model/gpt-4o"
 const MAX_TRACKED_FILES = 10
 const MAX_RECOVERY_FILES = 5
 const MAX_TOKENS_PER_FILE = 5_000
-const MAX_FILE_RECOVERY_TOKENS = 25_000
+const MAX_FILE_RECOVERY_TOKENS = 50_000
 const TRUNCATION_MARKER = "\n...[truncated]"
 
 type RecentFileEntry = {

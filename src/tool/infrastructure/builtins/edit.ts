@@ -8,11 +8,26 @@ import {
 } from "../../domain"
 import { createToolPermissionDeniedError } from "./errors"
 
+declare const Bun: {
+  file(path: string): {
+    text(): Promise<string>
+  }
+  write(path: string, content: string): Promise<unknown>
+}
+
 const EditArgsSchema = z.object({
-  path: z.string().trim().min(1, "Path must not be empty"),
-  oldText: z.string(),
-  newText: z.string(),
-})
+  path: z.string().trim().min(1, "Path must not be empty").describe(
+    "Workspace-relative path to the existing file you want to modify, such as `src/app/main.ts`.",
+  ),
+  oldText: z.string().describe(
+    "Exact text to replace. Pass enough surrounding context to make the match unique; the edit fails if this text is missing or appears more than once.",
+  ),
+  newText: z.string().describe(
+    "Replacement text that will be inserted exactly where `oldText` matched. Include all desired newlines and indentation.",
+  ),
+}).describe(
+  "Replace one exact text span in an existing workspace file. Use this after reading a file when you want a precise, minimal change without rewriting the whole file. This tool requires permission and only succeeds when `oldText` matches exactly once, so include enough context to avoid ambiguous replacements. Paths must stay inside the workspace.",
+)
 
 async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string) {
   const root = await realpath(resolve(workspaceRoot))
@@ -28,7 +43,8 @@ async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string)
 export function createEditTool(input: { requestPermission: RequestToolPermission }): ToolDefinition {
   return {
     name: "edit",
-    description: "Replace one exact text span in a file",
+    description:
+      "Replace one exact text span in an existing workspace file. Use this after reading a file when you want a precise, minimal change without rewriting the whole file. This tool requires permission and only succeeds when `oldText` matches exactly once, so include enough context to avoid ambiguous replacements. Paths must stay inside the workspace.",
     inputSchema: EditArgsSchema,
     async execute(value) {
       throwIfToolAborted(value.signal)

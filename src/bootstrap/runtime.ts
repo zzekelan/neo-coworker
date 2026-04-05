@@ -384,7 +384,7 @@ function createToolPortFactory(config: {
   repository: StorageRepository
   runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
   searchBackend?: SearchToolBackend
-  session: Pick<SessionProvider["runs"], "updateActiveSkills">
+  session: Pick<SessionProvider["runs"], "addActiveSkills">
   skill: OrchestrationSkillPort
   now: () => number
 }): OrchestrationToolPortFactory {
@@ -438,7 +438,7 @@ const SkillToolArgsSchema = z.object({
 function createSkillTool(input: {
   repository: StorageRepository
   runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
-  session: Pick<SessionProvider["runs"], "updateActiveSkills">
+  session: Pick<SessionProvider["runs"], "addActiveSkills">
   skill: OrchestrationSkillPort
   sessionId: string
   runId: string
@@ -512,7 +512,7 @@ function createSkillTool(input: {
         sessionId: session.id,
         activeSkills: [...session.activeSkills, loaded.name],
       })
-      const updatedRun = input.session.updateActiveSkills({
+      const updatedRun = input.session.addActiveSkills({
         runId: run.id,
         activeSkills: [...run.activeSkills, loaded.name],
       })

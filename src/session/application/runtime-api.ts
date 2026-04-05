@@ -21,7 +21,7 @@ export function createSessionRuntimeApi(input: SessionRuntimeApiInput) {
       complete: runService.completeRun,
       fail: runService.failRun,
       cancel: runService.cancelRun,
-      updateActiveSkills: runService.updateRunActiveSkills,
+      addActiveSkills: runService.addRunActiveSkills,
       recordTokenUsage: runService.recordRunTokenUsage,
     },
     transcript: {

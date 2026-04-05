@@ -10,15 +10,20 @@ import {
 import { createToolPermissionDeniedError } from "./errors"
 
 const WebfetchArgsSchema = z.object({
-  url: z.string().url(),
-})
+  url: z.string().url().describe(
+    "Exact URL to fetch, such as `https://example.com/docs/api` or a redirecting documentation page. Pass a fully qualified URL, not a search query.",
+  ),
+}).describe(
+  "Fetch text content from a specific URL. Use this when you already know the page you want and need its contents, such as documentation, API references, or a linked article; prefer `websearch` when you still need to discover the right page first. This tool requires permission because it accesses the network. It follows a small number of redirects and expects a valid absolute URL.",
+)
 
 export function createWebfetchTool(input: {
   requestPermission: RequestToolPermission
 }): ToolDefinition {
   return {
     name: "webfetch",
-    description: "Fetch content from a known URL",
+    description:
+      "Fetch text content from a specific URL. Use this when you already know the page you want and need its contents, such as documentation, API references, or a linked article; prefer `websearch` when you still need to discover the right page first. This tool requires permission because it accesses the network. It follows a small number of redirects and expects a valid absolute URL.",
     inputSchema: WebfetchArgsSchema,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)

@@ -13,8 +13,12 @@ import {
 } from "./errors"
 
 const WebsearchArgsSchema = z.object({
-  query: z.string().trim().min(1, "Query must not be empty"),
-})
+  query: z.string().trim().min(1, "Query must not be empty").describe(
+    "Natural-language web search query describing the information you need, such as `latest Bun shell API docs` or `OpenAI tool calling JSON schema examples`.",
+  ),
+}).describe(
+  "Search the web for external information using the configured search backend. Use this when the answer likely lives outside the repository, especially for current facts, broad research, or finding candidate URLs before using `webfetch`. This tool requires permission and only works when a search backend is configured. Pass a focused natural-language query rather than a URL.",
+)
 
 export function createWebsearchTool(input: {
   requestPermission: RequestToolPermission
@@ -22,7 +26,8 @@ export function createWebsearchTool(input: {
 }): ToolDefinition {
   return {
     name: "websearch",
-    description: "Search the web for relevant external information",
+    description:
+      "Search the web for external information using the configured search backend. Use this when the answer likely lives outside the repository, especially for current facts, broad research, or finding candidate URLs before using `webfetch`. This tool requires permission and only works when a search backend is configured. Pass a focused natural-language query rather than a URL.",
     inputSchema: WebsearchArgsSchema,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
