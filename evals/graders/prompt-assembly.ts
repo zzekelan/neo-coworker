@@ -51,15 +51,27 @@ export function gradePromptAssemblyExpectation(input: {
     }
   }
 
-  if (input.expectation.requireDistinctActiveSkillSectionHashes) {
+  if (input.expectation.requireStableSystemPromptHash) {
     const distinctHashes = new Set(
       promptEvents
-        .map((event) => event.activeSkillSectionHash)
+        .map((event) => event.systemPromptHash)
+        .filter((hash): hash is string => typeof hash === "string" && hash.length > 0),
+    )
+
+    if (distinctHashes.size > 1) {
+      failures.push("prompt assembly changed the supposedly static system prompt hash")
+    }
+  }
+
+  if (input.expectation.requireDistinctSystemReminderHashes) {
+    const distinctHashes = new Set(
+      promptEvents
+        .map((event) => event.systemReminderHash)
         .filter((hash): hash is string => typeof hash === "string" && hash.length > 0),
     )
 
     if (distinctHashes.size < 2) {
-      failures.push("prompt assembly never produced distinct active skill section hashes")
+      failures.push("prompt assembly never produced distinct system reminder hashes")
     }
   }
 

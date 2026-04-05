@@ -81,6 +81,7 @@
         ],
         "activeSkillCount": 1
       }
-    ]
+    ],
+    "requireStableSystemPromptHash": true
   }
 }

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import {
+  buildStaticSystemPrompt,
   buildModelPromptSections,
   projectModelTurn,
 } from "./projection"
@@ -57,8 +58,8 @@ export function createModelProvider(input: {
             systemPrompt: request.systemPrompt,
             skillCatalog: request.skillCatalog,
             activeSkills: request.activeSkills,
-            tools: request.tools,
           })
+          const systemPrompt = buildStaticSystemPrompt(sections)
           input.observer?.recordModelEvent?.({
             type: "model.prompt.assembled",
             sessionId: request.sessionId,
@@ -67,8 +68,12 @@ export function createModelProvider(input: {
             catalogSkillNames: request.skillCatalog.map((skill) => skill.name),
             activeSkillNames: request.activeSkills.map((skill) => skill.name),
             activeSkillCount: request.activeSkills.length,
-            activeSkillSectionHash: hashPromptSection(sections.activeSkillSection),
-            activeSkillSectionLength: sections.activeSkillSection.length,
+            systemPromptHash: hashPromptSection(systemPrompt),
+            systemPromptLength: systemPrompt.length,
+            systemReminderHash: sections.systemReminderMessage
+              ? hashPromptSection(sections.systemReminderMessage)
+              : null,
+            systemReminderLength: sections.systemReminderMessage?.length ?? null,
           })
         } catch {
           // Observability must not alter the model request path.

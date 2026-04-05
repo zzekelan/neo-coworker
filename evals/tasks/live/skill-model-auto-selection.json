@@ -88,6 +88,7 @@
         ]
       }
     ],
-    "requireDistinctActiveSkillSectionHashes": true
+    "requireStableSystemPromptHash": true,
+    "requireDistinctSystemReminderHashes": true
   }
 }

@@ -63,7 +63,8 @@ export const EvalPromptAssemblyCheckpointSchema = z.object({
 
 export const EvalPromptAssemblyExpectationSchema = z.object({
   checkpoints: z.array(EvalPromptAssemblyCheckpointSchema).default([]),
-  requireDistinctActiveSkillSectionHashes: z.boolean().default(false),
+  requireStableSystemPromptHash: z.boolean().default(false),
+  requireDistinctSystemReminderHashes: z.boolean().default(false),
 })
 
 export const EvalOutcomeFileExpectationSchema = z.object({
@@ -146,7 +147,8 @@ export const EvalTaskSchema = z.object({
   skillDisclosureExpectation: EvalSkillDisclosureExpectationSchema.optional(),
   promptAssemblyExpectation: EvalPromptAssemblyExpectationSchema.default({
     checkpoints: [],
-    requireDistinctActiveSkillSectionHashes: false,
+    requireStableSystemPromptHash: false,
+    requireDistinctSystemReminderHashes: false,
   }),
 })
 

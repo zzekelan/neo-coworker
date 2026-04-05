@@ -13,6 +13,7 @@ import {
   type SessionRepository as StorageRepository,
 } from "../../src/session"
 import {
+  SYSTEM_REMINDER_NOTICE,
   buildTranscriptMessages,
   createModelRuntimeApi,
   type ProviderEvent,
@@ -365,11 +366,14 @@ describe("agent loop", () => {
     await collectEvents(handle.events)
 
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.system).toContain("Skill catalog:")
-    expect(requests[0]?.system).toContain("reviewer: Review code changes carefully")
-    expect(requests[0]?.system).toContain("Active skill instructions:")
-    expect(requests[0]?.system).toContain("## reviewer")
-    expect(requests[0]?.system).toContain("Focus on bugs first.")
+    expect(requests[0]?.system).toContain(SYSTEM_REMINDER_NOTICE)
+    expect(requests[0]?.system).not.toContain("Skill catalog:")
+    const skillReminder = readMessageTexts(requests[0]?.messages ?? []).at(-1) ?? ""
+    expect(skillReminder).toContain("Skill catalog:")
+    expect(skillReminder).toContain("reviewer: Review code changes carefully")
+    expect(skillReminder).toContain("Active skill instructions:")
+    expect(skillReminder).toContain("## reviewer")
+    expect(skillReminder).toContain("Focus on bugs first.")
   })
 
   test("activates a skill mid-run and injects it on the next model turn", async () => {
@@ -399,9 +403,12 @@ describe("agent loop", () => {
     const runtime = createRuntime({
       provider: createTurnProvider(requests, [
         async function* (request) {
-          expect(request.system).toContain("Skill catalog:")
-          expect(request.system).toContain("reviewer: Review code changes carefully")
-          expect(request.system).toContain("Active skill instructions:\n- None.")
+          expect(request.system).toContain(SYSTEM_REMINDER_NOTICE)
+          expect(request.system).not.toContain("Skill catalog:")
+          const reminderText = readMessageTexts(request.messages).at(-1) ?? ""
+          expect(reminderText).toContain("Skill catalog:")
+          expect(reminderText).toContain("reviewer: Review code changes carefully")
+          expect(reminderText).not.toContain("Active skill instructions:")
           expect(request.tools.map((tool) => tool.name)).toContain("skill")
 
           yield {
@@ -412,8 +419,10 @@ describe("agent loop", () => {
           }
         },
         async function* (request) {
-          expect(request.system).toContain("## reviewer")
-          expect(request.system).toContain("Focus on bugs first.")
+          expect(request.system).toContain(SYSTEM_REMINDER_NOTICE)
+          const reminderText = readMessageTexts(request.messages).at(-1) ?? ""
+          expect(reminderText).toContain("## reviewer")
+          expect(reminderText).toContain("Focus on bugs first.")
 
           yield { type: "text.delta", text: "Reviewer skill is now active." }
         },

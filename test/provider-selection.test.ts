@@ -6,6 +6,7 @@ import type OpenAI from "openai"
 import { buildCli } from "../src/cli"
 import { getDefaultCliStoragePath, openSessionDatabase } from "../src/bootstrap"
 import {
+  SYSTEM_REMINDER_NOTICE,
   createModelProvider,
   createModelRuntimeApi,
 } from "../src/model"
@@ -71,11 +72,7 @@ describe("provider selection", () => {
     expect(receivedBody).toEqual({
       model: "gpt-5",
       input: [],
-      instructions: [
-        "system",
-        "Skill catalog:\n- None.",
-        "Active skill instructions:\n- None.",
-      ].join("\n\n"),
+      instructions: ["system", SYSTEM_REMINDER_NOTICE].join("\n\n"),
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal: expect.any(AbortSignal) })
@@ -151,11 +148,7 @@ describe("provider selection", () => {
       messages: [
         {
           role: "system",
-          content: [
-            "system",
-            "Skill catalog:\n- None.",
-            "Active skill instructions:\n- None.",
-          ].join("\n\n"),
+          content: ["system", SYSTEM_REMINDER_NOTICE].join("\n\n"),
         },
       ],
       stream: true,

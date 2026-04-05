@@ -10,34 +10,45 @@ import type {
   ModelTurnRequest,
 } from "../domain"
 
+export const SYSTEM_REMINDER_NOTICE =
+  "Tool results and user messages may include <system-reminder> tags. They are automatically added by the system, and bear no direct relation to the specific tool results or user messages in which they appear."
+
 export type ModelPromptSections = {
   baseSystemPrompt: string
-  skillCatalogSection: string
-  activeSkillSection: string
+  systemReminderNotice: string
+  systemReminderMessage: string | null
 }
 
 export function buildModelTurnInput(input: ModelProjectionInput) {
   const sections = buildModelPromptSections(input)
+  const messages = buildTranscriptMessages(input.transcript)
+  const reminderMessage = buildSystemReminderMessage(sections.systemReminderMessage)
+
+  if (reminderMessage) {
+    messages.push(reminderMessage)
+  }
 
   return {
-    system: [
-      sections.baseSystemPrompt,
-      sections.skillCatalogSection,
-      sections.activeSkillSection,
-    ].join("\n\n"),
-    messages: buildTranscriptMessages(input.transcript),
+    system: buildStaticSystemPrompt(sections),
+    messages,
     tools: input.tools,
   }
 }
 
 export function buildModelPromptSections(
-  input: Pick<ModelProjectionInput, "systemPrompt" | "skillCatalog" | "activeSkills" | "tools">,
+  input: Pick<ModelProjectionInput, "systemPrompt" | "skillCatalog" | "activeSkills">,
 ): ModelPromptSections {
   return {
     baseSystemPrompt: input.systemPrompt,
-    skillCatalogSection: renderSkillCatalogSection(input.skillCatalog),
-    activeSkillSection: renderActiveSkillSection(input.activeSkills),
+    systemReminderNotice: SYSTEM_REMINDER_NOTICE,
+    systemReminderMessage: renderSystemReminderMessage(input.skillCatalog, input.activeSkills),
   }
+}
+
+export function buildStaticSystemPrompt(
+  input: Pick<ModelPromptSections, "baseSystemPrompt" | "systemReminderNotice">,
+) {
+  return [input.baseSystemPrompt, input.systemReminderNotice].join("\n\n")
 }
 
 export function projectModelTurn(
@@ -244,9 +255,35 @@ function readString(value: Record<string, unknown> | null, key: string) {
   return typeof value?.[key] === "string" ? (value[key] as string) : null
 }
 
+function buildSystemReminderMessage(text: string | null): ModelMessage | null {
+  if (!text) {
+    return null
+  }
+
+  return {
+    role: "user",
+    parts: [{ type: "text", text }],
+  }
+}
+
+function renderSystemReminderMessage(
+  skillCatalog: ModelSkillCatalogEntry[],
+  activeSkills: ModelActiveSkill[],
+) {
+  const sections = [renderSkillCatalogSection(skillCatalog), renderActiveSkillSection(activeSkills)].filter(
+    (section): section is string => section !== null,
+  )
+
+  if (sections.length === 0) {
+    return null
+  }
+
+  return `<system-reminder>\n${sections.join("\n\n")}\n</system-reminder>`
+}
+
 function renderSkillCatalogSection(skillCatalog: ModelSkillCatalogEntry[]) {
   if (skillCatalog.length === 0) {
-    return "Skill catalog:\n- None."
+    return null
   }
 
   return [
@@ -257,7 +294,7 @@ function renderSkillCatalogSection(skillCatalog: ModelSkillCatalogEntry[]) {
 
 function renderActiveSkillSection(activeSkills: ModelActiveSkill[]) {
   if (activeSkills.length === 0) {
-    return "Active skill instructions:\n- None."
+    return null
   }
 
   return [

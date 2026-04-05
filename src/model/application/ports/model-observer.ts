@@ -11,8 +11,10 @@ export type ModelObserverEvent = {
   catalogSkillNames: string[]
   activeSkillNames: string[]
   activeSkillCount: number
-  activeSkillSectionHash: string
-  activeSkillSectionLength: number
+  systemPromptHash: string
+  systemPromptLength: number
+  systemReminderHash: string | null
+  systemReminderLength: number | null
 } | {
   type: "model.turn.usage"
   sessionId: string

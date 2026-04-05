@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test"
-import { buildModelPromptSections, buildModelTurnInput, buildTranscriptMessages } from "../../src/model"
+import {
+  SYSTEM_REMINDER_NOTICE,
+  buildModelPromptSections,
+  buildModelTurnInput,
+  buildTranscriptMessages,
+} from "../../src/model"
 
 describe("context builder", () => {
   const basePrompt = "You are Neo Coworker, a versatile day-to-day work assistant."
 
-  test("injects explicit prompt sections for skills and transcript without duplicating tool descriptions", () => {
+  test("keeps the system prompt static and injects skill context through a system reminder message", () => {
     const input = buildModelTurnInput({
       systemPrompt: basePrompt,
       skillCatalog: [
@@ -24,30 +29,45 @@ describe("context builder", () => {
       ],
     })
 
-    expect(input.system).toContain(basePrompt)
-    expect(input.system).toContain("Skill catalog:")
-    expect(input.system).toContain(".agents/skills/reviewer/SKILL.md")
-    expect(input.system).toContain("Active skill instructions:")
-    expect(input.system).toContain("## reviewer")
-    expect(input.system).toContain("Always explain the diff.")
+    expect(input.system).toBe([basePrompt, SYSTEM_REMINDER_NOTICE].join("\n\n"))
+    expect(input.system).not.toContain("Skill catalog:")
+    expect(input.system).not.toContain("Active skill instructions:")
     expect(input.system).not.toContain("Available tools:")
     expect(input.system).not.toContain("- read: Read a file")
-    expect(input.messages).toHaveLength(1)
+    expect(input.messages).toHaveLength(2)
+    expect(input.messages[1]).toEqual({
+      role: "user",
+      parts: [
+        {
+          type: "text",
+          text: [
+            "<system-reminder>",
+            "Skill catalog:",
+            "- reviewer: Review code changes carefully (.agents/skills/reviewer/SKILL.md)",
+            "",
+            "Active skill instructions:",
+            "",
+            "## reviewer",
+            "Always explain the diff.",
+            "</system-reminder>",
+          ].join("\n"),
+        },
+      ],
+    })
   })
 
-  test("renders empty skill sections explicitly when nothing is active", () => {
+  test("omits the system reminder message when there are no skills to describe", () => {
     const sections = buildModelPromptSections({
       systemPrompt: basePrompt,
       skillCatalog: [],
       activeSkills: [],
-      tools: [],
     })
 
-    expect(sections.skillCatalogSection).toBe("Skill catalog:\n- None.")
-    expect(sections.activeSkillSection).toBe("Active skill instructions:\n- None.")
+    expect(sections.systemReminderNotice).toBe(SYSTEM_REMINDER_NOTICE)
+    expect(sections.systemReminderMessage).toBeNull()
   })
 
-  test("keeps active skill instructions at the end of the system prompt", () => {
+  test("appends the system reminder after replayed transcript messages", () => {
     const input = buildModelTurnInput({
       systemPrompt: basePrompt,
       skillCatalog: [
@@ -62,13 +82,27 @@ describe("context builder", () => {
       transcript: [],
     })
 
-    expect(input.system).toBe(
-      [
-        basePrompt,
-        "Skill catalog:\n- reviewer: Review carefully (.agents/skills/reviewer/SKILL.md)",
-        "Active skill instructions:\n\n## reviewer\nFocus on bugs first.",
-      ].join("\n\n"),
-    )
+    expect(input.messages).toEqual([
+      {
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: [
+              "<system-reminder>",
+              "Skill catalog:",
+              "- reviewer: Review carefully (.agents/skills/reviewer/SKILL.md)",
+              "",
+              "Active skill instructions:",
+              "",
+              "## reviewer",
+              "Focus on bugs first.",
+              "</system-reminder>",
+            ].join("\n"),
+          },
+        ],
+      },
+    ])
   })
 
   test("renders persisted tool calls, tool results, and errors back into model messages", () => {

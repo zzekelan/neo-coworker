@@ -27,8 +27,10 @@ export type PromptAssemblyEventView = {
   catalogSkillNames: string[]
   activeSkillNames: string[]
   activeSkillCount: number | null
-  activeSkillSectionHash: string | null
-  activeSkillSectionLength: number | null
+  systemPromptHash: string | null
+  systemPromptLength: number | null
+  systemReminderHash: string | null
+  systemReminderLength: number | null
 }
 
 export function readTranscriptViews(artifact: EvalRunArtifact): TranscriptMessageView[] {
@@ -72,8 +74,10 @@ export function readPromptAssemblyEvents(artifact: EvalRunArtifact): PromptAssem
       catalogSkillNames: readStringArrayField(event.data, "catalogSkillNames"),
       activeSkillNames: readStringArrayField(event.data, "activeSkillNames"),
       activeSkillCount: readNumberField(event.data, "activeSkillCount"),
-      activeSkillSectionHash: readStringField(event.data, "activeSkillSectionHash"),
-      activeSkillSectionLength: readNumberField(event.data, "activeSkillSectionLength"),
+      systemPromptHash: readStringField(event.data, "systemPromptHash"),
+      systemPromptLength: readNumberField(event.data, "systemPromptLength"),
+      systemReminderHash: readStringField(event.data, "systemReminderHash"),
+      systemReminderLength: readNumberField(event.data, "systemReminderLength"),
     }))
 }
 

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { createFakeProvider, createModelProvider } from "../../src/model"
+import {
+  SYSTEM_REMINDER_NOTICE,
+  createFakeProvider,
+  createModelProvider,
+} from "../../src/model"
 import type { OrchestrationModelPort } from "../../src/orchestration"
 
 describe("orchestration model port", () => {
@@ -56,11 +60,30 @@ describe("orchestration model port", () => {
     ])
     expect(requests).toEqual([
       {
-        system: expect.stringContaining("Skill catalog:"),
+        system: [basePrompt, SYSTEM_REMINDER_NOTICE].join("\n\n"),
         messages: [
           {
             role: "user",
             parts: [{ type: "text", text: "inspect README" }],
+          },
+          {
+            role: "user",
+            parts: [
+              {
+                type: "text",
+                text: [
+                  "<system-reminder>",
+                  "Skill catalog:",
+                  "- reviewer: Review code changes carefully (.agents/skills/reviewer/SKILL.md)",
+                  "",
+                  "Active skill instructions:",
+                  "",
+                  "## reviewer",
+                  "Always explain the diff.",
+                  "</system-reminder>",
+                ].join("\n"),
+              },
+            ],
           },
         ],
         tools: [{ name: "read", description: "Read a file" }],

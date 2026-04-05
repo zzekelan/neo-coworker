@@ -86,8 +86,8 @@ export function gradeSkillDisclosureExpectation(input: {
 
       if (!lastBefore || !firstAfter) {
         failures.push(`missing prompt assembly checkpoints around activation for ${skillName}`)
-      } else if (lastBefore.activeSkillSectionHash === firstAfter.activeSkillSectionHash) {
-        failures.push(`${skillName} did not change the active skill prompt section`)
+      } else if (lastBefore.systemReminderHash === firstAfter.systemReminderHash) {
+        failures.push(`${skillName} did not change the system reminder payload`)
       }
     }
   }

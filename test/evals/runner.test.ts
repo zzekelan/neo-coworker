@@ -297,7 +297,8 @@ describe("eval runner", () => {
               activeSkillCount: 2,
             },
           ],
-          requireDistinctActiveSkillSectionHashes: true,
+          requireStableSystemPromptHash: true,
+          requireDistinctSystemReminderHashes: true,
         },
       },
       providerInfo: {
