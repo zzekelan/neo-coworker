@@ -572,11 +572,24 @@ describe("runtime observability", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           skillName: "reviewer",
+          reason: "prompt",
+        }),
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          skillName: "reviewer",
           reason: "recovery",
         }),
       }),
     ])
     expect(loadCompletedEvents).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          skillName: "reviewer",
+          skillPath: ".agents/skills/reviewer/SKILL.md",
+          reason: "prompt",
+        }),
+      }),
       expect.objectContaining({
         data: expect.objectContaining({
           skillName: "reviewer",

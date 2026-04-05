@@ -366,6 +366,23 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const run = input.session.getRun(stepInput.runId)
       const skillCatalog = await input.skill.listCatalog(stepInput.workspaceRoot)
       const availableTools = stepInput.tools.list()
+      const exposedCatalogSkillNames = skillReminders.exposeCatalog(stepInput.sessionId, skillCatalog)
+      if (exposedCatalogSkillNames.length > 0) {
+        stepInput.emit({
+          type: "skill.catalog.exposed",
+          catalogSkillNames: exposedCatalogSkillNames,
+          catalogSkillCount: exposedCatalogSkillNames.length,
+        })
+      }
+      const sessionActiveSkills = input.session.getSession(stepInput.sessionId).activeSkills
+      await loadPendingActiveSkills({
+        sessionId: stepInput.sessionId,
+        activeSkillNames: sessionActiveSkills,
+        workspaceRoot: stepInput.workspaceRoot,
+        emit: stepInput.emit,
+        reason: "prompt",
+      })
+
       const autoCompaction = await maybeAutoCompact({
         session: input.session,
         model: input.model,
@@ -392,23 +409,6 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         transcript = input.session.listTranscript(stepInput.sessionId)
       }
       transcript = input.session.listTranscript(stepInput.sessionId)
-
-      const exposedCatalogSkillNames = skillReminders.exposeCatalog(stepInput.sessionId, skillCatalog)
-      if (exposedCatalogSkillNames.length > 0) {
-        stepInput.emit({
-          type: "skill.catalog.exposed",
-          catalogSkillNames: exposedCatalogSkillNames,
-          catalogSkillCount: exposedCatalogSkillNames.length,
-        })
-      }
-      const sessionActiveSkills = input.session.getSession(stepInput.sessionId).activeSkills
-      await loadPendingActiveSkills({
-        sessionId: stepInput.sessionId,
-        activeSkillNames: sessionActiveSkills,
-        workspaceRoot: stepInput.workspaceRoot,
-        emit: stepInput.emit,
-        reason: "prompt",
-      })
       const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, sessionActiveSkills)
       const systemReminderBatch = skillReminders.consumeSystemReminderBatch(stepInput.sessionId)
       const systemReminders = systemReminderBatch?.messages ?? []
