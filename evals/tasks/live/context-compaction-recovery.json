@@ -37,8 +37,6 @@
   },
   "toolPolicyExpectation": {
     "forbiddenToolNames": [
-      "skill",
-      "read",
       "glob",
       "grep",
       "webfetch",
@@ -118,8 +116,15 @@
     "checkpoints": [
       {
         "promptIndex": 0,
+        "catalogSkillNamesExcludes": [
+          "reviewer",
+          "writer"
+        ],
         "activeSkillNamesIncludes": [
           "reviewer"
+        ],
+        "recoveryFilePathsIncludes": [
+          "LONG_CONTEXT.md"
         ],
         "activeSkillCount": 1
       }

@@ -1,7 +1,11 @@
 import { cp, mkdtemp, readFile, realpath, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, dirname, join, resolve, sep } from "node:path"
-import type { ModelObserverPort, ModelProvider } from "../src/model"
+import type {
+  ModelObserverPort,
+  ModelProvider,
+  ModelProviderRequest,
+} from "../src/model"
 import {
   createDefaultSearchBackend,
   createCliStorageComposition,
@@ -99,6 +103,10 @@ export async function runEvalTask(input: {
   const provider = await input.createProvider({
     modelObserver: observability?.modelObserver,
   })
+  const faultedProvider = applyProviderFaults({
+    provider,
+    faults: task.providerFaults,
+  })
   const sessionProvider = createSessionRuntimeApi({
     repository: storage.repository,
     now,
@@ -107,7 +115,7 @@ export async function runEvalTask(input: {
     env: input.env,
   })
   const runtime = createRuntime({
-    provider,
+    provider: faultedProvider,
     repository: storage.repository,
     permissionRepository: storage.permissionRepository,
     observability,
@@ -311,6 +319,48 @@ async function prepareWorkspace(task: EvalTask) {
 
 function buildTaskSteps(task: EvalTask) {
   return task.steps.length > 0 ? task.steps : [{ kind: "prompt", prompt: task.prompt } as const]
+}
+
+const COMPACTION_SUMMARIZE_SYSTEM_PROMPT =
+  "You compress conversation state into a compact continuation summary for the next model turn."
+
+function applyProviderFaults(input: {
+  provider: ModelProvider
+  faults: EvalTask["providerFaults"]
+}): ModelProvider {
+  if (input.faults.summarizeFailures <= 0) {
+    return input.provider
+  }
+
+  let remainingSummarizeFailures = input.faults.summarizeFailures
+
+  return {
+    projectTurn(request) {
+      return input.provider.projectTurn(request)
+    },
+    streamTurn(request) {
+      if (
+        remainingSummarizeFailures > 0 &&
+        isCompactionSummarizeRequest(request)
+      ) {
+        remainingSummarizeFailures -= 1
+        return failProviderTurn(input.faults.summarizeFailureMessage)
+      }
+
+      return input.provider.streamTurn(request)
+    },
+  }
+}
+
+function isCompactionSummarizeRequest(request: ModelProviderRequest) {
+  return (
+    request.tools.length === 0 &&
+    request.systemPrompt.includes(COMPACTION_SUMMARIZE_SYSTEM_PROMPT)
+  )
+}
+
+async function* failProviderTurn(message: string) {
+  throw new Error(message)
 }
 
 async function collectRuntimeEvents(

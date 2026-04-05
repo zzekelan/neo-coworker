@@ -928,6 +928,7 @@ describe("agent loop", () => {
         async function* (request) {
           expect(request.system).toContain(SYSTEM_REMINDER_NOTICE)
           const reminderText = readMessageTexts(request.messages).at(-1) ?? ""
+          expect(reminderText).not.toContain("Skill catalog:")
           expect(reminderText).toContain("## reviewer")
           expect(reminderText).toContain("Focus on bugs first.")
 
@@ -1009,8 +1010,12 @@ describe("agent loop", () => {
           yield { type: "text.delta", text: "Reviewer activated." }
         },
         async function* (request) {
-          expect(readMessageTexts(request.messages).join("\n\n")).toContain("## reviewer")
-          expect(readMessageTexts(request.messages).join("\n\n")).toContain("Focus on bugs first.")
+          const reminderText = readMessageTexts(request.messages).join("\n\n")
+          expect(reminderText).not.toContain("Skill catalog:")
+          expect(reminderText).not.toContain("## reviewer")
+          expect(reminderText).not.toContain(
+            "Focus on bugs first.",
+          )
           yield { type: "text.delta", text: "Reviewer still available." }
         },
       ]),

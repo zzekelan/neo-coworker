@@ -14,7 +14,10 @@ import {
   DEFAULT_CONTEXT_WINDOW_SIZE,
 } from "./context-usage"
 import { createRecentFileTracker } from "./recent-file-tracker"
-import { createSkillReminderTracker } from "./skill-reminder-tracker"
+import {
+  createSkillReminderTracker,
+  type SkillReminderBatch,
+} from "./skill-reminder-tracker"
 
 type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 
@@ -95,7 +98,7 @@ type CompactionProjectionInput = {
   systemPrompt: string
   skillCatalog: Awaited<ReturnType<OrchestrationSkillPort["listCatalog"]>>
   activeSkills: ReturnType<ReturnType<typeof createSkillReminderTracker>["resolveActiveSkills"]>
-  systemReminders: ReturnType<ReturnType<typeof createSkillReminderTracker>["buildSystemReminders"]>
+  systemReminders: string[]
   contextWindow: number
   tools: ReturnType<OrchestrationToolPort["list"]>
   transcript: OrchestrationTranscriptMessage[]
@@ -258,7 +261,11 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       loadedSkills.push(loadedSkill)
     }
 
-    skillReminders.injectActiveSkills(inputValue.sessionId, loadedSkills)
+    skillReminders.injectActiveSkills({
+      sessionId: inputValue.sessionId,
+      skills: loadedSkills,
+      reason: inputValue.reason,
+    })
   }
 
   async function recoverCompactedContext(inputValue: {
@@ -277,7 +284,11 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
     const recentFileReminder = recentFiles.buildRecoveryReminder(inputValue.sessionId)
     if (recentFileReminder) {
-      skillReminders.appendRecoveryReminder(inputValue.sessionId, recentFileReminder)
+      skillReminders.appendRecoveryReminder({
+        sessionId: inputValue.sessionId,
+        text: recentFileReminder.text,
+        filePaths: recentFileReminder.filePaths,
+      })
     }
   }
 
@@ -380,6 +391,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         })
         transcript = input.session.listTranscript(stepInput.sessionId)
       }
+      transcript = input.session.listTranscript(stepInput.sessionId)
 
       const exposedCatalogSkillNames = skillReminders.exposeCatalog(stepInput.sessionId, skillCatalog)
       if (exposedCatalogSkillNames.length > 0) {
@@ -398,7 +410,8 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         reason: "prompt",
       })
       const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, sessionActiveSkills)
-      const systemReminders = skillReminders.buildSystemReminders(stepInput.sessionId)
+      const systemReminderBatch = skillReminders.consumeSystemReminderBatch(stepInput.sessionId)
+      const systemReminders = systemReminderBatch?.messages ?? []
       if (autoCompaction.compacted) {
         const tokensAfter = input.model.projectTurn?.({
           systemPrompt: stepInput.systemPrompt,
@@ -455,13 +468,18 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         try {
           const modelEvents = input.model.streamTurn({
             systemPrompt: stepInput.systemPrompt,
-            skillCatalog,
-            activeSkills,
-            systemReminders,
-            contextWindow,
-            tools: availableTools,
-            transcript,
-            sessionId: stepInput.sessionId,
+          skillCatalog,
+          activeSkills,
+          systemReminders,
+          systemReminderMetadata: systemReminderBatch && {
+            catalogSkillNames: systemReminderBatch.catalogSkillNames,
+            activeSkillNames: systemReminderBatch.activeSkillNames,
+            recoveryFilePaths: systemReminderBatch.recoveryFilePaths,
+          },
+          contextWindow,
+          tools: availableTools,
+          transcript,
+          sessionId: stepInput.sessionId,
             runId: stepInput.runId,
             turnKey,
             signal: stepInput.signal,
@@ -632,7 +650,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         systemPrompt: compactionInput.systemPrompt,
         skillCatalog,
         activeSkills: skillReminders.resolveActiveSkills(compactionInput.sessionId, run.activeSkills),
-        systemReminders: skillReminders.buildSystemReminders(compactionInput.sessionId),
+        systemReminders: skillReminders.peekSystemReminderBatch(compactionInput.sessionId)?.messages ?? [],
         contextWindow,
         tools: availableTools,
         transcript,
@@ -670,7 +688,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             compactionInput.sessionId,
             sessionActiveSkills,
           ),
-          systemReminders: skillReminders.buildSystemReminders(compactionInput.sessionId),
+          systemReminders: skillReminders.peekSystemReminderBatch(compactionInput.sessionId)?.messages ?? [],
           contextWindow,
           tools: availableTools,
           transcript: compactedTranscript,
@@ -986,7 +1004,7 @@ async function maybeAutoCompact(input: {
     systemPrompt: input.systemPrompt,
     skillCatalog: input.skillCatalog,
     activeSkills: input.skillReminders.resolveActiveSkills(input.sessionId, input.run.activeSkills),
-    systemReminders: input.skillReminders.buildSystemReminders(input.sessionId),
+    systemReminders: input.skillReminders.peekSystemReminderBatch(input.sessionId)?.messages ?? [],
     contextWindow: input.contextWindow,
     tools: input.tools,
     transcript: input.transcript,

@@ -19,6 +19,7 @@ export type ModelObserverEvent = {
   catalogSkillNames: string[]
   activeSkillNames: string[]
   activeSkillCount: number
+  recoveryFilePaths: string[]
   systemPromptHash: string
   systemPromptLength: number
   systemReminderHash: string | null

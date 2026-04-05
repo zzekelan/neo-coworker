@@ -57,8 +57,11 @@ export const EvalSkillDisclosureExpectationSchema = z.object({
 export const EvalPromptAssemblyCheckpointSchema = z.object({
   promptIndex: z.number().int().nonnegative(),
   catalogSkillNamesIncludes: z.array(z.string()).default([]),
+  catalogSkillNamesExcludes: z.array(z.string()).default([]),
   activeSkillNamesIncludes: z.array(z.string()).default([]),
   activeSkillNamesExcludes: z.array(z.string()).default([]),
+  recoveryFilePathsIncludes: z.array(z.string()).default([]),
+  recoveryFilePathsExcludes: z.array(z.string()).default([]),
   activeSkillCount: z.number().int().nonnegative().optional(),
 })
 
@@ -132,6 +135,11 @@ export const EvalSessionSeedSchema = z.object({
   activeSkills: z.array(z.string().min(1)).default([]),
 })
 
+export const EvalProviderFaultsSchema = z.object({
+  summarizeFailures: z.number().int().nonnegative().default(0),
+  summarizeFailureMessage: z.string().min(1).default("Injected summarize failure"),
+})
+
 export const EvalTaskStepSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("prompt"),
@@ -154,6 +162,10 @@ export const EvalTaskSchema = z.object({
   steps: z.array(EvalTaskStepSchema).default([]),
   sessionSeed: EvalSessionSeedSchema.default({
     activeSkills: [],
+  }),
+  providerFaults: EvalProviderFaultsSchema.default({
+    summarizeFailures: 0,
+    summarizeFailureMessage: "Injected summarize failure",
   }),
   permissionPolicy: z
     .object({

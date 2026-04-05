@@ -93,11 +93,17 @@
       },
       {
         "promptIndex": 1,
-        "activeSkillNamesIncludes": [
+        "catalogSkillNamesExcludes": [
           "reviewer",
           "writer"
         ],
-        "activeSkillCount": 2
+        "activeSkillNamesIncludes": [
+          "writer"
+        ],
+        "activeSkillNamesExcludes": [
+          "reviewer"
+        ],
+        "activeSkillCount": 1
       }
     ],
     "requireStableSystemPromptHash": true,

@@ -29,6 +29,12 @@ export function gradePromptAssemblyExpectation(input: {
       }
     }
 
+    for (const skillName of checkpoint.catalogSkillNamesExcludes) {
+      if (promptEvent.catalogSkillNames.includes(skillName)) {
+        failures.push(`prompt ${checkpoint.promptIndex} unexpectedly included catalog skill ${skillName}`)
+      }
+    }
+
     for (const skillName of checkpoint.activeSkillNamesIncludes) {
       if (!promptEvent.activeSkillNames.includes(skillName)) {
         failures.push(`prompt ${checkpoint.promptIndex} missing active skill ${skillName}`)
@@ -38,6 +44,18 @@ export function gradePromptAssemblyExpectation(input: {
     for (const skillName of checkpoint.activeSkillNamesExcludes) {
       if (promptEvent.activeSkillNames.includes(skillName)) {
         failures.push(`prompt ${checkpoint.promptIndex} unexpectedly included active skill ${skillName}`)
+      }
+    }
+
+    for (const path of checkpoint.recoveryFilePathsIncludes) {
+      if (!promptEvent.recoveryFilePaths.includes(path)) {
+        failures.push(`prompt ${checkpoint.promptIndex} missing recovery file ${path}`)
+      }
+    }
+
+    for (const path of checkpoint.recoveryFilePathsExcludes) {
+      if (promptEvent.recoveryFilePaths.includes(path)) {
+        failures.push(`prompt ${checkpoint.promptIndex} unexpectedly included recovery file ${path}`)
       }
     }
 

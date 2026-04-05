@@ -12,6 +12,11 @@ type RecentFileEntry = {
   tokenCount: number
 }
 
+export type RecentFileRecoveryReminder = {
+  text: string
+  filePaths: string[]
+}
+
 export function createRecentFileTracker() {
   const sessionEntries = new Map<string, RecentFileEntry[]>()
 
@@ -43,7 +48,7 @@ export function createRecentFileTracker() {
 
       sessionEntries.set(input.sessionId, deduped)
     },
-    buildRecoveryReminder(sessionId: string) {
+    buildRecoveryReminder(sessionId: string): RecentFileRecoveryReminder | null {
       const entries = (sessionEntries.get(sessionId) ?? []).slice().reverse()
       if (entries.length === 0) {
         return null
@@ -69,13 +74,16 @@ export function createRecentFileTracker() {
         return null
       }
 
-      return [
-        "<system-reminder>",
-        "Recent file context:",
-        "",
-        ...selected.map((entry) => `### ${entry.path}\n${entry.content}`),
-        "</system-reminder>",
-      ].join("\n")
+      return {
+        text: [
+          "<system-reminder>",
+          "Recent file context:",
+          "",
+          ...selected.map((entry) => `### ${entry.path}\n${entry.content}`),
+          "</system-reminder>",
+        ].join("\n"),
+        filePaths: selected.map((entry) => entry.path),
+      }
     },
   }
 }

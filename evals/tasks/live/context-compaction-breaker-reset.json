@@ -1,0 +1,282 @@
+{
+  "id": "live/context-compaction-breaker-reset",
+  "providerMode": "live",
+  "prompt": "Trip the auto-compaction breaker, recover with /compact, and prove auto compaction resumes.",
+  "workspaceFixture": "workspaces/skills",
+  "contextWindow": 14000,
+  "providerFaults": {
+    "summarizeFailures": 3,
+    "summarizeFailureMessage": "Injected summarize failure"
+  },
+  "steps": [
+    {
+      "kind": "prompt",
+      "prompt": "Use the read tool to read LONG_CONTEXT.md completely. Then answer exactly `Breaker prep ready`."
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. Answer exactly `Breaker failure one`."
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. Answer exactly `Breaker failure two`."
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. Answer exactly `Breaker failure three`."
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. Answer exactly `Breaker paused but replying`."
+    },
+    {
+      "kind": "command",
+      "command": "compact"
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. The repeated filler block below exists only to force one more large prompt turn after the manual compact succeeds. Ignore the filler and answer exactly `Breaker reset auto compact`. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset. Breaker reset validation filler line to trigger automatic compaction after manual reset."
+    }
+  ],
+  "autoReplyPermission": "deny",
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "glob",
+      "grep",
+      "webfetch",
+      "websearch",
+      "codesearch",
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "compaction.failed",
+      "compaction.circuit_breaker.triggered",
+      "compaction.completed",
+      "run.completed"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "read"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "synthetic",
+        "partKinds": [
+          "error"
+        ],
+        "textIncludes": [
+          "Automatic compaction failed: Injected summarize failure"
+        ]
+      },
+      {
+        "messageIndex": 5,
+        "role": "synthetic",
+        "partKinds": [
+          "error"
+        ],
+        "textIncludes": [
+          "Automatic compaction failed: Injected summarize failure"
+        ]
+      },
+      {
+        "messageIndex": 8,
+        "role": "synthetic",
+        "partKinds": [
+          "error"
+        ],
+        "textIncludes": [
+          "Automatic compaction failed: Injected summarize failure"
+        ]
+      },
+      {
+        "messageIndex": 9,
+        "role": "synthetic",
+        "partKinds": [
+          "error"
+        ],
+        "textIncludes": [
+          "Automatic compaction has been paused"
+        ]
+      },
+      {
+        "messageIndex": 14,
+        "role": "assistant",
+        "textIncludes": [
+          "Breaker paused but replying"
+        ]
+      },
+      {
+        "messageIndex": 15,
+        "role": "synthetic",
+        "partKinds": [
+          "compaction_boundary",
+          "text"
+        ],
+        "textIncludes": [
+          "Primary Request",
+          "Next Steps"
+        ]
+      },
+      {
+        "messageIndex": 17,
+        "role": "synthetic",
+        "partKinds": [
+          "compaction_boundary",
+          "text"
+        ],
+        "textIncludes": [
+          "Primary Request",
+          "Next Steps"
+        ]
+      },
+      {
+        "messageIndex": 18,
+        "role": "assistant",
+        "textIncludes": [
+          "Breaker reset auto compact"
+        ]
+      }
+    ]
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "runIndex": 0,
+        "eventType": "compaction.failed",
+        "fields": [
+          {
+            "field": "trigger",
+            "equalsString": "auto"
+          },
+          {
+            "field": "attemptCount",
+            "equalsNumber": 1
+          },
+          {
+            "field": "error",
+            "includes": "Injected summarize failure"
+          }
+        ]
+      },
+      {
+        "runIndex": 1,
+        "eventType": "compaction.failed",
+        "fields": [
+          {
+            "field": "trigger",
+            "equalsString": "auto"
+          },
+          {
+            "field": "attemptCount",
+            "equalsNumber": 2
+          },
+          {
+            "field": "error",
+            "includes": "Injected summarize failure"
+          }
+        ]
+      },
+      {
+        "runIndex": 2,
+        "eventType": "compaction.failed",
+        "fields": [
+          {
+            "field": "trigger",
+            "equalsString": "auto"
+          },
+          {
+            "field": "attemptCount",
+            "equalsNumber": 3
+          },
+          {
+            "field": "error",
+            "includes": "Injected summarize failure"
+          }
+        ]
+      },
+      {
+        "runIndex": 2,
+        "eventType": "compaction.circuit_breaker.triggered",
+        "fields": [
+          {
+            "field": "consecutiveFailures",
+            "equalsNumber": 3
+          },
+          {
+            "field": "lastError",
+            "includes": "Injected summarize failure"
+          },
+          {
+            "field": "resolution",
+            "equalsString": "manual_compact"
+          }
+        ]
+      },
+      {
+        "runIndex": 5,
+        "eventType": "compaction.completed",
+        "fields": [
+          {
+            "field": "trigger",
+            "equalsString": "manual"
+          }
+        ]
+      },
+      {
+        "runIndex": 6,
+        "eventType": "compaction.completed",
+        "fields": [
+          {
+            "field": "trigger",
+            "equalsString": "auto"
+          }
+        ]
+      }
+    ]
+  },
+  "runRecordsExpectation": {
+    "checkpoints": [
+      {
+        "runIndex": 5,
+        "trigger": "command",
+        "status": "completed"
+      },
+      {
+        "runIndex": 6,
+        "trigger": "cli",
+        "status": "completed",
+        "tokenUsageSources": [
+          "provider",
+          "estimated"
+        ]
+      }
+    ]
+  }
+}

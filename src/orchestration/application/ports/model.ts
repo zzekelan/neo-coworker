@@ -10,6 +10,11 @@ export type OrchestrationModelTurnRequest = {
   skillCatalog: OrchestrationSkillCatalogEntry[]
   activeSkills: OrchestrationActiveSkill[]
   systemReminders?: string[]
+  systemReminderMetadata?: {
+    catalogSkillNames: string[]
+    activeSkillNames: string[]
+    recoveryFilePaths: string[]
+  }
   contextWindow?: number
   tools: OrchestrationTool[]
   transcript: OrchestrationTranscriptMessage[]

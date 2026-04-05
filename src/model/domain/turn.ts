@@ -18,11 +18,18 @@ export type ModelActiveSkill = {
   instructions: string
 }
 
+export type ModelSystemReminderMetadata = {
+  catalogSkillNames: string[]
+  activeSkillNames: string[]
+  recoveryFilePaths: string[]
+}
+
 export type ModelProjectionInput = {
   systemPrompt: string
   skillCatalog: ModelSkillCatalogEntry[]
   activeSkills: ModelActiveSkill[]
   systemReminders?: string[]
+  systemReminderMetadata?: ModelSystemReminderMetadata
   contextWindow?: number
   tools: ModelTool[]
   transcript: ModelTranscriptMessage[]

@@ -324,13 +324,15 @@ describe("runtime observability", () => {
       catalogSkillNames: ["reviewer"],
       activeSkillNames: [],
       activeSkillCount: 0,
+      recoveryFilePaths: [],
       systemPromptLength: expect.any(Number),
       systemReminderLength: expect.any(Number),
     })
     expect(promptEvents[1]?.data).toMatchObject({
-      catalogSkillNames: ["reviewer"],
+      catalogSkillNames: [],
       activeSkillNames: ["reviewer"],
       activeSkillCount: 1,
+      recoveryFilePaths: [],
       systemPromptHash: promptEvents[0]?.data.systemPromptHash,
     })
     expect(promptEvents[0]?.data.systemReminderHash).not.toBe(promptEvents[1]?.data.systemReminderHash)

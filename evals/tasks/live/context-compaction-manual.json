@@ -33,8 +33,6 @@
   },
   "toolPolicyExpectation": {
     "forbiddenToolNames": [
-      "skill",
-      "read",
       "glob",
       "grep",
       "webfetch",

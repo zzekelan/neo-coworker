@@ -94,6 +94,7 @@ describe("direct eval runner", () => {
     })
     expect(tasks.map((task) => task.id)).toEqual([
       "live/context-compaction-auto",
+      "live/context-compaction-breaker-reset",
       "live/context-compaction-manual",
       "live/context-compaction-recovery",
       "live/read-only",

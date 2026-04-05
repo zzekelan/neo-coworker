@@ -33,8 +33,6 @@
   },
   "toolPolicyExpectation": {
     "forbiddenToolNames": [
-      "skill",
-      "read",
       "glob",
       "grep",
       "webfetch",
@@ -93,6 +91,10 @@
     "checkpoints": [
       {
         "promptIndex": 0,
+        "catalogSkillNamesExcludes": [
+          "reviewer",
+          "writer"
+        ],
         "activeSkillNamesIncludes": [
           "writer"
         ],

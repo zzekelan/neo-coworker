@@ -7,12 +7,21 @@ import type {
 type SkillReminderEntry = {
   kind: "catalog" | "instructions" | "recovery"
   text: string
+  skillNames?: string[]
+  filePaths?: string[]
+}
+
+export type SkillReminderBatch = {
+  messages: string[] | undefined
+  catalogSkillNames: string[]
+  activeSkillNames: string[]
+  recoveryFilePaths: string[]
 }
 
 type SessionSkillReminderState = {
   sentSkillNames: Set<string>
   injectedSkills: Map<string, OrchestrationLoadedSkill>
-  entries: SkillReminderEntry[]
+  pendingEntries: SkillReminderEntry[]
 }
 
 export function createSkillReminderTracker() {
@@ -31,9 +40,10 @@ export function createSkillReminderTracker() {
         state.sentSkillNames.add(skill.name)
       }
 
-      state.entries.push({
+      state.pendingEntries.push({
         kind: "catalog",
         text: renderSkillCatalogReminder(delta),
+        skillNames: delta.map((skill) => skill.name),
       })
 
       return delta.map((skill) => skill.name)
@@ -42,9 +52,13 @@ export function createSkillReminderTracker() {
       const state = getSessionState(sessionStates, sessionId)
       return activeSkillNames.filter((skillName) => !state.injectedSkills.has(skillName))
     },
-    injectActiveSkills(sessionId: string, skills: readonly OrchestrationLoadedSkill[]) {
-      const state = getSessionState(sessionStates, sessionId)
-      const freshSkills = skills.filter((skill) => !state.injectedSkills.has(skill.name))
+    injectActiveSkills(input: {
+      sessionId: string
+      skills: readonly OrchestrationLoadedSkill[]
+      reason: "prompt" | "recovery"
+    }) {
+      const state = getSessionState(sessionStates, input.sessionId)
+      const freshSkills = input.skills.filter((skill) => !state.injectedSkills.has(skill.name))
 
       if (freshSkills.length === 0) {
         return []
@@ -54,23 +68,29 @@ export function createSkillReminderTracker() {
         state.injectedSkills.set(skill.name, skill)
       }
 
-      state.entries.push({
+      state.pendingEntries.push({
         kind: "instructions",
         text: renderActiveSkillReminder(freshSkills),
+        skillNames: freshSkills.map((skill) => skill.name),
       })
 
       return freshSkills.map((skill) => skill.name)
     },
-    appendRecoveryReminder(sessionId: string, text: string) {
-      const reminder = text.trim()
-      if (!reminder) {
+    appendRecoveryReminder(input: {
+      sessionId: string
+      text: string
+      filePaths: readonly string[]
+    }) {
+      const reminder = input.text.trim()
+      if (!reminder || input.filePaths.length === 0) {
         return
       }
 
-      const state = getSessionState(sessionStates, sessionId)
-      state.entries.push({
+      const state = getSessionState(sessionStates, input.sessionId)
+      state.pendingEntries.push({
         kind: "recovery",
         text: reminder,
+        filePaths: [...input.filePaths],
       })
     },
     resolveActiveSkills(sessionId: string, activeSkillNames: readonly string[]): OrchestrationActiveSkill[] {
@@ -80,21 +100,20 @@ export function createSkillReminderTracker() {
         return skill ? [{ name: skill.name, instructions: skill.instructions }] : []
       })
     },
-    buildSystemReminders(sessionId: string) {
+    peekSystemReminderBatch(sessionId: string): SkillReminderBatch | undefined {
       const state = getSessionState(sessionStates, sessionId)
-      if (
-        state.entries.length === 0 &&
-        state.sentSkillNames.size === 0 &&
-        state.injectedSkills.size === 0
-      ) {
-        return undefined
-      }
-      return state.entries.map((entry) => entry.text)
+      return buildSystemReminderBatch(state.pendingEntries)
+    },
+    consumeSystemReminderBatch(sessionId: string): SkillReminderBatch | undefined {
+      const state = getSessionState(sessionStates, sessionId)
+      const batch = buildSystemReminderBatch(state.pendingEntries)
+      state.pendingEntries = []
+      return batch
     },
     resetAfterCompaction(sessionId: string) {
       const state = getSessionState(sessionStates, sessionId)
       state.injectedSkills.clear()
-      state.entries = []
+      state.pendingEntries = []
     },
   }
 }
@@ -111,10 +130,23 @@ function getSessionState(
   const created: SessionSkillReminderState = {
     sentSkillNames: new Set<string>(),
     injectedSkills: new Map<string, OrchestrationLoadedSkill>(),
-    entries: [],
+    pendingEntries: [],
   }
   sessionStates.set(sessionId, created)
   return created
+}
+
+function buildSystemReminderBatch(entries: readonly SkillReminderEntry[]): SkillReminderBatch | undefined {
+  if (entries.length === 0) {
+    return undefined
+  }
+
+  return {
+    messages: entries.map((entry) => entry.text),
+    catalogSkillNames: [...new Set(entries.flatMap((entry) => entry.kind === "catalog" ? (entry.skillNames ?? []) : []))],
+    activeSkillNames: [...new Set(entries.flatMap((entry) => entry.kind === "instructions" ? (entry.skillNames ?? []) : []))],
+    recoveryFilePaths: [...new Set(entries.flatMap((entry) => entry.kind === "recovery" ? (entry.filePaths ?? []) : []))],
+  }
 }
 
 function renderSkillCatalogReminder(skillCatalog: OrchestrationSkillCatalogEntry[]) {

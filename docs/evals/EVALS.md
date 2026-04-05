@@ -180,6 +180,7 @@ Current richer task fields:
 - `sessionSeed.activeSkills` for seeding run snapshots from session defaults
 - `contextWindow` for forcing a smaller runtime context window during a task
 - `steps` for multi-run session scripts such as prompt → command → prompt flows
+- `providerFaults.summarizeFailures` for deterministically faulting the next N compaction summarize turns inside the eval harness
 - `transcriptExpectation` for transcript ordering and structured checkpoints
 - `traceSequenceExpectation` for ordered trace assertions
 - `traceDataExpectation` for checking trace payload fields on the final run or an earlier run by index
@@ -194,6 +195,7 @@ When adding or changing eval tasks:
 
 - keep default local coverage in `scripted` mode
 - keep `live` tasks opt-in and resilient to normal model variability
+- when a live task needs deterministic compaction-failure coverage, prefer `providerFaults.summarizeFailures` over brittle prompt tricks
 - prefer structured expectations such as run status, protocol, tool policy, and trace completeness
 - prefer the richer structured expectations over brittle exact free-text assertions whenever possible
 - avoid exact free-text grading in live mode unless variability is tightly controlled

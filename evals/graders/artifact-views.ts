@@ -27,6 +27,7 @@ export type PromptAssemblyEventView = {
   catalogSkillNames: string[]
   activeSkillNames: string[]
   activeSkillCount: number | null
+  recoveryFilePaths: string[]
   systemPromptHash: string | null
   systemPromptLength: number | null
   systemReminderHash: string | null
@@ -74,6 +75,7 @@ export function readPromptAssemblyEvents(artifact: EvalRunArtifact): PromptAssem
       catalogSkillNames: readStringArrayField(event.data, "catalogSkillNames"),
       activeSkillNames: readStringArrayField(event.data, "activeSkillNames"),
       activeSkillCount: readNumberField(event.data, "activeSkillCount"),
+      recoveryFilePaths: readStringArrayField(event.data, "recoveryFilePaths"),
       systemPromptHash: readStringField(event.data, "systemPromptHash"),
       systemPromptLength: readNumberField(event.data, "systemPromptLength"),
       systemReminderHash: readStringField(event.data, "systemReminderHash"),

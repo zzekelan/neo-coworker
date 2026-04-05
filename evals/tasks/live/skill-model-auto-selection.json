@@ -83,6 +83,10 @@
       },
       {
         "promptIndex": 1,
+        "catalogSkillNamesExcludes": [
+          "reviewer",
+          "writer"
+        ],
         "activeSkillNamesIncludes": [
           "writer"
         ]
