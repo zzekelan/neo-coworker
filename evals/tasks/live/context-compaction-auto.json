@@ -1,0 +1,144 @@
+{
+  "id": "live/context-compaction-auto",
+  "providerMode": "live",
+  "prompt": "Read LONG_CONTEXT.md and then prove the next turn can recover through auto compaction.",
+  "workspaceFixture": "workspaces/skills",
+  "contextWindow": 13050,
+  "steps": [
+    {
+      "kind": "prompt",
+      "prompt": "Use the read tool to read LONG_CONTEXT.md completely. Then answer exactly `Prepared auto compaction`."
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. Start the answer with `Recovered: LONG_CONTEXT.md` and then say what we were doing before this message."
+    }
+  ],
+  "autoReplyPermission": "deny",
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "compaction.completed",
+      "run.completed"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "read"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Prepared auto compaction"
+        ]
+      },
+      {
+        "messageIndex": 4,
+        "role": "synthetic",
+        "partKinds": [
+          "compaction_boundary",
+          "text"
+        ],
+        "textIncludes": [
+          "Primary Request",
+          "Current Work"
+        ]
+      },
+      {
+        "messageIndex": 5,
+        "role": "assistant",
+        "textIncludes": [
+          "Recovered: LONG_CONTEXT.md"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "run.started",
+      "compaction.completed",
+      "run.completed"
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "read",
+        "toolResultIncludes": [
+          "# context recovery fixture"
+        ],
+        "assistantTextIncludes": [
+          "Recovered: LONG_CONTEXT.md"
+        ]
+      }
+    ]
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "eventType": "compaction.completed",
+        "fields": [
+          {
+            "field": "trigger",
+            "equalsString": "auto"
+          },
+          {
+            "field": "tokensBefore",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "tokensAfter",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "compressionRatio",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          }
+        ]
+      }
+    ]
+  },
+  "runRecordsExpectation": {
+    "checkpoints": [
+      {
+        "runIndex": 0,
+        "trigger": "cli",
+        "status": "completed"
+      },
+      {
+        "runIndex": 1,
+        "trigger": "cli",
+        "status": "completed",
+        "tokenUsageSources": [
+          "provider",
+          "estimated"
+        ]
+      }
+    ]
+  }
+}

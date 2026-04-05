@@ -102,6 +102,8 @@ export function formatEvalTaskSummary(input: EvalSuiteTaskResult) {
     `grader.tool_consumption ${formatPass(input.result.grades.toolConsumption.pass)}`,
     `grader.skill_disclosure ${formatPass(input.result.grades.skillDisclosure.pass)}`,
     `grader.prompt_assembly ${formatPass(input.result.grades.promptAssembly.pass)}`,
+    `grader.trace_data ${formatPass(input.result.grades.traceData.pass)}`,
+    `grader.run_records ${formatPass(input.result.grades.runRecords.pass)}`,
     failures ? `failure.summary ${failures}` : null,
     `artifact.dir ${input.artifactDir}`,
   ]
@@ -119,6 +121,7 @@ async function persistEvalArtifacts(input: {
 
   await Promise.all([
     writeJsonFile(join(artifactDir, "trace.json"), input.result.artifact.trace),
+    writeJsonFile(join(artifactDir, "runs.json"), input.result.artifact.runs),
     writeJsonFile(join(artifactDir, "transcript.json"), input.result.artifact.transcript),
     writeJsonFile(join(artifactDir, "outcome.json"), input.result.artifact.outcome),
     writeJsonFile(join(artifactDir, "metrics.json"), input.result.artifact.metrics),
@@ -269,6 +272,14 @@ function summarizeFailures(result: EvalRunResult) {
 
   if (!result.grades.promptAssembly.pass && result.grades.promptAssembly.failures.length > 0) {
     failures.push(...result.grades.promptAssembly.failures)
+  }
+
+  if (!result.grades.traceData.pass && result.grades.traceData.failures.length > 0) {
+    failures.push(...result.grades.traceData.failures)
+  }
+
+  if (!result.grades.runRecords.pass && result.grades.runRecords.failures.length > 0) {
+    failures.push(...result.grades.runRecords.failures)
   }
 
   return failures.join("; ")

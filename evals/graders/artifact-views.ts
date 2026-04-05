@@ -81,6 +81,18 @@ export function readPromptAssemblyEvents(artifact: EvalRunArtifact): PromptAssem
     }))
 }
 
+export function readRunTraceEvents(artifact: EvalRunArtifact, runIndex?: number) {
+  if (runIndex === undefined) {
+    return artifact.trace?.events ?? []
+  }
+
+  return artifact.runs[runIndex]?.trace?.events ?? []
+}
+
+export function readArtifactRuns(artifact: EvalRunArtifact) {
+  return artifact.runs
+}
+
 export function findOrderedMatches(
   observed: string[],
   expected: string[],

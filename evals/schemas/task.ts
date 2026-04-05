@@ -3,6 +3,7 @@ import { z } from "zod"
 export const EvalPermissionDecisionSchema = z.enum(["allow", "deny"])
 export const EvalPermissionModeSchema = z.enum(["allow", "deny", "ask"])
 export const EvalProviderModeSchema = z.enum(["scripted", "live"])
+export const EvalTokenUsageSourceSchema = z.enum(["provider", "estimated"])
 export const EvalRunStatusSchema = z.enum([
   "queued",
   "running",
@@ -67,6 +68,40 @@ export const EvalPromptAssemblyExpectationSchema = z.object({
   requireDistinctSystemReminderHashes: z.boolean().default(false),
 })
 
+export const EvalTraceDataFieldExpectationSchema = z.object({
+  field: z.string().min(1),
+  valueType: z.enum(["string", "number", "boolean"]).optional(),
+  equalsString: z.string().min(1).optional(),
+  equalsNumber: z.number().optional(),
+  equalsBoolean: z.boolean().optional(),
+  greaterThanNumber: z.number().optional(),
+  lessThanNumber: z.number().optional(),
+  includes: z.string().min(1).optional(),
+})
+
+export const EvalTraceDataEventExpectationSchema = z.object({
+  runIndex: z.number().int().nonnegative().optional(),
+  eventType: z.string().min(1),
+  fields: z.array(EvalTraceDataFieldExpectationSchema).default([]),
+})
+
+export const EvalTraceDataExpectationSchema = z.object({
+  events: z.array(EvalTraceDataEventExpectationSchema).default([]),
+})
+
+export const EvalRunRecordCheckpointSchema = z.object({
+  runIndex: z.number().int().nonnegative(),
+  trigger: z.string().min(1).optional(),
+  status: EvalRunStatusSchema.optional(),
+  minInputTokens: z.number().int().nonnegative().optional(),
+  minOutputTokens: z.number().int().nonnegative().optional(),
+  tokenUsageSources: z.array(EvalTokenUsageSourceSchema).default([]),
+})
+
+export const EvalRunRecordsExpectationSchema = z.object({
+  checkpoints: z.array(EvalRunRecordCheckpointSchema).default([]),
+})
+
 export const EvalOutcomeFileExpectationSchema = z.object({
   path: z.string().min(1),
   shouldExist: z.boolean().default(true),
@@ -97,13 +132,26 @@ export const EvalSessionSeedSchema = z.object({
   activeSkills: z.array(z.string().min(1)).default([]),
 })
 
+export const EvalTaskStepSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("prompt"),
+    prompt: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("command"),
+    command: z.enum(["compact"]),
+  }),
+])
+
 export const EvalTaskSchema = z.object({
   id: z.string().min(1),
   prompt: z.string().min(1),
   workspaceRoot: z.string().min(1),
   copyWorkspace: z.boolean().default(true),
+  contextWindow: z.number().int().positive().optional(),
   providerMode: EvalProviderModeSchema.default("scripted"),
   scenario: z.string().min(1).optional(),
+  steps: z.array(EvalTaskStepSchema).default([]),
   sessionSeed: EvalSessionSeedSchema.default({
     activeSkills: [],
   }),
@@ -150,6 +198,12 @@ export const EvalTaskSchema = z.object({
     requireStableSystemPromptHash: false,
     requireDistinctSystemReminderHashes: false,
   }),
+  traceDataExpectation: EvalTraceDataExpectationSchema.default({
+    events: [],
+  }),
+  runRecordsExpectation: EvalRunRecordsExpectationSchema.default({
+    checkpoints: [],
+  }),
 })
 
 export type EvalTask = z.infer<typeof EvalTaskSchema>
@@ -163,3 +217,6 @@ export type EvalToolPolicyExpectation = z.infer<typeof EvalToolPolicyExpectation
 export type EvalToolConsumptionExpectation = z.infer<typeof EvalToolConsumptionExpectationSchema>
 export type EvalSkillDisclosureExpectation = z.infer<typeof EvalSkillDisclosureExpectationSchema>
 export type EvalPromptAssemblyExpectation = z.infer<typeof EvalPromptAssemblyExpectationSchema>
+export type EvalTraceDataExpectation = z.infer<typeof EvalTraceDataExpectationSchema>
+export type EvalRunRecordsExpectation = z.infer<typeof EvalRunRecordsExpectationSchema>
+export type EvalTaskStep = z.infer<typeof EvalTaskStepSchema>

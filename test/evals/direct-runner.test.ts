@@ -93,11 +93,17 @@ describe("direct eval runner", () => {
       providerMode: "live",
     })
     expect(tasks.map((task) => task.id)).toEqual([
+      "live/context-compaction-auto",
+      "live/context-compaction-manual",
+      "live/context-compaction-recovery",
       "live/read-only",
+      "live/skill-activation-persistence",
       "live/skill-explicit-activation",
+      "live/skill-injection-first-turn",
       "live/skill-model-auto-selection",
       "live/skill-run-override",
       "live/skill-run-snapshot",
+      "live/token-tracking",
       "live/tool-codesearch",
       "live/tool-glob",
       "live/tool-grep",
@@ -139,6 +145,180 @@ describe("direct eval runner", () => {
       kind: "openai",
       model: "gpt-5",
     })
+  })
+
+  test("supports multi-step live eval tasks that mix prompt and command runs", async () => {
+    const tasksRoot = await mkdtemp(join(tmpdir(), "eval-live-steps-task-"))
+    const outputRoot = await mkdtemp(join(tmpdir(), "eval-live-steps-output-"))
+    tempDirectories.push(tasksRoot, outputRoot)
+    await mkdir(join(tasksRoot, "live"), { recursive: true })
+    await writeFile(
+      join(tasksRoot, "live", "context-compaction-manual.json"),
+      JSON.stringify({
+        id: "live/context-compaction-manual",
+        providerMode: "live",
+        prompt: "Read LONG_CONTEXT.md, compact manually, and prove the next prompt keeps the session context.",
+        workspaceFixture: "workspaces/skills",
+        steps: [
+          {
+            kind: "prompt",
+            prompt:
+              "Use the read tool to read LONG_CONTEXT.md completely. Then answer exactly `Prepared manual compaction`.",
+          },
+          {
+            kind: "command",
+            command: "compact",
+          },
+          {
+            kind: "prompt",
+            prompt:
+              "Do not use any tools. Answer exactly `Manual compact recovered LONG_CONTEXT.md`.",
+          },
+        ],
+        outcomeExpectation: {
+          runStatus: "completed",
+        },
+        transcriptExpectation: {
+          checkpoints: [
+            {
+              messageIndex: 3,
+              role: "synthetic",
+              partKinds: ["compaction_boundary", "text"],
+            },
+          ],
+        },
+        traceDataExpectation: {
+          events: [
+            {
+              runIndex: 1,
+              eventType: "compaction.completed",
+              fields: [{ field: "trigger", equalsString: "manual" }],
+            },
+          ],
+        },
+        runRecordsExpectation: {
+          checkpoints: [
+            {
+              runIndex: 1,
+              trigger: "command",
+              status: "completed",
+            },
+            {
+              runIndex: 2,
+              trigger: "cli",
+              status: "completed",
+            },
+          ],
+        },
+      }),
+      "utf8",
+    )
+
+    const suite = await runDiscoveredEvalTasks({
+      providerMode: "live",
+      taskIds: ["live/context-compaction-manual"],
+      tasksRoot,
+      outputRoot,
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "gpt-5",
+      },
+      createClient() {
+        return {} as OpenAI
+      },
+      createOpenAIProviderImpl(input) {
+        let turn = 0
+
+        return createModelProvider({
+          observer: input.observer,
+          runtime: createModelRuntimeApi({
+            async *streamTurn() {
+              turn += 1
+
+              if (turn === 1) {
+                yield {
+                  type: "tool.call",
+                  callId: "call_read_long_context",
+                  name: "read",
+                  inputText: '{"path":"LONG_CONTEXT.md"}',
+                }
+                return
+              }
+
+              if (turn === 2) {
+                yield { type: "text.delta", text: "Prepared manual compaction" }
+                return
+              }
+
+              if (turn === 3) {
+                yield {
+                  type: "text.delta",
+                  text: [
+                    "Primary Request",
+                    "Manually compact the session and keep the key file context available.",
+                    "",
+                    "Key Concepts",
+                    "Manual compaction should preserve the important working state.",
+                    "",
+                    "Files & Code",
+                    "LONG_CONTEXT.md",
+                    "",
+                    "Errors & Fixes",
+                    "None.",
+                    "",
+                    "Problem Solving",
+                    "Compact now and resume on the next prompt.",
+                    "",
+                    "User Messages",
+                    "Manual compact follow-up",
+                    "",
+                    "Pending Tasks",
+                    "Answer the next prompt.",
+                    "",
+                    "Current Work",
+                    "Compacting before the next prompt.",
+                    "",
+                    "Next Steps",
+                    "Resume with the compacted session.",
+                  ].join("\n"),
+                }
+                return
+              }
+
+              if (turn === 4) {
+                yield { type: "text.delta", text: "Manual compact recovered LONG_CONTEXT.md" }
+                return
+              }
+
+              throw new Error(`Unexpected provider turn ${turn}`)
+            },
+          }),
+        })
+      },
+    })
+
+    expect(suite.pass).toBe(true)
+    expect(suite.results[0]?.result.artifact.runs).toHaveLength(3)
+    expect(suite.results[0]?.result.artifact.runs[1]).toMatchObject({
+      trigger: "command",
+      status: "completed",
+    })
+
+    const runsArtifact = await Bun.file(
+      join(suite.results[0]!.artifactDir, "runs.json"),
+    ).json()
+    expect(runsArtifact).toEqual([
+      expect.objectContaining({
+        trigger: "cli",
+      }),
+      expect.objectContaining({
+        trigger: "command",
+      }),
+      expect.objectContaining({
+        trigger: "cli",
+      }),
+    ])
   })
 
   test("wires SEARCH_BACKEND_URL into live eval runs for websearch tasks", async () => {

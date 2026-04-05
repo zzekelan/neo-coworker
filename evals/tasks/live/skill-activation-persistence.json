@@ -1,0 +1,136 @@
+{
+  "id": "live/skill-activation-persistence",
+  "providerMode": "live",
+  "prompt": "Activate writer, compact manually, and confirm the skill is still active on the next run.",
+  "workspaceFixture": "workspaces/skills",
+  "steps": [
+    {
+      "kind": "prompt",
+      "prompt": "Use the skill tool to activate writer. Then answer exactly `Summary: writer active`."
+    },
+    {
+      "kind": "command",
+      "command": "compact"
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. If writer is still active after compaction, answer exactly `Summary: writer still active`."
+    }
+  ],
+  "autoReplyPermission": "deny",
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "skill",
+      "read",
+      "glob",
+      "grep",
+      "webfetch",
+      "websearch",
+      "codesearch",
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "skill.run.snapshot.applied",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "skill"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Summary: writer active"
+        ]
+      },
+      {
+        "messageIndex": 3,
+        "role": "synthetic",
+        "partKinds": [
+          "compaction_boundary",
+          "text"
+        ]
+      },
+      {
+        "messageIndex": 5,
+        "role": "assistant",
+        "textIncludes": [
+          "Summary: writer still active"
+        ]
+      }
+    ]
+  },
+  "promptAssemblyExpectation": {
+    "checkpoints": [
+      {
+        "promptIndex": 0,
+        "activeSkillNamesIncludes": [
+          "writer"
+        ],
+        "activeSkillCount": 1
+      }
+    ],
+    "requireStableSystemPromptHash": true
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "runIndex": 1,
+        "eventType": "skill.load.completed",
+        "fields": [
+          {
+            "field": "skillName",
+            "equalsString": "writer"
+          },
+          {
+            "field": "reason",
+            "equalsString": "recovery"
+          }
+        ]
+      }
+    ]
+  },
+  "runRecordsExpectation": {
+    "checkpoints": [
+      {
+        "runIndex": 1,
+        "trigger": "command",
+        "status": "completed"
+      },
+      {
+        "runIndex": 2,
+        "trigger": "cli",
+        "status": "completed"
+      }
+    ]
+  }
+}

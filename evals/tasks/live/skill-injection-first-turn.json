@@ -1,0 +1,101 @@
+{
+  "id": "live/skill-injection-first-turn",
+  "providerMode": "live",
+  "prompt": "Without using any tools or inspecting the workspace, answer exactly `Catalog: reviewer, writer` if you can already see the available skills.",
+  "workspaceFixture": "workspaces/skills",
+  "autoReplyPermission": "deny",
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "skill",
+      "read",
+      "glob",
+      "grep",
+      "webfetch",
+      "websearch",
+      "codesearch",
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "skill.run.snapshot.applied",
+      "skill.catalog.exposed",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "textIncludes": [
+          "Catalog: reviewer, writer"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "skill.run.snapshot.applied",
+      "skill.catalog.exposed",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "promptAssemblyExpectation": {
+    "checkpoints": [
+      {
+        "promptIndex": 0,
+        "catalogSkillNamesIncludes": [
+          "reviewer",
+          "writer"
+        ],
+        "activeSkillCount": 0
+      }
+    ],
+    "requireStableSystemPromptHash": true
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "eventType": "model.prompt.assembled",
+        "fields": [
+          {
+            "field": "systemReminderLength",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          }
+        ]
+      }
+    ]
+  },
+  "runRecordsExpectation": {
+    "checkpoints": [
+      {
+        "runIndex": 0,
+        "trigger": "cli",
+        "status": "completed",
+        "tokenUsageSources": [
+          "provider",
+          "estimated"
+        ]
+      }
+    ]
+  }
+}

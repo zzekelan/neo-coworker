@@ -41,6 +41,8 @@ import {
   type EvalToolConsumptionGrade,
 } from "./graders/tool-consumption"
 import { gradeToolPolicyExpectation, type EvalToolPolicyGrade } from "./graders/tool-policy"
+import { gradeTraceDataExpectation, type EvalTraceDataGrade } from "./graders/trace-data"
+import { gradeRunRecordsExpectation, type EvalRunRecordsGrade } from "./graders/run-records"
 import { EvalTaskSchema, type EvalTask } from "./schemas/task"
 
 export type EvalProviderFactory = (input: {
@@ -57,6 +59,8 @@ export type EvalRunGrades = {
   toolConsumption: EvalToolConsumptionGrade
   skillDisclosure: EvalSkillDisclosureGrade
   promptAssembly: EvalPromptAssemblyGrade
+  traceData: EvalTraceDataGrade
+  runRecords: EvalRunRecordsGrade
 }
 
 export type EvalRunResult = {
@@ -110,6 +114,7 @@ export async function runEvalTask(input: {
     activeRuns,
     permissionPolicy: task.permissionPolicy,
     searchBackend,
+    contextWindow: task.contextWindow,
     now,
   })
 
@@ -120,116 +125,168 @@ export async function runEvalTask(input: {
       createdAt: now(),
       activeSkills: task.sessionSeed.activeSkills,
     })
-    const started = sessionProvider.runs.start({
-      sessionId: session.id,
-      trigger: "cli",
-      createdAt: now(),
-      messageCreatedAt: now(),
-    })
-    storage.repository.parts.create({
-      sessionId: session.id,
-      runId: started.run.id,
-      messageId: started.message.id,
-      kind: "text",
-      sequence: 0,
-      text: task.prompt,
-      createdAt: now(),
-    })
-    input.onRunStarted?.({
-      storageIdentity: storage.repository.storageIdentity,
-      sessionId: session.id,
-      runId: started.run.id,
-    })
+    const executedRuns: EvalRunArtifact["runs"] = []
 
-    const handle = await runtime.run({
-      sessionId: session.id,
-      runId: started.run.id,
-    })
-    try {
-      const runtimeEvents = await collectRuntimeEvents(handle.events, {
-        autoReplyPermission: task.autoReplyPermission,
-        cancelOnRuntimeEventType: task.control.cancelOnRuntimeEventType,
-        cancelRun() {
-          handle.cancel()
-        },
-        respondPermission(inputValue) {
-          handle.respondPermission(inputValue)
-        },
-      })
-      const run = storage.repository.runs.get(started.run.id)
-      const trace = observability?.exportRunTrace(run.id) ?? null
-      const outcome = await buildOutcome({
-        task,
-        workspaceRoot,
-        run,
-      })
-
-      const artifact = EvalRunArtifactSchema.parse({
-        taskId: task.id,
-        workspaceRoot,
-        sessionId: session.id,
-        runId: run.id,
-        provider: input.providerInfo,
-        runStatus: run.status,
-        runtimeEvents,
-        transcript: storage.repository.messages.listSessionTranscript(session.id),
-        trace,
-        outcome,
-        metrics: deriveMetrics(trace),
-      })
-      const grades: EvalRunGrades = {
-        outcome: gradeOutcomeExpectation({
-          artifact,
-          expectation: task.outcomeExpectation,
-        }),
-        protocol: gradeProtocolExpectation({
-          artifact,
-          expectation: task.protocolExpectation,
-        }),
-        toolPolicy: gradeToolPolicyExpectation({
-          artifact,
-          expectation: task.toolPolicyExpectation,
-        }),
-        trace: gradeTraceExpectation({
-          artifact,
-          expectation: task.traceExpectation,
-        }),
-        transcript: gradeTranscriptExpectation({
-          artifact,
-          expectation: task.transcriptExpectation,
-        }),
-        traceSequence: gradeTraceSequenceExpectation({
-          artifact,
-          expectation: task.traceSequenceExpectation,
-        }),
-        toolConsumption: gradeToolConsumptionExpectation({
-          artifact,
-          expectation: task.toolConsumptionExpectation,
-        }),
-        skillDisclosure: gradeSkillDisclosureExpectation({
-          artifact,
-          expectation: task.skillDisclosureExpectation,
-        }),
-        promptAssembly: gradePromptAssemblyExpectation({
-          artifact,
-          expectation: task.promptAssemblyExpectation,
-        }),
+    for (const [stepIndex, step] of buildTaskSteps(task).entries()) {
+      let runId: string
+      let handle: RunHandle
+      if (step.kind === "prompt") {
+        const started = sessionProvider.runs.start({
+          sessionId: session.id,
+          trigger: "cli",
+          createdAt: now(),
+          messageCreatedAt: now(),
+        })
+        storage.repository.parts.create({
+          sessionId: session.id,
+          runId: started.run.id,
+          messageId: started.message.id,
+          kind: "text",
+          sequence: 0,
+          text: step.prompt,
+          createdAt: now(),
+        })
+        runId = started.run.id
+        input.onRunStarted?.({
+          storageIdentity: storage.repository.storageIdentity,
+          sessionId: session.id,
+          runId,
+        })
+        handle = await runtime.run({
+          sessionId: session.id,
+          runId,
+        })
+      } else {
+        const started = sessionProvider.runs.startCommand({
+          sessionId: session.id,
+          createdAt: now(),
+        })
+        runId = started.run.id
+        input.onRunStarted?.({
+          storageIdentity: storage.repository.storageIdentity,
+          sessionId: session.id,
+          runId,
+        })
+        handle = await runtime.compactSession({
+          sessionId: session.id,
+          runId,
+        })
       }
 
-      return {
+      try {
+        const runtimeEvents = await collectRuntimeEvents(handle.events, {
+          autoReplyPermission: task.autoReplyPermission,
+          cancelOnRuntimeEventType: task.control.cancelOnRuntimeEventType,
+          cancelRun() {
+            handle.cancel()
+          },
+          respondPermission(inputValue) {
+            handle.respondPermission(inputValue)
+          },
+        })
+        const run = storage.repository.runs.get(runId)
+        const trace = observability?.exportRunTrace(run.id) ?? null
+
+        executedRuns.push({
+          stepIndex,
+          runId: run.id,
+          trigger: run.trigger,
+          status: run.status,
+          errorText: run.errorText,
+          inputTokens: run.inputTokens,
+          outputTokens: run.outputTokens,
+          tokenUsageSource: run.tokenUsageSource,
+          runtimeEvents,
+          trace,
+        })
+      } catch (error) {
+        await cancelEvalRun({
+          handle,
+          activeRuns,
+          storageIdentity: storage.repository.storageIdentity,
+          sessionId: session.id,
+          runId,
+        })
+        throw error
+      }
+    }
+
+    const finalRun = executedRuns.at(-1)
+    if (!finalRun) {
+      throw new Error(`Eval task ${task.id} produced no runs`)
+    }
+
+    const outcome = await buildOutcome({
+      task,
+      workspaceRoot,
+      run: storage.repository.runs.get(finalRun.runId),
+    })
+
+    const artifact = EvalRunArtifactSchema.parse({
+      taskId: task.id,
+      workspaceRoot,
+      sessionId: session.id,
+      runId: finalRun.runId,
+      provider: input.providerInfo,
+      runStatus: finalRun.status,
+      runtimeEvents: finalRun.runtimeEvents,
+      transcript: storage.repository.messages.listSessionTranscript(session.id),
+      trace: finalRun.trace,
+      runs: executedRuns,
+      outcome,
+      metrics: deriveMetrics(finalRun.trace),
+    })
+    const grades: EvalRunGrades = {
+      outcome: gradeOutcomeExpectation({
         artifact,
-        grades,
-        pass: Object.values(grades).every((grade) => grade.pass),
-      }
-    } catch (error) {
-      await cancelEvalRun({
-        handle,
-        activeRuns,
-        storageIdentity: storage.repository.storageIdentity,
-        sessionId: session.id,
-        runId: started.run.id,
-      })
-      throw error
+        expectation: task.outcomeExpectation,
+      }),
+      protocol: gradeProtocolExpectation({
+        artifact,
+        expectation: task.protocolExpectation,
+      }),
+      toolPolicy: gradeToolPolicyExpectation({
+        artifact,
+        expectation: task.toolPolicyExpectation,
+      }),
+      trace: gradeTraceExpectation({
+        artifact,
+        expectation: task.traceExpectation,
+      }),
+      transcript: gradeTranscriptExpectation({
+        artifact,
+        expectation: task.transcriptExpectation,
+      }),
+      traceSequence: gradeTraceSequenceExpectation({
+        artifact,
+        expectation: task.traceSequenceExpectation,
+      }),
+      toolConsumption: gradeToolConsumptionExpectation({
+        artifact,
+        expectation: task.toolConsumptionExpectation,
+      }),
+      skillDisclosure: gradeSkillDisclosureExpectation({
+        artifact,
+        expectation: task.skillDisclosureExpectation,
+      }),
+      promptAssembly: gradePromptAssemblyExpectation({
+        artifact,
+        expectation: task.promptAssemblyExpectation,
+      }),
+      traceData: gradeTraceDataExpectation({
+        artifact,
+        expectation: task.traceDataExpectation,
+      }),
+      runRecords: gradeRunRecordsExpectation({
+        artifact,
+        expectation: task.runRecordsExpectation,
+      }),
+    }
+
+    return {
+      artifact,
+      grades,
+      pass: Object.values(grades).every((grade) => grade.pass),
     }
   } finally {
     storage.close()
@@ -250,6 +307,10 @@ async function prepareWorkspace(task: EvalTask) {
     recursive: true,
   })
   return workspaceRoot
+}
+
+function buildTaskSteps(task: EvalTask) {
+  return task.steps.length > 0 ? task.steps : [{ kind: "prompt", prompt: task.prompt } as const]
 }
 
 async function collectRuntimeEvents(

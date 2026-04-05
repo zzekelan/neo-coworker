@@ -1,0 +1,121 @@
+{
+  "id": "live/token-tracking",
+  "providerMode": "live",
+  "prompt": "Use the read tool to read LONG_CONTEXT.md and then answer exactly `Token tracking ready`.",
+  "workspaceFixture": "workspaces/skills",
+  "autoReplyPermission": "deny",
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "read"
+    ],
+    "forbiddenToolNames": [
+      "skill",
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "read"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Token tracking ready"
+        ]
+      }
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "model.turn.usage",
+      "context.usage.updated",
+      "run.completed"
+    ]
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "eventType": "model.turn.usage",
+        "fields": [
+          {
+            "field": "inputTokens",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "outputTokens",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "tokenUsageSource",
+            "valueType": "string"
+          }
+        ]
+      },
+      {
+        "eventType": "context.usage.updated",
+        "fields": [
+          {
+            "field": "contextTokens",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "contextWindow",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "utilizationPercent",
+            "valueType": "number"
+          },
+          {
+            "field": "source",
+            "valueType": "string"
+          }
+        ]
+      }
+    ]
+  },
+  "runRecordsExpectation": {
+    "checkpoints": [
+      {
+        "runIndex": 0,
+        "trigger": "cli",
+        "status": "completed",
+        "minInputTokens": 1,
+        "minOutputTokens": 1,
+        "tokenUsageSources": [
+          "provider",
+          "estimated"
+        ]
+      }
+    ]
+  }
+}

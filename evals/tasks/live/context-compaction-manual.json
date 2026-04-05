@@ -1,0 +1,164 @@
+{
+  "id": "live/context-compaction-manual",
+  "providerMode": "live",
+  "prompt": "Read LONG_CONTEXT.md, compact manually, and prove the next prompt keeps the session context.",
+  "workspaceFixture": "workspaces/skills",
+  "steps": [
+    {
+      "kind": "prompt",
+      "prompt": "Use the read tool to read LONG_CONTEXT.md completely. Then answer exactly `Prepared manual compaction`."
+    },
+    {
+      "kind": "command",
+      "command": "compact"
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. Answer exactly `Manual compact recovered LONG_CONTEXT.md`."
+    }
+  ],
+  "autoReplyPermission": "deny",
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "skill",
+      "read",
+      "glob",
+      "grep",
+      "webfetch",
+      "websearch",
+      "codesearch",
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "read"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Prepared manual compaction"
+        ]
+      },
+      {
+        "messageIndex": 3,
+        "role": "synthetic",
+        "partKinds": [
+          "compaction_boundary",
+          "text"
+        ],
+        "textIncludes": [
+          "Primary Request",
+          "Next Steps"
+        ]
+      },
+      {
+        "messageIndex": 5,
+        "role": "assistant",
+        "textIncludes": [
+          "Manual compact recovered LONG_CONTEXT.md"
+        ]
+      }
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "read",
+        "toolResultIncludes": [
+          "# context recovery fixture"
+        ],
+        "assistantTextIncludes": [
+          "Manual compact recovered LONG_CONTEXT.md"
+        ]
+      }
+    ]
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "runIndex": 1,
+        "eventType": "compaction.completed",
+        "fields": [
+          {
+            "field": "trigger",
+            "equalsString": "manual"
+          },
+          {
+            "field": "tokensBefore",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "tokensAfter",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          }
+        ]
+      },
+      {
+        "runIndex": 1,
+        "eventType": "context.usage.updated",
+        "fields": [
+          {
+            "field": "contextTokens",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "contextWindow",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          },
+          {
+            "field": "utilizationPercent",
+            "valueType": "number"
+          }
+        ]
+      }
+    ]
+  },
+  "runRecordsExpectation": {
+    "checkpoints": [
+      {
+        "runIndex": 1,
+        "trigger": "command",
+        "status": "completed"
+      },
+      {
+        "runIndex": 2,
+        "trigger": "cli",
+        "status": "completed",
+        "tokenUsageSources": [
+          "provider",
+          "estimated"
+        ]
+      }
+    ]
+  }
+}

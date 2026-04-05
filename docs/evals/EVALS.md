@@ -141,6 +141,7 @@ By default eval output is written under:
 Each task artifact bundle currently contains:
 
 - `trace.json`
+- `runs.json`
 - `transcript.json`
 - `outcome.json`
 - `metrics.json`
@@ -177,11 +178,15 @@ Current runner and grading code:
 Current richer task fields:
 
 - `sessionSeed.activeSkills` for seeding run snapshots from session defaults
+- `contextWindow` for forcing a smaller runtime context window during a task
+- `steps` for multi-run session scripts such as prompt → command → prompt flows
 - `transcriptExpectation` for transcript ordering and structured checkpoints
 - `traceSequenceExpectation` for ordered trace assertions
+- `traceDataExpectation` for checking trace payload fields on the final run or an earlier run by index
 - `toolConsumptionExpectation` for verifying assistant follow-up after tool results
 - `skillDisclosureExpectation` for proving progressive disclosure around activation
 - `promptAssemblyExpectation` for checking prompt state before and after activation
+- `runRecordsExpectation` for checking per-run trigger/status/token accounting across multi-step tasks
 
 ## Rules For Adding Tasks
 

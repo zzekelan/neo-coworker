@@ -1,0 +1,189 @@
+{
+  "id": "live/context-compaction-recovery",
+  "providerMode": "live",
+  "prompt": "Activate reviewer, read LONG_CONTEXT.md, compact manually, and prove skill plus file recovery on the next prompt.",
+  "workspaceFixture": "workspaces/skills",
+  "steps": [
+    {
+      "kind": "prompt",
+      "prompt": "Use the skill tool to activate reviewer. Then answer exactly `Review: reviewer active`."
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Use the read tool to read LONG_CONTEXT.md completely. Then answer exactly `Review: file prepared`."
+    },
+    {
+      "kind": "command",
+      "command": "compact"
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Do not use any tools. If you still remember the exact LONG_CONTEXT.md heading and the reviewer guidance to focus on bugs first, answer exactly `Review: # context recovery fixture | bugs first`."
+    }
+  ],
+  "autoReplyPermission": "deny",
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "forbiddenToolNames": [
+      "skill",
+      "read",
+      "glob",
+      "grep",
+      "webfetch",
+      "websearch",
+      "codesearch",
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "skill.run.snapshot.applied",
+      "model.prompt.assembled",
+      "run.completed"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "skill"
+        ]
+      },
+      {
+        "messageIndex": 4,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "read"
+        ]
+      },
+      {
+        "messageIndex": 6,
+        "role": "synthetic",
+        "partKinds": [
+          "compaction_boundary",
+          "text"
+        ],
+        "textIncludes": [
+          "Primary Request",
+          "Files & Code"
+        ]
+      },
+      {
+        "messageIndex": 8,
+        "role": "assistant",
+        "textIncludes": [
+          "Review: # context recovery fixture | bugs first"
+        ]
+      }
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "read",
+        "toolResultIncludes": [
+          "# context recovery fixture"
+        ],
+        "assistantTextIncludes": [
+          "Review: # context recovery fixture | bugs first"
+        ]
+      }
+    ]
+  },
+  "promptAssemblyExpectation": {
+    "checkpoints": [
+      {
+        "promptIndex": 0,
+        "activeSkillNamesIncludes": [
+          "reviewer"
+        ],
+        "activeSkillCount": 1
+      }
+    ],
+    "requireStableSystemPromptHash": true
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "runIndex": 2,
+        "eventType": "skill.load.requested",
+        "fields": [
+          {
+            "field": "skillName",
+            "equalsString": "reviewer"
+          },
+          {
+            "field": "reason",
+            "equalsString": "recovery"
+          }
+        ]
+      },
+      {
+        "runIndex": 2,
+        "eventType": "skill.load.completed",
+        "fields": [
+          {
+            "field": "skillName",
+            "equalsString": "reviewer"
+          },
+          {
+            "field": "reason",
+            "equalsString": "recovery"
+          }
+        ]
+      },
+      {
+        "runIndex": 2,
+        "eventType": "compaction.completed",
+        "fields": [
+          {
+            "field": "trigger",
+            "equalsString": "manual"
+          }
+        ]
+      }
+    ]
+  },
+  "runRecordsExpectation": {
+    "checkpoints": [
+      {
+        "runIndex": 2,
+        "trigger": "command",
+        "status": "completed"
+      },
+      {
+        "runIndex": 3,
+        "trigger": "cli",
+        "status": "completed",
+        "tokenUsageSources": [
+          "provider",
+          "estimated"
+        ]
+      }
+    ]
+  }
+}

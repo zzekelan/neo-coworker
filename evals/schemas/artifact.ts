@@ -1,5 +1,9 @@
 import { z } from "zod"
-import { EvalProviderModeSchema, EvalRunStatusSchema } from "./task"
+import {
+  EvalProviderModeSchema,
+  EvalRunStatusSchema,
+  EvalTokenUsageSourceSchema,
+} from "./task"
 
 export const EvalRunTraceEventSchema = z.object({
   sequence: z.number().int().nonnegative(),
@@ -11,6 +15,25 @@ export const EvalRunTraceEventSchema = z.object({
 
 export const EvalRuntimeEventSchema = z.object({
   type: z.string(),
+})
+
+export const EvalRunTraceSchema = z.object({
+  sessionId: z.string(),
+  runId: z.string(),
+  events: z.array(EvalRunTraceEventSchema),
+})
+
+export const EvalArtifactRunSchema = z.object({
+  stepIndex: z.number().int().nonnegative(),
+  runId: z.string(),
+  trigger: z.string(),
+  status: EvalRunStatusSchema,
+  errorText: z.string().nullable(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  tokenUsageSource: EvalTokenUsageSourceSchema.nullable(),
+  runtimeEvents: z.array(EvalRuntimeEventSchema),
+  trace: EvalRunTraceSchema.nullable(),
 })
 
 export const EvalObservedFileSchema = z.object({
@@ -49,13 +72,8 @@ export const EvalRunArtifactSchema = z.object({
   runStatus: EvalRunStatusSchema,
   runtimeEvents: z.array(EvalRuntimeEventSchema),
   transcript: z.array(z.unknown()),
-  trace: z
-    .object({
-      sessionId: z.string(),
-      runId: z.string(),
-      events: z.array(EvalRunTraceEventSchema),
-    })
-    .nullable(),
+  trace: EvalRunTraceSchema.nullable(),
+  runs: z.array(EvalArtifactRunSchema),
   outcome: EvalOutcomeSchema,
   metrics: EvalMetricsSchema,
 })
