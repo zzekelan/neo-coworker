@@ -53,6 +53,7 @@ export type PartKind =
   | "step_finish"
   | "error"
   | "patch"
+  | "compaction_boundary"
 
 export type DesktopRun = {
   id: string

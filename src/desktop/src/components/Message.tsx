@@ -18,6 +18,7 @@ import { cn } from "../lib/utils"
 import type { DesktopTranscriptMessage, MessagePart } from "../view-types"
 import { useDesktopText } from "../i18n"
 import { MarkdownText } from "./MarkdownText"
+import { CompactionDivider } from "./CompactionDivider"
 
 const DEFAULT_COLLAPSED_CHAR_LIMIT = 280
 const DEFAULT_COLLAPSED_LINE_LIMIT = 8
@@ -130,6 +131,15 @@ const MessagePartRenderer: React.FC<{
         subtitle={describeToolCallSummary(text, part.toolName, part.toolInput)}
         status={part.status ?? "pending"}
         details={details}
+      />
+    )
+  }
+
+  if (part.type === "compaction_boundary") {
+    return (
+      <CompactionDivider
+        tokensBefore={part.tokensBefore}
+        tokensAfter={part.tokensAfter}
       />
     )
   }

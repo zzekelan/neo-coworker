@@ -1,4 +1,5 @@
 import type { ServerEvent, StoredMessage, StoredRun } from "../bootstrap"
+import { formatCompactionBoundaryLine, isCompactionBoundaryPart } from "./compaction-render"
 
 type StoredMessageRole = StoredMessage["role"]
 
@@ -73,7 +74,12 @@ function renderAssistantPart(
   state: CliRenderState,
   event: Extract<ServerEvent, { type: "message.part.updated" }>,
 ) {
-  if (state.messageRoles.get(event.part.messageId) !== "assistant") {
+  const role = state.messageRoles.get(event.part.messageId)
+  if (role !== "assistant" && role !== "synthetic") {
+    return ""
+  }
+
+  if (role === "synthetic" && event.part.kind === "text") {
     return ""
   }
 
@@ -88,6 +94,8 @@ function renderAssistantPart(
   state.renderedPartIds.add(event.part.id)
 
   switch (event.part.kind) {
+    case "compaction_boundary":
+      return formatCompactionBoundaryLine(event.part.data)
     case "tool_call": {
       const toolName = getObjectStringValue(event.part.data, "toolName") ?? "unknown"
       const inputText = getObjectStringValue(event.part.data, "inputText") ?? ""

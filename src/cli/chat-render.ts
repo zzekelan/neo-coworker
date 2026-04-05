@@ -2,6 +2,7 @@ import { relative, resolve } from "node:path"
 
 import type { ServerEvent, StoredMessage, StoredRun, TranscriptMessage } from "../bootstrap"
 import type { CliIO } from "./cli-io"
+import { formatCompactionBoundaryLine, isCompactionBoundaryPart } from "./compaction-render"
 
 type StoredMessageRole = StoredMessage["role"]
 type TranscriptPart = TranscriptMessage["parts"][number]
@@ -277,10 +278,20 @@ export function createCliChatRenderer(input: {
       state.messageRoles.set(message.id, message.role)
 
       if (message.role !== "assistant") {
-        continue
+        if (message.role !== "synthetic") {
+          continue
+        }
       }
 
       for (const part of message.parts) {
+        if (part.kind === "compaction_boundary") {
+          continue
+        }
+
+        if (message.role === "synthetic") {
+          continue
+        }
+
         if (part.kind === "text") {
           state.printedTextByPartId.set(part.id, part.text ?? "")
           continue
@@ -335,13 +346,39 @@ export function createCliChatRenderer(input: {
         continue
       }
 
-      if (message.role !== "assistant" || inputValue.omittedAssistantMessageIds.has(message.id)) {
+      if (
+        (message.role !== "assistant" && message.role !== "synthetic") ||
+        inputValue.omittedAssistantMessageIds.has(message.id)
+      ) {
         continue
+      }
+
+      const hasCompactionBoundary = message.parts.some(isCompactionBoundaryPart)
+      if (hasCompactionBoundary) {
+        flushReplayedActivity()
+        const boundaryPart = message.parts.find(isCompactionBoundaryPart)
+        if (boundaryPart) {
+          closeAssistantLine()
+          write(formatCompactionBoundaryLine(boundaryPart.data))
+        }
       }
 
       let assistantText = ""
 
       for (const part of message.parts) {
+        if (part.kind === "compaction_boundary") {
+          continue
+        }
+
+        if (message.role === "synthetic") {
+          if (part.kind === "error") {
+            flushReplayedActivity()
+            closeAssistantLine()
+            write(`error> ${part.text ?? "unknown error"}\n`)
+          }
+          continue
+        }
+
         if (part.kind === "text" && part.text) {
           flushReplayedActivity()
           assistantText += part.text
@@ -453,11 +490,24 @@ export function createCliChatRenderer(input: {
     let resumedActivity: Activity | null = null
 
     for (const message of inputValue.transcript) {
-      if (message.runId !== inputValue.runId || message.role !== "assistant") {
+      if (
+        message.runId !== inputValue.runId ||
+        (message.role !== "assistant" && message.role !== "synthetic")
+      ) {
         continue
       }
 
       for (const part of message.parts) {
+        if (part.kind === "compaction_boundary") {
+          resumedText = null
+          resumedActivity = null
+          continue
+        }
+
+        if (message.role === "synthetic") {
+          continue
+        }
+
         switch (part.kind) {
           case "text":
             resumedText = part.text ?? ""
@@ -581,8 +631,25 @@ export function createCliChatRenderer(input: {
           finalizeActivity()
           closeAssistantLine()
           return
-        case "message.part.updated":
-          if (state.messageRoles.get(event.part.messageId) !== "assistant") {
+        case "message.part.updated": {
+          const role = state.messageRoles.get(event.part.messageId)
+          if (role !== "assistant" && role !== "synthetic") {
+            return
+          }
+
+          if (isCompactionBoundaryPart(event.part)) {
+            finalizeActivity()
+            closeAssistantLine()
+            write(formatCompactionBoundaryLine(event.part.data))
+            return
+          }
+
+          if (role === "synthetic") {
+            if (event.part.kind === "error") {
+              finalizeActivity()
+              closeAssistantLine()
+              write(`error> ${event.part.text ?? "unknown error"}\n`)
+            }
             return
           }
 
@@ -615,6 +682,7 @@ export function createCliChatRenderer(input: {
             case "patch":
               return
           }
+        }
       }
     },
     finish() {

@@ -15,6 +15,20 @@ describe("desktop message", () => {
     expect(source).toContain("{isExpanded ? text.message.showLess : text.message.showMore}")
   })
 
+  test("renders compaction_boundary parts using the CompactionDivider component", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    // Verify the import
+    expect(source).toContain('import { CompactionDivider }')
+
+    // Verify the part type check
+    expect(source).toContain('part.type === "compaction_boundary"')
+
+    // Verify it passes the required props
+    expect(source).toContain("part.tokensBefore")
+    expect(source).toContain("part.tokensAfter")
+  })
+
   test("collapses large patch text and long multiline values by default", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 

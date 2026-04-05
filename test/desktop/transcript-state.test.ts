@@ -79,6 +79,40 @@ describe("desktop transcript state", () => {
       "message-assistant-2",
     ])
   })
+
+  test("preserves ordering when a synthetic compaction boundary message arrives mid-transcript", () => {
+    const transcript = upsertTranscriptMessage(
+      [
+        createMessage({
+          id: "message-user-1",
+          role: "user",
+          runId: "run-1",
+          sequence: 0,
+          createdAt: 10,
+        }),
+        createMessage({
+          id: "message-assistant-1",
+          role: "assistant",
+          runId: "run-1",
+          sequence: 1,
+          createdAt: 20,
+        }),
+      ],
+      createMessage({
+        id: "message-synthetic-compaction",
+        role: "synthetic",
+        runId: "run-1",
+        sequence: 2,
+        createdAt: 25,
+      }),
+    )
+
+    expect(transcript.map((message) => message.id)).toEqual([
+      "message-user-1",
+      "message-assistant-1",
+      "message-synthetic-compaction",
+    ])
+  })
 })
 
 function createMessage(input: {

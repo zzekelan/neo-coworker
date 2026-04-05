@@ -200,4 +200,132 @@ describe("desktop transcript mapper", () => {
       createdAt: new Date(1_710_000_001_500).toISOString(),
     })
   })
+
+  test("maps a compaction_boundary part into a structured compaction divider", () => {
+    const message: DesktopMessage = {
+      id: "message-synthetic-1",
+      sessionId: "session-1",
+      runId: "run-1",
+      role: "synthetic",
+      sequence: 2,
+      createdAt: 1_710_000_002_000,
+      parts: [
+        {
+          id: "part-boundary-1",
+          sessionId: "session-1",
+          runId: "run-1",
+          messageId: "message-synthetic-1",
+          kind: "compaction_boundary",
+          sequence: 0,
+          text: null,
+          data: {
+            tokensBefore: 80000,
+            tokensAfter: 12000,
+            compressionRatio: 0.85,
+            summarizeRunId: "run_summarize_1",
+            trigger: "auto",
+          },
+          createdAt: 1_710_000_002_000,
+        },
+        {
+          id: "part-summary-text-1",
+          sessionId: "session-1",
+          runId: "run-1",
+          messageId: "message-synthetic-1",
+          kind: "text",
+          sequence: 1,
+          text: "## Section 1: Summary\nThis is the internal model-recovery summary that should NOT be shown to users.",
+          data: null,
+          createdAt: 1_710_000_002_100,
+        },
+      ],
+    }
+
+    const result = mapTranscriptMessage(message)
+
+    // The compaction boundary part should be present
+    expect(result.parts).toBeDefined()
+    const boundaryPart = result.parts!.find((p) => p.type === "compaction_boundary")
+    expect(boundaryPart).toEqual({
+      type: "compaction_boundary",
+      tokensBefore: 80000,
+      tokensAfter: 12000,
+      compressionRatio: 0.85,
+      trigger: "auto",
+    })
+
+    // The sibling summary text should be hidden
+    const textParts = result.parts!.filter((p) => p.type === "text")
+    expect(textParts).toHaveLength(0)
+
+    // Content string should be empty (no text parts)
+    expect(result.content).toBe("")
+  })
+
+  test("keeps compaction failure error parts visible in the transcript", () => {
+    const message: DesktopMessage = {
+      id: "message-synthetic-2",
+      sessionId: "session-1",
+      runId: "run-1",
+      role: "synthetic",
+      sequence: 3,
+      createdAt: 1_710_000_003_000,
+      parts: [
+        {
+          id: "part-error-compact",
+          sessionId: "session-1",
+          runId: "run-1",
+          messageId: "message-synthetic-2",
+          kind: "error",
+          sequence: 0,
+          text: "Automatic compaction failed: model timeout",
+          data: {
+            source: "compaction",
+            eventType: "compaction.failed",
+            trigger: "auto",
+            error: "model timeout",
+            attemptCount: 1,
+            summarizeRunId: "run_summarize_2",
+          },
+          createdAt: 1_710_000_003_000,
+        },
+      ],
+    }
+
+    const result = mapTranscriptMessage(message)
+    expect(result.content).toContain("Error: Automatic compaction failed: model timeout")
+  })
+
+  test("keeps compaction circuit-breaker error visible in the transcript", () => {
+    const message: DesktopMessage = {
+      id: "message-synthetic-3",
+      sessionId: "session-1",
+      runId: "run-1",
+      role: "synthetic",
+      sequence: 4,
+      createdAt: 1_710_000_004_000,
+      parts: [
+        {
+          id: "part-breaker",
+          sessionId: "session-1",
+          runId: "run-1",
+          messageId: "message-synthetic-3",
+          kind: "error",
+          sequence: 0,
+          text: "⚠️ Automatic compaction has been paused. Run /compact successfully to re-enable it.",
+          data: {
+            source: "compaction",
+            eventType: "compaction.circuit_breaker.triggered",
+            consecutiveFailures: 3,
+            lastError: "model timeout",
+            resolution: "manual_compact",
+          },
+          createdAt: 1_710_000_004_000,
+        },
+      ],
+    }
+
+    const result = mapTranscriptMessage(message)
+    expect(result.content).toContain("⚠️ Automatic compaction has been paused")
+  })
 })

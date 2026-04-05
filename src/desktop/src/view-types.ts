@@ -58,6 +58,13 @@ export type MessagePart =
       status?: "pending" | "success" | "error" | "cancelled"
     }
   | { type: "tool_result"; callId: string; result: unknown; isError?: boolean }
+  | {
+      type: "compaction_boundary"
+      tokensBefore: number
+      tokensAfter: number
+      compressionRatio: number
+      trigger: string
+    }
 
 export interface DesktopTranscriptMessage {
   id: string

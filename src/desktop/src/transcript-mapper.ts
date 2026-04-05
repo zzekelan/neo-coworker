@@ -9,8 +9,12 @@ export function mapTranscriptMessage(
     runStatusById?: ReadonlyMap<string, RunStatus>
   } = {},
 ): DesktopTranscriptMessage {
-  const callStatuses = collectToolCallStatuses(message.parts, input.runStatusById?.get(message.runId))
-  const parts = message.parts
+  const hasCompactionBoundary = message.parts.some((p) => p.kind === "compaction_boundary")
+  const filteredParts = hasCompactionBoundary
+    ? message.parts.filter((p) => p.kind !== "text")
+    : message.parts
+  const callStatuses = collectToolCallStatuses(filteredParts, input.runStatusById?.get(message.runId))
+  const parts = filteredParts
     .map((part) => mapMessagePart(part, callStatuses))
     .filter((part): part is MessagePart => part !== null)
   const content = buildMessageContent(parts)
@@ -98,6 +102,16 @@ function mapMessagePart(
     }
   }
 
+  if (part.kind === "compaction_boundary") {
+    return {
+      type: "compaction_boundary",
+      tokensBefore: readObjectNumber(part.data, "tokensBefore") ?? 0,
+      tokensAfter: readObjectNumber(part.data, "tokensAfter") ?? 0,
+      compressionRatio: readObjectNumber(part.data, "compressionRatio") ?? 0,
+      trigger: readObjectString(part.data, "trigger") ?? "auto",
+    }
+  }
+
   const text = formatPlainPart(part)
   if (!text) {
     return null
@@ -157,6 +171,15 @@ function readObjectString(value: unknown, key: string) {
 
   const candidate = (value as Record<string, unknown>)[key]
   return typeof candidate === "string" ? candidate : null
+}
+
+function readObjectNumber(value: unknown, key: string) {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const candidate = (value as Record<string, unknown>)[key]
+  return typeof candidate === "number" ? candidate : null
 }
 
 function toIsoString(value: number) {

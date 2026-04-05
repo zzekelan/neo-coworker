@@ -33,6 +33,8 @@ type DesktopText = {
     askPlaceholder: string
     skills: string
     contextUsed(percent: number): string
+    sessionCompacted: string
+    compactionSaved(tokensBefore: number, tokensAfter: number): string
   }
   skillPanel: {
     title: string
@@ -177,6 +179,11 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       skills: "Skills",
       contextUsed(percent: number) {
         return `${percent}% context used`
+      },
+      sessionCompacted: "Context compacted",
+      compactionSaved(tokensBefore: number, tokensAfter: number) {
+        const saved = tokensBefore - tokensAfter
+        return `${saved.toLocaleString()} tokens freed`
       },
     },
     skillPanel: {
@@ -344,6 +351,11 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       skills: "技能",
       contextUsed(percent: number) {
         return `已使用 ${percent}% 上下文`
+      },
+      sessionCompacted: "上下文已压缩",
+      compactionSaved(tokensBefore: number, tokensAfter: number) {
+        const saved = tokensBefore - tokensAfter
+        return `释放了 ${saved.toLocaleString()} 个 token`
       },
     },
     skillPanel: {

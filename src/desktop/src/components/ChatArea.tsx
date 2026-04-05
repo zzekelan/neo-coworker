@@ -23,6 +23,7 @@ import { cn } from "../lib/utils"
 import { createSkillUpdateQueue, type SkillUpdateQueue } from "../skill-update-queue"
 import { isBusyRunStatus } from "../busy-state"
 import { Message } from "./Message"
+import { CompactionDivider } from "./CompactionDivider"
 import { PermissionRequest } from "./PermissionRequest"
 import { SkillPanel } from "./SkillPanel"
 import { getEffectiveActiveSkills, toggleSkill } from "./skill-state"
@@ -338,9 +339,19 @@ export function ChatArea({
                 {errorMessage}
               </div>
             ) : null}
-            {transcript.map((message) => (
-              <Message key={message.id} message={message} />
-            ))}
+            {transcript.map((message) => {
+              const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
+              if (boundaryPart && boundaryPart.type === "compaction_boundary") {
+                return (
+                  <CompactionDivider
+                    key={message.id}
+                    tokensBefore={boundaryPart.tokensBefore}
+                    tokensAfter={boundaryPart.tokensAfter}
+                  />
+                )
+              }
+              return <Message key={message.id} message={message} />
+            })}
 
             {permissionRequests.map((request, index) => (
               <PermissionRequest
