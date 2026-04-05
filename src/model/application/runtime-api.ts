@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import {
+  buildSystemReminderPayloadText,
   buildStaticSystemPrompt,
   buildModelPromptSections,
   projectModelTurn,
@@ -58,8 +59,10 @@ export function createModelProvider(input: {
             systemPrompt: request.systemPrompt,
             skillCatalog: request.skillCatalog,
             activeSkills: request.activeSkills,
+            systemReminders: request.systemReminders,
           })
           const systemPrompt = buildStaticSystemPrompt(sections)
+          const systemReminderPayload = buildSystemReminderPayloadText(sections.systemReminderMessages)
           input.observer?.recordModelEvent?.({
             type: "model.prompt.assembled",
             sessionId: request.sessionId,
@@ -70,10 +73,8 @@ export function createModelProvider(input: {
             activeSkillCount: request.activeSkills.length,
             systemPromptHash: hashPromptSection(systemPrompt),
             systemPromptLength: systemPrompt.length,
-            systemReminderHash: sections.systemReminderMessage
-              ? hashPromptSection(sections.systemReminderMessage)
-              : null,
-            systemReminderLength: sections.systemReminderMessage?.length ?? null,
+            systemReminderHash: systemReminderPayload ? hashPromptSection(systemReminderPayload) : null,
+            systemReminderLength: systemReminderPayload?.length ?? null,
           })
         } catch {
           // Observability must not alter the model request path.
@@ -83,6 +84,7 @@ export function createModelProvider(input: {
         systemPrompt: request.systemPrompt,
         skillCatalog: request.skillCatalog,
         activeSkills: request.activeSkills,
+        systemReminders: request.systemReminders,
         tools: request.tools,
         transcript: request.transcript,
         signal: request.signal,

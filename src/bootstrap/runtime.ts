@@ -396,7 +396,18 @@ function createToolPortFactory(config: {
 }
 
 const SkillToolArgsSchema = z.object({
-  name: z.string().trim().min(1),
+  action: z.enum(["activate", "list"]).optional(),
+  name: z.string().trim().min(1).optional(),
+}).superRefine((value, ctx) => {
+  const action = value.action ?? (value.name ? "activate" : null)
+
+  if (action === "activate" && !value.name) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["name"],
+      message: "name is required when activating a skill",
+    })
+  }
 })
 
 function createSkillTool(input: {
@@ -410,24 +421,40 @@ function createSkillTool(input: {
 }): ToolDefinition {
   return {
     name: "skill",
-    description: "Load a skill by name and activate it for the current run",
+    description: "List available skills or activate one by name for the current session",
     inputSchema: SkillToolArgsSchema,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
-      const { name } = SkillToolArgsSchema.parse(toolInput.args)
+      const parsed = SkillToolArgsSchema.parse(toolInput.args)
+      const action = parsed.action ?? (parsed.name ? "activate" : "list")
+
+      if (action === "list") {
+        const catalog = await input.skill.listCatalog(toolInput.workspaceRoot)
+
+        return {
+          output:
+            catalog.length === 0
+              ? "No skills available."
+              : ["Available skills:", ...catalog.map((skill) => `- ${skill.name}: ${skill.description}`)].join(
+                  "\n",
+                ),
+        }
+      }
+
+      const { name } = parsed
       input.runtimeObserver?.recordRuntimeEvent?.({
         sessionId: input.sessionId,
         runId: input.runId,
         event: {
           type: "skill.load.requested",
-          skillName: name,
+          skillName: name!,
           reason: "activation",
         },
         occurredAt: input.now(),
       })
       const loaded = await input.skill.loadSkill({
         workspaceRoot: toolInput.workspaceRoot,
-        name,
+        name: name!,
       })
       throwIfToolAborted(toolInput.signal)
       input.runtimeObserver?.recordRuntimeEvent?.({
@@ -455,6 +482,11 @@ function createSkillTool(input: {
       }
 
       throwIfToolAborted(toolInput.signal)
+      const session = input.repository.sessions.get(input.sessionId)
+      input.repository.sessions.update({
+        sessionId: session.id,
+        activeSkills: [...session.activeSkills, loaded.name],
+      })
       const updatedRun = input.session.updateActiveSkills({
         runId: run.id,
         activeSkills: [...run.activeSkills, loaded.name],

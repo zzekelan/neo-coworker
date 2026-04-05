@@ -79,7 +79,6 @@ describe("runtime observability", () => {
     expect(readEventTypes(harness.observabilityRepository.runEvents.listByRun(started.run.id))).toEqual([
       "run.started",
       "skill.run.snapshot.applied",
-      "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
       "model.prompt.assembled",
@@ -88,7 +87,6 @@ describe("runtime observability", () => {
       "tool.call.completed",
       "model.turn.usage",
       "context.usage.updated",
-      "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
       "model.prompt.assembled",
@@ -206,7 +204,6 @@ describe("runtime observability", () => {
     expect(initialTrace?.events.map((event) => event.eventType)).toEqual([
       "run.started",
       "skill.run.snapshot.applied",
-      "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
       "model.prompt.assembled",
@@ -215,7 +212,6 @@ describe("runtime observability", () => {
       "tool.call.completed",
       "model.turn.usage",
       "context.usage.updated",
-      "skill.catalog.exposed",
       "tool.listed",
       "model.turn.requested",
       "model.prompt.assembled",
@@ -349,6 +345,15 @@ describe("runtime observability", () => {
     const loadCompletedEvents = (trace?.events ?? []).filter(
       (event) => event.eventType === "skill.load.completed",
     )
+    const catalogEvents = (trace?.events ?? []).filter((event) => event.eventType === "skill.catalog.exposed")
+    expect(catalogEvents).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          catalogSkillNames: ["reviewer"],
+          catalogSkillCount: 1,
+        }),
+      }),
+    ])
     expect(loadCompletedEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

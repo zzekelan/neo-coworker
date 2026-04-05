@@ -9,6 +9,7 @@ export type OrchestrationModelTurnRequest = {
   systemPrompt: string
   skillCatalog: OrchestrationSkillCatalogEntry[]
   activeSkills: OrchestrationActiveSkill[]
+  systemReminders?: string[]
   tools: OrchestrationTool[]
   transcript: OrchestrationTranscriptMessage[]
   sessionId?: string

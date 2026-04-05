@@ -16,17 +16,13 @@ export const SYSTEM_REMINDER_NOTICE =
 export type ModelPromptSections = {
   baseSystemPrompt: string
   systemReminderNotice: string
-  systemReminderMessage: string | null
+  systemReminderMessages: string[]
 }
 
 export function buildModelTurnInput(input: ModelProjectionInput) {
   const sections = buildModelPromptSections(input)
   const messages = buildTranscriptMessages(input.transcript)
-  const reminderMessage = buildSystemReminderMessage(sections.systemReminderMessage)
-
-  if (reminderMessage) {
-    messages.push(reminderMessage)
-  }
+  messages.push(...buildSystemReminderMessages(sections.systemReminderMessages))
 
   return {
     system: buildStaticSystemPrompt(sections),
@@ -36,12 +32,12 @@ export function buildModelTurnInput(input: ModelProjectionInput) {
 }
 
 export function buildModelPromptSections(
-  input: Pick<ModelProjectionInput, "systemPrompt" | "skillCatalog" | "activeSkills">,
+  input: Pick<ModelProjectionInput, "systemPrompt" | "skillCatalog" | "activeSkills" | "systemReminders">,
 ): ModelPromptSections {
   return {
     baseSystemPrompt: input.systemPrompt,
     systemReminderNotice: SYSTEM_REMINDER_NOTICE,
-    systemReminderMessage: renderSystemReminderMessage(input.skillCatalog, input.activeSkills),
+    systemReminderMessages: buildSystemReminderTexts(input),
   }
 }
 
@@ -255,21 +251,29 @@ function readString(value: Record<string, unknown> | null, key: string) {
   return typeof value?.[key] === "string" ? (value[key] as string) : null
 }
 
-function buildSystemReminderMessage(text: string | null): ModelMessage | null {
-  if (!text) {
-    return null
-  }
-
-  return {
-    role: "user",
-    parts: [{ type: "text", text }],
-  }
+export function buildSystemReminderPayloadText(messages: string[]) {
+  return messages.length > 0 ? messages.join("\n\n") : null
 }
 
-function renderSystemReminderMessage(
-  skillCatalog: ModelSkillCatalogEntry[],
-  activeSkills: ModelActiveSkill[],
+function buildSystemReminderMessages(messages: string[]): ModelMessage[] {
+  return messages.map((text) => ({
+    role: "user",
+    parts: [{ type: "text", text }],
+  }))
+}
+
+function buildSystemReminderTexts(
+  input: Pick<ModelProjectionInput, "skillCatalog" | "activeSkills" | "systemReminders">,
 ) {
+  if (input.systemReminders && input.systemReminders.length > 0) {
+    return input.systemReminders.filter((message): message is string => message.trim().length > 0)
+  }
+
+  const legacyReminder = renderSystemReminderMessage(input.skillCatalog, input.activeSkills)
+  return legacyReminder ? [legacyReminder] : []
+}
+
+function renderSystemReminderMessage(skillCatalog: ModelSkillCatalogEntry[], activeSkills: ModelActiveSkill[]) {
   const sections = [renderSkillCatalogSection(skillCatalog), renderActiveSkillSection(activeSkills)].filter(
     (section): section is string => section !== null,
   )

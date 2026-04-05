@@ -12,6 +12,7 @@ import {
   buildContextUsageSnapshot,
   DEFAULT_CONTEXT_WINDOW_SIZE,
 } from "./context-usage"
+import { createSkillReminderTracker } from "./skill-reminder-tracker"
 
 type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 
@@ -170,6 +171,7 @@ function shouldRetryModelRequest(input: {
 
 export function createOrchestrationStepService(input: CreateOrchestrationStepServiceInput) {
   const now = input.now ?? Date.now
+  const skillReminders = createSkillReminderTracker()
 
   return {
     isAbortError,
@@ -244,14 +246,19 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const run = input.session.getRun(stepInput.runId)
       const turnKey = createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId))
       const skillCatalog = await input.skill.listCatalog(stepInput.workspaceRoot)
-      stepInput.emit({
-        type: "skill.catalog.exposed",
-        catalogSkillNames: skillCatalog.map((skill) => skill.name),
-        catalogSkillCount: skillCatalog.length,
-      })
-      const activeSkills = []
-
-      for (const skillName of run.activeSkills) {
+      const exposedCatalogSkillNames = skillReminders.exposeCatalog(stepInput.sessionId, skillCatalog)
+      if (exposedCatalogSkillNames.length > 0) {
+        stepInput.emit({
+          type: "skill.catalog.exposed",
+          catalogSkillNames: exposedCatalogSkillNames,
+          catalogSkillCount: exposedCatalogSkillNames.length,
+        })
+      }
+      const loadedPromptSkills = []
+      for (const skillName of skillReminders.listPendingActiveSkillNames(
+        stepInput.sessionId,
+        run.activeSkills,
+      )) {
         stepInput.emit({
           type: "skill.load.requested",
           skillName,
@@ -268,8 +275,11 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           instructionsLength: loadedSkill.instructions.length,
           reason: "prompt",
         })
-        activeSkills.push(loadedSkill)
+        loadedPromptSkills.push(loadedSkill)
       }
+      skillReminders.injectActiveSkills(stepInput.sessionId, loadedPromptSkills)
+      const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, run.activeSkills)
+      const systemReminders = skillReminders.buildSystemReminders(stepInput.sessionId)
       const assistantTurn = createAssistantTurnRecorder({
         session: input.session,
         sessionId: stepInput.sessionId,
@@ -293,6 +303,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             systemPrompt: stepInput.systemPrompt,
             skillCatalog,
             activeSkills,
+            systemReminders,
             tools: stepInput.tools.list(),
             transcript,
             sessionId: stepInput.sessionId,

@@ -64,7 +64,7 @@ describe("context builder", () => {
     })
 
     expect(sections.systemReminderNotice).toBe(SYSTEM_REMINDER_NOTICE)
-    expect(sections.systemReminderMessage).toBeNull()
+    expect(sections.systemReminderMessages).toEqual([])
   })
 
   test("appends the system reminder after replayed transcript messages", () => {
