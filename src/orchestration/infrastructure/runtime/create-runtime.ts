@@ -1,6 +1,6 @@
 import { createOrchestrationStepService } from "../../application/step-service"
 import { DEFAULT_CONTEXT_WINDOW_SIZE } from "../../application/context-usage"
-import { composeSystemPrompt, defaultSections } from "../../application/system-prompt"
+import { composeFullPrompt } from "../../application/system-prompt"
 import type { RuntimeEvent } from "../../application/event"
 import type { OrchestrationRunHandle } from "../../application/handle"
 import type { OrchestrationContextWindowPort } from "../../application/ports/context-window"
@@ -55,7 +55,6 @@ type PendingToolCallSnapshot = {
 export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeApiInput) {
   const now = input.now ?? Date.now
   const activeRuns = input.activeRuns
-  const defaultSystemPrompt = composeSystemPrompt(defaultSections)
   const contextWindow = input.contextWindow ?? {
     getContextWindow() {
       return DEFAULT_CONTEXT_WINDOW_SIZE
@@ -190,7 +189,12 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         runId: inputValue.runId,
         tools: inputValue.tools,
         workspaceRoot: inputValue.workspaceRoot,
-        systemPrompt: input.systemPrompt ?? defaultSystemPrompt,
+        systemPrompt:
+          input.systemPrompt ??
+          buildDefaultSystemPrompt({
+            session: input.session.getSession(inputValue.sessionId),
+            now,
+          }),
         signal: inputValue.signal,
         emit: inputValue.emit,
       })
@@ -486,7 +490,12 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         signal: execution.controller.signal,
         tools: execution.tools,
         workspaceRoot: execution.session.workspaceRoot,
-        systemPrompt: input.systemPrompt ?? defaultSystemPrompt,
+        systemPrompt:
+          input.systemPrompt ??
+          buildDefaultSystemPrompt({
+            session: execution.session,
+            now,
+          }),
       }).finally(() => {
         execution.cleanup()
       })
@@ -519,7 +528,12 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
             runId: runInput.runId,
             tools: execution.tools,
             workspaceRoot: execution.session.workspaceRoot,
-            systemPrompt: input.systemPrompt ?? defaultSystemPrompt,
+            systemPrompt:
+              input.systemPrompt ??
+              buildDefaultSystemPrompt({
+                session: execution.session,
+                now,
+              }),
             signal: execution.controller.signal,
             emit: execution.emit,
           })
@@ -579,6 +593,21 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     respondPermission,
     cancelRun,
   }
+}
+
+function buildDefaultSystemPrompt(input: {
+  session: OrchestrationSessionPort["getSession"] extends (sessionId: string) => infer T ? T : never
+  now: () => number
+}) {
+  return composeFullPrompt({
+    activeSkillNames: input.session.activeSkills,
+    environment: {
+      workingDirectory: input.session.workspaceRoot,
+      platform: process.platform,
+      shell: process.env.SHELL,
+      date: new Date(input.now()).toISOString().slice(0, 10),
+    },
+  })
 }
 
 export type OrchestrationRuntimeApi = ReturnType<typeof createOrchestrationRuntimeApi>
