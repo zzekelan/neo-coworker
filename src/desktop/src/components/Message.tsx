@@ -17,6 +17,7 @@ import { motion } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { DesktopTranscriptMessage, MessagePart } from "../view-types"
 import { useDesktopText } from "../i18n"
+import { ErrorBoundary } from "./ErrorBoundary"
 import { MarkdownText } from "./MarkdownText"
 import { CompactionDivider } from "./CompactionDivider"
 
@@ -62,11 +63,12 @@ export const Message: React.FC<{ message: DesktopTranscriptMessage }> = ({ messa
   )
 
   return (
-    <motion.div
+    <ErrorBoundary>
+      <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn("mb-6 flex w-full flex-col", isUser ? "items-end" : "items-start")}
-    >
+      >
       <div className={cn("mb-1.5 flex items-center gap-2 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
         <span className="text-[11px] font-medium text-accent">
           {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -102,7 +104,8 @@ export const Message: React.FC<{ message: DesktopTranscriptMessage }> = ({ messa
           </div>
         )}
       </div>
-    </motion.div>
+      </motion.div>
+    </ErrorBoundary>
   )
 }
 
