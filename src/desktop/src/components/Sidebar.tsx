@@ -166,20 +166,20 @@ export function Sidebar({
         isOpen ? "w-64" : "w-0",
       )}
     >
-      <div className="flex h-full w-64 flex-col border-r border-zinc-200 bg-[linear-gradient(180deg,_#fafafa_0%,_#f5f5f4_100%)] font-sans text-zinc-600">
-        <div className="flex h-14 items-center justify-between border-b border-zinc-200/80 bg-white/70 px-4 backdrop-blur-sm">
+      <div className="flex h-full w-64 flex-col border-r border-border bg-paper font-sans text-muted">
+        <div className="flex h-14 items-center justify-between border-b border-border bg-paper px-4 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700/50 bg-gradient-to-br from-zinc-800 to-zinc-950 text-white shadow-sm">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-gradient-to-br from-surface to-paper text-ink shadow-sm">
               <div className="flex items-center -space-x-[1px]">
                 <span className="text-xs font-bold">N</span>
-                <span className="text-xs font-light text-zinc-400">C</span>
+                <span className="text-xs font-light text-accent">C</span>
               </div>
             </div>
-            <span className="font-semibold tracking-tight text-zinc-900">NeoCoworker</span>
+            <span className="font-semibold tracking-tight text-ink">NeoCoworker</span>
           </div>
           <button
             onClick={onToggle}
-            className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-200/50 hover:text-zinc-700"
+            className="rounded-md p-1.5 text-accent transition-colors hover:bg-border hover:text-ink"
             title="Close Sidebar"
           >
             <PanelLeftClose className="h-5 w-5" />
@@ -189,13 +189,13 @@ export function Sidebar({
         <div className="flex min-h-0 flex-1 flex-col px-3 py-3">
           <section className="pb-4">
             <div className="mb-3 flex items-center justify-between px-1">
-              <label className="text-[11px] font-semibold tracking-[0.16em] text-zinc-400 uppercase">
+              <label className="text-[11px] font-semibold tracking-[0.16em] text-accent uppercase">
                 {text.sidebar.workspace}
               </label>
               <div
                 className={cn(
                   "h-2 w-2 rounded-full transition-colors",
-                  isOnline ? "bg-emerald-500/70" : "bg-zinc-300",
+                  isOnline ? "bg-success" : "bg-border",
                 )}
               />
             </div>
@@ -217,9 +217,9 @@ export function Sidebar({
                   <button
                     type="button"
                     className={cn(
-                      "flex h-10 w-full items-center rounded-xl border border-zinc-200 bg-white/95 px-3 pl-9 pr-8 text-left text-sm text-zinc-700 shadow-sm outline-none transition-colors focus:border-zinc-300 focus:ring-2 focus:ring-zinc-200/80",
-                      showWorkspaceSelect && !isManagingWorkspace && "cursor-pointer hover:bg-white",
-                      isWorkspaceMenuOpen && "border-zinc-300 ring-2 ring-zinc-200/80",
+                      "flex h-10 w-full items-center rounded-xl border border-border bg-paper px-3 pl-9 pr-8 text-left text-sm text-ink shadow-sm outline-none transition-colors focus:border-border focus:ring-2 focus:ring-border",
+                      showWorkspaceSelect && !isManagingWorkspace && "cursor-pointer hover:bg-paper",
+                      isWorkspaceMenuOpen && "border-border ring-2 ring-border",
                       (!showWorkspaceSelect || isManagingWorkspace) && "cursor-not-allowed opacity-60",
                     )}
                     disabled={!showWorkspaceSelect || isManagingWorkspace}
@@ -230,11 +230,11 @@ export function Sidebar({
                     <span className="truncate">{activeWorkspace?.name ?? "Select workspace"}</span>
                   </button>
                   <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
-                    <Folder className="h-4 w-4 text-zinc-400" />
+                    <Folder className="h-4 w-4 text-accent" />
                   </div>
                   <div
                     className={cn(
-                      "pointer-events-none absolute inset-y-0 right-3 flex items-center text-zinc-400 transition-transform",
+                      "pointer-events-none absolute inset-y-0 right-3 flex items-center text-accent transition-transform",
                       isWorkspaceMenuOpen && "rotate-180",
                     )}
                   >
@@ -244,7 +244,7 @@ export function Sidebar({
                   </div>
                   <div
                     className={cn(
-                      "absolute top-[calc(100%+0.5rem)] left-0 right-0 z-20 origin-top overflow-hidden rounded-xl border border-zinc-200 bg-white/98 shadow-[0_16px_40px_rgba(24,24,27,0.12)] backdrop-blur-sm transition-all duration-200",
+                      "absolute top-[calc(100%+0.5rem)] left-0 right-0 z-20 origin-top overflow-hidden rounded-xl border border-border bg-paper shadow-xl backdrop-blur-sm transition-all duration-200",
                       isWorkspaceMenuOpen
                         ? "pointer-events-auto translate-y-0 opacity-100"
                         : "pointer-events-none -translate-y-1 opacity-0",
@@ -260,8 +260,8 @@ export function Sidebar({
                           className={cn(
                             "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                             workspace.workspaceRoot === activeWorkspaceRoot
-                              ? "bg-zinc-100 text-zinc-900 shadow-sm ring-1 ring-zinc-200"
-                              : "text-zinc-700 hover:bg-zinc-100",
+                              ? "bg-surface text-ink shadow-sm ring-1 ring-border"
+                              : "text-ink hover:bg-surface",
                           )}
                           onClick={() => {
                             setIsWorkspaceMenuOpen(false)
@@ -272,27 +272,27 @@ export function Sidebar({
                             className={cn(
                               "h-4 w-4 shrink-0",
                               workspace.workspaceRoot === activeWorkspaceRoot
-                                ? "text-zinc-500"
-                                : "text-zinc-400",
+                                ? "text-muted"
+                                : "text-accent",
                             )}
                           />
                           <span className="truncate">{workspace.name}</span>
                         </button>
                       ))}
-                      <div className="my-1 border-t border-zinc-200" />
+                      <div className="my-1 border-t border-border" />
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-ink transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isManagingWorkspace}
                         onClick={() => {
                           setIsWorkspaceMenuOpen(false)
                           void createWorkspace()
                         }}
                       >
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-paper text-muted shadow-sm">
                           <Plus className="h-3.5 w-3.5" />
                         </div>
-                        <span className="truncate font-medium text-zinc-800">{text.sidebar.newWorkspace}</span>
+                        <span className="truncate font-medium text-ink">{text.sidebar.newWorkspace}</span>
                       </button>
                     </div>
                   </div>
@@ -301,17 +301,17 @@ export function Sidebar({
             </div>
           </section>
 
-          <div className="mx-1 border-t border-zinc-200/80" />
+          <div className="mx-1 border-t border-border" />
 
           <section className="flex min-h-0 flex-1 flex-col pt-4">
             <div className="mb-3 flex items-center justify-between px-1">
-              <label className="text-[11px] font-semibold tracking-[0.16em] text-zinc-400 uppercase">
+              <label className="text-[11px] font-semibold tracking-[0.16em] text-accent uppercase">
                 {text.sidebar.sessions}
               </label>
               <button
                 onClick={() => createSession()}
                 disabled={!showWorkspaceSelect}
-                className="flex h-7 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white/80 px-2 text-[11px] font-medium text-zinc-600 transition-colors hover:bg-white hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-paper px-2 text-[11px] font-medium text-muted transition-colors hover:bg-paper hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
                 title="New Session"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -338,7 +338,7 @@ export function Sidebar({
                   />
                 ))}
                 {sessions.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-4 text-xs italic text-zinc-500">
+                  <div className="rounded-xl border border-dashed border-border bg-paper px-3 py-4 text-xs italic text-muted">
                     {text.sidebar.noSessions}
                   </div>
                 ) : null}
@@ -368,14 +368,14 @@ export function Sidebar({
                 aria-label={text.sidebar.settings}
                 aria-expanded={isSettingsOpen}
                 className={cn(
-                  "group flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white/88 text-zinc-500 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-zinc-900",
-                  isSettingsOpen && "border-zinc-300 bg-white text-zinc-900 shadow-[0_12px_28px_rgba(24,24,27,0.12)]",
+                  "group flex h-10 w-10 items-center justify-center rounded-full border border-border bg-paper text-muted shadow-sm transition-all hover:-translate-y-0.5 hover:bg-paper hover:text-ink",
+                  isSettingsOpen && "border-border bg-paper text-ink shadow-lg",
                 )}
               >
                 <Settings2 className={cn("h-4.5 w-4.5 transition-transform", isSettingsOpen && "rotate-45")} />
               </button>
 
-              <div className="flex flex-col items-end text-[11px] tracking-[0.08em] text-zinc-400 uppercase">
+              <div className="flex flex-col items-end text-[11px] tracking-[0.08em] text-accent uppercase">
                 <span>{text.sidebar.desktop}</span>
                 <span className="mt-1">{isOnline ? text.sidebar.online : text.sidebar.offline}</span>
               </div>
@@ -386,13 +386,13 @@ export function Sidebar({
         {sessionContextMenu && contextMenuSession ? (
           <div
             ref={sessionContextMenuRef}
-            className="fixed z-50 w-56 rounded-xl border border-zinc-200 bg-white/98 p-2 text-sm text-zinc-700 shadow-[0_18px_45px_rgba(24,24,27,0.18)] backdrop-blur-sm"
+            className="fixed z-50 w-56 rounded-xl border border-border bg-paper p-2 text-sm text-ink shadow-2xl backdrop-blur-sm"
             style={getContextMenuStyle(sessionContextMenu)}
           >
             <button
               type="button"
               disabled={isBusyRunStatus(contextMenuSession.latestRunStatus)}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left font-medium text-zinc-800 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:hover:bg-transparent"
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left font-medium text-ink transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:text-accent disabled:hover:bg-transparent"
               onClick={() => {
                 setSessionContextMenu(null)
                 if (!isBusyRunStatus(contextMenuSession.latestRunStatus)) {
@@ -425,14 +425,14 @@ function SessionListItem(input: {
       className={cn(
         "group flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
         input.isActive
-          ? "border-zinc-200 bg-white font-medium text-zinc-900 shadow-sm"
-          : "border-transparent text-zinc-600 hover:border-zinc-200/80 hover:bg-white/80 hover:text-zinc-900",
+          ? "border-border bg-paper font-medium text-ink shadow-sm"
+          : "border-transparent text-muted hover:border-border hover:bg-paper hover:text-ink",
       )}
     >
       <MessageSquare
         className={cn(
           "h-4 w-4 shrink-0",
-          input.isActive ? "text-zinc-900" : "text-zinc-400",
+          input.isActive ? "text-ink" : "text-accent",
         )}
       />
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -460,7 +460,7 @@ function getSessionStatusBadge(
   if (status === "running") {
     return {
       label: text.sidebar.running,
-      className: "border-sky-200 bg-sky-50 text-sky-700",
+      className: "border-highlight/30 bg-highlight/10 text-highlight",
       icon: Loader2,
       iconClassName: "animate-spin",
     }
@@ -469,7 +469,7 @@ function getSessionStatusBadge(
   if (status === "waiting_permission") {
     return {
       label: text.sidebar.waiting,
-      className: "border-amber-200 bg-amber-50 text-amber-700",
+      className: "border-amber-500/30 bg-amber-500/10 text-amber-500",
       icon: ShieldAlert,
       iconClassName: "",
     }
@@ -478,7 +478,7 @@ function getSessionStatusBadge(
   if (status === "failed") {
     return {
       label: text.sidebar.failed,
-      className: "border-rose-200 bg-rose-50 text-rose-700",
+      className: "border-danger bg-danger/10 text-danger",
       icon: AlertCircle,
       iconClassName: "",
     }

@@ -68,7 +68,7 @@ export const Message: React.FC<{ message: DesktopTranscriptMessage }> = ({ messa
       className={cn("mb-6 flex w-full flex-col", isUser ? "items-end" : "items-start")}
     >
       <div className={cn("mb-1.5 flex items-center gap-2 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
-        <span className="text-[11px] font-medium text-zinc-400">
+        <span className="text-[11px] font-medium text-accent">
           {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>
@@ -90,8 +90,8 @@ export const Message: React.FC<{ message: DesktopTranscriptMessage }> = ({ messa
             className={cn(
               "text-[15px] leading-relaxed",
               isUser
-                ? "rounded-2xl rounded-tr-sm bg-zinc-100 px-5 py-3 text-zinc-900"
-                : "py-2 text-zinc-800",
+                ? "rounded-2xl rounded-tr-sm bg-surface px-5 py-3 text-ink"
+                : "py-2 text-ink",
             )}
           >
             {isUser ? (
@@ -118,7 +118,7 @@ const MessagePartRenderer: React.FC<{
       return <MarkdownText text={part.text} className="py-1 text-[15px]" />
     }
 
-    return <div className="py-1 whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-800">{part.text}</div>
+    return <div className="py-1 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{part.text}</div>
   }
 
   if (part.type === "tool_call") {
@@ -176,10 +176,10 @@ const ToolActivityCard: React.FC<{
       className={cn(
         "my-3 overflow-hidden rounded-2xl border shadow-sm transition-colors",
         status === "error"
-          ? "border-rose-200 bg-rose-50/60"
+          ? "border-danger bg-danger/10"
           : resultTone
-            ? "border-emerald-200 bg-emerald-50/50"
-            : "border-zinc-200 bg-zinc-50/80",
+            ? "border-success/30 bg-success/10"
+            : "border-border bg-paper",
       )}
     >
       <div className="flex items-start justify-between gap-4 px-4 py-3.5">
@@ -188,17 +188,17 @@ const ToolActivityCard: React.FC<{
             className={cn(
               "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
               status === "error"
-                ? "border-rose-200 bg-white text-rose-500"
+                ? "border-danger bg-paper text-danger"
                 : resultTone
-                  ? "border-emerald-200 bg-white text-emerald-500"
-                  : "border-zinc-200 bg-white text-zinc-600",
+                  ? "border-success/30 bg-paper text-success"
+                  : "border-border bg-paper text-muted",
             )}
           >
             {icon}
           </div>
           <div className="min-w-0">
-            <div className="text-[14px] font-semibold text-zinc-900">{title}</div>
-            <div className="mt-1 text-[13px] leading-6 text-zinc-600">{subtitle}</div>
+            <div className="text-[14px] font-semibold text-ink">{title}</div>
+            <div className="mt-1 text-[13px] leading-6 text-muted">{subtitle}</div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -206,11 +206,11 @@ const ToolActivityCard: React.FC<{
         </div>
       </div>
 
-      <div className="border-t border-zinc-200/80 bg-white/75 px-4 py-2.5">
+      <div className="border-t border-border bg-paper px-4 py-2.5">
         <button
           type="button"
           onClick={() => setIsDetailsOpen((previous) => !previous)}
-          className="flex items-center gap-2 text-[12px] font-medium tracking-wide text-zinc-500 transition-colors hover:text-zinc-800"
+          className="flex items-center gap-2 text-[12px] font-medium tracking-wide text-muted transition-colors hover:text-ink"
         >
           <ChevronDown
             className={cn("h-4 w-4 transition-transform duration-200", isDetailsOpen && "rotate-180")}
@@ -229,13 +229,13 @@ const ToolActivityCard: React.FC<{
           className="overflow-hidden"
         >
           {details.length > 0 ? (
-            <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3">
+            <div className="space-y-3 rounded-xl border border-border bg-paper p-3">
               {details.map((detail, index) => (
                 <ToolDetailRow key={`${detail.label}:${index}`} detail={detail} />
               ))}
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 px-3 py-2 text-[12px] text-zinc-500">
+            <div className="rounded-xl border border-dashed border-border bg-paper px-3 py-2 text-[12px] text-muted">
               {emptyDetailsLabel ?? text.message.noAdditionalDetails}
             </div>
           )}
@@ -250,7 +250,7 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus }> = ({ status }) => {
 
   if (status === "pending") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-600">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-highlight/30 bg-highlight/10 px-2.5 py-1 text-[11px] font-semibold text-highlight">
         <Loader2 className="h-3 w-3 animate-spin" />
         {text.message.running}
       </span>
@@ -259,7 +259,7 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus }> = ({ status }) => {
 
   if (status === "success") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-600">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
         <CheckCircle2 className="h-3 w-3" />
         {text.message.completed}
       </span>
@@ -268,7 +268,7 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus }> = ({ status }) => {
 
   if (status === "cancelled") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-500">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-muted">
         <XCircle className="h-3 w-3" />
         {text.message.cancelled}
       </span>
@@ -276,7 +276,7 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus }> = ({ status }) => {
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-600">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-danger bg-danger/10 px-2.5 py-1 text-[11px] font-semibold text-danger">
       <AlertCircle className="h-3 w-3" />
       {text.message.failed}
     </span>
@@ -290,8 +290,8 @@ type DetailItem = {
 
 const ToolDetailRow: React.FC<{ detail: DetailItem }> = ({ detail }) => (
   <div className="flex flex-col gap-1.5">
-    <div className="text-[11px] font-semibold tracking-[0.18em] text-zinc-400 uppercase">{detail.label}</div>
-    <div className="text-[13px] leading-6 text-zinc-700">
+    <div className="text-[11px] font-semibold tracking-[0.18em] text-accent uppercase">{detail.label}</div>
+    <div className="text-[13px] leading-6 text-ink">
             <ToolValue fieldName={detail.label} value={detail.value} />
     </div>
   </div>
@@ -305,7 +305,7 @@ const ToolValue: React.FC<{
   const text = useDesktopText()
 
   if (value === null || value === undefined) {
-    return <span className="italic text-zinc-400">null</span>
+    return <span className="italic text-accent">null</span>
   }
 
   if (typeof value === "string") {
@@ -318,15 +318,15 @@ const ToolValue: React.FC<{
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      return <span className="italic text-zinc-400">[]</span>
+      return <span className="italic text-accent">[]</span>
     }
 
     return (
-      <div className={cn("flex flex-col gap-1.5", depth > 0 && "mt-1 border-l border-zinc-200 pl-4")}>
+      <div className={cn("flex flex-col gap-1.5", depth > 0 && "mt-1 border-l border-border pl-4")}>
         {value.map((entry, index) => (
           <div key={`${fieldName ?? "item"}:${index}`} className="flex flex-col gap-1">
-            <span className="text-[12px] font-medium text-zinc-500">{index + 1}</span>
-            <div className="break-all whitespace-pre-wrap text-zinc-800">
+            <span className="text-[12px] font-medium text-muted">{index + 1}</span>
+            <div className="break-all whitespace-pre-wrap text-ink">
               <ToolValue fieldName={fieldName} value={entry} depth={depth + 1} />
             </div>
           </div>
@@ -337,15 +337,15 @@ const ToolValue: React.FC<{
 
   const entries = Object.entries(value).filter(([key]) => !HIDDEN_TOOL_KEYS.has(key))
   if (entries.length === 0) {
-    return <span className="italic text-zinc-400">{"{}"}</span>
+    return <span className="italic text-accent">{"{}"}</span>
   }
 
   return (
-    <div className={cn("flex flex-col gap-2", depth > 0 && "mt-1 border-l border-zinc-200 pl-4")}>
+    <div className={cn("flex flex-col gap-2", depth > 0 && "mt-1 border-l border-border pl-4")}>
       {entries.map(([key, nestedValue]) => (
         <div key={key} className="flex flex-col gap-1">
-          <span className="text-[12px] font-medium text-zinc-500">{formatDetailLabel(key, text)}</span>
-          <div className="break-all whitespace-pre-wrap text-zinc-800">
+          <span className="text-[12px] font-medium text-muted">{formatDetailLabel(key, text)}</span>
+          <div className="break-all whitespace-pre-wrap text-ink">
             <ToolValue fieldName={key} value={nestedValue} depth={depth + 1} />
           </div>
         </div>
@@ -378,7 +378,7 @@ const ExpandableFieldValue: React.FC<{
       <button
         type="button"
         onClick={() => setIsExpanded((previous) => !previous)}
-        className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] font-semibold tracking-wide text-zinc-600 transition-colors hover:bg-zinc-100"
+        className="rounded-md border border-border bg-paper px-2 py-1 text-[11px] font-semibold tracking-wide text-muted transition-colors hover:bg-surface"
       >
         {isExpanded ? text.message.showLess : text.message.showMore}
       </button>

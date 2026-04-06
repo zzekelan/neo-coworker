@@ -262,12 +262,12 @@ export function ChatArea({
 
   if (!sessionSummary) {
     return (
-      <div className="relative flex flex-1 flex-col bg-white">
+      <div className="relative flex flex-1 flex-col bg-paper">
         <div className="absolute top-4 left-4 z-10">
           {!isSidebarOpen ? (
             <button
               onClick={onToggleSidebar}
-              className="rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-ink"
               title="Open Sidebar"
             >
               <PanelLeft className="h-5 w-5" />
@@ -275,14 +275,14 @@ export function ChatArea({
           ) : null}
         </div>
         <EmptyChatState
-          icon={<Play className="h-6 w-6 text-zinc-300" />}
+          icon={<Play className="h-6 w-6 text-accent" />}
           title={hasSessions ? text.chat.selectSession : text.chat.createSessionToStart}
           action={
             !hasSessions ? (
               <button
                 type="button"
                 onClick={() => void onCreateSession()}
-                className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+                className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-paper px-4 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-paper hover:text-ink"
               >
                 <Plus className="h-4 w-4" />
                 {text.chat.createSession}
@@ -296,19 +296,19 @@ export function ChatArea({
   }
 
   return (
-    <div className="relative flex h-full flex-1 flex-col bg-white">
-      <div className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-zinc-200 bg-white/80 px-4 backdrop-blur-md md:px-6">
+    <div className="relative flex h-full flex-1 flex-col bg-paper">
+      <div className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-paper px-4 backdrop-blur-md md:px-6">
         <div className="flex items-center gap-3">
           {!isSidebarOpen ? (
             <button
               onClick={onToggleSidebar}
-              className="-ml-1.5 rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+              className="-ml-1.5 rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-ink"
               title="Open Sidebar"
             >
               <PanelLeft className="h-5 w-5" />
             </button>
           ) : null}
-          <h2 className="font-semibold tracking-tight text-zinc-800">
+          <h2 className="font-semibold tracking-tight text-ink">
             {sessionSummary.title || "Untitled Session"}
           </h2>
         </div>
@@ -327,7 +327,7 @@ export function ChatArea({
       >
         {transcript.length === 0 ? (
           <EmptyChatState
-            icon={<MessageSquare className="h-6 w-6 text-zinc-300" />}
+            icon={<MessageSquare className="h-6 w-6 text-accent" />}
             title={text.chat.startConversation}
             errorMessage={errorMessage}
             offsetClassName="translate-y-2"
@@ -335,7 +335,7 @@ export function ChatArea({
         ) : (
           <div className="mx-auto max-w-4xl py-8">
             {errorMessage ? (
-              <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+              <div className="mb-4 rounded-xl border border-danger bg-danger/10 px-4 py-3 text-sm text-danger">
                 {errorMessage}
               </div>
             ) : null}
@@ -366,10 +366,10 @@ export function ChatArea({
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex items-center gap-3 p-6 text-zinc-400"
+                className="flex items-center gap-3 p-6 text-accent"
               >
-                <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
-                <span className="animate-pulse text-sm font-medium text-zinc-500">
+                <Loader2 className="h-4 w-4 animate-spin text-highlight" />
+                <span className="animate-pulse text-sm font-medium text-muted">
                   {text.chat.thinking}
                 </span>
               </motion.div>
@@ -392,8 +392,8 @@ export function ChatArea({
                 className={cn(
                   "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors",
                   isSkillPanelOpen
-                    ? "border-zinc-300 bg-zinc-100 text-zinc-900"
-                    : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100",
+                    ? "border-border bg-surface text-ink"
+                    : "border-border bg-paper text-ink hover:bg-surface",
                 )}
               >
                 <Sparkles className="h-4 w-4" />
@@ -408,14 +408,14 @@ export function ChatArea({
                   {visibleActiveSkills.map((skillName) => (
                     <span
                       key={skillName}
-                      className="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-[11px] font-medium text-zinc-600"
+                      className="rounded-full border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted"
                     >
                       {skillName}
                     </span>
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-zinc-400">{text.chat.noActiveSkills}</span>
+                <span className="text-xs text-accent">{text.chat.noActiveSkills}</span>
               )}
             </motion.div>
 
@@ -448,7 +448,7 @@ export function ChatArea({
                         value={skillFilter}
                         onChange={(event) => setSkillFilter(event.target.value)}
                         placeholder={text.chat.filterSkills}
-                        className="h-11 w-full rounded-2xl border border-zinc-200 bg-white px-4 text-sm text-zinc-800 shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-300"
+                        className="h-11 w-full rounded-2xl border border-border bg-paper px-4 text-sm text-ink shadow-sm outline-none transition-colors placeholder:text-accent focus:border-border"
                       />
                     </div>
                   </motion.div>
@@ -462,10 +462,10 @@ export function ChatArea({
             transition={SKILL_DRAWER_TRANSITION}
             onSubmit={handleSubmit}
             className={cn(
-              "relative flex items-end gap-2 overflow-hidden rounded-2xl border bg-white shadow-sm transition-all",
+              "relative flex items-end gap-2 overflow-hidden rounded-2xl border bg-paper shadow-sm transition-all",
               isBusy
-                ? "border-zinc-200 opacity-80"
-                : "border-zinc-300 focus-within:border-indigo-500/50 focus-within:ring-4 focus-within:ring-indigo-500/10",
+                ? "border-border opacity-80"
+                : "border-border focus-within:border-highlight/50 focus-within:ring-4 focus-within:ring-highlight/10",
             )}
           >
             <textarea
@@ -479,7 +479,7 @@ export function ChatArea({
                   : text.chat.askPlaceholder
               }
               disabled={isInputLocked}
-              className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent py-4 pr-14 pl-4 text-[15px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 outline-none focus:ring-0"
+              className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent py-4 pr-14 pl-4 text-[15px] leading-relaxed text-ink placeholder:text-accent outline-none focus:ring-0"
               rows={1}
               onKeyDown={(event) => {
                 if (
@@ -499,7 +499,7 @@ export function ChatArea({
                 <button
                   type="button"
                   onClick={() => void onCancelRun()}
-                  className="rounded-xl border border-rose-100 bg-rose-50 p-2 text-rose-600 transition-colors hover:bg-rose-100"
+                  className="rounded-xl border border-danger/30 bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
                   title="Cancel Run"
                 >
                   <Square className="h-4 w-4 fill-current" />
@@ -508,7 +508,7 @@ export function ChatArea({
                 <button
                   type="submit"
                   disabled={!input.trim() || isComposing || isSubmittingMessage}
-                  className="rounded-xl bg-zinc-900 p-2 text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-50 disabled:hover:bg-zinc-900"
+                  className="rounded-xl bg-ink p-2 text-ink shadow-sm transition-colors hover:bg-surface disabled:opacity-50 disabled:hover:bg-ink"
                 >
                   <ArrowUp className="h-5 w-5" />
                 </button>
@@ -536,15 +536,15 @@ function ContextBudgetBar(input: { usage: DesktopContextUsage }) {
       className="flex items-center gap-2.5"
       title={`${input.usage.contextTokens.toLocaleString()} / ${input.usage.contextWindow.toLocaleString()} tokens`}
     >
-      <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-zinc-100">
+      <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-surface">
         <div
           className={cn(
             "absolute inset-y-0 left-0 rounded-full transition-all duration-500 ease-out",
             isCritical
-              ? "bg-rose-500"
+              ? "bg-danger"
               : isHigh
                 ? "bg-amber-500"
-                : "bg-zinc-400",
+                : "bg-accent",
           )}
           style={{ width: `${percent}%` }}
         />
@@ -553,10 +553,10 @@ function ContextBudgetBar(input: { usage: DesktopContextUsage }) {
         className={cn(
           "whitespace-nowrap text-[11px] font-medium tabular-nums",
           isCritical
-            ? "text-rose-600"
+            ? "text-danger"
             : isHigh
-              ? "text-amber-600"
-              : "text-zinc-400",
+              ? "text-amber-500"
+              : "text-accent",
         )}
       >
         {text.chat.contextUsed(percent)}
@@ -576,17 +576,17 @@ function EmptyChatState(input: {
     <div className="flex h-full w-full items-center justify-center">
       <div
         className={cn(
-          "flex w-full max-w-md flex-col items-center justify-center px-6 text-center text-zinc-400",
+          "flex w-full max-w-md flex-col items-center justify-center px-6 text-center text-accent",
           input.offsetClassName,
         )}
       >
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-zinc-100 bg-zinc-50 shadow-sm">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-border bg-paper shadow-sm">
           {input.icon}
         </div>
-        <p className="text-sm font-medium tracking-wide text-zinc-500">{input.title}</p>
+        <p className="text-sm font-medium tracking-wide text-muted">{input.title}</p>
         {input.action}
         {input.errorMessage ? (
-          <p className="mt-3 max-w-sm text-center text-xs text-rose-500">{input.errorMessage}</p>
+          <p className="mt-3 max-w-sm text-center text-xs text-danger">{input.errorMessage}</p>
         ) : null}
       </div>
     </div>

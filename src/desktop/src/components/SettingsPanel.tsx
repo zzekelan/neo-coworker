@@ -72,28 +72,28 @@ export function SettingsPanel({
     <div
       aria-hidden={!isOpen}
       className={cn(
-        "absolute bottom-14 left-0 z-30 h-[36rem] w-[min(38rem,calc(100vw-2rem))] origin-bottom-left overflow-hidden rounded-[1.55rem] border border-zinc-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,248,247,0.96))] shadow-[0_24px_60px_rgba(24,24,27,0.18)] backdrop-blur-xl transition-all duration-200 ease-out",
+        "absolute bottom-14 left-0 z-30 h-[36rem] w-[min(38rem,calc(100vw-2rem))] origin-bottom-left overflow-hidden rounded-[1.55rem] border border-border bg-paper shadow-[0_24px_60px_rgba(24,24,27,0.18)] backdrop-blur-xl transition-all duration-200 ease-out",
         isOpen
           ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
           : "pointer-events-none translate-y-3 scale-[0.985] opacity-0",
       )}
     >
-      <div className="flex items-center justify-between border-b border-zinc-200/80 px-5 py-4">
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <div>
-          <h3 className="text-sm font-semibold tracking-tight text-zinc-900">{text.settings.title}</h3>
-          <p className="mt-1 text-[11px] tracking-[0.08em] text-zinc-500 uppercase">{text.settings.storagePath}</p>
+          <h3 className="text-sm font-semibold tracking-tight text-ink">{text.settings.title}</h3>
+          <p className="mt-1 text-[11px] tracking-[0.08em] text-muted uppercase">{text.settings.storagePath}</p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-full border border-zinc-200 bg-white/80 px-3 py-1.5 text-[11px] font-medium tracking-[0.08em] text-zinc-600 uppercase transition-colors hover:bg-zinc-100"
+          className="rounded-full border border-border bg-paper px-3 py-1.5 text-[11px] font-medium tracking-[0.08em] text-muted uppercase transition-colors hover:bg-surface"
         >
           {text.settings.close}
         </button>
       </div>
 
       <div className="grid h-[calc(36rem-4.625rem)] grid-cols-[12rem_minmax(0,1fr)]">
-        <aside className="overflow-y-auto [scrollbar-gutter:stable] border-r border-zinc-200/80 bg-[linear-gradient(180deg,rgba(248,248,247,0.92),rgba(242,242,241,0.85))] p-3">
+        <aside className="overflow-y-auto [scrollbar-gutter:stable] border-r border-border bg-paper p-3">
           <div className="space-y-1">
             {sections.map((section) => (
               <button
@@ -103,12 +103,12 @@ export function SettingsPanel({
                 className={cn(
                   "w-full rounded-2xl border px-3 py-3 text-left transition-all",
                   activeSection === section.id
-                    ? "border-zinc-300 bg-white text-zinc-900 shadow-[0_10px_24px_rgba(24,24,27,0.08)]"
-                    : "border-transparent text-zinc-500 hover:border-zinc-200 hover:bg-white/70 hover:text-zinc-800",
+                    ? "border-border bg-paper text-ink shadow-[0_10px_24px_rgba(24,24,27,0.08)]"
+                    : "border-transparent text-muted hover:border-border hover:bg-paper hover:text-ink",
                 )}
               >
                 <div className="text-sm font-semibold tracking-tight">{section.label}</div>
-                <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">{section.description}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-accent">{section.description}</p>
               </button>
             ))}
           </div>
@@ -190,7 +190,7 @@ export function SettingsPanel({
                       }
                       className={fieldClassName(llmFieldsDisabled)}
                     />
-                    <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">{text.settings.timeoutHint}</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-accent">{text.settings.timeoutHint}</p>
                   </Field>
                 </div>
               </section>
@@ -198,33 +198,33 @@ export function SettingsPanel({
 
             <div className="mt-5 space-y-3">
               {activeSection === "llm" && serverMode !== "managed-local" ? (
-                <p className="rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2.5 text-xs leading-relaxed text-amber-700">
+                <p className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-500">
                   {text.settings.externalHint}
                 </p>
               ) : null}
 
               {activeSection === "llm" && hasBusySession ? (
-                <p className="rounded-2xl border border-sky-200 bg-sky-50/90 px-3 py-2.5 text-xs leading-relaxed text-sky-700">
+                <p className="rounded-2xl border border-highlight/30 bg-highlight/10 px-3 py-2.5 text-xs leading-relaxed text-highlight">
                   {text.settings.stopRunsFirst}
                 </p>
               ) : null}
 
               {errorMessage ? (
-                <p className="rounded-2xl border border-rose-200 bg-rose-50/90 px-3 py-2.5 text-xs leading-relaxed text-rose-700">
+                <p className="rounded-2xl border border-danger bg-danger/10 px-3 py-2.5 text-xs leading-relaxed text-danger">
                   {errorMessage}
                 </p>
               ) : null}
             </div>
           </div>
 
-          <div className="mt-5 flex shrink-0 justify-end border-t border-zinc-200/80 pt-4">
+          <div className="mt-5 flex shrink-0 justify-end border-t border-border pt-4">
             <button
               type="button"
               disabled={applyDisabled}
               onClick={() =>
                 void (isGeneralSection ? onApplyGeneralSettings() : onApplyLlmSettings())
               }
-              className="rounded-2xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white shadow-[0_12px_24px_rgba(24,24,27,0.18)] transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-ink shadow-[0_12px_24px_rgba(24,24,27,0.18)] transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isApplying
                 ? text.settings.applying
@@ -242,7 +242,7 @@ export function SettingsPanel({
           successMessage ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
         )}
       >
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/95 px-4 py-3 text-center text-sm leading-relaxed text-emerald-700 shadow-[0_16px_30px_rgba(34,197,94,0.12)] backdrop-blur-sm">
+        <div className="rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-center text-sm leading-relaxed text-success shadow-[0_16px_30px_rgba(34,197,94,0.12)] backdrop-blur-sm">
           {successMessage === "general-applied"
             ? text.settings.appliedGeneral
             : text.settings.appliedLlm}
@@ -258,8 +258,8 @@ function SectionHeading(input: {
 }) {
   return (
     <div className="mb-1">
-      <h4 className="text-base font-semibold tracking-tight text-zinc-900">{input.title}</h4>
-      {input.subtitle ? <p className="mt-1 text-xs leading-relaxed text-zinc-500">{input.subtitle}</p> : null}
+      <h4 className="text-base font-semibold tracking-tight text-ink">{input.title}</h4>
+      {input.subtitle ? <p className="mt-1 text-xs leading-relaxed text-muted">{input.subtitle}</p> : null}
     </div>
   )
 }
@@ -270,7 +270,7 @@ function Field(input: {
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11px] font-semibold tracking-[0.12em] text-zinc-400 uppercase">
+      <span className="mb-1.5 block text-[11px] font-semibold tracking-[0.12em] text-accent uppercase">
         {input.label}
       </span>
       {input.children}
@@ -280,8 +280,8 @@ function Field(input: {
 
 function fieldClassName(disabled: boolean) {
   return cn(
-    "h-11 w-full rounded-2xl border border-zinc-200 bg-white/95 px-3.5 text-sm text-zinc-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition-colors focus:border-zinc-300 focus:ring-2 focus:ring-zinc-200/80",
-    disabled && "cursor-not-allowed bg-zinc-100 text-zinc-400 shadow-none",
+    "h-11 w-full rounded-2xl border border-border bg-paper px-3.5 text-sm text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition-colors focus:border-border focus:ring-2 focus:ring-border",
+    disabled && "cursor-not-allowed bg-surface text-accent shadow-none",
   )
 }
 
@@ -336,16 +336,16 @@ function SettingsSelect<T extends string>(input: {
         className={cn(
           fieldClassName(Boolean(input.disabled)),
           "flex items-center justify-between text-left",
-          isOpen && "border-zinc-300 ring-2 ring-zinc-200/80",
+          isOpen && "border-border ring-2 ring-border",
         )}
       >
         <span className="truncate">{selectedOption?.label ?? ""}</span>
-        <ChevronDown className={cn("h-4 w-4 shrink-0 text-zinc-400 transition-transform", isOpen && "rotate-180")} />
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-accent transition-transform", isOpen && "rotate-180")} />
       </button>
 
       <div
         className={cn(
-          "absolute top-[calc(100%+0.5rem)] left-0 right-0 z-20 origin-top overflow-hidden rounded-2xl border border-zinc-200 bg-white/98 p-1.5 shadow-[0_16px_36px_rgba(24,24,27,0.12)] backdrop-blur-sm transition-all duration-150",
+          "absolute top-[calc(100%+0.5rem)] left-0 right-0 z-20 origin-top overflow-hidden rounded-2xl border border-border bg-paper p-1.5 shadow-[0_16px_36px_rgba(24,24,27,0.12)] backdrop-blur-sm transition-all duration-150",
           isOpen ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none -translate-y-1 opacity-0",
         )}
       >
@@ -366,12 +366,12 @@ function SettingsSelect<T extends string>(input: {
                 className={cn(
                   "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
                   isSelected
-                    ? "bg-zinc-100 text-zinc-900 shadow-sm ring-1 ring-zinc-200"
-                    : "text-zinc-700 hover:bg-zinc-100",
+                    ? "bg-surface text-ink shadow-sm ring-1 ring-border"
+                    : "text-ink hover:bg-surface",
                 )}
               >
                 <span className="truncate">{option.label}</span>
-                <Check className={cn("h-4 w-4 shrink-0 text-zinc-500", !isSelected && "opacity-0")} />
+                <Check className={cn("h-4 w-4 shrink-0 text-muted", !isSelected && "opacity-0")} />
               </button>
             )
           })}

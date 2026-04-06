@@ -66,19 +66,19 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
           void submitReply("deny")
         }
       }}
-      className="my-6 max-w-3xl rounded-xl border border-zinc-200 bg-white p-5 shadow-sm"
+      className="my-6 max-w-3xl rounded-xl border border-border bg-paper p-5 shadow-sm"
     >
       <div className="flex items-start gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-100 bg-amber-50">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10">
           <ShieldAlert className="h-5 w-5 text-amber-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="mb-1 text-base font-semibold text-zinc-900">{text.permission.title}</h3>
-          <p className="mb-4 text-sm leading-relaxed text-zinc-500">
+          <h3 className="mb-1 text-base font-semibold text-ink">{text.permission.title}</h3>
+          <p className="mb-4 text-sm leading-relaxed text-muted">
             {text.permission.requestTool(request.toolName)}
           </p>
 
-          <div className="mb-5 rounded-lg border border-zinc-200 bg-zinc-50 p-3 font-mono text-xs text-zinc-700">
+          <div className="mb-5 rounded-lg border border-border bg-surface p-3 font-mono text-xs text-ink">
             {request.reason}
           </div>
 
@@ -86,7 +86,7 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
             <button
               disabled={isSubmitting}
               onClick={() => void submitReply("allow")}
-              className="flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800"
+              className="flex items-center gap-2 rounded-lg bg-surface px-4 py-2 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-border"
             >
               <Check className="h-4 w-4" />
               {text.permission.allow}
@@ -94,7 +94,7 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
             <button
               disabled={isSubmitting}
               onClick={() => void submitReply("deny")}
-              className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+              className="flex items-center gap-2 rounded-lg border border-border bg-paper px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface"
             >
               <X className="h-4 w-4" />
               {text.permission.deny}
