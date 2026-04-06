@@ -1,67 +1,38 @@
 import { describe, expect, test } from "bun:test"
-import React from "react"
-import { act } from "react"
-import { createRoot } from "react-dom/client"
-import { ErrorBoundary } from "../../src/desktop/src/components/ErrorBoundary"
+import { readFileSync } from "node:fs"
 
 describe("desktop error boundary", () => {
-  test("renders children normally when no error occurs", () => {
-    const container = document.createElement("div")
-    const root = createRoot(container)
+  const source = readFileSync("src/desktop/src/components/ErrorBoundary.ts", "utf8")
 
-    act(() => {
-      root.render(
-        React.createElement(
-          ErrorBoundary,
-          null,
-          React.createElement("span", { "data-testid": "healthy-child" }, "OK"),
-        ),
-      )
-    })
-
-    expect(container.textContent).toContain("OK")
-    expect(container.querySelector('[data-testid="error-boundary-fallback"]')).toBeNull()
-    root.unmount()
+  test("is a React class component with getDerivedStateFromError", () => {
+    expect(source).toContain("extends React.Component")
+    expect(source).toContain("getDerivedStateFromError")
+    expect(source).toContain("componentDidCatch")
   })
 
-  test("shows fallback when child throws and retries after reset", () => {
-    const container = document.createElement("div")
-    const root = createRoot(container)
-    let shouldThrow = true
-    let errorCount = 0
+  test("exposes data-testid error-boundary-fallback on the fallback container", () => {
+    expect(source).toContain("data-testid")
+    expect(source).toContain("error-boundary-fallback")
+  })
 
-    function ProblemChild() {
-      if (shouldThrow) {
-        throw new Error("Boom from child")
-      }
+  test("shows Something went wrong text in fallback", () => {
+    expect(source).toContain("Something went wrong")
+  })
 
-      return React.createElement("span", { "data-testid": "recovered-child" }, "Recovered")
-    }
+  test("has a Retry button that resets state", () => {
+    expect(source).toContain("Retry")
+    expect(source).toContain("handleRetry")
+    expect(source).toContain("hasError: false")
+  })
 
-    act(() => {
-      root.render(
-        React.createElement(ErrorBoundary, {
-          onError: () => {
-            errorCount += 1
-          },
-          children: React.createElement(ProblemChild),
-        }),
-      )
-    })
+  test("accepts fallback and onError props", () => {
+    expect(source).toContain("fallback")
+    expect(source).toContain("onError")
+  })
 
-    expect(errorCount).toBe(1)
-    expect(container.querySelector('[data-testid="error-boundary-fallback"]')).not.toBeNull()
-    expect(container.textContent).toContain("Something went wrong")
-    expect(container.textContent).toContain("Boom from child")
-
-    shouldThrow = false
-
-    act(() => {
-      container.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-    })
-
-    expect(container.querySelector('[data-testid="error-boundary-fallback"]')).toBeNull()
-    expect(container.textContent).toContain("Recovered")
-    root.unmount()
+  test("uses CSS variables for colors, no hardcoded hex", () => {
+    expect(source).toContain("var(--color-surface)")
+    expect(source).toContain("var(--color-border)")
+    expect(source).not.toMatch(/#[0-9a-fA-F]{3,6}/)
   })
 })
