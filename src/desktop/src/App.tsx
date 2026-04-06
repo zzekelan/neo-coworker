@@ -4,6 +4,8 @@ import { useDesktopSettings } from "./useDesktopSettings"
 import { DesktopTextProvider } from "./i18n"
 import { Sidebar } from "./components/Sidebar"
 import { ChatArea } from "./components/ChatArea"
+import { KeyboardShortcutProvider } from "./providers/KeyboardShortcutProvider"
+import { CommandPalette } from "./components/CommandPalette"
 
 export default function App() {
   const {
@@ -36,9 +38,10 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
   return (
-    <DesktopTextProvider language={desktopSettings.appliedSettings.language}>
-      <div className="flex h-screen w-full overflow-hidden bg-paper font-sans text-ink selection:bg-accent/20 selection:text-ink">
-        <Sidebar
+    <KeyboardShortcutProvider onNewSession={() => void createSession()}>
+      <DesktopTextProvider language={desktopSettings.appliedSettings.language}>
+        <div className="flex h-screen w-full overflow-hidden bg-paper font-sans text-ink selection:bg-accent/20 selection:text-ink">
+          <Sidebar
           workspaces={workspaces}
           activeWorkspaceRoot={activeWorkspaceRoot}
           setActiveWorkspace={(workspaceRoot) => {
@@ -102,7 +105,9 @@ export default function App() {
             skillWarningMessage={skillWarningMessage}
           />
         </div>
+        <CommandPalette />
       </div>
     </DesktopTextProvider>
+    </KeyboardShortcutProvider>
   )
 }

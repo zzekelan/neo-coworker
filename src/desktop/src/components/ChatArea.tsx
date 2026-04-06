@@ -22,6 +22,7 @@ import type {
 import { cn } from "../lib/utils"
 import { createSkillUpdateQueue, type SkillUpdateQueue } from "../skill-update-queue"
 import { isBusyRunStatus } from "../busy-state"
+import { ErrorBoundary } from "./ErrorBoundary"
 import { Message } from "./Message"
 import { CompactionDivider } from "./CompactionDivider"
 import { PermissionRequest } from "./PermissionRequest"
@@ -252,9 +253,15 @@ export function ChatArea({
       }
     }
 
+    const handleCloseOverlays = () => {
+      setIsSkillPanelOpen(false)
+    }
+
     window.addEventListener("mousedown", handlePointerDown)
+    window.addEventListener("close-overlays", handleCloseOverlays)
     return () => {
       window.removeEventListener("mousedown", handlePointerDown)
+      window.removeEventListener("close-overlays", handleCloseOverlays)
     }
   }, [isSkillPanelOpen])
 
@@ -455,35 +462,37 @@ export function ChatArea({
                 {errorMessage}
               </div>
             ) : null}
-            <div style={{ position: "relative", height: virtualizer.totalHeight }}>
-              {virtualizer.virtualItems.map((virtualItem) => {
-                const message = virtualItem.item
-                const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
-                
-                return (
-                  <div
-                    key={virtualItem.id}
-                    ref={(el) => virtualizer.measureElement(virtualItem.id, el)}
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      transform: `translateY(${virtualItem.top}px)`,
-                    }}
-                  >
-                    {boundaryPart && boundaryPart.type === "compaction_boundary" ? (
-                      <CompactionDivider
-                        tokensBefore={boundaryPart.tokensBefore}
-                        tokensAfter={boundaryPart.tokensAfter}
-                      />
-                    ) : (
-                      <Message message={message} />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <ErrorBoundary>
+              <div style={{ position: "relative", height: virtualizer.totalHeight }}>
+                {virtualizer.virtualItems.map((virtualItem) => {
+                  const message = virtualItem.item
+                  const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
+
+                  return (
+                    <div
+                      key={virtualItem.id}
+                      ref={(el) => virtualizer.measureElement(virtualItem.id, el)}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualItem.top}px)`,
+                      }}
+                    >
+                      {boundaryPart && boundaryPart.type === "compaction_boundary" ? (
+                        <CompactionDivider
+                          tokensBefore={boundaryPart.tokensBefore}
+                          tokensAfter={boundaryPart.tokensAfter}
+                        />
+                      ) : (
+                        <Message message={message} />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </ErrorBoundary>
 
             {permissionRequests.map((request, index) => (
               <PermissionRequest
