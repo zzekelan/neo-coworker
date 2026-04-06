@@ -105,7 +105,7 @@ describe("agent loop", () => {
             type: "tool_result",
             callId: "call_1",
             toolName: "read",
-            output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+            output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
           },
         ],
       },
@@ -118,11 +118,11 @@ describe("agent loop", () => {
     ])
     expect(activeRunMessages[1]?.parts[2]).toMatchObject({
       kind: "tool_result",
-      text: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+      text: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
       data: {
         callId: "call_1",
         toolName: "read",
-        output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+        output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
       },
     })
     expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Summary complete." }])
@@ -173,7 +173,7 @@ describe("agent loop", () => {
             type: "tool.call",
             callId: "call_search",
             name: "grep",
-            inputText: '{"query":"fixture"}',
+            inputText: '{"pattern":"fixture"}',
           }
         },
         async function* () {
@@ -202,7 +202,7 @@ describe("agent loop", () => {
           type: "tool_result",
           callId: "call_read",
           toolName: "read",
-          output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+          output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
         },
       ],
     })
@@ -243,7 +243,7 @@ describe("agent loop", () => {
             type: "tool.call",
             callId: "call_search",
             name: "grep",
-            inputText: '{"query":"fixture"}',
+            inputText: '{"pattern":"fixture"}',
           }
         },
         async function* () {
@@ -279,7 +279,7 @@ describe("agent loop", () => {
           type: "tool_call",
           callId: "call_search",
           toolName: "grep",
-          inputText: '{"query":"fixture"}',
+          inputText: '{"pattern":"fixture"}',
         },
       ],
     })
@@ -290,7 +290,7 @@ describe("agent loop", () => {
           type: "tool_result",
           callId: "call_read",
           toolName: "read",
-          output: "# demo workspace\n\nThis fixture exists for the read-only tool tests.\n",
+          output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
         },
       ],
     })

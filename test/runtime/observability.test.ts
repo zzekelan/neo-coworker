@@ -873,9 +873,9 @@ describe("runtime observability", () => {
       repository: harness.repository,
       sessionId: harness.session.id,
       runId: "run_trace_microcompact_history",
-      toolName: "shell",
+      toolName: "read",
       resultCount: 7,
-      output: "shell output\n" + "x".repeat(600),
+      output: "1: previous read output\n2: " + "x".repeat(600),
     })
 
     const started = startPromptRun({

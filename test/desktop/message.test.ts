@@ -5,12 +5,12 @@ describe("desktop message", () => {
   test("uses a shared expandable renderer for noisy tool input and result fields", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
-    expect(source).toContain("const NOISY_TOOL_FIELDS = new Set([")
+    expect(source).toContain("const HIDDEN_TOOL_KEYS = new Set([")
     expect(source).toContain("\"command\"")
     expect(source).toContain("\"content\"")
     expect(source).toContain("\"inputText\"")
-    expect(source).toContain("<ToolValue fieldName={null} value={part.toolInput} />")
-    expect(source).toContain("<ToolValue fieldName={null} value={part.result} />")
+    expect(source).toContain("fieldName={detail.label} value={detail.value}")
+    expect(source).toContain("fieldName={fieldName} value={value}")
     expect(source).toContain("const ExpandableFieldValue")
     expect(source).toContain("{isExpanded ? text.message.showLess : text.message.showMore}")
   })

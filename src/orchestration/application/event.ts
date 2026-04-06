@@ -87,6 +87,12 @@ export type OrchestrationRuntimeEvent =
       output: string
     }
   | {
+      type: "tool.progress"
+      toolCallId: string
+      message: string
+      timestamp: number
+    }
+  | {
       type: "run.completed"
       runId: string
     }

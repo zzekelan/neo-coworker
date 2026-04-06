@@ -804,6 +804,14 @@ async function executeToolCall(input: {
       args,
       workspaceRoot: input.workspaceRoot,
       signal: input.signal,
+      onProgress: (message: string) => {
+        input.emit({
+          type: "tool.progress",
+          toolCallId: input.item.callId,
+          message,
+          timestamp: Date.now(),
+        })
+      },
     })
     if (input.signal.aborted) {
       throw createAbortError()
