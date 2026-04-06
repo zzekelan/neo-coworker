@@ -10,6 +10,7 @@ export { type ToolExecutionInput, type ToolExecutionResult } from "./result"
 
 export const WORKSPACE_SKIPPED_DIRECTORIES = new Set([
   ".agents",
+  ".ncoworker",
   ".git",
   "node_modules",
   ".worktrees",

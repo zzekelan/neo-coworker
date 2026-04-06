@@ -3,6 +3,7 @@ docs/task_contract
 docs/project-rules
 docs/ref
 .agents/
+.ncoworker/
 .github/
 .codex
 .playwright-mcp/

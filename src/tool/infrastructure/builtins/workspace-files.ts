@@ -8,10 +8,12 @@ import {
 
 const WORKSPACE_EXCLUDE_GLOBS = [
   "!.agents/**",
+  "!.ncoworker/**",
   "!.git/**",
   "!node_modules/**",
   "!.worktrees/**",
   "!**/.agents/**",
+  "!**/.ncoworker/**",
   "!**/.git/**",
   "!**/node_modules/**",
   "!**/.worktrees/**",
