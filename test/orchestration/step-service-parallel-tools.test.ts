@@ -79,15 +79,30 @@ describe("orchestration step service parallel tool execution", () => {
         await createDelay(30)
         return { output: "G".repeat(60_000) }
       },
+      async executeBatch(input) {
+        const results = await createOrchestrationToolBatchExecutor().execute({
+          calls: input.calls,
+          tools: this,
+          availableTools: this.list(),
+          workspaceRoot: input.workspaceRoot,
+          signal: input.signal,
+        })
+
+        return results.map((result) => ({
+          ...result,
+          ...manageResultSize({
+            output: result.output,
+            isError: result.isError,
+            metadata: result.metadata,
+          }),
+        }))
+      },
     }
     const stepService = createOrchestrationStepService({
       session,
       model,
       contextWindow,
       skill,
-      toolBatchExecutor: createOrchestrationToolBatchExecutor({
-        manageResultSize,
-      }),
       now: createMonotonicClock(),
     })
     const startedAt = Date.now()

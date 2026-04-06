@@ -12,13 +12,11 @@ import type {
 import type { OrchestrationSessionPort } from "../../application/ports/session"
 import type { OrchestrationSkillPort } from "../../application/ports/skill"
 import type {
-  OrchestrationToolBatchExecutor,
   OrchestrationToolPort,
   OrchestrationToolPortFactory,
 } from "../../application/ports/tool"
 import type { OrchestrationRuntimeObserverPort } from "../../application/ports/runtime-observer"
 import type { OrchestrationPermissionPolicy } from "../../application/permission"
-import { createOrchestrationToolBatchExecutor } from "../step-executor"
 import {
   type OrchestrationActiveRunRegistry,
 } from "./active-run-registry"
@@ -41,7 +39,6 @@ export type CreateOrchestrationRuntimeApiInput = {
   systemPrompt?: string
   now?: () => number
   runtimeObserver?: OrchestrationRuntimeObserverPort
-  toolBatchExecutor?: OrchestrationToolBatchExecutor
 }
 
 export type OrchestrationRunInput = {
@@ -69,13 +66,6 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     model: input.model,
     contextWindow,
     skill: input.skill,
-    toolBatchExecutor:
-      input.toolBatchExecutor ??
-      createOrchestrationToolBatchExecutor({
-        manageResultSize(result) {
-          return result
-        },
-      }),
     runtimeObserver: input.runtimeObserver,
     now,
   })

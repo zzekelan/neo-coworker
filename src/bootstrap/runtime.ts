@@ -134,9 +134,6 @@ export function createRuntime(input: RuntimeInput) {
     }),
     activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
     permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
-    toolBatchExecutor: createOrchestrationToolBatchExecutor({
-      manageResultSize,
-    }),
     systemPrompt: input.systemPrompt,
     now,
     runtimeObserver: observability?.runtimeObserver,
@@ -393,6 +390,8 @@ function createToolPortFactory(config: {
   skill: OrchestrationSkillPort
   now: () => number
 }): OrchestrationToolPortFactory {
+  const batchExecutor = createOrchestrationToolBatchExecutor()
+
   return {
     create(input) {
       const runtime = createBuiltinToolRuntime({
@@ -413,7 +412,7 @@ function createToolPortFactory(config: {
         ],
       })
 
-      return createToolProvider({
+      const provider = createToolProvider({
         runtime,
         observer: config.observer,
         scope: {
@@ -421,6 +420,28 @@ function createToolPortFactory(config: {
           runId: input.runId,
         },
       })
+
+      return {
+        ...provider,
+        async executeBatch(batchInput) {
+          const results = await batchExecutor.execute({
+            calls: batchInput.calls,
+            tools: provider,
+            availableTools: runtime.list(),
+            workspaceRoot: batchInput.workspaceRoot,
+            signal: batchInput.signal,
+          })
+
+          return results.map((result) => ({
+            ...result,
+            ...manageResultSize({
+              output: result.output,
+              isError: result.isError,
+              metadata: result.metadata,
+            }),
+          }))
+        },
+      }
     },
   }
 }

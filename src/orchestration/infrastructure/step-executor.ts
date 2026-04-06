@@ -1,10 +1,12 @@
-import type {
-  OrchestrationTool,
-  OrchestrationToolBatchExecutionOutcome,
-  OrchestrationToolBatchExecutor,
-  OrchestrationToolExecutionInput,
-  OrchestrationToolExecutionResult,
-  OrchestrationToolPort,
+import {
+  TOOL_FAILURE_MESSAGE_METADATA_KEY,
+  TOOL_PERMISSION_DENIED_METADATA_KEY,
+  type OrchestrationBatchExecutionResult,
+  type OrchestrationTool,
+  type OrchestrationToolCallRequest,
+  type OrchestrationToolExecutionInput,
+  type OrchestrationToolExecutionResult,
+  type OrchestrationToolPort,
 } from "../application/ports/tool"
 import {
   classifyToolCalls,
@@ -12,16 +14,15 @@ import {
   type ConcurrentToolDefinition,
 } from "./tool-executor"
 
-const TOOL_FAILURE_MESSAGE_METADATA_KEY = "__orchestrationToolFailureMessage"
-const TOOL_PERMISSION_DENIED_METADATA_KEY = "__orchestrationToolPermissionDenied"
-
-type CreateOrchestrationToolBatchExecutorInput = {
-  manageResultSize(result: OrchestrationToolExecutionResult): OrchestrationToolExecutionResult
-}
-
-export function createOrchestrationToolBatchExecutor(
-  input: CreateOrchestrationToolBatchExecutorInput,
-): OrchestrationToolBatchExecutor {
+export function createOrchestrationToolBatchExecutor(): {
+  execute(input: {
+    calls: OrchestrationToolCallRequest[]
+    tools: Pick<OrchestrationToolPort, "execute">
+    availableTools: OrchestrationTool[]
+    workspaceRoot: string
+    signal: AbortSignal
+  }): Promise<OrchestrationBatchExecutionResult[]>
+} {
   return {
     async execute(executeInput) {
       const executionTools = createConcurrentToolDefinitions({
@@ -43,34 +44,20 @@ export function createOrchestrationToolBatchExecutor(
           throw new Error(`Missing tool call for result index ${index}`)
         }
 
-        const toolFailureMessage = readMetadataString(result.metadata, TOOL_FAILURE_MESSAGE_METADATA_KEY)
-        if (toolFailureMessage) {
-          return {
-            status: "failed",
-            callId: call.callId,
-            toolName: call.toolName,
-            message: toolFailureMessage,
-            permissionDenied: readMetadataBoolean(
-              result.metadata,
-              TOOL_PERMISSION_DENIED_METADATA_KEY,
-            ),
-          } satisfies OrchestrationToolBatchExecutionOutcome
-        }
-
         return {
-          status: "completed",
           callId: call.callId,
           toolName: call.toolName,
-          result: input.manageResultSize(result),
-          rawOutput: result.output,
-        } satisfies OrchestrationToolBatchExecutionOutcome
+          output: result.output,
+          isError: result.isError,
+          metadata: result.metadata,
+        } satisfies OrchestrationBatchExecutionResult
       })
     },
   }
 }
 
 function createConcurrentToolDefinitions(input: {
-  tools: OrchestrationToolPort
+  tools: Pick<OrchestrationToolPort, "execute">
   availableTools: OrchestrationTool[]
   signal: AbortSignal
 }): ConcurrentToolDefinition[] {
@@ -115,12 +102,4 @@ function isDetachedError(error: unknown) {
 
 function isToolPermissionDeniedError(error: unknown) {
   return error instanceof Error && error.name === "ToolPermissionDeniedError"
-}
-
-function readMetadataString(metadata: Record<string, unknown> | undefined, key: string) {
-  return typeof metadata?.[key] === "string" ? metadata[key] : null
-}
-
-function readMetadataBoolean(metadata: Record<string, unknown> | undefined, key: string) {
-  return metadata?.[key] === true
 }

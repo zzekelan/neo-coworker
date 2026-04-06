@@ -21,7 +21,6 @@ import { createRecentFileTracker } from "./recent-file-tracker"
 import {
   createSkillReminderTracker,
 } from "./skill-reminder-tracker"
-import { manageResultSize } from "../../tool"
 
 type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 
@@ -849,15 +848,15 @@ async function executePendingToolCalls(input: {
     input.assistantTurn.appendToolResult({
       callId: result.callId,
       toolName: result.toolName,
-      output: manageResultSize(result).output,
-      isError: manageResultSize(result).isError,
-      metadata: manageResultSize(result).metadata,
+      output: result.output,
+      isError: result.isError,
+      metadata: result.metadata,
     })
     input.emit({
       type: "tool.call.completed",
       callId: result.callId,
       name: result.toolName,
-      output: manageResultSize(result).output,
+      output: result.output,
     })
 
     if (result.toolName === "read") {
