@@ -49,7 +49,7 @@ function toChatCompletionMessages(messages: ModelMessage[]): OpenAICompatibleMes
         serialized.push({
           role: "tool",
           tool_call_id: part.callId,
-          content: part.output,
+          content: serializeToolResult(part),
         })
       }
       continue
@@ -91,6 +91,10 @@ function toChatCompletionMessages(messages: ModelMessage[]): OpenAICompatibleMes
   }
 
   return serialized
+}
+
+function serializeToolResult(part: Extract<ModelMessage["parts"][number], { type: "tool_result" }>) {
+  return part.isError ? `[error] ${part.output}` : part.output
 }
 
 function unwrapSchema(schema: ZodTypeAny): ZodTypeAny {
@@ -141,7 +145,7 @@ function withDescription(
   return description ? { ...schema, description } : schema
 }
 
-function toJsonSchema(schema: ZodTypeAny): Record<string, unknown> {
+export function toJsonSchema(schema: ZodTypeAny): Record<string, unknown> {
   const unwrapped = unwrapSchema(schema)
   const typeName = unwrapped._def.typeName as string
 
