@@ -18,6 +18,7 @@ export type OrchestrationModelTurnRequest = {
   contextWindow?: number
   tools: OrchestrationTool[]
   transcript: OrchestrationTranscriptMessage[]
+  compressibleToolNames?: ReadonlySet<string>
   sessionId?: string
   runId?: string
   turnKey?: string

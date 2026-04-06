@@ -33,6 +33,7 @@ export type ModelProjectionInput = {
   contextWindow?: number
   tools: ModelTool[]
   transcript: ModelTranscriptMessage[]
+  compressibleToolNames?: ReadonlySet<string>
 }
 
 export type ModelTurnRequest = {

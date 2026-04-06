@@ -17,15 +17,13 @@ export const SYSTEM_REMINDER_NOTICE =
 export const MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT = "[Old tool result content cleared]"
 const MICROCOMPACT_TRIGGER_RATIO = 0.6
 const MICROCOMPACT_RETAINED_TOOL_RESULTS = 5
-const MICROCOMPACT_COMPRESSIBLE_TOOL_NAMES = new Set([
-  "grep",
+const MICROCOMPACT_DEFAULT_COMPRESSIBLE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "read",
   "glob",
-  "shell",
+  "grep",
   "webfetch",
   "websearch",
-  "read",
-  "edit",
-  "write",
+  "codesearch",
 ])
 
 export type ModelPromptSections = {
@@ -67,6 +65,7 @@ export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurn
     tools: input.tools,
     reminderMessages,
     unmodifiedRequest,
+    compressibleToolNames: input.compressibleToolNames ?? MICROCOMPACT_DEFAULT_COMPRESSIBLE_TOOL_NAMES,
   })
 
   if (!microcompact) {
@@ -407,6 +406,7 @@ function buildMicrocompactSummary(input: {
   tools: ModelTool[]
   reminderMessages: ModelMessage[]
   unmodifiedRequest: Pick<ModelTurnRequest, "system" | "messages" | "tools">
+  compressibleToolNames: ReadonlySet<string>
 }) {
   if (!input.contextWindow || input.contextWindow < 1) {
     return null
@@ -420,7 +420,7 @@ function buildMicrocompactSummary(input: {
     return null
   }
 
-  const compressibleToolResults = collectCompressibleToolResults(input.transcript)
+  const compressibleToolResults = collectCompressibleToolResults(input.transcript, input.compressibleToolNames)
   if (compressibleToolResults.length <= MICROCOMPACT_RETAINED_TOOL_RESULTS) {
     return null
   }
@@ -452,12 +452,15 @@ function buildMicrocompactSummary(input: {
   }
 }
 
-function collectCompressibleToolResults(transcript: ModelTranscriptMessage[]) {
+function collectCompressibleToolResults(
+  transcript: ModelTranscriptMessage[],
+  compressibleToolNames: ReadonlySet<string>,
+) {
   const compressibleToolResults: ModelTranscriptPart[] = []
 
   for (const message of transcript) {
     for (const part of message.parts) {
-      if (!isCompressibleToolResult(part)) {
+      if (!isCompressibleToolResult(part, compressibleToolNames)) {
         continue
       }
 
@@ -468,12 +471,12 @@ function collectCompressibleToolResults(transcript: ModelTranscriptMessage[]) {
   return compressibleToolResults
 }
 
-function isCompressibleToolResult(part: ModelTranscriptPart) {
+function isCompressibleToolResult(part: ModelTranscriptPart, compressibleToolNames: ReadonlySet<string>) {
   if (part.kind !== "tool_result") {
     return false
   }
 
   const data = readObject(part.data)
   const toolName = readString(data, "toolName")
-  return toolName !== null && MICROCOMPACT_COMPRESSIBLE_TOOL_NAMES.has(toolName)
+  return toolName !== null && compressibleToolNames.has(toolName)
 }

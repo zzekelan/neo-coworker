@@ -133,10 +133,10 @@ describe("orchestration model port", () => {
           messageId: `message_${index}`,
           kind: "tool_result",
           sequence: 0,
-          text: `shell result ${index}\n${"x".repeat(600)}`,
+          text: `grep result ${index}\n${"x".repeat(600)}`,
           data: {
             callId: `call_${index}`,
-            toolName: "shell",
+            toolName: "grep",
           },
           createdAt: index + 1,
         },
@@ -185,8 +185,8 @@ describe("orchestration model port", () => {
       MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT,
     ])
     expect(toolOutputs?.slice(-5)).toEqual(
-      Array.from({ length: 5 }, (_, index) => expect.stringContaining(`shell result ${index + 2}`)),
+      Array.from({ length: 5 }, (_, index) => expect.stringContaining(`grep result ${index + 2}`)),
     )
-    expect(transcript[0]?.parts[0]?.text).toContain("shell result 0")
+    expect(transcript[0]?.parts[0]?.text).toContain("grep result 0")
   })
 })
