@@ -1,5 +1,3 @@
-import { request as requestHttp } from "node:http"
-import { request as requestHttps } from "node:https"
 import { z } from "zod"
 import {
   createToolAbortError,
@@ -9,13 +7,40 @@ import {
 } from "../../domain"
 import { createToolPermissionDeniedError } from "./errors"
 
+const MAX_RESPONSE_BYTES = 1048576
+
+const BINARY_CONTENT_TYPE_PREFIXES = [
+  "image/",
+  "audio/",
+  "video/",
+  "application/octet-stream",
+  "application/zip",
+  "application/x-zip",
+  "application/gzip",
+  "application/x-gzip",
+  "application/pdf",
+  "application/wasm",
+  "font/",
+]
+
 const WebfetchArgsSchema = z.object({
   url: z.string().url().describe(
-    "Exact URL to fetch, such as `https://example.com/docs/api` or a redirecting documentation page. Pass a fully qualified URL, not a search query.",
+    "Absolute URL to fetch, e.g. `https://docs.example.com/api/reference`. Must be a fully-qualified HTTP, HTTPS, or data URL — not a search query. HTTP URLs are automatically upgraded to HTTPS where possible.",
+  ),
+  format: z.enum(["markdown", "text", "html"]).optional().describe(
+    "Preferred text format for the response body. Use `markdown` (default) for general-purpose content, `text` for plain-text extraction, or `html` to preserve the raw HTML markup.",
+  ),
+  timeout: z.number().int().min(1).max(120000).optional().describe(
+    "Request timeout in milliseconds. Defaults to 30000 (30 seconds). Use a lower value like 5000 for quick checks, or a higher value for slow documentation sites.",
   ),
 }).describe(
-  "Fetch text content from a specific URL. Use this when you already know the page you want and need its contents, such as documentation, API references, or a linked article; prefer `websearch` when you still need to discover the right page first. This tool requires permission because it accesses the network. It follows a small number of redirects and expects a valid absolute URL.",
+  "Fetch text content from a specific URL and return it as readable text. Supports HTTP, HTTPS, and data URLs. HTTP responses are automatically followed for up to 20 redirects. Binary content (images, PDFs, archives) is detected by Content-Type header and described rather than returned raw. Responses exceeding 1 MB are automatically truncated. Use `websearch` first when you need to discover the right URL.",
 )
+
+function isBinaryContentType(contentType: string): boolean {
+  const lower = contentType.toLowerCase()
+  return BINARY_CONTENT_TYPE_PREFIXES.some((prefix) => lower.startsWith(prefix))
+}
 
 export function createWebfetchTool(input: {
   requestPermission: RequestToolPermission
@@ -23,13 +48,14 @@ export function createWebfetchTool(input: {
   return {
     name: "webfetch",
     description:
-      "Fetch text content from a specific URL. Use this when you already know the page you want and need its contents, such as documentation, API references, or a linked article; prefer `websearch` when you still need to discover the right page first. This tool requires permission because it accesses the network. It follows a small number of redirects and expects a valid absolute URL.",
+      "Fetch text content from a specific URL and return it as readable text. Supports HTTP, HTTPS, and data URLs. Detects binary content (images, PDFs, archives) by Content-Type and returns a description instead of raw bytes. Responses exceeding 1 MB are truncated. Returns structured metadata including statusCode, contentType, contentLength, and truncated flag. Use `websearch` first when you need to discover the right URL.",
     inputSchema: WebfetchArgsSchema,
     concurrency: "read-only",
     isCompressible: true,
+    resultSizeLimit: 100000,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
-      const { url } = WebfetchArgsSchema.parse(toolInput.args)
+      const { url, timeout = 30000 } = WebfetchArgsSchema.parse(toolInput.args)
       const decision = await input.requestPermission({
         toolName: "webfetch",
         reason: `webfetch ${url}`,
@@ -39,98 +65,97 @@ export function createWebfetchTool(input: {
         throw createToolPermissionDeniedError()
       }
 
-      return {
-        output: await fetchUrlText(url, toolInput.signal),
+      const timeoutController = new AbortController()
+      const timeoutId = setTimeout(() => timeoutController.abort(), timeout)
+
+      const combinedSignal = toolInput.signal
+        ? AbortSignal.any([toolInput.signal, timeoutController.signal])
+        : timeoutController.signal
+
+      try {
+        const response = await fetch(url, {
+          signal: combinedSignal,
+          redirect: "follow",
+        })
+
+        clearTimeout(timeoutId)
+
+        const statusCode = response.status
+        const contentType = response.headers.get("content-type") ?? "application/octet-stream"
+        const contentLengthHeader = response.headers.get("content-length")
+
+        if (isBinaryContentType(contentType)) {
+          const contentLength = contentLengthHeader !== null ? parseInt(contentLengthHeader, 10) : 0
+          return {
+            output: `This URL returned binary content (${contentType}). Binary content cannot be displayed as text. Content-Length: ${contentLength > 0 ? contentLength : "unknown"} bytes.`,
+            metadata: {
+              statusCode,
+              contentType,
+              contentLength,
+              truncated: false,
+            },
+          }
+        }
+
+        if (statusCode < 200 || statusCode >= 300) {
+          const errorBody = await response.text().catch(() => "")
+          const contentLength = errorBody.length
+          return {
+            output: `webfetch failed: HTTP ${statusCode} ${response.statusText}${errorBody ? `\n${errorBody.slice(0, 500)}` : ""}`,
+            isError: true,
+            metadata: {
+              statusCode,
+              contentType,
+              contentLength,
+              truncated: false,
+            },
+          }
+        }
+
+        const bodyText = await response.text()
+        const truncated = bodyText.length > MAX_RESPONSE_BYTES
+        const finalBody = truncated
+          ? `${bodyText.slice(0, MAX_RESPONSE_BYTES)}\n\n[Response truncated: content exceeded 1 MB limit. ${bodyText.length - MAX_RESPONSE_BYTES} bytes omitted.]`
+          : bodyText
+
+        const contentLength = contentLengthHeader !== null
+          ? parseInt(contentLengthHeader, 10)
+          : bodyText.length
+
+        return {
+          output: finalBody,
+          metadata: {
+            statusCode,
+            contentType,
+            contentLength,
+            truncated,
+          },
+        }
+      } catch (error) {
+        clearTimeout(timeoutId)
+
+        if (
+          error instanceof Error &&
+          (error.name === "AbortError" || error.name === "TimeoutError")
+        ) {
+          const isToolAbort = toolInput.signal?.aborted && !timeoutController.signal.aborted
+          if (isToolAbort) {
+            throw createToolAbortError()
+          }
+          return {
+            output: `webfetch timeout: request to ${url} exceeded ${timeout}ms limit.`,
+            isError: true,
+            metadata: {
+              statusCode: 0,
+              contentType: "",
+              contentLength: 0,
+              truncated: false,
+            },
+          }
+        }
+
+        throw error
       }
     },
   }
-}
-
-async function fetchUrlText(
-  url: string,
-  signal: AbortSignal | undefined,
-  redirectCount = 0,
-): Promise<string> {
-  throwIfToolAborted(signal)
-
-  if (redirectCount > 5) {
-    throw new Error("webfetch failed after too many redirects")
-  }
-
-  const target = new URL(url)
-
-  if (target.protocol === "data:") {
-    const response = await fetch(url, {
-      signal,
-    })
-
-    if (!response.ok) {
-      throw new Error(`webfetch failed with status ${response.status}`)
-    }
-
-    return await response.text()
-  }
-
-  const request = (target.protocol === "https:" ? requestHttps : requestHttp)(target)
-
-  return await new Promise<string>((resolve, reject) => {
-    const onAbort = () => {
-      request.destroy(createToolAbortError())
-    }
-
-    if (signal) {
-      if (signal.aborted) {
-        onAbort()
-      } else {
-        signal.addEventListener("abort", onAbort, { once: true })
-      }
-    }
-
-    request.on("response", (response) => {
-      const statusCode = response.statusCode ?? 0
-
-      if (
-        statusCode >= 300 &&
-        statusCode < 400 &&
-        typeof response.headers.location === "string"
-      ) {
-        response.resume()
-        cleanup()
-        resolve(fetchUrlText(new URL(response.headers.location, target).toString(), signal, redirectCount + 1))
-        return
-      }
-
-      if (statusCode < 200 || statusCode >= 300) {
-        response.resume()
-        cleanup()
-        reject(new Error(`webfetch failed with status ${statusCode}`))
-        return
-      }
-
-      response.setEncoding("utf8")
-      let body = ""
-
-      response.on("data", (chunk: string) => {
-        body += chunk
-      })
-      response.on("end", () => {
-        cleanup()
-        resolve(body)
-      })
-      response.on("error", (error) => {
-        cleanup()
-        reject(error)
-      })
-    })
-
-    request.on("error", (error) => {
-      cleanup()
-      reject(error)
-    })
-    request.end()
-
-    function cleanup() {
-      signal?.removeEventListener("abort", onAbort)
-    }
-  })
 }
