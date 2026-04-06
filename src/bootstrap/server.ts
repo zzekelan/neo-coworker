@@ -1,4 +1,3 @@
-import { join } from "node:path"
 import {
   createSessionRepository,
   openSessionDatabase,
@@ -16,6 +15,7 @@ import { createWorkspaceSkillRuntime } from "../skill"
 import { createDefaultProvider, resolveContextWindowSize } from "./provider"
 import { createDefaultSearchBackend } from "./search"
 import { createRuntime } from "./runtime"
+import { getServerStoragePath } from "./paths"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
 const DEFAULT_SERVER_PORT = 3100
@@ -27,7 +27,7 @@ export type StandaloneServerConfig = {
 }
 
 export function getDefaultStandaloneServerStoragePath(cwd: string = process.cwd()) {
-  return join(cwd, ".agents", "server.sqlite")
+  return getServerStoragePath(cwd)
 }
 
 export function resolveStandaloneServerConfig(

@@ -1,5 +1,5 @@
-import { join } from "node:path"
 import { z } from "zod"
+import { getStoragePath } from "./paths"
 import {
   assertRunStatusTransition,
   createSessionRepository as createStorageRepository,
@@ -141,7 +141,7 @@ export function createRuntime(input: RuntimeInput) {
 }
 
 export function getDefaultCliStoragePath(workspaceRoot: string) {
-  return join(workspaceRoot, ".agents", "agent.sqlite")
+  return getStoragePath(workspaceRoot)
 }
 
 export function createCliStorageComposition(input: {

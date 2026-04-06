@@ -33,7 +33,7 @@ afterEach(async () => {
 describe("standalone server config", () => {
   test("derives the default storage path from the launch cwd", () => {
     expect(getDefaultStandaloneServerStoragePath("/tmp/neo-workspace")).toBe(
-      join("/tmp/neo-workspace", ".agents", "server.sqlite"),
+      join("/tmp/neo-workspace", ".ncoworker", "server.sqlite"),
     )
   })
 
