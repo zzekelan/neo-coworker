@@ -16,6 +16,7 @@ export type ModelToolResultPart = {
   toolName: string
   output: string
   isError?: boolean
+  metadata?: Record<string, unknown>
 }
 
 export type ModelMessagePart =

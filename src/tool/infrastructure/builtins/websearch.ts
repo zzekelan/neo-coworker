@@ -29,6 +29,8 @@ export function createWebsearchTool(input: {
     description:
       "Search the web for external information using the configured search backend. Use this when the answer likely lives outside the repository, especially for current facts, broad research, or finding candidate URLs before using `webfetch`. This tool requires permission and only works when a search backend is configured. Pass a focused natural-language query rather than a URL.",
     inputSchema: WebsearchArgsSchema,
+    concurrency: "read-only",
+    isCompressible: true,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
       const { query } = WebsearchArgsSchema.parse(toolInput.args)

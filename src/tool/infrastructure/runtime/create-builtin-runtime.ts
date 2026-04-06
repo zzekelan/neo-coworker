@@ -22,23 +22,50 @@ export type CreateBuiltinToolRuntimeInput = {
 export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = {}) {
   const requestPermission = input.requestPermission ?? denyPermission
 
+  function annotateDefaults(tool: ToolDefinition): ToolDefinition {
+    if (
+      tool.name === "read" ||
+      tool.name === "glob" ||
+      tool.name === "grep" ||
+      tool.name === "webfetch" ||
+      tool.name === "websearch" ||
+      tool.name === "codesearch"
+    ) {
+      return {
+        ...tool,
+        concurrency: tool.concurrency ?? "read-only",
+        isCompressible: tool.isCompressible ?? true,
+      }
+    }
+
+    if (tool.name === "write" || tool.name === "edit" || tool.name === "shell") {
+      return {
+        ...tool,
+        concurrency: tool.concurrency ?? "mutating",
+        isCompressible: tool.isCompressible ?? false,
+      }
+    }
+
+    return tool
+  }
+
   return createToolRuntimeApi({
     tools: [
-      createReadTool(),
-      createGlobTool(),
-      createGrepTool(),
-      createWebfetchTool({ requestPermission }),
-      createWebsearchTool({
+      annotateDefaults(createReadTool()),
+      annotateDefaults(createGlobTool()),
+      annotateDefaults(createGrepTool()),
+      annotateDefaults(createWebfetchTool({ requestPermission })),
+      annotateDefaults(createWebsearchTool({
         requestPermission,
         searchBackend: input.searchBackend,
-      }),
-      createCodesearchTool({
+      })),
+      annotateDefaults(createCodesearchTool({
         requestPermission,
         searchBackend: input.searchBackend,
-      }),
-      createWriteTool({ requestPermission }),
-      createEditTool({ requestPermission }),
-      createShellTool({ requestPermission }),
+      })),
+      annotateDefaults(createWriteTool({ requestPermission })),
+      annotateDefaults(createEditTool({ requestPermission })),
+      annotateDefaults(createShellTool({ requestPermission })),
       ...(input.extraTools ?? []),
     ],
   })

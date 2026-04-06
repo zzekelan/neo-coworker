@@ -29,6 +29,8 @@ export function createCodesearchTool(input: {
     description:
       "Search technical documentation and code-oriented external context through the configured backend. Use this for library APIs, framework behavior, exact error strings, or implementation patterns when repository-local search is not enough. This tool requires permission and depends on the external search backend being configured. Pass a targeted technical query with library names, APIs, or error text for the best results.",
     inputSchema: CodesearchArgsSchema,
+    concurrency: "read-only",
+    isCompressible: true,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
       const { query } = CodesearchArgsSchema.parse(toolInput.args)

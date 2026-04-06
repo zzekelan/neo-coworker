@@ -24,4 +24,10 @@ export type ToolCatalogEntry = {
 
 export type ToolDefinition = ToolCatalogEntry & {
   execute(input: ToolExecutionInput): Promise<ToolExecutionResult> | ToolExecutionResult
+  concurrency?: "read-only" | "mutating"
+  isConcurrencySafe?: (input: unknown) => boolean
+  usageGuidance?: string
+  resultSizeLimit?: number
+  isCompressible?: boolean
+  timeout?: number
 }

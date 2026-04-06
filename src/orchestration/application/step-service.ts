@@ -813,6 +813,8 @@ async function executeToolCall(input: {
       callId: input.item.callId,
       toolName: input.item.name,
       output: result.output,
+      isError: result.isError,
+      metadata: result.metadata,
     })
     input.emit({
       type: "tool.call.completed",
@@ -947,6 +949,8 @@ function createAssistantTurnRecorder(input: {
       callId: string
       toolName: string
       output: string
+      isError?: boolean
+      metadata?: Record<string, unknown>
     }) {
       createPart({
         kind: "tool_result",
@@ -955,6 +959,8 @@ function createAssistantTurnRecorder(input: {
           callId: toolResult.callId,
           toolName: toolResult.toolName,
           output: toolResult.output,
+          isError: toolResult.isError,
+          metadata: toolResult.metadata,
         },
       })
     },

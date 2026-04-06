@@ -41,6 +41,8 @@ export function createGrepTool(): ToolDefinition {
     description:
       "Search visible workspace files for literal text or regex matches, optionally filter searched files by glob, choose line/file/count output modes, and cap total results with headLimit. Use this to locate where a symbol, message, or snippet appears before deciding which files to read or edit. Results still respect workspace visibility rules and are truncated when many matches are returned.",
     inputSchema: GrepArgsSchema,
+    concurrency: "read-only",
+    isCompressible: true,
     async execute(input) {
       const { query, useRegex, include, outputMode = "content", headLimit } = GrepArgsSchema.parse(input.args)
       const files = await listWorkspaceFiles({

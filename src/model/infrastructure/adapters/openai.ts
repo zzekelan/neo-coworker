@@ -35,7 +35,7 @@ function toResponseInput(message: ModelMessage): OpenAIResponseInputItem[] {
             {
               type: "function_call_output" as const,
               call_id: part.callId,
-              output: part.output,
+              output: serializeToolResult(part),
             },
           ]
         : [],
@@ -70,6 +70,10 @@ function toResponseInput(message: ModelMessage): OpenAIResponseInputItem[] {
   }
 
   return items
+}
+
+function serializeToolResult(part: Extract<ModelMessage["parts"][number], { type: "tool_result" }>) {
+  return part.isError ? `[error] ${part.output}` : part.output
 }
 
 function toResponseInputs(messages: ModelMessage[]): OpenAIResponseInput {

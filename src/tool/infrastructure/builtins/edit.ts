@@ -46,6 +46,8 @@ export function createEditTool(input: { requestPermission: RequestToolPermission
     description:
       "Replace one exact text span in an existing workspace file. Use this after reading a file when you want a precise, minimal change without rewriting the whole file. This tool requires permission and only succeeds when `oldText` matches exactly once, so include enough context to avoid ambiguous replacements. Paths must stay inside the workspace.",
     inputSchema: EditArgsSchema,
+    concurrency: "mutating",
+    isCompressible: false,
     async execute(value) {
       throwIfToolAborted(value.signal)
       const { path, oldText, newText } = EditArgsSchema.parse(value.args)

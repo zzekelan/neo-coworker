@@ -54,6 +54,8 @@ export function createWriteTool(input: { requestPermission: RequestToolPermissio
     description:
       "Create or overwrite a UTF-8 file inside the workspace. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. This tool requires permission because it mutates workspace state. Paths must stay inside the workspace.",
     inputSchema: WriteArgsSchema,
+    concurrency: "mutating",
+    isCompressible: false,
     async execute(value) {
       throwIfToolAborted(value.signal)
       const { path, content } = WriteArgsSchema.parse(value.args)

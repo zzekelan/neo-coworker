@@ -89,6 +89,8 @@ export function createShellTool(input: { requestPermission: RequestToolPermissio
     name: "shell",
     description: "Run a shell command with the workspace as the current directory",
     inputSchema: ShellArgsSchema,
+    concurrency: "mutating",
+    isCompressible: false,
     async execute(value) {
       const signal = value.signal
 

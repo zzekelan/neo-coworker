@@ -45,6 +45,8 @@ export function createReadTool(): ToolDefinition {
     description:
       "Read UTF-8 text contents from a file inside the workspace, either as the full file or as a numbered line window with optional offset and limit. Use this before editing, when you need to inspect existing code or docs, or when another tool tells you which file to open next. Prefer this over shell commands like `cat` for workspace files because it stays inside workspace guards and avoids unnecessary shell usage. The path must resolve inside the workspace and `.agents/**` runtime data is blocked.",
     inputSchema: ReadArgsSchema,
+    concurrency: "read-only",
+    isCompressible: true,
     async execute(input) {
       throwIfToolAborted(input.signal)
       const { path, offset, limit } = ReadArgsSchema.parse(input.args)

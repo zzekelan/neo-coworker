@@ -12,10 +12,13 @@ export type OrchestrationToolExecutionInput = {
   args: unknown
   workspaceRoot: string
   signal?: AbortSignal
+  onProgress?: (message: string) => void
 }
 
 export type OrchestrationToolExecutionResult = {
   output: string
+  isError?: boolean
+  metadata?: Record<string, unknown>
 }
 
 export type OrchestrationToolPort = {

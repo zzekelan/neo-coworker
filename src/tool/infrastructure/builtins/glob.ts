@@ -23,6 +23,8 @@ export function createGlobTool(): ToolDefinition {
     description:
       "Find workspace files by glob pattern and return matching relative paths, with optional path scoping to a workspace subdirectory. Use this when you know the filename shape or extension but not the exact location, or when you need a quick candidate list before reading files. Prefer this over shell `find` for normal workspace discovery because it stays within workspace visibility rules. Hidden runtime state under `.agents/**` is excluded and long result sets are truncated.",
     inputSchema: GlobArgsSchema,
+    concurrency: "read-only",
+    isCompressible: true,
     async execute(input) {
       const { pattern, path } = GlobArgsSchema.parse(input.args)
       const matches = await listWorkspaceFiles({

@@ -25,6 +25,8 @@ export function createWebfetchTool(input: {
     description:
       "Fetch text content from a specific URL. Use this when you already know the page you want and need its contents, such as documentation, API references, or a linked article; prefer `websearch` when you still need to discover the right page first. This tool requires permission because it accesses the network. It follows a small number of redirects and expects a valid absolute URL.",
     inputSchema: WebfetchArgsSchema,
+    concurrency: "read-only",
+    isCompressible: true,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
       const { url } = WebfetchArgsSchema.parse(toolInput.args)
