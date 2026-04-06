@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react"
-import { Check, ShieldAlert, X } from "lucide-react"
 import { motion } from "framer-motion"
 import type { DesktopPermissionRequest } from "../view-types"
 import { useDesktopText } from "../i18n"
@@ -8,6 +7,19 @@ interface Props {
   request: DesktopPermissionRequest
   onReply: (id: string, decision: "allow" | "deny") => boolean | Promise<boolean>
   autoFocus?: boolean
+}
+
+function getRiskIndicator(toolName: string) {
+  if (toolName === "shell") {
+    return { colorClass: "bg-danger", textClass: "text-danger", label: "shell" }
+  }
+  if (["write", "edit", "remove"].includes(toolName)) {
+    return { colorClass: "bg-highlight", textClass: "text-highlight", label: "mutating" }
+  }
+  if (["webfetch", "websearch", "codesearch", "read", "glob", "grep"].includes(toolName)) {
+    return { colorClass: "bg-success", textClass: "text-success", label: "read-only" }
+  }
+  return { colorClass: "bg-highlight", textClass: "text-highlight", label: "mutating" }
 }
 
 export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus = false }) => {
@@ -45,6 +57,12 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
     }
   }
 
+  const risk = getRiskIndicator(request.toolName)
+  const argsText =
+    request.reason.length > 80
+      ? request.reason.slice(0, 80) + "…"
+      : request.reason
+
   return (
     <motion.div
       ref={cardRef}
@@ -66,41 +84,36 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
           void submitReply("deny")
         }
       }}
-      className="my-6 max-w-3xl rounded-xl border border-border bg-paper p-5 shadow-sm"
+      className="relative my-6 max-w-3xl overflow-hidden rounded-[12px] border border-border bg-surface px-[20px] py-[16px] shadow-sm"
     >
-      <div className="flex items-start gap-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10">
-          <ShieldAlert className="h-5 w-5 text-amber-500" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="mb-1 text-base font-semibold text-ink">{text.permission.title}</h3>
-          <p className="mb-4 text-sm leading-relaxed text-muted">
-            {text.permission.requestTool(request.toolName)}
-          </p>
+      <div className={`absolute bottom-0 left-0 top-0 w-[3px] ${risk.colorClass}`} />
+      
+      <div className="mb-2 flex items-center gap-2">
+        <span className="font-semibold text-ink">{request.toolName}</span>
+        <span className={`rounded-full bg-border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${risk.textClass}`}>
+          {risk.label}
+        </span>
+      </div>
 
-          <div className="mb-5 rounded-lg border border-border bg-surface p-3 font-mono text-xs text-ink">
-            {request.reason}
-          </div>
+      <div className="mb-4 font-mono text-[13px] text-muted break-all">
+        {argsText}
+      </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              disabled={isSubmitting}
-              onClick={() => void submitReply("allow")}
-              className="flex items-center gap-2 rounded-lg bg-surface px-4 py-2 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-border"
-            >
-              <Check className="h-4 w-4" />
-              {text.permission.allow}
-            </button>
-            <button
-              disabled={isSubmitting}
-              onClick={() => void submitReply("deny")}
-              className="flex items-center gap-2 rounded-lg border border-border bg-paper px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-surface"
-            >
-              <X className="h-4 w-4" />
-              {text.permission.deny}
-            </button>
-          </div>
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <button
+          disabled={isSubmitting}
+          onClick={() => void submitReply("deny")}
+          className="rounded-md bg-transparent px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-border/50"
+        >
+          {text.permission.deny}
+        </button>
+        <button
+          disabled={isSubmitting}
+          onClick={() => void submitReply("allow")}
+          className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-paper transition-colors hover:opacity-90"
+        >
+          {text.permission.allow}
+        </button>
       </div>
     </motion.div>
   )
