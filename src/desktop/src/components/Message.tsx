@@ -50,7 +50,7 @@ const HIDDEN_TOOL_KEYS = new Set([
 
 type ToolStatus = Extract<MessagePart, { type: "tool_call" }>["status"]
 
-export const Message: React.FC<{ message: DesktopTranscriptMessage }> = ({ message }) => {
+const MessageComponent: React.FC<{ message: DesktopTranscriptMessage }> = ({ message }) => {
   const isUser = message.role === "user"
   const toolCallLookup = useMemo(
     () =>
@@ -108,6 +108,8 @@ export const Message: React.FC<{ message: DesktopTranscriptMessage }> = ({ messa
     </ErrorBoundary>
   )
 }
+
+export const Message = React.memo(MessageComponent)
 
 const MessagePartRenderer: React.FC<{
   part: MessagePart
@@ -173,7 +175,7 @@ const ToolActivityCard: React.FC<{
   details: DetailItem[]
   resultTone?: boolean
   emptyDetailsLabel?: string
-}> = ({ toolName, icon, title, subtitle, status, details, resultTone = false, emptyDetailsLabel }) => {
+}> = React.memo(({ toolName, icon, title, subtitle, status, details, resultTone = false, emptyDetailsLabel }) => {
   const text = useDesktopText()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
@@ -257,9 +259,9 @@ const ToolActivityCard: React.FC<{
       </div>
     </div>
   )
-}
+})
 
-const ToolStatusBadge: React.FC<{ status: ToolStatus; toolName?: string }> = ({ status, toolName }) => {
+const ToolStatusBadge: React.FC<{ status: ToolStatus; toolName?: string }> = React.memo(({ status, toolName }) => {
   const text = useDesktopText()
 
   const isMutating = isToolMutating(toolName)
@@ -323,7 +325,7 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus; toolName?: string }> = ({ 
       </span>
     </>
   )
-}
+})
 
 type DetailItem = {
   label: string

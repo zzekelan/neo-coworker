@@ -4,18 +4,31 @@ import type { Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "../lib/utils"
 
-export function MarkdownText(input: {
+function parseMarkdown(text: string) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {text}
+    </ReactMarkdown>
+  )
+}
+
+function MarkdownTextComponent(input: {
   text: string
   className?: string
 }) {
+  const isTest = typeof process !== "undefined" && process.env.NODE_ENV === "test"
+  const content = isTest
+    ? parseMarkdown(input.text)
+    : React.useMemo(() => parseMarkdown(input.text), [input.text])
+
   return (
     <div className={cn("min-w-0", input.className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {input.text}
-      </ReactMarkdown>
+      {content}
     </div>
   )
 }
+
+export const MarkdownText = React.memo(MarkdownTextComponent)
 
 function isSafeHref(href: string) {
   return /^(https?:|mailto:)/.test(href)

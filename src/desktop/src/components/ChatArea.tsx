@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import {
   ArrowUp,
   ChevronDown,
@@ -275,13 +275,13 @@ export function ChatArea({
     viewport.scrollTop = viewport.scrollHeight
   }, [transcript, permissionRequests, session?.activeRun?.status, virtualizer.totalHeight])
 
-  const stickTranscriptToBottom = () => {
+  const stickTranscriptToBottom = useCallback(() => {
     shouldStickToBottomRef.current = true
     const viewport = transcriptViewportRef.current
     if (viewport) {
       viewport.scrollTop = viewport.scrollHeight
     }
-  }
+  }, [])
 
   const submitMessage = async () => {
     const nextInput = input
@@ -312,7 +312,7 @@ export function ChatArea({
     void submitMessage()
   }
 
-  const getSessionSkillQueue = (sessionId: string) => {
+  const getSessionSkillQueue = useCallback((sessionId: string) => {
     if (
       sessionSkillQueueRef.current.sessionId === sessionId &&
       sessionSkillQueueRef.current.queue
@@ -341,9 +341,9 @@ export function ChatArea({
       queue,
     }
     return queue
-  }
+  }, [onSetSessionActiveSkills])
 
-  const updateSkillSet = async (skillName: string, enabled: boolean) => {
+  const updateSkillSet = useCallback(async (skillName: string, enabled: boolean) => {
     if (!sessionSummary || isRunSkillEditingLocked) {
       return
     }
@@ -357,9 +357,9 @@ export function ChatArea({
       enabled,
     })
     getSessionSkillQueue(sessionSummary.id).enqueue(nextSkills)
-  }
+  }, [sessionSummary, isRunSkillEditingLocked, sessionSummaryWithOptimisticSkills, getSessionSkillQueue])
 
-  const setDefaultSkill = async (skillName: string) => {
+  const setDefaultSkill = useCallback(async (skillName: string) => {
     if (!sessionSummary || isRunSkillEditingLocked) {
       return
     }
@@ -373,12 +373,15 @@ export function ChatArea({
       enabled: true,
     })
     getSessionSkillQueue(sessionSummary.id).enqueue(nextSkills)
-  }
+  }, [sessionSummary, isRunSkillEditingLocked, sessionSummaryWithOptimisticSkills, getSessionSkillQueue])
 
-  const handlePermissionReply = (requestId: string, decision: "allow" | "deny") => {
+  const handlePermissionReply = useCallback((requestId: string, decision: "allow" | "deny") => {
     stickTranscriptToBottom()
     return onReplyPermission(requestId, decision)
-  }
+  }, [stickTranscriptToBottom, onReplyPermission])
+
+  const handleStartSkill = useCallback((skillName: string) => updateSkillSet(skillName, true), [updateSkillSet])
+  const handleStopSkill = useCallback((skillName: string) => updateSkillSet(skillName, false), [updateSkillSet])
 
   const isInputLocked = isBusy || isSubmittingMessage
 
@@ -571,19 +574,19 @@ export function ChatArea({
                   className="overflow-hidden"
                 >
                   <motion.div layout transition={SKILL_DRAWER_TRANSITION}>
-                    <SkillPanel
-                      skills={skills}
-                      query={skillFilter}
-                      session={sessionSummaryWithOptimisticSkills}
-                      activeRun={session?.activeRun}
-                      controlsDisabled={isRunSkillEditingLocked}
-                      busySkillName={busySkillName}
-                      errorMessage={skillErrorMessage}
-                      warningMessage={skillWarningMessage}
-                      onStartSkill={(skillName) => updateSkillSet(skillName, true)}
-                      onStopSkill={(skillName) => updateSkillSet(skillName, false)}
-                      onSetDefaultSkill={setDefaultSkill}
-                    />
+                      <SkillPanel
+                        skills={skills}
+                        query={skillFilter}
+                        session={sessionSummaryWithOptimisticSkills}
+                        activeRun={session?.activeRun}
+                        controlsDisabled={isRunSkillEditingLocked}
+                        busySkillName={busySkillName}
+                        errorMessage={skillErrorMessage}
+                        warningMessage={skillWarningMessage}
+                        onStartSkill={handleStartSkill}
+                        onStopSkill={handleStopSkill}
+                        onSetDefaultSkill={setDefaultSkill}
+                      />
                     <div className="mb-3">
                       <input
                         value={skillFilter}
