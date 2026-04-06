@@ -12,13 +12,14 @@ import {
   createToolSetupError,
 } from "./errors"
 
+const NO_RESULTS_MESSAGE =
+  "No results found. Try: searching for actual code patterns (e.g. 'useState(' not 'how to use useState'), different library names, specific error messages, or use grep for local repository searches."
+
 const CodesearchArgsSchema = z.object({
   query: z.string().trim().min(1, "Query must not be empty").describe(
-    "Technical search query for API, library, or code-oriented information, such as `zod describe json schema openai tools` or `bun spawn stdout pipe example`.",
+    "Actual code patterns, API names, or technical identifiers to search for, such as 'useState(' or 'import React from' or 'async function $NAME($$$)'. Search for literal code that would appear in files, not keyword descriptions. Include library names, method signatures, or error text for best results.",
   ),
-}).describe(
-  "Search technical documentation and code-oriented external context through the configured backend. Use this for library APIs, framework behavior, exact error strings, or implementation patterns when repository-local search is not enough. This tool requires permission and depends on the external search backend being configured. Pass a targeted technical query with library names, APIs, or error text for the best results.",
-)
+})
 
 export function createCodesearchTool(input: {
   requestPermission: RequestToolPermission
@@ -27,10 +28,12 @@ export function createCodesearchTool(input: {
   return {
     name: "codesearch",
     description:
-      "Search technical documentation and code-oriented external context through the configured backend. Use this for library APIs, framework behavior, exact error strings, or implementation patterns when repository-local search is not enough. This tool requires permission and depends on the external search backend being configured. Pass a targeted technical query with library names, APIs, or error text for the best results.",
+      "Search public code repositories for real-world implementation examples, library API usage patterns, and technical code snippets. Use this tool when you need to see how actual code is written in production repositories — for library APIs, framework integration patterns, specific function signatures, or error handling idioms that are not present in the local workspace. Unlike `grep` which searches the local repository, codesearch searches external public codebases. Pass actual code patterns (identifiers, function calls, import statements) rather than natural-language descriptions. Requires a configured search backend and explicit permission.",
     inputSchema: CodesearchArgsSchema,
     concurrency: "read-only",
     isCompressible: true,
+    usageGuidance:
+      "Use codesearch for external code examples when local grep/glob finds nothing useful. Search for actual code patterns like 'getServerSession(' or 'ErrorBoundary' rather than keyword descriptions like 'how to handle errors'. Filter by language or repository when you need targeted results. Use grep or glob for local workspace searches — codesearch is for discovering external patterns and real-world usage across public repositories.",
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
       const { query } = CodesearchArgsSchema.parse(toolInput.args)
@@ -49,12 +52,23 @@ export function createCodesearchTool(input: {
         )
       }
 
+      const raw = await input.searchBackend({
+        toolName: "codesearch",
+        query,
+        signal: toolInput.signal,
+      })
+
+      const isEmpty = !raw || raw.trim().length === 0
+      const output = isEmpty ? NO_RESULTS_MESSAGE : raw
+      const resultCount = isEmpty ? 0 : 1
+
       return {
-        output: await input.searchBackend({
-          toolName: "codesearch",
+        output,
+        metadata: {
           query,
-          signal: toolInput.signal,
-        }),
+          resultCount,
+          truncated: false,
+        },
       }
     },
   }

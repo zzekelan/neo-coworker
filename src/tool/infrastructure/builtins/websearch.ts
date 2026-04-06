@@ -12,13 +12,14 @@ import {
   createToolSetupError,
 } from "./errors"
 
+const NO_RESULTS_MESSAGE =
+  "No results found. Try: broader query terms, different keywords, checking spelling, or use webfetch with a specific URL if you already know the source."
+
 const WebsearchArgsSchema = z.object({
   query: z.string().trim().min(1, "Query must not be empty").describe(
-    "Natural-language web search query describing the information you need, such as `latest Bun shell API docs` or `OpenAI tool calling JSON schema examples`.",
+    "Natural-language description of the ideal page to find, such as 'blog post comparing React and Vue performance 2024' or 'Next.js getServerSession JWT authentication example'. Describe the ideal content rather than using keyword fragments. Prefer full sentences or rich phrases over abbreviations.",
   ),
-}).describe(
-  "Search the web for external information using the configured search backend. Use this when the answer likely lives outside the repository, especially for current facts, broad research, or finding candidate URLs before using `webfetch`. This tool requires permission and only works when a search backend is configured. Pass a focused natural-language query rather than a URL.",
-)
+})
 
 export function createWebsearchTool(input: {
   requestPermission: RequestToolPermission
@@ -27,10 +28,12 @@ export function createWebsearchTool(input: {
   return {
     name: "websearch",
     description:
-      "Search the web for external information using the configured search backend. Use this when the answer likely lives outside the repository, especially for current facts, broad research, or finding candidate URLs before using `webfetch`. This tool requires permission and only works when a search backend is configured. Pass a focused natural-language query rather than a URL.",
+      "Search the web for current information, broad research, or candidate URLs using natural-language queries. Use this tool when the answer likely lives outside the repository — for news, current events, external documentation, or discovering relevant pages before fetching them with `webfetch`. Unlike `webfetch`, which retrieves a specific known URL, websearch discovers pages by query. Pass a natural-language description of the ideal page rather than keywords or a URL. Requires a configured search backend and explicit permission.",
     inputSchema: WebsearchArgsSchema,
     concurrency: "read-only",
     isCompressible: true,
+    usageGuidance:
+      "Prefer websearch over webfetch when you do not yet know the URL. Describe the ideal page content in natural language — 'tutorial on React server components with code examples' performs better than 'react server components'. Use webfetch once you have a URL to retrieve full page content. Do not use websearch for repository-local searches; use grep or glob instead.",
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
       const { query } = WebsearchArgsSchema.parse(toolInput.args)
@@ -49,12 +52,23 @@ export function createWebsearchTool(input: {
         )
       }
 
+      const raw = await input.searchBackend({
+        toolName: "websearch",
+        query,
+        signal: toolInput.signal,
+      })
+
+      const isEmpty = !raw || raw.trim().length === 0
+      const output = isEmpty ? NO_RESULTS_MESSAGE : raw
+      const resultCount = isEmpty ? 0 : 1
+
       return {
-        output: await input.searchBackend({
-          toolName: "websearch",
+        output,
+        metadata: {
           query,
-          signal: toolInput.signal,
-        }),
+          resultCount,
+          truncated: false,
+        },
       }
     },
   }
