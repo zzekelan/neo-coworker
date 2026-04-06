@@ -23,6 +23,7 @@ import {
 import {
   upsertTranscriptMessage,
   upsertTranscriptMessagePart,
+  updateToolProgress,
 } from "./transcript-state"
 import { loadDesktopRefreshCore, mergeWorkspaces } from "./refresh-data"
 import type {
@@ -285,6 +286,7 @@ export function useDesktopApp() {
                 latestRun: event.latestRun,
                 activeRun: event.activeRun,
                 status: event.status,
+                contextUsage: previous.sessionSnapshot?.contextUsage ?? null,
               }
             : previous.sessionSnapshot,
       }))
@@ -349,6 +351,14 @@ export function useDesktopApp() {
       setState((previous) => ({
         ...previous,
         transcript: upsertTranscriptMessagePart(previous.transcript, event.part),
+      }))
+      return
+    }
+
+    if (event.type === "tool.progress") {
+      setState((previous) => ({
+        ...previous,
+        transcript: updateToolProgress(previous.transcript, event.toolCallId, event.message),
       }))
       return
     }
@@ -526,6 +536,7 @@ export function useDesktopApp() {
             latestRun: null,
             activeRun: null,
             status: "idle",
+            contextUsage: null,
           },
           sessionRuns: [],
           transcript: [],

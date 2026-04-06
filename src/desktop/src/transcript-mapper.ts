@@ -79,6 +79,7 @@ function mapMessagePart(
       toolInput: buildToolCallInput(part),
       callId,
       status: callStatuses.get(callId) ?? "pending",
+      progress: readObjectString(part.data, "progress") ?? undefined,
     }
   }
 

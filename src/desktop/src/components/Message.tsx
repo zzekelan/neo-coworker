@@ -129,9 +129,10 @@ const MessagePartRenderer: React.FC<{
 
     return (
       <ToolActivityCard
+        toolName={part.toolName}
         icon={getToolIcon(part.toolName)}
         title={describeToolCallTitle(text, part.toolName)}
-        subtitle={describeToolCallSummary(text, part.toolName, part.toolInput)}
+        subtitle={part.progress ?? describeToolCallSummary(text, part.toolName, part.toolInput)}
         status={part.status ?? "pending"}
         details={details}
       />
@@ -151,6 +152,7 @@ const MessagePartRenderer: React.FC<{
 
   return (
     <ToolActivityCard
+      toolName={relatedToolCall?.toolName}
       icon={getToolIcon(relatedToolCall?.toolName)}
       title={describeToolResultTitle(text, relatedToolCall?.toolName, part.isError)}
       subtitle={describeToolResultSummary(text, relatedToolCall?.toolName, part.result, part.isError)}
@@ -163,6 +165,7 @@ const MessagePartRenderer: React.FC<{
 }
 
 const ToolActivityCard: React.FC<{
+  toolName?: string
   icon: React.ReactNode
   title: string
   subtitle: string
@@ -170,14 +173,14 @@ const ToolActivityCard: React.FC<{
   details: DetailItem[]
   resultTone?: boolean
   emptyDetailsLabel?: string
-}> = ({ icon, title, subtitle, status, details, resultTone = false, emptyDetailsLabel }) => {
+}> = ({ toolName, icon, title, subtitle, status, details, resultTone = false, emptyDetailsLabel }) => {
   const text = useDesktopText()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
   return (
     <div
       className={cn(
-        "my-3 overflow-hidden rounded-2xl border shadow-sm transition-colors",
+        "relative my-3 overflow-hidden rounded-2xl border shadow-sm transition-colors",
         status === "error"
           ? "border-danger bg-danger/10"
           : resultTone
@@ -185,6 +188,14 @@ const ToolActivityCard: React.FC<{
             : "border-border bg-paper",
       )}
     >
+      <div
+        className={cn(
+          "absolute bottom-0 left-0 top-0 w-[2px] transition-colors",
+          status === "pending" ? "animate-breathe bg-accent" :
+          status === "success" ? "bg-success opacity-100" :
+          status === "error" ? "bg-danger" : "bg-transparent"
+        )}
+      />
       <div className="flex items-start justify-between gap-4 px-4 py-3.5">
         <div className="flex min-w-0 items-start gap-3">
           <div
@@ -205,7 +216,7 @@ const ToolActivityCard: React.FC<{
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <ToolStatusBadge status={status} />
+          <ToolStatusBadge status={status} toolName={toolName} />
         </div>
       </div>
 
@@ -248,41 +259,69 @@ const ToolActivityCard: React.FC<{
   )
 }
 
-const ToolStatusBadge: React.FC<{ status: ToolStatus }> = ({ status }) => {
+const ToolStatusBadge: React.FC<{ status: ToolStatus; toolName?: string }> = ({ status, toolName }) => {
   const text = useDesktopText()
+
+  const isMutating = isToolMutating(toolName)
+  
+  const toolCategoryLabel = toolName ? (
+    <span
+      className={cn(
+        "inline-flex items-center rounded px-[6px] py-[1px] text-[11px] font-medium leading-none",
+        isMutating ? "bg-highlight/10 text-highlight" : "bg-surface text-muted"
+      )}
+    >
+      {isMutating ? "mutating" : "read-only"}
+    </span>
+  ) : null;
 
   if (status === "pending") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-highlight/30 bg-highlight/10 px-2.5 py-1 text-[11px] font-semibold text-highlight">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        {text.message.running}
-      </span>
+      <>
+        {toolCategoryLabel}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-highlight/30 bg-highlight/10 px-2.5 py-1 text-[11px] font-semibold text-highlight">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-highlight opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-highlight"></span>
+          </span>
+          {text.message.running}
+        </span>
+      </>
     )
   }
 
   if (status === "success") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
-        <CheckCircle2 className="h-3 w-3" />
-        {text.message.completed}
-      </span>
+      <>
+        {toolCategoryLabel}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-semibold text-success">
+          <CheckCircle2 className="h-3 w-3" />
+          {text.message.completed}
+        </span>
+      </>
     )
   }
 
   if (status === "cancelled") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-muted">
-        <XCircle className="h-3 w-3" />
-        {text.message.cancelled}
-      </span>
+      <>
+        {toolCategoryLabel}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-semibold text-muted">
+          <XCircle className="h-3 w-3" />
+          {text.message.cancelled}
+        </span>
+      </>
     )
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-danger bg-danger/10 px-2.5 py-1 text-[11px] font-semibold text-danger">
-      <AlertCircle className="h-3 w-3" />
-      {text.message.failed}
-    </span>
+    <>
+      {toolCategoryLabel}
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-danger bg-danger/10 px-2.5 py-1 text-[11px] font-semibold text-danger">
+        <AlertCircle className="h-3 w-3" />
+        {text.message.failed}
+      </span>
+    </>
   )
 }
 
@@ -787,4 +826,9 @@ function summarizeText(value: string) {
   }
 
   return `${singleLine.slice(0, 117).trimEnd()}...`
+}
+
+function isToolMutating(toolName: string | undefined) {
+  const name = normalizeToolName(toolName)
+  return ["write", "edit", "shell", "skill"].includes(name)
 }

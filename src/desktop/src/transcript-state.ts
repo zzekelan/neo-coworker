@@ -56,3 +56,39 @@ function sortParts(parts: DesktopPart[]) {
     .slice()
     .sort((left, right) => left.sequence - right.sequence || left.createdAt - right.createdAt)
 }
+
+export function updateToolProgress(
+  messages: DesktopMessage[],
+  toolCallId: string,
+  progress: string,
+) {
+  const next = messages.slice()
+  let modified = false
+
+  for (let i = 0; i < next.length; i++) {
+    const target = next[i]
+    const partIndex = target.parts.findIndex(
+      (p) => p.kind === "tool_call" && (p.data as any)?.callId === toolCallId
+    )
+
+    if (partIndex !== -1) {
+      const parts = target.parts.slice()
+      const p = parts[partIndex]
+      parts[partIndex] = {
+        ...p,
+        data: {
+          ...(p.data && typeof p.data === "object" ? p.data : {}),
+          progress,
+        },
+      }
+      next[i] = {
+        ...target,
+        parts: sortParts(parts),
+      }
+      modified = true
+      break
+    }
+  }
+
+  return modified ? next : messages
+}

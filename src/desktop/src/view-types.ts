@@ -56,6 +56,7 @@ export type MessagePart =
       toolInput: unknown
       callId: string
       status?: "pending" | "success" | "error" | "cancelled"
+      progress?: string
     }
   | { type: "tool_result"; callId: string; result: unknown; isError?: boolean }
   | {

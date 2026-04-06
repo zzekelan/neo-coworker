@@ -177,6 +177,15 @@ export type RuntimeErrorEvent = {
   error: string
 }
 
+export type ToolProgressEvent = {
+  id: string
+  time: number
+  type: "tool.progress"
+  toolCallId: string
+  message: string
+  timestamp: number
+}
+
 export type ContextUsageEvent = {
   id: string
   time: number
@@ -199,6 +208,7 @@ export type DesktopServerEvent =
   | PermissionEvent
   | RuntimeErrorEvent
   | ContextUsageEvent
+  | ToolProgressEvent
 
 export type ConnectionState = "offline" | "connecting" | "online" | "error"
 
