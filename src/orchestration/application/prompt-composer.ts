@@ -19,6 +19,12 @@ export type DynamicPromptContext = {
   systemReminders?: readonly string[]
 }
 
+export type ToolGuidanceEntry = {
+  name: string
+  guidance: string
+  isReadOnly: boolean
+}
+
 function createStaticSections(): PromptSection[] {
   return [
     {
@@ -124,6 +130,43 @@ function createDynamicSection(context: DynamicPromptContext): PromptSection {
   }
 }
 
+function formatToolGuidances(toolGuidances?: ToolGuidanceEntry[]): string {
+  if (!toolGuidances || toolGuidances.length === 0) {
+    return ""
+  }
+
+  const readOnlyGuidances = toolGuidances.filter((entry) => entry.isReadOnly)
+  const mutatingGuidances = toolGuidances.filter((entry) => !entry.isReadOnly)
+
+  return [...readOnlyGuidances, ...mutatingGuidances]
+    .map((entry) => `### Tool: ${entry.name}\n${entry.guidance}`)
+    .join("\n\n")
+}
+
+function createResolvedStaticSections(toolGuidances?: ToolGuidanceEntry[]): PromptSection[] {
+  const formattedToolGuidances = formatToolGuidances(toolGuidances)
+
+  return staticSections.map((section) => {
+    if (section.id !== "tool_usage") {
+      return section
+    }
+
+    return {
+      ...section,
+      content: section.content
+        .split("\n")
+        .flatMap((line) => {
+          if (line !== "{PER_TOOL_GUIDANCE_PLACEHOLDER}") {
+            return [line]
+          }
+
+          return formattedToolGuidances ? [formattedToolGuidances] : []
+        })
+        .join("\n"),
+    }
+  })
+}
+
 export function composeSystemPrompt(sections: PromptSection[]): string {
   return sections.map((section) => section.content.trim()).filter(Boolean).join("\n\n").trim()
 }
@@ -132,16 +175,16 @@ const staticSections = createStaticSections()
 
 export const defaultSections: PromptSection[] = [...staticSections, createDynamicSection(getDefaultDynamicContext())]
 
-export function getStaticPrompt() {
-  return composeSystemPrompt(staticSections)
+export function getStaticPrompt(toolGuidances?: ToolGuidanceEntry[]) {
+  return composeSystemPrompt(createResolvedStaticSections(toolGuidances))
 }
 
 export function getDynamicPrompt(context: DynamicPromptContext) {
   return composeSystemPrompt([createDynamicSection(context)])
 }
 
-export function composeFullPrompt(context: DynamicPromptContext) {
-  return composeSystemPrompt([...staticSections, createDynamicSection(context)])
+export function composeFullPrompt(context: DynamicPromptContext, toolGuidances?: ToolGuidanceEntry[]) {
+  return composeSystemPrompt([...createResolvedStaticSections(toolGuidances), createDynamicSection(context)])
 }
 
 function getDefaultDynamicContext(): DynamicPromptContext {

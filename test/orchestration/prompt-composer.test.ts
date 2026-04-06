@@ -18,6 +18,7 @@ import {
   defaultSections,
   getDynamicPrompt,
   getStaticPrompt,
+  type ToolGuidanceEntry,
 } from "../../src/orchestration/application/prompt-composer"
 import { createOrchestrationRuntimeApi } from "../../src/orchestration/infrastructure/runtime/create-runtime"
 import { createInMemoryActiveRunRegistry } from "../../src/orchestration/infrastructure/runtime/active-run-registry"
@@ -57,7 +58,6 @@ describe("orchestration prompt composer", () => {
     expect(systemPrompt).toContain("## Operating with Care")
     expect(systemPrompt).toContain("Never skip pre-commit hooks or bypass safety checks.")
     expect(systemPrompt).toContain("## Using Your Tools")
-    expect(systemPrompt).toContain("{PER_TOOL_GUIDANCE_PLACEHOLDER}")
     expect(systemPrompt).toContain("## Communication Style")
     expect(systemPrompt).toContain('Never start responses with "I"')
   })
@@ -139,6 +139,137 @@ describe("orchestration prompt composer", () => {
     })
 
     expect(fullPrompt).toBe([staticPrompt, dynamicPrompt].join("\n\n"))
+  })
+
+  describe("per-tool guidance injection", () => {
+    const readOnlyGuidance: ToolGuidanceEntry = {
+      name: "read",
+      guidance: "Use offset and limit to navigate large files.",
+      isReadOnly: true,
+    }
+    const mutatingGuidance: ToolGuidanceEntry = {
+      name: "shell",
+      guidance: "Prefer read/write/edit tools over shell for file operations.",
+      isReadOnly: false,
+    }
+    const anotherReadOnly: ToolGuidanceEntry = {
+      name: "grep",
+      guidance: "Prefer files_with_matches for broad discovery.",
+      isReadOnly: true,
+    }
+
+    test("replaces placeholder with formatted tool guidance", () => {
+      const prompt = getStaticPrompt([readOnlyGuidance])
+
+      expect(prompt).not.toContain("{PER_TOOL_GUIDANCE_PLACEHOLDER}")
+      expect(prompt).toContain("### Tool: read")
+      expect(prompt).toContain("Use offset and limit to navigate large files.")
+    })
+
+    test("skips tools without guidance (empty list produces no section)", () => {
+      const prompt = getStaticPrompt([])
+
+      expect(prompt).not.toContain("{PER_TOOL_GUIDANCE_PLACEHOLDER}")
+      expect(prompt).not.toContain("### Tool:")
+    })
+
+    test("orders read-only tools before mutating tools", () => {
+      const prompt = getStaticPrompt([mutatingGuidance, readOnlyGuidance])
+
+      const readIndex = prompt.indexOf("### Tool: read")
+      const shellIndex = prompt.indexOf("### Tool: shell")
+      expect(readIndex).toBeLessThan(shellIndex)
+    })
+
+    test("formats each tool as its own subsection", () => {
+      const prompt = getStaticPrompt([readOnlyGuidance, mutatingGuidance])
+
+      expect(prompt).toContain("### Tool: read\nUse offset and limit to navigate large files.")
+      expect(prompt).toContain(
+        "### Tool: shell\nPrefer read/write/edit tools over shell for file operations.",
+      )
+    })
+
+    test("preserves read-only tools order among themselves and mutating tools order among themselves", () => {
+      const prompt = getStaticPrompt([anotherReadOnly, readOnlyGuidance, mutatingGuidance])
+
+      const grepIndex = prompt.indexOf("### Tool: grep")
+      const readIndex = prompt.indexOf("### Tool: read")
+      const shellIndex = prompt.indexOf("### Tool: shell")
+      expect(grepIndex).toBeLessThan(shellIndex)
+      expect(readIndex).toBeLessThan(shellIndex)
+    })
+
+    test("composeFullPrompt also accepts and injects tool guidances", () => {
+      const prompt = composeFullPrompt(
+        {
+          environment: {
+            workingDirectory: "/workspace",
+            platform: "linux",
+            date: "2026-04-07",
+          },
+        },
+        [readOnlyGuidance],
+      )
+
+      expect(prompt).not.toContain("{PER_TOOL_GUIDANCE_PLACEHOLDER}")
+      expect(prompt).toContain("### Tool: read")
+    })
+
+    test("without guidances argument, placeholder is removed and no tool sections appear", () => {
+      const prompt = getStaticPrompt()
+
+      expect(prompt).not.toContain("{PER_TOOL_GUIDANCE_PLACEHOLDER}")
+      expect(prompt).not.toContain("### Tool:")
+    })
+
+    test("tool guidance section stays within 40% of total static prompt token budget", () => {
+      const guidances: ToolGuidanceEntry[] = [
+        { name: "read", guidance: "Use offset and limit to navigate large files.", isReadOnly: true },
+        {
+          name: "glob",
+          guidance: "Use glob when you need to discover files by name pattern.",
+          isReadOnly: true,
+        },
+        {
+          name: "grep",
+          guidance: "Prefer files_with_matches for broad discovery.",
+          isReadOnly: true,
+        },
+        {
+          name: "websearch",
+          guidance: "Prefer websearch over webfetch when you do not know the URL.",
+          isReadOnly: true,
+        },
+        {
+          name: "codesearch",
+          guidance: "Use codesearch for external code examples when local grep finds nothing.",
+          isReadOnly: true,
+        },
+        {
+          name: "shell",
+          guidance: "Prefer dedicated file tools over shell for file operations.",
+          isReadOnly: false,
+        },
+        { name: "write", guidance: "Use write only for new files or full rewrites.", isReadOnly: false },
+        { name: "edit", guidance: "Prefer edit for targeted changes in existing files.", isReadOnly: false },
+      ]
+      const fullPrompt = getStaticPrompt(guidances)
+      const totalTokens = countTokens(fullPrompt)
+
+      // Extract just the tool guidance section
+      const toolSectionStart = fullPrompt.indexOf("### Tool:")
+      const toolSectionEnd = fullPrompt.lastIndexOf("\n\n## ")
+      const toolSection =
+        toolSectionStart !== -1
+          ? toolSectionEnd !== -1
+            ? fullPrompt.slice(toolSectionStart, toolSectionEnd)
+            : fullPrompt.slice(toolSectionStart)
+          : ""
+
+      const toolSectionTokens = toolSection ? countTokens(toolSection) : 0
+      expect(toolSectionTokens).toBeLessThanOrEqual(totalTokens * 0.4)
+    })
   })
 
   test("runtime uses the composed default prompt and preserves skill reminders", async () => {
