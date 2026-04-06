@@ -32,7 +32,7 @@ describe("read-only tools", () => {
 
     const result = await registry.execute({
       toolName: "grep",
-      args: { query: "helloDemo" },
+      args: { pattern: "helloDemo" },
       workspaceRoot: "test/fixtures/workspaces/read-search",
     })
 
@@ -82,10 +82,10 @@ describe("read-only tools", () => {
     await expect(
       registry.execute({
         toolName: "grep",
-        args: { query: "   " },
+        args: { pattern: "   " },
         workspaceRoot: "test/fixtures/workspaces/read-search",
       }),
-    ).rejects.toThrow("Query must not be empty")
+    ).rejects.toThrow("Pattern must not be empty")
   })
 
   test("grep skips heavy directories and agent runtime storage", async () => {
@@ -106,7 +106,7 @@ describe("read-only tools", () => {
 
     const result = await registry.execute({
       toolName: "grep",
-      args: { query: "skipMe" },
+      args: { pattern: "skipMe" },
       workspaceRoot,
     })
 
@@ -132,7 +132,7 @@ describe("read-only tools", () => {
 
     const result = await registry.execute({
       toolName: "grep",
-      args: { query: "manyHit" },
+      args: { pattern: "manyHit" },
       workspaceRoot,
     })
 
