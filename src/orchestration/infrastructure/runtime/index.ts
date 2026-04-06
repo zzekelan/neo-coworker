@@ -10,6 +10,7 @@ export {
   type OrchestrationRunInput,
   type OrchestrationRuntimeApi,
 } from "./create-runtime"
+export { createOrchestrationToolBatchExecutor } from "../step-executor"
 export { createEventQueue } from "./event-queue"
 export { type OrchestrationLoopInput } from "./loop"
 export {

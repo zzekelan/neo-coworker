@@ -269,7 +269,7 @@ describe("server recovery and operator errors", () => {
       })
       const runId = startedRun.body.data.run.id as string
 
-      await waitForAssistantToolResult(harness.repository, sessionId, runId)
+      await waitForAssistantToolCall(harness.repository, sessionId, runId)
       await harness.server.stop()
 
       expect(harness.repository.runs.get(runId).status).toBe("cancelled")

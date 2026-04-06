@@ -310,9 +310,9 @@ describe("agent loop", () => {
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
       "text",
       "tool_call",
-      "tool_result",
       "text",
       "tool_call",
+      "tool_result",
       "tool_result",
     ])
     expect(events.filter((event) => event.type === "tool.call.completed")).toHaveLength(2)

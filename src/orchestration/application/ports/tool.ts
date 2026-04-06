@@ -5,6 +5,8 @@ export type OrchestrationTool = {
   name: string
   description: string
   inputSchema?: ZodTypeAny
+  concurrency?: "read-only" | "mutating"
+  isConcurrencySafe?: (input: unknown) => boolean
 }
 
 export type OrchestrationToolExecutionInput = {
@@ -21,11 +23,34 @@ export type OrchestrationToolExecutionResult = {
   metadata?: Record<string, unknown>
 }
 
+export const TOOL_FAILURE_MESSAGE_METADATA_KEY = "__orchestrationToolFailureMessage"
+export const TOOL_PERMISSION_DENIED_METADATA_KEY = "__orchestrationToolPermissionDenied"
+
+export type OrchestrationToolCallRequest = {
+  callId: string
+  toolName: string
+  args: unknown
+  onProgress?: (message: string) => void
+}
+
+export type OrchestrationBatchExecutionResult = {
+  callId: string
+  toolName: string
+  output: string
+  isError?: boolean
+  metadata?: Record<string, unknown>
+}
+
 export type OrchestrationToolPort = {
   list(): OrchestrationTool[]
   execute(
     input: OrchestrationToolExecutionInput,
   ): Promise<OrchestrationToolExecutionResult> | OrchestrationToolExecutionResult
+  executeBatch(input: {
+    calls: OrchestrationToolCallRequest[]
+    workspaceRoot: string
+    signal: AbortSignal
+  }): Promise<OrchestrationBatchExecutionResult[]>
 }
 
 export type RequestOrchestrationToolPermission = (input: {

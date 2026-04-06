@@ -20,6 +20,8 @@ export type ToolCatalogEntry = {
   name: string
   description: string
   inputSchema?: ZodTypeAny
+  concurrency?: "read-only" | "mutating"
+  isConcurrencySafe?: (input: unknown) => boolean
 }
 
 export type ToolDefinition = ToolCatalogEntry & {

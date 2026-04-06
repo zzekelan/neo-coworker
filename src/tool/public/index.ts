@@ -11,6 +11,7 @@ import {
 } from "../infrastructure/runtime/create-builtin-runtime"
 
 export * from "../application"
+export { manageResultSize } from "../application/result-size-manager"
 export {
   createBuiltinToolRuntime,
   type CreateBuiltinToolRuntimeInput,

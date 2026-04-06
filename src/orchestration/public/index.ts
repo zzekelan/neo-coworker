@@ -2,6 +2,7 @@ export * from "../application"
 export {
   createOrchestrationActiveRunRegistry,
   createOrchestrationRuntimeApi,
+  createOrchestrationToolBatchExecutor,
   type CreateOrchestrationRuntimeApiInput,
   type OrchestrationActiveRunRegistry,
   type OrchestrationRunInput,

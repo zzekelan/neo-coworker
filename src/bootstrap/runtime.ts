@@ -18,6 +18,7 @@ import {
 import {
   createBuiltinToolRuntime,
   createToolProvider,
+  manageResultSize,
   throwIfToolAborted,
   type SearchToolBackend,
   type ToolDefinition,
@@ -37,12 +38,13 @@ import type {
   OrchestrationModelPort,
   OrchestrationPermissionPort,
   OrchestrationSessionPort,
-  type OrchestrationSkillPort,
+  OrchestrationSkillPort,
   OrchestrationToolPortFactory,
 } from "../orchestration"
 import {
   createOrchestrationActiveRunRegistry,
   createOrchestrationRuntimeApi,
+  createOrchestrationToolBatchExecutor,
   DEFAULT_CONTEXT_WINDOW_SIZE,
   resolvePermissionPolicy,
   type OrchestrationActiveRunRegistry,
@@ -93,7 +95,7 @@ export { PermissionRequestNotAwaitingActiveRuntimeError }
 
 export function createRuntime(input: RuntimeInput) {
   const now = input.now ?? Date.now
-  const observability = input.observability ?? createNoopObservabilityRuntimeApi()
+  const observability = input.observability
   const skillPort = input.skill ?? createSkillPort({ runtime: input.skillRuntime })
   const sessionProvider = createSessionRuntimeApi({
     repository: input.repository,
@@ -118,13 +120,13 @@ export function createRuntime(input: RuntimeInput) {
         repository: input.repository,
         session: sessionProvider.runs,
       }),
-      observer: observability.permissionObserver,
+      observer: observability?.permissionObserver,
       now,
     }),
     tools: createToolPortFactory({
-      observer: observability.toolObserver,
+      observer: observability?.toolObserver,
       repository: input.repository,
-      runtimeObserver: observability.runtimeObserver,
+      runtimeObserver: observability?.runtimeObserver,
       searchBackend: input.searchBackend,
       session: sessionProvider.runs,
       skill: skillPort,
@@ -132,9 +134,12 @@ export function createRuntime(input: RuntimeInput) {
     }),
     activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
     permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
+    toolBatchExecutor: createOrchestrationToolBatchExecutor({
+      manageResultSize,
+    }),
     systemPrompt: input.systemPrompt,
     now,
-    runtimeObserver: observability.runtimeObserver,
+    runtimeObserver: observability?.runtimeObserver,
   })
 }
 

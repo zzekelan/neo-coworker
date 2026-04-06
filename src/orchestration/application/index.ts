@@ -27,12 +27,18 @@ export type {
   OrchestrationSkillPort,
 } from "./ports/skill"
 export type {
+  OrchestrationBatchExecutionResult,
   OrchestrationTool,
+  OrchestrationToolCallRequest,
   OrchestrationToolExecutionInput,
   OrchestrationToolExecutionResult,
   OrchestrationToolPort,
   OrchestrationToolPortFactory,
   RequestOrchestrationToolPermission,
+} from "./ports/tool"
+export {
+  TOOL_FAILURE_MESSAGE_METADATA_KEY,
+  TOOL_PERMISSION_DENIED_METADATA_KEY,
 } from "./ports/tool"
 export type {
   OrchestrationRuntimeObserverPort,

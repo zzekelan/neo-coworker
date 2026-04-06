@@ -6,7 +6,11 @@ import type {
 import type { OrchestrationModelPort } from "./ports/model"
 import type { OrchestrationContextWindowPort } from "./ports/context-window"
 import type { OrchestrationSkillPort } from "./ports/skill"
-import type { OrchestrationToolPort } from "./ports/tool"
+import {
+  TOOL_FAILURE_MESSAGE_METADATA_KEY,
+  TOOL_PERMISSION_DENIED_METADATA_KEY,
+  type OrchestrationToolPort,
+} from "./ports/tool"
 import type { OrchestrationRuntimeObserverPort } from "./ports/runtime-observer"
 import type { RuntimeEvent } from "./event"
 import {
@@ -17,6 +21,7 @@ import { createRecentFileTracker } from "./recent-file-tracker"
 import {
   createSkillReminderTracker,
 } from "./skill-reminder-tracker"
+import { manageResultSize } from "../../tool"
 
 type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 
@@ -54,6 +59,10 @@ type StepOutcome = "repeat" | "complete" | "failed" | "cancelled"
 type AssistantError = {
   text: string
   data?: unknown
+}
+
+type PendingToolCall = ToolCallEvent & {
+  args: unknown
 }
 
 const MODEL_REQUEST_MAX_ATTEMPTS = 3
@@ -465,6 +474,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         > | null = null
 
         try {
+          const pendingToolCalls: ToolCallEvent[] = []
           const modelEvents = input.model.streamTurn({
             systemPrompt: stepInput.systemPrompt,
           skillCatalog,
@@ -532,21 +542,28 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             }
 
             requestedTool = true
-            const outcome = await executeToolCall({
-              item,
-              assistantTurn,
-              emit: stepInput.emit,
-              sessionId: stepInput.sessionId,
-              signal: stepInput.signal,
-              recentFiles,
-              tools: stepInput.tools,
-              workspaceRoot: stepInput.workspaceRoot,
+            assistantTurn.appendToolCall({
+              callId: item.callId,
+              toolName: item.name,
+              inputText: item.inputText,
             })
+            pendingToolCalls.push(item)
+          }
 
-            if (outcome === "cancel") {
-              return {
-                status: "cancelled" as const,
-              }
+          const outcome = await executePendingToolCalls({
+            items: pendingToolCalls,
+            assistantTurn,
+            emit: stepInput.emit,
+            sessionId: stepInput.sessionId,
+            signal: stepInput.signal,
+            recentFiles,
+            tools: stepInput.tools,
+            workspaceRoot: stepInput.workspaceRoot,
+          })
+
+          if (outcome === "cancel") {
+            return {
+              status: "cancelled" as const,
             }
           }
 
@@ -767,8 +784,8 @@ function createTurnKey(runId: string, messageSequence: number) {
   return `${runId}:turn_${messageSequence}`
 }
 
-async function executeToolCall(input: {
-  item: ToolCallEvent
+async function executePendingToolCalls(input: {
+  items: ToolCallEvent[]
   assistantTurn: ReturnType<typeof createAssistantTurnRecorder>
   emit: OrchestrationEventEmitter
   sessionId: string
@@ -777,61 +794,75 @@ async function executeToolCall(input: {
   tools: OrchestrationToolPort
   workspaceRoot: string
 }): Promise<ToolCallOutcome> {
-  input.assistantTurn.appendToolCall({
-    callId: input.item.callId,
-    toolName: input.item.name,
-    inputText: input.item.inputText,
+  const pendingToolCalls = collectPendingToolCalls({
+    items: input.items,
+    assistantTurn: input.assistantTurn,
   })
-
-  let args: unknown
-  try {
-    args = JSON.parse(input.item.inputText)
-  } catch (error) {
-    input.assistantTurn.appendError({
-      text: `Malformed tool arguments for ${input.item.name}: ${getErrorMessage(error)}`,
-      data: {
-        source: "tool",
-        callId: input.item.callId,
-        toolName: input.item.name,
-      },
-    })
+  if (pendingToolCalls.length === 0) {
     return "continue"
   }
 
-  try {
-    const result = await input.tools.execute({
-      toolName: input.item.name,
-      args,
-      workspaceRoot: input.workspaceRoot,
-      signal: input.signal,
+  const results = await input.tools.executeBatch({
+    calls: pendingToolCalls.map((item) => ({
+      callId: item.callId,
+      toolName: item.name,
+      args: item.args,
       onProgress: (message: string) => {
         input.emit({
           type: "tool.progress",
-          toolCallId: input.item.callId,
+          toolCallId: item.callId,
           message,
           timestamp: Date.now(),
         })
       },
-    })
+    })),
+    workspaceRoot: input.workspaceRoot,
+    signal: input.signal,
+  })
+
+  for (const result of results) {
     if (input.signal.aborted) {
       throw createAbortError()
     }
 
+    const toolFailureMessage = readMetadataString(
+      result.metadata,
+      TOOL_FAILURE_MESSAGE_METADATA_KEY,
+    )
+    if (toolFailureMessage) {
+      input.assistantTurn.appendError({
+        text: toolFailureMessage,
+        data: {
+          source: "tool",
+          callId: result.callId,
+          toolName: result.toolName,
+        },
+      })
+
+      if (readMetadataBoolean(result.metadata, TOOL_PERMISSION_DENIED_METADATA_KEY)) {
+        return "cancel"
+      }
+
+      continue
+    }
+
     input.assistantTurn.appendToolResult({
-      callId: input.item.callId,
-      toolName: input.item.name,
-      output: result.output,
-      isError: result.isError,
-      metadata: result.metadata,
+      callId: result.callId,
+      toolName: result.toolName,
+      output: manageResultSize(result).output,
+      isError: manageResultSize(result).isError,
+      metadata: manageResultSize(result).metadata,
     })
     input.emit({
       type: "tool.call.completed",
-      callId: input.item.callId,
-      name: input.item.name,
-      output: result.output,
+      callId: result.callId,
+      name: result.toolName,
+      output: manageResultSize(result).output,
     })
-    if (input.item.name === "read") {
-      const readArgs = readObject(args)
+
+    if (result.toolName === "read") {
+      const pendingToolCall = pendingToolCalls.find((item) => item.callId === result.callId)
+      const readArgs = readObject(pendingToolCall?.args)
       const path = readString(readArgs, "path")
       if (path) {
         input.recentFiles.recordRead({
@@ -841,27 +872,40 @@ async function executeToolCall(input: {
         })
       }
     }
-    return "continue"
-  } catch (error) {
-    if (isAbortError(error, input.signal)) {
-      throw error
-    }
-
-    if (isDetachedError(error)) {
-      throw error
-    }
-
-    input.assistantTurn.appendError({
-      text: `Tool ${input.item.name} failed: ${getErrorMessage(error)}`,
-      data: {
-        source: "tool",
-        callId: input.item.callId,
-        toolName: input.item.name,
-      },
-    })
-
-    return isToolPermissionDeniedError(error) ? "cancel" : "continue"
   }
+
+  return "continue"
+}
+
+function collectPendingToolCalls(input: {
+  items: ToolCallEvent[]
+  assistantTurn: ReturnType<typeof createAssistantTurnRecorder>
+}) {
+  const pendingToolCalls: PendingToolCall[] = []
+
+  for (const item of input.items) {
+    let args: unknown
+    try {
+      args = JSON.parse(item.inputText)
+    } catch (error) {
+      input.assistantTurn.appendError({
+        text: `Malformed tool arguments for ${item.name}: ${getErrorMessage(error)}`,
+        data: {
+          source: "tool",
+          callId: item.callId,
+          toolName: item.name,
+        },
+      })
+      continue
+    }
+
+    pendingToolCalls.push({
+      ...item,
+      args,
+    })
+  }
+
+  return pendingToolCalls
 }
 
 function getNextMessageSequence(
@@ -1541,4 +1585,12 @@ function readString(value: Record<string, unknown> | null, key: string) {
 
 function readNumber(value: Record<string, unknown> | null, key: string) {
   return typeof value?.[key] === "number" ? (value[key] as number) : null
+}
+
+function readMetadataString(metadata: Record<string, unknown> | undefined, key: string) {
+  return typeof metadata?.[key] === "string" ? metadata[key] : null
+}
+
+function readMetadataBoolean(metadata: Record<string, unknown> | undefined, key: string) {
+  return metadata?.[key] === true
 }
