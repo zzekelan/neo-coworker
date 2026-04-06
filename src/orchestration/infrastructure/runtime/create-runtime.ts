@@ -1,6 +1,6 @@
 import { createOrchestrationStepService } from "../../application/step-service"
 import { DEFAULT_CONTEXT_WINDOW_SIZE } from "../../application/context-usage"
-import { DEFAULT_SYSTEM_PROMPT } from "../../application/system-prompt"
+import { composeSystemPrompt, defaultSections } from "../../application/system-prompt"
 import type { RuntimeEvent } from "../../application/event"
 import type { OrchestrationRunHandle } from "../../application/handle"
 import type { OrchestrationContextWindowPort } from "../../application/ports/context-window"
@@ -55,6 +55,7 @@ type PendingToolCallSnapshot = {
 export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeApiInput) {
   const now = input.now ?? Date.now
   const activeRuns = input.activeRuns
+  const defaultSystemPrompt = composeSystemPrompt(defaultSections)
   const contextWindow = input.contextWindow ?? {
     getContextWindow() {
       return DEFAULT_CONTEXT_WINDOW_SIZE
@@ -189,7 +190,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         runId: inputValue.runId,
         tools: inputValue.tools,
         workspaceRoot: inputValue.workspaceRoot,
-        systemPrompt: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+        systemPrompt: input.systemPrompt ?? defaultSystemPrompt,
         signal: inputValue.signal,
         emit: inputValue.emit,
       })
@@ -485,7 +486,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         signal: execution.controller.signal,
         tools: execution.tools,
         workspaceRoot: execution.session.workspaceRoot,
-        systemPrompt: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+        systemPrompt: input.systemPrompt ?? defaultSystemPrompt,
       }).finally(() => {
         execution.cleanup()
       })
@@ -518,7 +519,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
             runId: runInput.runId,
             tools: execution.tools,
             workspaceRoot: execution.session.workspaceRoot,
-            systemPrompt: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+            systemPrompt: input.systemPrompt ?? defaultSystemPrompt,
             signal: execution.controller.signal,
             emit: execution.emit,
           })
