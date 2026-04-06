@@ -15,6 +15,7 @@ import {
 describe("architecture structure", () => {
   test("declares the final target vocabulary explicitly", () => {
     expect(toSortedArray(FINAL_CAPABILITY_TOP_LEVELS)).toEqual([
+      "agent",
       "model",
       "observability",
       "permission",

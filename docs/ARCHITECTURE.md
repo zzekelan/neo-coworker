@@ -13,6 +13,7 @@ Architecture ID: `ARCH-TOPLEVEL-001`
 Approved top-level modules under `src/` fall into four groups:
 
 - Capability modules:
+  - `agent`: agent profile definitions, schema validation, and multi-agent configuration contracts
   - `observability`: runtime telemetry, trace export policy, and durable run-event records
   - `session`: durable session, run, message, and transcript state
   - `permission`: durable permission-request state and decision flow
@@ -52,7 +53,7 @@ New code in this refactor must follow module-role-specific layouts instead.
 
 ### Capability Modules
 
-`observability`, `session`, `permission`, `model`, `skill`, and `tool` are capability modules.
+`agent`, `observability`, `session`, `permission`, `model`, `skill`, and `tool` are capability modules.
 
 Their target internal layout is:
 
