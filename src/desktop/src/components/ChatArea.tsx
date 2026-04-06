@@ -29,6 +29,102 @@ import { SkillPanel } from "./SkillPanel"
 import { getEffectiveActiveSkills, toggleSkill } from "./skill-state"
 import { useDesktopText } from "../i18n"
 
+
+function useVirtualizer<T extends { id: string }>({
+  items,
+  estimateSize = 100,
+  overscan = 3,
+}: {
+  items: T[]
+  estimateSize?: number
+  overscan?: number
+}) {
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(0)
+  const measurementsRef = useRef<Map<string, number>>(new Map())
+  const [, forceRender] = useState({})
+
+  const resizeObserver = useRef<ResizeObserver | null>(null)
+  if (!resizeObserver.current && typeof ResizeObserver !== "undefined") {
+    resizeObserver.current = new ResizeObserver((entries) => {
+      let changed = false
+      for (const entry of entries) {
+        const id = (entry.target as HTMLElement).dataset.itemId
+        if (id) {
+          const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
+          const existing = measurementsRef.current.get(id)
+          if (existing !== height && Math.abs((existing || 0) - height) > 1) {
+            measurementsRef.current.set(id, height)
+            changed = true
+          }
+        }
+      }
+      if (changed) forceRender({})
+    })
+  }
+
+  useEffect(() => {
+    const ro = resizeObserver.current
+    return () => {
+      ro?.disconnect()
+    }
+  }, [])
+
+  const measureElement = React.useCallback((id: string, el: HTMLElement | null) => {
+    if (el) {
+      el.dataset.itemId = id
+      resizeObserver.current?.observe(el)
+      const height = el.getBoundingClientRect().height
+      const existing = measurementsRef.current.get(id)
+      if (existing !== height && Math.abs((existing || 0) - height) > 1) {
+        measurementsRef.current.set(id, height)
+        forceRender({})
+      }
+    }
+  }, [])
+
+  let totalHeight = 0
+  const positions: Array<{ id: string; top: number; height: number; item: T; index: number }> = []
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    const height = measurementsRef.current.get(item.id) || estimateSize
+    positions.push({ id: item.id, top: totalHeight, height, item, index: i })
+    totalHeight += height
+  }
+
+  const viewportTop = scrollTop
+  const viewportBottom = scrollTop + viewportHeight
+
+  let startIndex = 0
+  for (let i = 0; i < positions.length; i++) {
+    if (positions[i].top + positions[i].height >= viewportTop) {
+      startIndex = Math.max(0, i - overscan)
+      break
+    }
+  }
+
+  let endIndex = startIndex
+  for (let i = startIndex; i < positions.length; i++) {
+    if (positions[i].top > viewportBottom) {
+      endIndex = Math.min(positions.length - 1, i + overscan)
+      break
+    }
+    endIndex = Math.min(positions.length - 1, i + overscan)
+  }
+
+  return {
+    virtualItems: positions.slice(startIndex, endIndex + 1),
+    totalHeight,
+    measureElement,
+    onScroll: (e: React.UIEvent<HTMLElement>) => {
+      setScrollTop(e.currentTarget.scrollTop)
+      setViewportHeight(e.currentTarget.clientHeight)
+    },
+    setViewportHeight,
+  }
+}
+
 const SKILL_DRAWER_TRANSITION = {
   duration: 0.22,
   ease: [0.22, 1, 0.36, 1] as const,
@@ -81,6 +177,25 @@ export function ChatArea({
   const [skillErrorMessage, setSkillErrorMessage] = useState<string | null>(null)
   const [optimisticSessionSkills, setOptimisticSessionSkills] = useState<string[] | null>(null)
   const transcriptViewportRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    items: transcript,
+    estimateSize: 100,
+    overscan: 3,
+  })
+
+  useEffect(() => {
+    const el = transcriptViewportRef.current
+    if (!el) return
+    virtualizer.setViewportHeight(el.clientHeight)
+    
+    const ro = new ResizeObserver(() => {
+      virtualizer.setViewportHeight(el.clientHeight)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const skillPanelShellRef = useRef<HTMLDivElement>(null)
   const shouldStickToBottomRef = useRef(true)
   const sessionSkillQueueRef = useRef<{
@@ -151,7 +266,7 @@ export function ChatArea({
     }
 
     viewport.scrollTop = viewport.scrollHeight
-  }, [transcript, permissionRequests, session?.activeRun?.status])
+  }, [transcript, permissionRequests, session?.activeRun?.status, virtualizer.totalHeight])
 
   const stickTranscriptToBottom = () => {
     shouldStickToBottomRef.current = true
@@ -322,6 +437,7 @@ export function ChatArea({
         ref={transcriptViewportRef}
         onScroll={(event) => {
           shouldStickToBottomRef.current = isNearTranscriptBottom(event.currentTarget)
+          virtualizer.onScroll(event)
         }}
         className="flex-1 overflow-y-auto px-4 pb-32 md:px-8"
       >
@@ -339,19 +455,35 @@ export function ChatArea({
                 {errorMessage}
               </div>
             ) : null}
-            {transcript.map((message) => {
-              const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
-              if (boundaryPart && boundaryPart.type === "compaction_boundary") {
+            <div style={{ position: "relative", height: virtualizer.totalHeight }}>
+              {virtualizer.virtualItems.map((virtualItem) => {
+                const message = virtualItem.item
+                const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
+                
                 return (
-                  <CompactionDivider
-                    key={message.id}
-                    tokensBefore={boundaryPart.tokensBefore}
-                    tokensAfter={boundaryPart.tokensAfter}
-                  />
+                  <div
+                    key={virtualItem.id}
+                    ref={(el) => virtualizer.measureElement(virtualItem.id, el)}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualItem.top}px)`,
+                    }}
+                  >
+                    {boundaryPart && boundaryPart.type === "compaction_boundary" ? (
+                      <CompactionDivider
+                        tokensBefore={boundaryPart.tokensBefore}
+                        tokensAfter={boundaryPart.tokensAfter}
+                      />
+                    ) : (
+                      <Message message={message} />
+                    )}
+                  </div>
                 )
-              }
-              return <Message key={message.id} message={message} />
-            })}
+              })}
+            </div>
 
             {permissionRequests.map((request, index) => (
               <PermissionRequest
@@ -378,7 +510,7 @@ export function ChatArea({
         )}
       </div>
 
-      <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-white via-white/80 to-transparent p-4">
+      <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-paper via-paper/80 to-transparent p-4">
         <motion.div layout transition={SKILL_DRAWER_TRANSITION} className="relative mx-auto max-w-4xl">
           <div ref={skillPanelShellRef}>
             <motion.div
