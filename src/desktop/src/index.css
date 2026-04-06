@@ -53,3 +53,16 @@ body {
 .animate-breathe {
   animation: breathe 2s ease-in-out infinite;
 }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.pulse-placeholder {
+  height: 1em;
+  width: 60%;
+  background: var(--color-surface-hover);
+  border-radius: 4px;
+  animation: pulse 1.5s ease-in-out infinite;
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState, Suspense } from "react"
 import {
   AlertCircle,
   CheckCircle2,
@@ -18,8 +18,11 @@ import { cn } from "../lib/utils"
 import type { DesktopTranscriptMessage, MessagePart } from "../view-types"
 import { useDesktopText } from "../i18n"
 import { ErrorBoundary } from "./ErrorBoundary"
-import { MarkdownText } from "./MarkdownText"
 import { CompactionDivider } from "./CompactionDivider"
+
+const MarkdownText = React.lazy(() => import("./MarkdownText"))
+
+const PulsePlaceholder = () => <div className="pulse-placeholder" />
 
 const DEFAULT_COLLAPSED_CHAR_LIMIT = 280
 const DEFAULT_COLLAPSED_LINE_LIMIT = 8
@@ -99,7 +102,11 @@ const MessageComponent: React.FC<{ message: DesktopTranscriptMessage }> = ({ mes
             {isUser ? (
               <div className="whitespace-pre-wrap">{message.content}</div>
             ) : (
-              <MarkdownText text={message.content} />
+              <ErrorBoundary>
+                <Suspense fallback={<PulsePlaceholder />}>
+                  <MarkdownText text={message.content} />
+                </Suspense>
+              </ErrorBoundary>
             )}
           </div>
         )}
@@ -120,7 +127,13 @@ const MessagePartRenderer: React.FC<{
 
   if (part.type === "text") {
     if (role === "assistant") {
-      return <MarkdownText text={part.text} className="py-1 text-[15px]" />
+      return (
+        <ErrorBoundary>
+          <Suspense fallback={<PulsePlaceholder />}>
+            <MarkdownText text={part.text} className="py-1 text-[15px]" />
+          </Suspense>
+        </ErrorBoundary>
+      )
     }
 
     return <div className="py-1 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{part.text}</div>

@@ -29,6 +29,7 @@ function MarkdownTextComponent(input: {
 }
 
 export const MarkdownText = React.memo(MarkdownTextComponent)
+export default MarkdownText
 
 function isSafeHref(href: string) {
   return /^(https?:|mailto:)/.test(href)
