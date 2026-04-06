@@ -72,6 +72,7 @@ export function createModelProvider(input: {
           const projected = buildModelTurnProjection(request)
           const sections = buildModelPromptSections({
             systemPrompt: request.systemPrompt,
+            lateContextMessage: request.lateContextMessage,
             skillCatalog: request.skillCatalog,
             activeSkills: request.activeSkills,
             systemReminders: request.systemReminders,

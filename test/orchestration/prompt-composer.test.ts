@@ -15,6 +15,7 @@ import type { OrchestrationPermissionPolicy } from "../../src/orchestration/appl
 import {
   composeFullPrompt,
   composeSystemPrompt,
+  buildLateContextMessage,
   defaultSections,
   getDynamicPrompt,
   getStaticPrompt,
@@ -34,18 +35,11 @@ describe("orchestration prompt composer", () => {
   })
 
   test("defines exactly six default sections", () => {
-    expect(defaultSections).toHaveLength(6)
+    expect(defaultSections).toHaveLength(5)
   })
 
-  test("marks the first five default sections as static", () => {
-    expect(defaultSections.slice(0, 5).every((section) => section.isStatic)).toBe(true)
-  })
-
-  test("marks dynamic context as the only dynamic default section", () => {
-    expect(defaultSections[5]).toMatchObject({
-      id: "dynamic_context",
-      isStatic: false,
-    })
+  test("marks all default sections as static", () => {
+    expect(defaultSections.every((section) => section.isStatic)).toBe(true)
   })
 
   test("builds a static prompt with the five designed sections and key constraints", () => {
@@ -121,15 +115,8 @@ describe("orchestration prompt composer", () => {
     expect(secondPrompt).toContain("Recovery note")
   })
 
-  test("composes the full prompt as static plus dynamic sections", () => {
+  test("composeFullPrompt now returns the static prompt only", () => {
     const staticPrompt = getStaticPrompt()
-    const dynamicPrompt = getDynamicPrompt({
-      environment: {
-        workingDirectory: "/workspace/project",
-        platform: "linux",
-        date: "2026-04-07",
-      },
-    })
     const fullPrompt = composeFullPrompt({
       environment: {
         workingDirectory: "/workspace/project",
@@ -138,7 +125,49 @@ describe("orchestration prompt composer", () => {
       },
     })
 
-    expect(fullPrompt).toBe([staticPrompt, dynamicPrompt].join("\n\n"))
+    expect(fullPrompt).toBe(staticPrompt)
+  })
+
+  test("static prompt does not contain dynamic context values", () => {
+    const prompt = getStaticPrompt()
+
+    expect(prompt).not.toContain("## Dynamic Context")
+    expect(prompt).not.toContain("/workspace/project")
+    expect(prompt).not.toContain("2026-04-07")
+    expect(prompt).not.toContain("reviewer")
+  })
+
+  test("buildLateContextMessage formats dynamic context for late injection", () => {
+    const message = buildLateContextMessage({
+      activeSkillNames: ["reviewer", "planner"],
+      environment: {
+        workingDirectory: "/workspace/project",
+        isGitRepository: true,
+        platform: "linux",
+        shell: "bash",
+        date: "2026-04-07",
+      },
+      sessionGuidance: ["Stay within the current workspace root."],
+      systemReminders: ["<system-reminder>Skill catalog updated</system-reminder>"],
+    })
+
+    expect(message).toBe(
+      [
+        "<system-reminder>",
+        "- Active skills: reviewer, planner",
+        "- Session-specific guidance:",
+        "  - Stay within the current workspace root.",
+        "- Environment:",
+        "- Working directory: /workspace/project",
+        "- Is directory a git repo: yes",
+        "- Platform: linux",
+        "- Shell: bash",
+        "- Date: 2026-04-07",
+        "- Active reminders:",
+        "<system-reminder>Skill catalog updated</system-reminder>",
+        "</system-reminder>",
+      ].join("\n"),
+    )
   })
 
   describe("per-tool guidance injection", () => {
@@ -311,17 +340,18 @@ describe("orchestration prompt composer", () => {
     const finalRequest = observedRequests.at(-1)
     expect(finalRequest).toBeDefined()
     expect(finalRequest?.systemPrompt).toContain("You are Neo Coworker, an autonomous software engineering agent.")
-    expect(finalRequest?.systemPrompt).toContain("## Dynamic Context")
-    expect(finalRequest?.systemPrompt).toContain("/workspace/project")
-    expect(finalRequest?.systemPrompt).toContain("reviewer")
+    expect(finalRequest?.systemPrompt).not.toContain("## Dynamic Context")
+    expect(finalRequest?.lateContextMessage).toContain("- Working directory: /workspace/project")
+    expect(finalRequest?.lateContextMessage).toContain("- Active skills: reviewer")
     expect(finalRequest?.activeSkills).toEqual([
       {
         name: "reviewer",
         instructions: "Review every diff before accepting it.",
       },
     ])
-    expect(finalRequest?.systemReminders?.join("\n\n")).toContain("Active skill instructions:")
-    expect(finalRequest?.systemReminders?.join("\n\n")).toContain("Skill catalog:")
+    const reminderPayload = finalRequest?.systemReminders?.join("\n\n") ?? ""
+    expect(reminderPayload).toContain("Active skill instructions:")
+    expect(reminderPayload).toContain("Skill catalog:")
   })
 })
 

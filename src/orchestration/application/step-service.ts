@@ -21,6 +21,7 @@ import { createRecentFileTracker } from "./recent-file-tracker"
 import {
   createSkillReminderTracker,
 } from "./skill-reminder-tracker"
+import { buildLateContextMessage } from "./prompt-composer"
 
 type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 
@@ -100,9 +101,28 @@ type AutoCompactionResult =
       tokensBefore: number
     }
 
+function buildTurnLateContextMessage(input: {
+  workspaceRoot: string
+  activeSkillNames: readonly string[]
+  systemReminders: readonly string[]
+  now: () => number
+}) {
+  return buildLateContextMessage({
+    activeSkillNames: input.activeSkillNames,
+    environment: {
+      workingDirectory: input.workspaceRoot,
+      platform: process.platform,
+      shell: process.env.SHELL,
+      date: new Date(input.now()).toISOString().slice(0, 10),
+    },
+    systemReminders: input.systemReminders,
+  })
+}
+
 type CompactionProjectionInput = {
   model: OrchestrationModelPort
   systemPrompt: string
+  lateContextMessage: string
   skillCatalog: Awaited<ReturnType<OrchestrationSkillPort["listCatalog"]>>
   activeSkills: ReturnType<ReturnType<typeof createSkillReminderTracker>["resolveActiveSkills"]>
   systemReminders: string[]
@@ -400,6 +420,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         run,
         transcript,
         systemPrompt: stepInput.systemPrompt,
+        workspaceRoot: stepInput.workspaceRoot,
         skillCatalog,
         tools: availableTools,
         signal: stepInput.signal,
@@ -419,9 +440,16 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, sessionActiveSkills)
       const systemReminderBatch = skillReminders.consumeSystemReminderBatch(stepInput.sessionId)
       const systemReminders = systemReminderBatch?.messages ?? []
+      const lateContextMessage = buildTurnLateContextMessage({
+        workspaceRoot: stepInput.workspaceRoot,
+        activeSkillNames: activeSkills.map((skill) => skill.name),
+        systemReminders,
+        now,
+      })
       if (autoCompaction.compacted) {
         const tokensAfter = input.model.projectTurn?.({
           systemPrompt: stepInput.systemPrompt,
+          lateContextMessage,
           skillCatalog,
           activeSkills,
           systemReminders,
@@ -476,18 +504,19 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           const pendingToolCalls: ToolCallEvent[] = []
           const modelEvents = input.model.streamTurn({
             systemPrompt: stepInput.systemPrompt,
-          skillCatalog,
-          activeSkills,
-          systemReminders,
-          systemReminderMetadata: systemReminderBatch && {
-            catalogSkillNames: systemReminderBatch.catalogSkillNames,
-            activeSkillNames: systemReminderBatch.activeSkillNames,
-            recoveryFilePaths: systemReminderBatch.recoveryFilePaths,
-          },
-          contextWindow,
-          tools: availableTools,
-          transcript,
-          sessionId: stepInput.sessionId,
+            lateContextMessage,
+            skillCatalog,
+            activeSkills,
+            systemReminders,
+            systemReminderMetadata: systemReminderBatch && {
+              catalogSkillNames: systemReminderBatch.catalogSkillNames,
+              activeSkillNames: systemReminderBatch.activeSkillNames,
+              recoveryFilePaths: systemReminderBatch.recoveryFilePaths,
+            },
+            contextWindow,
+            tools: availableTools,
+            transcript,
+            sessionId: stepInput.sessionId,
             runId: stepInput.runId,
             turnKey,
             signal: stepInput.signal,
@@ -663,6 +692,14 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const projectedBefore = projectCompactionInputTokens({
         model: input.model,
         systemPrompt: compactionInput.systemPrompt,
+        lateContextMessage: buildTurnLateContextMessage({
+          workspaceRoot: compactionInput.workspaceRoot,
+          activeSkillNames: skillReminders
+            .resolveActiveSkills(compactionInput.sessionId, run.activeSkills)
+            .map((skill) => skill.name),
+          systemReminders: skillReminders.peekSystemReminderBatch(compactionInput.sessionId)?.messages ?? [],
+          now,
+        }),
         skillCatalog,
         activeSkills: skillReminders.resolveActiveSkills(compactionInput.sessionId, run.activeSkills),
         systemReminders: skillReminders.peekSystemReminderBatch(compactionInput.sessionId)?.messages ?? [],
@@ -698,6 +735,15 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         const projectionAfter = projectCompactionInputTokens({
           model: input.model,
           systemPrompt: compactionInput.systemPrompt,
+          lateContextMessage: buildTurnLateContextMessage({
+            workspaceRoot: compactionInput.workspaceRoot,
+            activeSkillNames: skillReminders
+              .resolveActiveSkills(compactionInput.sessionId, sessionActiveSkills)
+              .map((skill) => skill.name),
+            systemReminders:
+              skillReminders.peekSystemReminderBatch(compactionInput.sessionId)?.messages ?? [],
+            now,
+          }),
           skillCatalog,
           activeSkills: skillReminders.resolveActiveSkills(
             compactionInput.sessionId,
@@ -1046,6 +1092,7 @@ async function maybeAutoCompact(input: {
   run: ReturnType<OrchestrationSessionPort["getRun"]>
   transcript: OrchestrationTranscriptMessage[]
   systemPrompt: string
+  workspaceRoot: string
   skillCatalog: Awaited<ReturnType<OrchestrationSkillPort["listCatalog"]>>
   tools: ReturnType<OrchestrationToolPort["list"]>
   signal: AbortSignal
@@ -1058,6 +1105,14 @@ async function maybeAutoCompact(input: {
 
   const projected = input.model.projectTurn({
     systemPrompt: input.systemPrompt,
+    lateContextMessage: buildTurnLateContextMessage({
+      workspaceRoot: input.workspaceRoot,
+      activeSkillNames: input.skillReminders
+        .resolveActiveSkills(input.sessionId, input.run.activeSkills)
+        .map((skill) => skill.name),
+      systemReminders: input.skillReminders.peekSystemReminderBatch(input.sessionId)?.messages ?? [],
+      now: input.now,
+    }),
     skillCatalog: input.skillCatalog,
     activeSkills: input.skillReminders.resolveActiveSkills(input.sessionId, input.run.activeSkills),
     systemReminders: input.skillReminders.peekSystemReminderBatch(input.sessionId)?.messages ?? [],
@@ -1170,6 +1225,7 @@ class CompactionRunError extends Error {
 function projectCompactionInputTokens(input: CompactionProjectionInput) {
   return input.model.projectTurn?.({
     systemPrompt: input.systemPrompt,
+    lateContextMessage: input.lateContextMessage,
     skillCatalog: input.skillCatalog,
     activeSkills: input.activeSkills,
     systemReminders: input.systemReminders,

@@ -1,6 +1,6 @@
 import { createOrchestrationStepService } from "../../application/step-service"
 import { DEFAULT_CONTEXT_WINDOW_SIZE } from "../../application/context-usage"
-import { composeFullPrompt } from "../../application/system-prompt"
+import { getStaticPrompt } from "../../application/system-prompt"
 import type { RuntimeEvent } from "../../application/event"
 import type { OrchestrationRunHandle } from "../../application/handle"
 import type { OrchestrationContextWindowPort } from "../../application/ports/context-window"
@@ -599,15 +599,9 @@ function buildDefaultSystemPrompt(input: {
   session: OrchestrationSessionPort["getSession"] extends (sessionId: string) => infer T ? T : never
   now: () => number
 }) {
-  return composeFullPrompt({
-    activeSkillNames: input.session.activeSkills,
-    environment: {
-      workingDirectory: input.session.workspaceRoot,
-      platform: process.platform,
-      shell: process.env.SHELL,
-      date: new Date(input.now()).toISOString().slice(0, 10),
-    },
-  })
+  void input.session
+  void input.now
+  return getStaticPrompt()
 }
 
 export type OrchestrationRuntimeApi = ReturnType<typeof createOrchestrationRuntimeApi>

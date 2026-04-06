@@ -30,6 +30,7 @@ export type ModelPromptSections = {
   baseSystemPrompt: string
   systemReminderNotice: string
   systemReminderMessages: string[]
+  lateContextMessage: string | null
 }
 
 export type ModelMicrocompactSummary = {
@@ -51,10 +52,15 @@ export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurn
   const replayTranscript = sliceTranscriptFromLatestCompactionBoundary(input.transcript)
   const sections = buildModelPromptSections(input)
   const reminderMessages = buildSystemReminderMessages(sections.systemReminderMessages)
+  const lateContextMessages = buildLateContextMessages(sections.lateContextMessage)
+  const transcriptMessages = injectLateContextBeforeLastUser({
+    messages: buildTranscriptMessages(replayTranscript),
+    lateContextMessages,
+  })
   const system = buildStaticSystemPrompt(sections)
   const unmodifiedRequest = {
     system,
-    messages: [...buildTranscriptMessages(replayTranscript), ...reminderMessages],
+    messages: [...transcriptMessages, ...reminderMessages],
     tools: input.tools,
   } satisfies Pick<ModelTurnRequest, "system" | "messages" | "tools">
 
@@ -75,15 +81,18 @@ export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurn
     }
   }
 
-  return {
+    return {
       request: {
         system,
         messages: [
-          ...buildTranscriptMessages(replayTranscript, {
-            clearedToolResults: microcompact.clearedToolResults,
+          ...injectLateContextBeforeLastUser({
+            messages: buildTranscriptMessages(replayTranscript, {
+              clearedToolResults: microcompact.clearedToolResults,
+            }),
+            lateContextMessages,
           }),
           ...reminderMessages,
-      ],
+        ],
       tools: input.tools,
     },
     microcompact: {
@@ -95,12 +104,16 @@ export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurn
 }
 
 export function buildModelPromptSections(
-  input: Pick<ModelProjectionInput, "systemPrompt" | "skillCatalog" | "activeSkills" | "systemReminders">,
+  input: Pick<
+    ModelProjectionInput,
+    "systemPrompt" | "lateContextMessage" | "skillCatalog" | "activeSkills" | "systemReminders"
+  >,
 ): ModelPromptSections {
   return {
     baseSystemPrompt: input.systemPrompt,
     systemReminderNotice: SYSTEM_REMINDER_NOTICE,
     systemReminderMessages: buildSystemReminderTexts(input),
+    lateContextMessage: input.lateContextMessage?.trim() ? input.lateContextMessage : null,
   }
 }
 
@@ -130,7 +143,8 @@ export function buildTranscriptMessages(
   const resolvedToolCallIds = collectResolvedToolCallIds(replayTranscript)
 
   for (const message of replayTranscript) {
-    const role = message.role === "synthetic" ? "assistant" : message.role
+    const role =
+      message.role === "synthetic" ? "assistant" : message.role === "system" ? "user" : message.role
 
     if (role === "assistant") {
       messages.push(...buildAssistantMessages(message, resolvedToolCallIds, options))
@@ -156,6 +170,27 @@ export function buildTranscriptMessages(
   }
 
   return messages
+}
+
+function injectLateContextBeforeLastUser(input: {
+  messages: ModelMessage[]
+  lateContextMessages: ModelMessage[]
+}) {
+  if (input.lateContextMessages.length === 0) {
+    return input.messages
+  }
+
+  for (let index = input.messages.length - 1; index >= 0; index -= 1) {
+    if (input.messages[index]?.role === "user") {
+      return [
+        ...input.messages.slice(0, index),
+        ...input.lateContextMessages,
+        ...input.messages.slice(index),
+      ]
+    }
+  }
+
+  return [...input.messages, ...input.lateContextMessages]
 }
 
 function sliceTranscriptFromLatestCompactionBoundary(transcript: ModelTranscriptMessage[]) {
@@ -352,6 +387,19 @@ function buildSystemReminderMessages(messages: string[]): ModelMessage[] {
     role: "user",
     parts: [{ type: "text", text }],
   }))
+}
+
+function buildLateContextMessages(message: string | null): ModelMessage[] {
+  if (!message) {
+    return []
+  }
+
+  return [
+    {
+      role: "user",
+      parts: [{ type: "text", text: message }],
+    },
+  ]
 }
 
 function buildSystemReminderTexts(

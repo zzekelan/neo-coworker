@@ -25,6 +25,38 @@ export type ToolGuidanceEntry = {
   isReadOnly: boolean
 }
 
+function normalizePromptItems(items?: readonly string[]) {
+  return items?.filter((item) => item.trim().length > 0) ?? []
+}
+
+function buildDynamicContextLines(context: DynamicPromptContext) {
+  const skillLine =
+    context.activeSkillNames && context.activeSkillNames.length > 0
+      ? context.activeSkillNames.join(", ")
+      : "none"
+  const guidance = normalizePromptItems(context.sessionGuidance)
+  const reminders = normalizePromptItems(context.systemReminders)
+  const environmentLines = [
+    `- Working directory: ${context.environment.workingDirectory}`,
+    context.environment.isGitRepository === undefined
+      ? null
+      : `- Is directory a git repo: ${context.environment.isGitRepository ? "yes" : "no"}`,
+    `- Platform: ${context.environment.platform}`,
+    context.environment.shell ? `- Shell: ${context.environment.shell}` : null,
+    `- Date: ${context.environment.date}`,
+  ].filter((line): line is string => line !== null)
+
+  return [
+    `- Active skills: ${skillLine}`,
+    guidance.length > 0 ? "- Session-specific guidance:" : null,
+    ...(guidance.length > 0 ? guidance.map((item) => `  - ${item}`) : []),
+    "- Environment:",
+    ...environmentLines,
+    reminders.length > 0 ? "- Active reminders:" : null,
+    ...(reminders.length > 0 ? reminders : []),
+  ].filter((line): line is string => line !== null)
+}
+
 function createStaticSections(): PromptSection[] {
   return [
     {
@@ -96,37 +128,10 @@ function createStaticSections(): PromptSection[] {
 }
 
 function createDynamicSection(context: DynamicPromptContext): PromptSection {
-  const skillLine =
-    context.activeSkillNames && context.activeSkillNames.length > 0
-      ? context.activeSkillNames.join(", ")
-      : "none"
-  const guidance = context.sessionGuidance?.filter((item) => item.trim().length > 0) ?? []
-  const reminders = context.systemReminders?.filter((item) => item.trim().length > 0) ?? []
-  const environmentLines = [
-    `- Working directory: ${context.environment.workingDirectory}`,
-    context.environment.isGitRepository === undefined
-      ? null
-      : `- Is directory a git repo: ${context.environment.isGitRepository ? "yes" : "no"}`,
-    `- Platform: ${context.environment.platform}`,
-    context.environment.shell ? `- Shell: ${context.environment.shell}` : null,
-    `- Date: ${context.environment.date}`,
-  ].filter((line): line is string => line !== null)
-
   return {
     id: "dynamic_context",
     isStatic: false,
-    content: [
-      "## Dynamic Context",
-      `- Active skills: ${skillLine}`,
-      guidance.length > 0 ? "- Session-specific guidance:" : null,
-      ...(guidance.length > 0 ? guidance.map((item) => `  - ${item}`) : []),
-      "- Environment:",
-      ...environmentLines,
-      reminders.length > 0 ? "- Active reminders:" : null,
-      ...(reminders.length > 0 ? reminders.map((item) => item) : []),
-    ]
-      .filter((line): line is string => line !== null)
-      .join("\n"),
+    content: ["## Dynamic Context", ...buildDynamicContextLines(context)].join("\n"),
   }
 }
 
@@ -173,7 +178,7 @@ export function composeSystemPrompt(sections: PromptSection[]): string {
 
 const staticSections = createStaticSections()
 
-export const defaultSections: PromptSection[] = [...staticSections, createDynamicSection(getDefaultDynamicContext())]
+export const defaultSections: PromptSection[] = [...staticSections]
 
 export function getStaticPrompt(toolGuidances?: ToolGuidanceEntry[]) {
   return composeSystemPrompt(createResolvedStaticSections(toolGuidances))
@@ -183,8 +188,12 @@ export function getDynamicPrompt(context: DynamicPromptContext) {
   return composeSystemPrompt([createDynamicSection(context)])
 }
 
-export function composeFullPrompt(context: DynamicPromptContext, toolGuidances?: ToolGuidanceEntry[]) {
-  return composeSystemPrompt([...createResolvedStaticSections(toolGuidances), createDynamicSection(context)])
+export function buildLateContextMessage(context: DynamicPromptContext) {
+  return ["<system-reminder>", ...buildDynamicContextLines(context), "</system-reminder>"].join("\n")
+}
+
+export function composeFullPrompt(_context: DynamicPromptContext, toolGuidances?: ToolGuidanceEntry[]) {
+  return getStaticPrompt(toolGuidances)
 }
 
 function getDefaultDynamicContext(): DynamicPromptContext {

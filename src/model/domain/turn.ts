@@ -26,6 +26,7 @@ export type ModelSystemReminderMetadata = {
 
 export type ModelProjectionInput = {
   systemPrompt: string
+  lateContextMessage?: string
   skillCatalog: ModelSkillCatalogEntry[]
   activeSkills: ModelActiveSkill[]
   systemReminders?: string[]

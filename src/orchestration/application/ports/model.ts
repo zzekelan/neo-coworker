@@ -7,6 +7,7 @@ import type { OrchestrationTool } from "./tool"
 
 export type OrchestrationModelTurnRequest = {
   systemPrompt: string
+  lateContextMessage?: string
   skillCatalog: OrchestrationSkillCatalogEntry[]
   activeSkills: OrchestrationActiveSkill[]
   systemReminders?: string[]
