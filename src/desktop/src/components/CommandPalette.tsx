@@ -68,7 +68,7 @@ export function CommandPalette() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 bg-[rgba(0,0,0,0.6)]"
+            className="fixed inset-0 bg-black/60"
             onClick={() => setIsCommandPaletteOpen(false)}
           />
 
@@ -121,7 +121,7 @@ export function CommandPalette() {
                         className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors"
                         style={{
                           backgroundColor: isSelected ? "var(--color-highlight)" : "transparent",
-                          color: isSelected ? "#ffffff" : "var(--color-ink)"
+                          color: "var(--color-ink)"
                         }}
                         onClick={() => {
                           setIsCommandPaletteOpen(false)
@@ -136,8 +136,8 @@ export function CommandPalette() {
                               key={i}
                               className="rounded px-1.5 py-0.5 font-mono"
                               style={{
-                                backgroundColor: isSelected ? "rgba(255,255,255,0.2)" : "var(--color-paper)",
-                                color: isSelected ? "#ffffff" : "var(--color-muted)",
+                                backgroundColor: isSelected ? "var(--color-surface)" : "var(--color-paper)",
+                                color: isSelected ? "var(--color-ink)" : "var(--color-muted)",
                                 border: isSelected ? "none" : "1px solid var(--color-border)"
                               }}
                             >
