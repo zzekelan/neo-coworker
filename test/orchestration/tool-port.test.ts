@@ -25,6 +25,7 @@ describe("orchestration tool port", () => {
       "webfetch",
       "websearch",
       "codesearch",
+      "get_current_datetime",
       "write",
       "edit",
       "shell",
