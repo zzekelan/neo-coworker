@@ -3,6 +3,7 @@ import { realpath } from "node:fs/promises"
 import { basename, dirname, resolve, sep } from "node:path"
 import { z } from "zod"
 import {
+  assertWorkspacePathNotReserved,
   throwIfToolAborted,
   type RequestToolPermission,
   type ToolDefinition,
@@ -25,6 +26,8 @@ const WriteArgsSchema = z.object({
 )
 
 async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: string) {
+  assertWorkspacePathNotReserved(relativePath)
+
   const root = await realpath(resolve(workspaceRoot))
   const target = resolve(root, relativePath)
 
@@ -34,6 +37,8 @@ async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: st
     if (existing !== root && !existing.startsWith(`${root}${sep}`)) {
       throw new Error(`Path must stay inside workspace: ${relativePath}`)
     }
+
+    assertWorkspacePathNotReserved(existing.slice(root.length + 1))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw error
@@ -70,6 +75,7 @@ export function createWriteTool(input: { requestPermission: RequestToolPermissio
     async execute(value) {
       throwIfToolAborted(value.signal)
       const { path, content } = WriteArgsSchema.parse(value.args)
+      assertWorkspacePathNotReserved(path)
       const decision = await input.requestPermission({
         toolName: "write",
         reason: `write ${path}`,

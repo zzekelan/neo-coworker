@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
+  SessionConflictError,
   SessionNotFoundError as StorageNotFoundError,
   SessionOwnershipError as StorageOwnershipError,
   createSessionRepository as createStorageRepository,
@@ -133,6 +134,83 @@ describe("storage repository", () => {
     expect(countRows(database, "run")).toBe(1)
     expect(countRows(database, "message")).toBe(1)
     expect(countRows(database, "part")).toBe(1)
+  })
+
+  test("allows explicitly concurrent queued runs for internal sub-agent execution", () => {
+    const { repository } = createTestRepository("concurrent-sub-agent-run")
+
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.runs.create({
+      id: "run_parent",
+      sessionId: session.id,
+      trigger: "prompt",
+      status: "running",
+      createdAt: 2,
+    })
+
+    expect(() =>
+      repository.createQueuedRunWithInitiatingMessageAndPart({
+        run: {
+          id: "run_rejected",
+          sessionId: session.id,
+          trigger: "prompt",
+          createdAt: 3,
+        },
+        message: {
+          id: "message_rejected",
+          sequence: 0,
+          createdAt: 3,
+        },
+        part: {
+          id: "part_rejected",
+          kind: "text",
+          sequence: 0,
+          text: "sub-agent prompt",
+          createdAt: 3,
+        },
+      }),
+    ).toThrow(SessionConflictError)
+
+    const created = repository.createQueuedRunWithInitiatingMessageAndPart({
+      run: {
+        id: "run_child",
+        sessionId: session.id,
+        trigger: "prompt",
+        createdAt: 4,
+      },
+      message: {
+        id: "message_child",
+        sequence: 0,
+        createdAt: 4,
+      },
+      part: {
+        id: "part_child",
+        kind: "text",
+        sequence: 0,
+        text: "sub-agent prompt",
+        createdAt: 4,
+      },
+      allowConcurrentActiveRun: true,
+    })
+
+    expect(created.run).toMatchObject({
+      id: "run_child",
+      status: "queued",
+    })
+    expect(created.message).toMatchObject({
+      id: "message_child",
+      runId: "run_child",
+    })
+    expect(created.part).toMatchObject({
+      id: "part_child",
+      runId: "run_child",
+      text: "sub-agent prompt",
+    })
   })
 
   test("returns session transcript with stable message and part ordering", () => {

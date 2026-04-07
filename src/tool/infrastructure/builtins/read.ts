@@ -1,7 +1,11 @@
 import { readdir, realpath } from "node:fs/promises"
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path"
 import { z } from "zod"
-import { throwIfToolAborted, type ToolDefinition } from "../../domain"
+import {
+  assertWorkspacePathNotReserved,
+  throwIfToolAborted,
+  type ToolDefinition,
+} from "../../domain"
 
 declare const Bun: {
   file(path: string): {
@@ -75,6 +79,8 @@ async function findSimilarFiles(targetPath: string): Promise<string[]> {
 }
 
 async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string) {
+  assertWorkspacePathNotReserved(relativePath)
+
   const root = await realpath(resolve(workspaceRoot))
   const file = await realpath(resolve(root, relativePath))
 
@@ -82,10 +88,7 @@ async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string)
     throw new Error(`Path must stay inside workspace: ${relativePath}`)
   }
 
-  const workspacePath = relative(root, file)
-  if (workspacePath === ".agents" || workspacePath.startsWith(`.agents${sep}`)) {
-    throw new Error(`Path is reserved for agent runtime data: ${relativePath}`)
-  }
+  assertWorkspacePathNotReserved(relative(root, file))
 
   return file
 }

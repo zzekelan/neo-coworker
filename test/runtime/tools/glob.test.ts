@@ -44,9 +44,11 @@ describe("glob tool", () => {
 
     await mkdir(join(workspaceRoot, "src"), { recursive: true })
     await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
+    await mkdir(join(workspaceRoot, ".ncoworker"), { recursive: true })
     await mkdir(join(workspaceRoot, "node_modules"), { recursive: true })
     await writeFile(join(workspaceRoot, "src", "visible.ts"), "export const visible = true\n")
     await writeFile(join(workspaceRoot, ".agents", "hidden.ts"), "export const hidden = true\n")
+    await writeFile(join(workspaceRoot, ".ncoworker", "hidden.ts"), "export const hidden = true\n")
     await writeFile(join(workspaceRoot, "node_modules", "hidden.ts"), "export const hidden = true\n")
 
     const result = await registry.execute({
@@ -57,6 +59,7 @@ describe("glob tool", () => {
 
     expect(result.output).toContain("src/visible.ts")
     expect(result.output).not.toContain(".agents/hidden.ts")
+    expect(result.output).not.toContain(".ncoworker/hidden.ts")
     expect(result.output).not.toContain("node_modules/hidden.ts")
   })
 

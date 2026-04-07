@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { createShellTool, createToolRuntimeApi } from "../../../src/tool"
 
@@ -139,6 +142,32 @@ describe("shell tool — description parameter", () => {
     const hasDescription = progressMessages.some((m) => m.includes("Testing description progress"))
     expect(hasDescription).toBe(true)
   }, 15_000)
+})
+
+describe("shell tool — workspace path safety", () => {
+  test("rejects runtime state directories as workdir", async () => {
+    const runtime = makeRuntime()
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "shell-runtime-state-"))
+
+    await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
+    await mkdir(join(workspaceRoot, ".ncoworker"), { recursive: true })
+
+    await expect(
+      runtime.execute({
+        toolName: "shell",
+        args: { command: "pwd", workdir: ".agents" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+
+    await expect(
+      runtime.execute({
+        toolName: "shell",
+        args: { command: "pwd", workdir: ".ncoworker" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+  })
 })
 
 describe("shell tool — tool definition properties", () => {

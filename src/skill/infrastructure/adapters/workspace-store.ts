@@ -1,7 +1,9 @@
+import { existsSync } from "node:fs"
 import { readdir, realpath } from "node:fs/promises"
 import { resolve, sep } from "node:path"
 import {
   getSkillCatalogPath,
+  LEGACY_SKILLS_DIRECTORY,
   parseSkillMetadata,
   SKILLS_DIRECTORY,
   SKILL_METADATA_BYTES,
@@ -12,24 +14,43 @@ import type {
   SkillStore,
 } from "../../application/ports/store"
 
+function getSkillsDirectoryName(workspaceRoot: string) {
+  const nextDirectory = resolve(workspaceRoot, SKILLS_DIRECTORY)
+  const legacyDirectory = resolve(workspaceRoot, LEGACY_SKILLS_DIRECTORY)
+
+  if (!existsSync(nextDirectory) && existsSync(legacyDirectory)) {
+    return LEGACY_SKILLS_DIRECTORY
+  }
+
+  return SKILLS_DIRECTORY
+}
+
 function getSkillsDirectory(workspaceRoot: string) {
-  return resolve(workspaceRoot, SKILLS_DIRECTORY)
+  return resolve(workspaceRoot, getSkillsDirectoryName(workspaceRoot))
 }
 
 async function resolveSkillCatalogPath(workspaceRoot: string, skillPath: string) {
   const workspace = await realpath(resolve(workspaceRoot))
-  const skillsRoot = resolve(workspace, SKILLS_DIRECTORY)
+  const allowedRoots = [
+    resolve(workspace, SKILLS_DIRECTORY),
+    resolve(workspace, LEGACY_SKILLS_DIRECTORY),
+  ]
   const file = await realpath(resolve(workspace, skillPath))
 
-  if (file !== skillsRoot && !file.startsWith(`${skillsRoot}${sep}`)) {
-    throw new Error(`Skill must stay inside ${SKILLS_DIRECTORY}: ${skillPath}`)
+  if (!allowedRoots.some((root) => file === root || file.startsWith(`${root}${sep}`))) {
+    throw new Error(
+      `Skill must stay inside ${SKILLS_DIRECTORY} or ${LEGACY_SKILLS_DIRECTORY}: ${skillPath}`,
+    )
   }
 
   return file
 }
 
 async function resolveSkillFile(workspaceRoot: string, skillName: string) {
-  return await resolveSkillCatalogPath(workspaceRoot, getSkillCatalogPath(skillName))
+  return await resolveSkillCatalogPath(
+    workspaceRoot,
+    getSkillCatalogPath(skillName, getSkillsDirectoryName(workspaceRoot)),
+  )
 }
 
 async function readSkillMetadata(
@@ -86,7 +107,7 @@ export function createWorkspaceSkillStore(): SkillStore {
           continue
         }
 
-        const skillPath = getSkillCatalogPath(entry.name)
+        const skillPath = getSkillCatalogPath(entry.name, getSkillsDirectoryName(workspaceRoot))
         let metadata
         try {
           metadata = await readSkillMetadata(workspaceRoot, skillPath, entry.name)

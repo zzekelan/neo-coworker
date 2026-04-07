@@ -115,8 +115,8 @@ The blocking structure suite now enforces the final architecture directly, with 
 - Why this repo requires it: the same runtime is driven from CLI and server entrypoints. Silent path or URL truncation would make the collaborator harness act on the wrong workspace or origin.
 - Enforcement: `test` plus `review-required`
 - Severity: `error`
-- Bad example: accepting `AGENT_SERVER_URL=http://host/prefix` and silently discarding `/prefix`
-- Good example: `src/bootstrap/provider.ts` rejects `AGENT_SERVER_URL` values that include path, query, or hash
+- Bad example: accepting `NCOWORKER_SERVER_URL=http://host/prefix` and silently discarding `/prefix`
+- Good example: `src/bootstrap/provider.ts` rejects `NCOWORKER_SERVER_URL` values that include path, query, or hash; `AGENT_SERVER_URL` remains a legacy fallback
 - Remediation: either carry the scope-bearing value through the full contract or fail fast with an explicit setup error.
 - Source: `docs/project-rules/coworker-coding-rules.md` rule 8, `test/server/server-main.test.ts`
 

@@ -236,7 +236,9 @@ async function resolveServerOrigin(input) {
   }
 
   if (process.env.DESKTOP_DISABLE_LOCAL_SERVER === "1") {
-    throw new Error("AGENT_SERVER_URL is required when DESKTOP_DISABLE_LOCAL_SERVER=1")
+    throw new Error(
+      "NCOWORKER_SERVER_URL is required when DESKTOP_DISABLE_LOCAL_SERVER=1 (AGENT_SERVER_URL is still supported as a legacy fallback)",
+    )
   }
 
   return startManagedLocalServer(input.settings)
@@ -758,11 +760,11 @@ function readConfiguredServerOrigin(value) {
 
   const url = new URL(trimmed)
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("AGENT_SERVER_URL must use http or https")
+    throw new Error("NCOWORKER_SERVER_URL must use http or https")
   }
 
   if (url.pathname !== "/" || url.search || url.hash) {
-    throw new Error("AGENT_SERVER_URL must not include a path, query, or hash")
+    throw new Error("NCOWORKER_SERVER_URL must not include a path, query, or hash")
   }
 
   return url.origin

@@ -1,0 +1,75 @@
+{
+  "id": "regression/sub-agent-explore",
+  "scenario": "sub-agent-explore",
+  "prompt": "Delegate README inspection to the explore agent and summarize the result.",
+  "workspaceFixture": "workspaces/basic",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "permission.requested",
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "agent"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "orderedTextIncludes": [
+      "Read README.md and report the heading.",
+      "Sub-agent explored README heading.",
+      "Delegation result: Sub-agent explored README heading."
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "agent",
+        "toolResultIncludes": [
+          "Sub-agent explored README heading."
+        ],
+        "assistantTextIncludes": [
+          "Delegation result: Sub-agent explored README heading."
+        ]
+      }
+    ]
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "eventType": "tool.call.completed",
+        "fields": [
+          {
+            "field": "name",
+            "equalsString": "agent"
+          },
+          {
+            "field": "output",
+            "includes": "Sub-agent explored README heading."
+          }
+        ]
+      }
+    ]
+  }
+}

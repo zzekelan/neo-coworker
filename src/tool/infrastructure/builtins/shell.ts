@@ -3,6 +3,7 @@ import { relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import {
   SHELL_ABORT_GRACE_MS,
+  assertWorkspacePathNotReserved,
   createToolAbortError,
   throwIfToolAborted,
   type RequestToolPermission,
@@ -46,7 +47,7 @@ const ShellArgsSchema = z
     workdir: z
       .optional(z.string().trim().min(1, "Workdir must not be empty"))
       .describe(
-        "Workspace-relative working directory for the command. When omitted the command runs from the workspace root. The resolved path must remain inside the workspace and cannot target .agents/** which is reserved for agent runtime data.",
+        "Workspace-relative working directory for the command. When omitted the command runs from the workspace root. The resolved path must remain inside the workspace and cannot target .agents/** or .ncoworker/** runtime state.",
       ),
     description: z
       .optional(z.string().trim().min(1))
@@ -65,16 +66,15 @@ async function resolveWorkspaceDirectory(workspaceRoot: string, relativePath?: s
     return root
   }
 
+  assertWorkspacePathNotReserved(relativePath)
+
   const directory = await realpath(resolve(root, relativePath))
 
   if (directory !== root && !directory.startsWith(`${root}${sep}`)) {
     throw new Error(`Path must stay inside workspace: ${relativePath}`)
   }
 
-  const workspacePath = relative(root, directory)
-  if (workspacePath === ".agents" || workspacePath.startsWith(`.agents${sep}`)) {
-    throw new Error(`Path is reserved for agent runtime data: ${relativePath}`)
-  }
+  assertWorkspacePathNotReserved(relative(root, directory))
 
   return directory
 }

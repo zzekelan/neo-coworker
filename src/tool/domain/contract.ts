@@ -3,6 +3,7 @@ import {
   SEARCH_SKIPPED_DIRECTORIES,
   SHELL_ABORT_GRACE_MS,
   WORKSPACE_MAX_MATCHES,
+  WORKSPACE_RESERVED_DIRECTORIES,
   WORKSPACE_SKIPPED_DIRECTORIES,
   type RequestToolPermission,
   type ToolCatalogEntry,
@@ -19,6 +20,7 @@ export {
   SEARCH_SKIPPED_DIRECTORIES,
   SHELL_ABORT_GRACE_MS,
   WORKSPACE_MAX_MATCHES,
+  WORKSPACE_RESERVED_DIRECTORIES,
   WORKSPACE_SKIPPED_DIRECTORIES,
   type RequestToolPermission,
   type ToolCatalogEntry,
@@ -39,5 +41,18 @@ export function createToolAbortError(message = "Operation aborted") {
 export function throwIfToolAborted(signal: AbortSignal | undefined, message?: string) {
   if (signal?.aborted) {
     throw createToolAbortError(message)
+  }
+}
+
+export function assertWorkspacePathNotReserved(relativePath: string) {
+  const segments = relativePath
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((segment) => segment.length > 0 && segment !== ".")
+
+  const reservedSegment = segments.find((segment) => WORKSPACE_RESERVED_DIRECTORIES.has(segment))
+
+  if (reservedSegment) {
+    throw new Error(`Path is reserved for agent runtime data: ${relativePath}`)
   }
 }

@@ -943,11 +943,13 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
 
   const createQueuedRunWithInitiatingMessageTransaction = database.transaction(
     (value: CreateQueuedRunWithInitiatingMessageInput) => {
-      const activeRun = getActiveRunRowBySession(value.run.sessionId)
-      if (activeRun) {
-        throw new SessionConflictError(
-          `Session ${value.run.sessionId} already has active run ${activeRun.id}`,
-        )
+      if (!value.allowConcurrentActiveRun) {
+        const activeRun = getActiveRunRowBySession(value.run.sessionId)
+        if (activeRun) {
+          throw new SessionConflictError(
+            `Session ${value.run.sessionId} already has active run ${activeRun.id}`,
+          )
+        }
       }
 
       const run = runs.create({
@@ -968,11 +970,13 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
   )
 
   const createQueuedRunTransaction = database.transaction((value: CreateQueuedRunInput) => {
-    const activeRun = getActiveRunRowBySession(value.run.sessionId)
-    if (activeRun) {
-      throw new SessionConflictError(
-        `Session ${value.run.sessionId} already has active run ${activeRun.id}`,
-      )
+    if (!value.allowConcurrentActiveRun) {
+      const activeRun = getActiveRunRowBySession(value.run.sessionId)
+      if (activeRun) {
+        throw new SessionConflictError(
+          `Session ${value.run.sessionId} already has active run ${activeRun.id}`,
+        )
+      }
     }
 
     const run = runs.create({

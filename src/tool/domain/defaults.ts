@@ -15,6 +15,10 @@ export const WORKSPACE_SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   ".worktrees",
 ])
+export const WORKSPACE_RESERVED_DIRECTORIES = new Set([
+  ".agents",
+  ".ncoworker",
+])
 export const WORKSPACE_MAX_MATCHES = 20
 export const SEARCH_SKIPPED_DIRECTORIES = WORKSPACE_SKIPPED_DIRECTORIES
 export const SEARCH_MAX_MATCHES = WORKSPACE_MAX_MATCHES

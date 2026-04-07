@@ -135,8 +135,11 @@ Eval artifacts must not store raw secrets such as API keys.
 By default eval output is written under:
 
 ```text
-.agents/evals/<timestamp>/<task-id>/
+.ncoworker/evals/<timestamp>/<task-id>/
 ```
+
+If a workspace already has legacy `.agents/evals` state and no `.ncoworker/evals`
+directory yet, the runner keeps writing to `.agents/evals` for compatibility.
 
 Each task artifact bundle currently contains:
 
@@ -201,7 +204,7 @@ When adding or changing eval tasks:
 - avoid exact free-text grading in live mode unless variability is tightly controlled
 - keep `workspaceFixture` inside `evals/fixtures`
 - keep scripted tasks paired with a `scenario`
-- keep `.agents/skills` fixture content minimal and commit ignored skill files explicitly when a live skill task needs them
+- keep `.ncoworker/skills` fixture content minimal and commit ignored skill files explicitly when a live skill task needs them; use `.agents/skills` only for explicit legacy fallback coverage
 - do not place secrets in tasks, fixtures, or exported artifacts
 
 ## Where To Look Next

@@ -166,10 +166,12 @@ export type CreateQueuedRunWithInitiatingMessageInput = {
     sequence?: number
     createdAt?: number
   }
+  allowConcurrentActiveRun?: boolean
 }
 
 export type CreateQueuedRunInput = {
   run: Omit<CreateRunInput, "status">
+  allowConcurrentActiveRun?: boolean
 }
 
 export type CreateQueuedRunWithInitiatingMessageAndPartInput =

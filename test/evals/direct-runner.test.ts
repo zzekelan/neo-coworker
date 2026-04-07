@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type OpenAI from "openai"
-import { loadEvalTasks, runDiscoveredEvalTasks } from "../../evals"
+import { getDefaultEvalOutputRoot, loadEvalTasks, runDiscoveredEvalTasks } from "../../evals"
 import { createModelProvider, createModelRuntimeApi } from "../../src/model"
 
 const tempDirectories: string[] = []
@@ -27,10 +27,14 @@ describe("direct eval runner", () => {
     const tasks = await loadEvalTasks()
     expect(tasks.map((task) => task.id)).toEqual([
       "regression/cancel-after-output",
+      "regression/datetime",
+      "regression/ncoworker-path-safety",
       "regression/permission-allow-write",
       "regression/permission-deny-write",
       "regression/read-only",
       "regression/retry-recovery",
+      "regression/sub-agent-explore",
+      "regression/sub-agent-parallel-safety",
     ])
 
     const suite = await runDiscoveredEvalTasks({
@@ -39,7 +43,7 @@ describe("direct eval runner", () => {
 
     expect(suite.pass).toBe(true)
     expect(suite.providerMode).toBe("scripted")
-    expect(suite.results).toHaveLength(5)
+    expect(suite.results).toHaveLength(9)
 
     const resultsById = new Map(suite.results.map((entry) => [entry.task.id, entry]))
 
@@ -84,6 +88,27 @@ describe("direct eval runner", () => {
     })
   })
 
+  test("defaults eval artifacts to .ncoworker/evals with legacy fallback", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "eval-output-root-"))
+    tempDirectories.push(workspaceRoot)
+
+    expect(getDefaultEvalOutputRoot(workspaceRoot)).toBe(
+      join(workspaceRoot, ".ncoworker", "evals"),
+    )
+
+    await mkdir(join(workspaceRoot, ".agents", "evals"), { recursive: true })
+
+    expect(getDefaultEvalOutputRoot(workspaceRoot)).toBe(
+      join(workspaceRoot, ".agents", "evals"),
+    )
+
+    await mkdir(join(workspaceRoot, ".ncoworker", "evals"), { recursive: true })
+
+    expect(getDefaultEvalOutputRoot(workspaceRoot)).toBe(
+      join(workspaceRoot, ".ncoworker", "evals"),
+    )
+  })
+
   test("loads and runs the live eval catalog through the default provider assembly path", async () => {
     const outputRoot = await mkdtemp(join(tmpdir(), "eval-live-direct-"))
     tempDirectories.push(outputRoot)
@@ -97,6 +122,7 @@ describe("direct eval runner", () => {
       "live/context-compaction-breaker-reset",
       "live/context-compaction-manual",
       "live/context-compaction-recovery",
+      "live/datetime",
       "live/read-only",
       "live/skill-activation-persistence",
       "live/skill-explicit-activation",

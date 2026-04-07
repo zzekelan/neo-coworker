@@ -65,12 +65,22 @@ describe("read-only tools", () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "read-search-workspace-"))
 
     await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
+    await mkdir(join(workspaceRoot, ".ncoworker"), { recursive: true })
     await writeFile(join(workspaceRoot, ".agents", "server.sqlite"), "secret\n")
+    await writeFile(join(workspaceRoot, ".ncoworker", "server.sqlite"), "secret\n")
 
     await expect(
       registry.execute({
         toolName: "read",
         args: { path: ".agents/server.sqlite" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+
+    await expect(
+      registry.execute({
+        toolName: "read",
+        args: { path: ".ncoworker/server.sqlite" },
         workspaceRoot,
       }),
     ).rejects.toThrow("Path is reserved for agent runtime data")
@@ -94,12 +104,14 @@ describe("read-only tools", () => {
 
     await mkdir(join(workspaceRoot, "src"), { recursive: true })
     await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
+    await mkdir(join(workspaceRoot, ".ncoworker"), { recursive: true })
     await mkdir(join(workspaceRoot, "node_modules"), { recursive: true })
     await mkdir(join(workspaceRoot, ".git"), { recursive: true })
     await mkdir(join(workspaceRoot, ".worktrees"), { recursive: true })
 
     await writeFile(join(workspaceRoot, "src", "visible.ts"), 'export const value = "skipMe"\n')
     await writeFile(join(workspaceRoot, ".agents", "server.sqlite"), "skipMe=true\n")
+    await writeFile(join(workspaceRoot, ".ncoworker", "server.sqlite"), "skipMe=true\n")
     await writeFile(join(workspaceRoot, "node_modules", "hidden.ts"), 'export const value = "skipMe"\n')
     await writeFile(join(workspaceRoot, ".git", "config"), "skipMe=true\n")
     await writeFile(join(workspaceRoot, ".worktrees", "hidden.ts"), 'export const value = "skipMe"\n')
@@ -112,6 +124,7 @@ describe("read-only tools", () => {
 
     expect(result.output).toContain("src/visible.ts")
     expect(result.output).not.toContain(".agents/server.sqlite")
+    expect(result.output).not.toContain(".ncoworker/server.sqlite")
     expect(result.output).not.toContain("node_modules/hidden.ts")
     expect(result.output).not.toContain(".git/config")
     expect(result.output).not.toContain(".worktrees/hidden.ts")

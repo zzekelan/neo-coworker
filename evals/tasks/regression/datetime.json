@@ -1,0 +1,83 @@
+{
+  "id": "regression/datetime",
+  "scenario": "datetime",
+  "prompt": "Use the datetime tool and summarize what it returned.",
+  "workspaceFixture": "workspaces/basic",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "permission.requested",
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "get_current_datetime"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "get_current_datetime"
+        ],
+        "textIncludes": [
+          "Current datetime:",
+          "UTC offset:"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Datetime tool returned"
+        ]
+      }
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "get_current_datetime",
+        "toolResultIncludes": [
+          "Current datetime:",
+          "Timezone:",
+          "UTC offset:",
+          "Epoch ms:"
+        ],
+        "assistantTextIncludes": [
+          "Current datetime",
+          "Timezone",
+          "UTC offset",
+          "Epoch ms"
+        ]
+      }
+    ]
+  }
+}

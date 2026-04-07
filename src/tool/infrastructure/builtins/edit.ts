@@ -3,6 +3,7 @@ import { realpath } from "node:fs/promises"
 import { resolve, sep } from "node:path"
 import { z } from "zod"
 import {
+  assertWorkspacePathNotReserved,
   throwIfToolAborted,
   type RequestToolPermission,
   type ToolDefinition,
@@ -36,12 +37,16 @@ const EditArgsSchema = z.object({
 )
 
 async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string) {
+  assertWorkspacePathNotReserved(relativePath)
+
   const root = await realpath(resolve(workspaceRoot))
   const file = await realpath(resolve(root, relativePath))
 
   if (file !== root && !file.startsWith(`${root}${sep}`)) {
     throw new Error(`Path must stay inside workspace: ${relativePath}`)
   }
+
+  assertWorkspacePathNotReserved(file.slice(root.length + 1))
 
   return file
 }
@@ -82,6 +87,7 @@ export function createEditTool(input: { requestPermission: RequestToolPermission
     async execute(value) {
       throwIfToolAborted(value.signal)
       const { path, oldText, newText, replaceAll = false } = EditArgsSchema.parse(value.args)
+      assertWorkspacePathNotReserved(path)
       const decision = await input.requestPermission({
         toolName: "edit",
         reason: `edit ${path}`,

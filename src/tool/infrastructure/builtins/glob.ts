@@ -17,14 +17,14 @@ const GlobArgsSchema = z.object({
     `Maximum number of results to return. Defaults to ${DEFAULT_LIMIT}. Results beyond the limit are truncated with a notice.`,
   ),
 }).describe(
-  `Find workspace files by glob pattern and return matching paths sorted by modification time (most recently modified first). Use when you know the filename shape or extension but not the exact location, or need a quick candidate list before reading. Prefer over shell find for workspace discovery — hidden runtime state under .agents/** is excluded. Pattern supports *, **, ?, and {a,b} wildcards. Optional path scopes results to a subdirectory. Results are limited to ${DEFAULT_LIMIT} by default.`,
+  `Find workspace files by glob pattern and return matching paths sorted by modification time (most recently modified first). Use when you know the filename shape or extension but not the exact location, or need a quick candidate list before reading. Prefer over shell find for workspace discovery — hidden runtime state under .agents/** and .ncoworker/** is excluded. Pattern supports *, **, ?, and {a,b} wildcards. Optional path scopes results to a subdirectory. Results are limited to ${DEFAULT_LIMIT} by default.`,
 )
 
 export function createGlobTool(): ToolDefinition {
   return {
     name: "glob",
     description:
-      `Find workspace files by glob pattern. Returns relative paths sorted by mtime (newest first). Supports *, **, ?, {a,b} wildcards. Examples: **/*.ts, src/**/index.ts, **/*.{md,txt}. Excludes .agents/**. Default limit ${DEFAULT_LIMIT} (override with limit param). Use path to scope to a subdirectory.`,
+      `Find workspace files by glob pattern. Returns relative paths sorted by mtime (newest first). Supports *, **, ?, {a,b} wildcards. Examples: **/*.ts, src/**/index.ts, **/*.{md,txt}. Excludes .agents/** and .ncoworker/**. Default limit ${DEFAULT_LIMIT} (override with limit param). Use path to scope to a subdirectory.`,
     inputSchema: GlobArgsSchema,
     concurrency: "read-only",
     isCompressible: true,

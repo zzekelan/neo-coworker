@@ -7,9 +7,11 @@ import { createWorkspaceSkillRuntime, createWorkspaceSkillStore } from "../../sr
 async function createWorkspaceWithSkill(input: {
   directoryName: string
   instructions: string
+  skillsDirectory?: ".agents/skills" | ".ncoworker/skills"
 }) {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "skill-runtime-workspace-"))
-  const skillDirectory = join(workspaceRoot, ".agents", "skills", input.directoryName)
+  const skillsDirectory = input.skillsDirectory ?? ".agents/skills"
+  const skillDirectory = join(workspaceRoot, ...skillsDirectory.split("/"), input.directoryName)
 
   await mkdir(skillDirectory, { recursive: true })
   await writeFile(join(skillDirectory, "SKILL.md"), input.instructions)
@@ -18,6 +20,28 @@ async function createWorkspaceWithSkill(input: {
 }
 
 describe("skill runtime", () => {
+  test("discovers skills from .ncoworker/skills by default", async () => {
+    const workspaceRoot = await createWorkspaceWithSkill({
+      directoryName: "reviewer",
+      skillsDirectory: ".ncoworker/skills",
+      instructions: [
+        "name: reviewer",
+        "description: Review code changes for regressions",
+        "",
+        "Focus on bugs first.",
+      ].join("\n"),
+    })
+    const runtime = createWorkspaceSkillRuntime()
+
+    await expect(runtime.listCatalog(workspaceRoot)).resolves.toEqual([
+      {
+        name: "reviewer",
+        description: "Review code changes for regressions",
+        path: ".ncoworker/skills/reviewer/SKILL.md",
+      },
+    ])
+  })
+
   test("discovers skill metadata without loading instructions", async () => {
     const runtime = createWorkspaceSkillRuntime()
 
@@ -122,7 +146,7 @@ describe("skill runtime", () => {
 
     const store = createWorkspaceSkillStore()
     await expect(store.listCatalog(workspaceRoot)).rejects.toThrow(
-      "Skill must stay inside .agents/skills",
+      "Skill must stay inside .ncoworker/skills or .agents/skills",
     )
   })
 })

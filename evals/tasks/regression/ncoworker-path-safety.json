@@ -1,0 +1,61 @@
+{
+  "id": "regression/ncoworker-path-safety",
+  "scenario": "ncoworker-path-safety",
+  "prompt": "Try to read .ncoworker/secret.txt and report whether runtime state is protected.",
+  "workspaceFixture": "workspaces/basic",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.executed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "read"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "error"
+        ],
+        "toolNames": [
+          "read"
+        ],
+        "textIncludes": [
+          "Path is reserved for agent runtime data"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "Path is reserved for agent runtime data"
+        ]
+      }
+    ]
+  }
+}

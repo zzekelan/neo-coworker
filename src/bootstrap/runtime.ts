@@ -520,6 +520,7 @@ function createToolPortFactory(config: {
                       text: prompt,
                       createdAt,
                     },
+                    allowConcurrentActiveRun: true,
                   })
                 },
               })

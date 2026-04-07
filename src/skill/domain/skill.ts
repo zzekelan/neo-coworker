@@ -1,9 +1,10 @@
-export const SKILLS_DIRECTORY = ".agents/skills"
+export const SKILLS_DIRECTORY = ".ncoworker/skills"
+export const LEGACY_SKILLS_DIRECTORY = ".agents/skills"
 export const SKILL_FILENAME = "SKILL.md"
 export const SKILL_METADATA_BYTES = 2048
 
-export function getSkillCatalogPath(skillName: string) {
-  return `${SKILLS_DIRECTORY}/${skillName}/${SKILL_FILENAME}`
+export function getSkillCatalogPath(skillName: string, skillsDirectory = SKILLS_DIRECTORY) {
+  return `${skillsDirectory}/${skillName}/${SKILL_FILENAME}`
 }
 
 export function parseSkillMetadata(text: string, fallbackName: string) {

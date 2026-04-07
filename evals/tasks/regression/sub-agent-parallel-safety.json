@@ -1,0 +1,58 @@
+{
+  "id": "regression/sub-agent-parallel-safety",
+  "scenario": "sub-agent-parallel-safety",
+  "prompt": "Delegate two independent read-only branches to explore agents in the same turn.",
+  "workspaceFixture": "workspaces/basic",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "permission.requested",
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "agent"
+    ],
+    "forbiddenToolNames": [
+      "write",
+      "edit",
+      "shell"
+    ]
+  },
+  "transcriptExpectation": {
+    "orderedTextIncludes": [
+      "Parallel sub-agent branch",
+      "Parallel sub-agent branch",
+      "Parallel delegation complete."
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "agent",
+        "toolResultIncludes": [
+          "Parallel sub-agent branch"
+        ],
+        "assistantTextIncludes": [
+          "Parallel delegation complete."
+        ]
+      }
+    ]
+  }
+}
