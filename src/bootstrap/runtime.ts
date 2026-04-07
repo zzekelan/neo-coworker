@@ -17,7 +17,9 @@ import {
 } from "../permission"
 import {
   createBuiltinToolRuntime,
+  createToolProviderFromRuntime,
   createToolProvider,
+  createToolRuntimeApi,
   manageResultSize,
   throwIfToolAborted,
   type SearchToolBackend,
@@ -30,6 +32,7 @@ import {
 import {
   createAgentProfileService,
   createAgentTool,
+  createSubAgentRun as createAgentSubRun,
   type AgentProfile,
   type AgentProfileService,
 } from "../agent"
@@ -44,11 +47,14 @@ import type {
   OrchestrationPermissionPort,
   OrchestrationSessionPort,
   OrchestrationSkillPort,
+  OrchestrationToolPort,
   OrchestrationToolPortFactory,
 } from "../orchestration"
 import {
+  buildAgentAwarePrompt,
   createOrchestrationActiveRunRegistry,
   createOrchestrationRuntimeApi,
+  createOrchestrationStepService,
   createOrchestrationToolBatchExecutor,
   DEFAULT_CONTEXT_WINDOW_SIZE,
   resolvePermissionPolicy,
@@ -102,42 +108,61 @@ export function createRuntime(input: RuntimeInput) {
   const now = input.now ?? Date.now
   const observability = input.observability
   const skillPort = input.skill ?? createSkillPort({ runtime: input.skillRuntime })
+  const contextWindow = {
+    getContextWindow() {
+      return input.contextWindow ?? DEFAULT_CONTEXT_WINDOW_SIZE
+    },
+  }
   const sessionProvider = createSessionRuntimeApi({
     repository: input.repository,
+    now,
+  })
+  const sessionPort = createSessionPort({
+    repository: input.repository,
+    session: sessionProvider.runs,
+  })
+  const permissionPort = createPermissionPort({
+    repository: input.permissionRepository,
+    session: createPermissionSessionPort({
+      repository: input.repository,
+      session: sessionProvider.runs,
+    }),
+    observer: observability?.permissionObserver,
     now,
   })
 
   return createOrchestrationRuntimeApi({
     model: input.provider,
-    contextWindow: {
-      getContextWindow() {
-        return input.contextWindow ?? DEFAULT_CONTEXT_WINDOW_SIZE
-      },
-    },
-    session: createSessionPort({
-      repository: input.repository,
-      session: sessionProvider.runs,
-    }),
+    contextWindow,
+    session: sessionPort,
     skill: skillPort,
-    permission: createPermissionPort({
-      repository: input.permissionRepository,
-      session: createPermissionSessionPort({
-        repository: input.repository,
-        session: sessionProvider.runs,
-      }),
-      observer: observability?.permissionObserver,
-      now,
-    }),
+    permission: permissionPort,
     tools: createToolPortFactory({
       observer: observability?.toolObserver,
       repository: input.repository,
+      model: input.provider,
+      contextWindow,
+      sessionPort,
       runtimeObserver: observability?.runtimeObserver,
       searchBackend: input.searchBackend,
       agentProfileService(workspaceRoot) {
         return createAgentProfileService(workspaceRoot)
       },
-      async createSubAgentRun(profile, prompt) {
-        return `Sub-agent '${profile.name}' is not yet fully implemented. Prompt: ${prompt}`
+      async createSubAgentRun(subAgentInput) {
+        return createAgentSubRun({
+          ...subAgentInput,
+          model: input.provider,
+          session: sessionPort,
+          skill: skillPort,
+          contextWindow,
+          runtimeObserver: observability?.runtimeObserver,
+          now,
+          buildAgentAwarePrompt,
+          createStepService: createOrchestrationStepService,
+          createToolBatchExecutor: createOrchestrationToolBatchExecutor,
+          createToolRuntime: createToolRuntimeApi,
+          createToolProvider: createToolProviderFromRuntime,
+        })
       },
       session: sessionProvider.runs,
       skill: skillPort,
@@ -395,10 +420,28 @@ function createPermissionPort(input: {
 function createToolPortFactory(config: {
   observer?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
   repository: StorageRepository
+  model: OrchestrationModelPort
+  contextWindow: { getContextWindow(): number }
+  sessionPort: OrchestrationSessionPort
   runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
   searchBackend?: SearchToolBackend
   agentProfileService: (workspaceRoot: string) => AgentProfileService
-  createSubAgentRun: (profile: AgentProfile, prompt: string, signal?: AbortSignal) => Promise<string>
+  createSubAgentRun: (input: {
+    profile: AgentProfile
+    prompt: string
+    sessionId: string
+    parentRunId: string
+    workspaceRoot: string
+    parentTools: OrchestrationToolPort
+    signal?: AbortSignal
+    createQueuedRun(input: {
+      subRunId: string
+      sessionId: string
+      prompt: string
+      activeSkills: string[]
+      createdAt: number
+    }): void
+  }) => Promise<string>
   session: Pick<SessionProvider["runs"], "addActiveSkills">
   skill: OrchestrationSkillPort
   now: () => number
@@ -409,7 +452,8 @@ function createToolPortFactory(config: {
     create(input) {
       const workspaceRoot = config.repository.sessions.get(input.sessionId).workspaceRoot
       const agentProfileService = config.agentProfileService(workspaceRoot)
-      const runtime = createBuiltinToolRuntime({
+      let runtime!: ReturnType<typeof createBuiltinToolRuntime>
+      runtime = createBuiltinToolRuntime({
         requestPermission(request) {
           return input.requestPermission(request)
         },
@@ -428,7 +472,58 @@ function createToolPortFactory(config: {
             sessionId: input.sessionId,
             runId: input.runId,
             agentProfileService,
-            createSubAgentRun: config.createSubAgentRun,
+            createSubAgentRun(profile, prompt, signal) {
+              return config.createSubAgentRun({
+                profile,
+                prompt,
+                sessionId: input.sessionId,
+                parentRunId: input.runId,
+                workspaceRoot,
+                parentTools: {
+                  ...createToolProviderFromRuntime({ runtime }),
+                  async executeBatch(batchInput) {
+                    const results = await batchExecutor.execute({
+                      calls: batchInput.calls,
+                      tools: createToolProviderFromRuntime({ runtime }),
+                      availableTools: runtime.list(),
+                      workspaceRoot: batchInput.workspaceRoot,
+                      signal: batchInput.signal,
+                    })
+
+                    return results.map((result) => ({
+                      ...result,
+                      ...manageResultSize({
+                        output: result.output,
+                        isError: result.isError,
+                        metadata: result.metadata,
+                      }),
+                    }))
+                  },
+                },
+                signal,
+                createQueuedRun({ subRunId, sessionId, prompt, activeSkills, createdAt }) {
+                  config.repository.createQueuedRunWithInitiatingMessageAndPart({
+                    run: {
+                      id: subRunId,
+                      sessionId,
+                      trigger: "prompt",
+                      createdAt,
+                      activeSkills,
+                    },
+                    message: {
+                      sequence: 0,
+                      createdAt,
+                    },
+                    part: {
+                      kind: "text",
+                      sequence: 0,
+                      text: prompt,
+                      createdAt,
+                    },
+                  })
+                },
+              })
+            },
             currentDepth: 0,
           }),
         ],

@@ -4,3 +4,5 @@ export type { AgentProfileInput, AgentProfileOutput } from "../domain/agent-prof
 export { BUILTIN_AGENTS, getBuiltinAgent } from "../domain/builtin-agents"
 export type { AgentProfileService } from "./agent-profile-service"
 export { createAgentProfileService } from "./agent-profile-service"
+export { createSubAgentContext, createSubAgentRun, type CreateSubAgentRunInput } from "./sub-agent-context"
+export { filterToolsForAgent, loadSkillsForAgent } from "./tool-filter"
