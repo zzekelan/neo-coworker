@@ -28,7 +28,12 @@ import {
   type SkillRuntimeApi,
 } from "../skill"
 import {
-  createNoopObservabilityRuntimeApi,
+  createAgentProfileService,
+  createAgentTool,
+  type AgentProfile,
+  type AgentProfileService,
+} from "../agent"
+import {
   createObservabilityRepository,
   createObservabilityRuntimeApi,
   type ObservabilityRepository,
@@ -128,6 +133,12 @@ export function createRuntime(input: RuntimeInput) {
       repository: input.repository,
       runtimeObserver: observability?.runtimeObserver,
       searchBackend: input.searchBackend,
+      agentProfileService(workspaceRoot) {
+        return createAgentProfileService(workspaceRoot)
+      },
+      async createSubAgentRun(profile, prompt) {
+        return `Sub-agent '${profile.name}' is not yet fully implemented. Prompt: ${prompt}`
+      },
       session: sessionProvider.runs,
       skill: skillPort,
       now,
@@ -386,6 +397,8 @@ function createToolPortFactory(config: {
   repository: StorageRepository
   runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
   searchBackend?: SearchToolBackend
+  agentProfileService: (workspaceRoot: string) => AgentProfileService
+  createSubAgentRun: (profile: AgentProfile, prompt: string, signal?: AbortSignal) => Promise<string>
   session: Pick<SessionProvider["runs"], "addActiveSkills">
   skill: OrchestrationSkillPort
   now: () => number
@@ -394,6 +407,8 @@ function createToolPortFactory(config: {
 
   return {
     create(input) {
+      const workspaceRoot = config.repository.sessions.get(input.sessionId).workspaceRoot
+      const agentProfileService = config.agentProfileService(workspaceRoot)
       const runtime = createBuiltinToolRuntime({
         requestPermission(request) {
           return input.requestPermission(request)
@@ -408,6 +423,13 @@ function createToolPortFactory(config: {
             sessionId: input.sessionId,
             runId: input.runId,
             now: config.now,
+          }),
+          createAgentTool({
+            sessionId: input.sessionId,
+            runId: input.runId,
+            agentProfileService,
+            createSubAgentRun: config.createSubAgentRun,
+            currentDepth: 0,
           }),
         ],
       })

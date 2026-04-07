@@ -1,5 +1,6 @@
 export type { AgentProfile } from "../domain/agent-profile"
 export { AgentProfileSchema } from "../domain/agent-profile-schema"
 export type { AgentProfileInput, AgentProfileOutput } from "../domain/agent-profile-schema"
+export { BUILTIN_AGENTS, getBuiltinAgent } from "../domain/builtin-agents"
 export type { AgentProfileService } from "./agent-profile-service"
 export { createAgentProfileService } from "./agent-profile-service"
