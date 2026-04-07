@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { accessSync, appendFileSync, constants as fsConstants } from "node:fs"
+import { accessSync, appendFileSync, constants as fsConstants, existsSync } from "node:fs"
 import { createServer as createNetServer } from "node:net"
 import { homedir } from "node:os"
 import { delimiter, dirname, join, resolve } from "node:path"
@@ -23,11 +23,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const desktopRoot = resolve(__dirname, "..")
 const repositoryRoot = resolve(__dirname, "..", "..", "..")
 const preloadPath = resolve(__dirname, "preload.cjs")
-const workspaceRoot = process.env.DESKTOP_WORKSPACE_ROOT || resolve(repositoryRoot, ".agents", "workspace")
-const desktopSelectionStatePath = resolve(repositoryRoot, ".agents", "desktop-state.json")
-const desktopSettingsStatePath = resolve(repositoryRoot, ".agents", "desktop-settings.json")
+const workspaceRoot =
+  process.env.DESKTOP_WORKSPACE_ROOT || resolveLegacyDesktopPath(repositoryRoot, "workspace")
+const desktopSelectionStatePath = resolveLegacyDesktopPath(repositoryRoot, "desktop-state.json")
+const desktopSettingsStatePath = resolveLegacyDesktopPath(repositoryRoot, "desktop-settings.json")
 const desktopServerDatabasePath =
-  process.env.AGENT_SERVER_DB_PATH?.trim() || resolve(repositoryRoot, ".agents", "server.sqlite")
+  process.env.AGENT_SERVER_DB_PATH?.trim() || resolveLegacyDesktopPath(repositoryRoot, "server.sqlite")
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
 const defaultDesktopSettings = createDefaultDesktopSettings({
   ...readDesktopSettingsEnvFiles(repositoryRoot),
@@ -42,7 +43,6 @@ let uiServerHandle = null
 let eventBridgeHandle = null
 let currentServerOrigin = null
 let currentServerMode = "managed-local"
-let mainWindow = null
 let runtimeCleanupPromise = null
 let unavailableServerMessage = null
 
@@ -82,7 +82,6 @@ async function startDesktop() {
     persistedSessionId: persistedSelection?.activeSessionId ?? null,
     serverMode: currentServerMode,
   })
-  mainWindow = window
 
   ipcMain.handle("neo-coworker:request-json", async (_event, input) => {
     return requestJson(currentServerOrigin, input)
@@ -779,6 +778,12 @@ function buildLoopbackEnv(overrides) {
     ...env,
     ...overrides,
   }
+}
+
+function resolveLegacyDesktopPath(root, fileName) {
+  const nextPath = resolve(root, ".ncoworker", fileName)
+  const legacyPath = resolve(root, ".agents", fileName)
+  return existsSync(legacyPath) && !existsSync(nextPath) ? legacyPath : nextPath
 }
 
 function parseSseEvent(rawEvent) {
