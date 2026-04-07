@@ -1,0 +1,110 @@
+{
+  "id": "live/tool-websearch-parallel",
+  "providerMode": "live",
+  "prompt": "In a single assistant tool-use turn, call websearch twice in parallel. Query one: Alan Turing exact birth date Wikipedia. Query two: Grace Hopper exact birth date Wikipedia. After both websearch results return, reply with both exact dates and the exact URLs you used. Do not call any other tools.",
+  "workspaceFixture": "workspaces/basic",
+  "permissionPolicy": {
+    "websearch": "allow"
+  },
+  "autoReplyPermission": "deny",
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "outcomeExpectation": {
+    "runStatus": "completed"
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "websearch"
+    ],
+    "forbiddenToolNames": [
+      "codesearch",
+      "edit",
+      "glob",
+      "grep",
+      "read",
+      "shell",
+      "webfetch",
+      "write"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "websearch"
+        ],
+        "toolCallCount": 2,
+        "toolResultCount": 2
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "23 June 1912",
+          "December 9, 1906",
+          "Grace Hopper",
+          "https://en.wikipedia.org/wiki/Alan_Turing",
+          "https://en.wikipedia.org/wiki/Grace_Hopper"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "run.started",
+      "tool.call.completed",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "websearch",
+        "toolResultIncludes": [
+          "23 June 1912",
+          "https://en.wikipedia.org/wiki/Alan_Turing"
+        ],
+        "assistantTextIncludes": [
+          "23 June 1912",
+          "https://en.wikipedia.org/wiki/Alan_Turing"
+        ]
+      },
+      {
+        "toolName": "websearch",
+        "toolResultIncludes": [
+          "Grace Hopper",
+          "December 9, 1906",
+          "https://en.wikipedia.org/wiki/Grace_Hopper"
+        ],
+        "assistantTextIncludes": [
+          "Grace Hopper",
+          "December 9, 1906",
+          "https://en.wikipedia.org/wiki/Grace_Hopper"
+        ]
+      }
+    ]
+  }
+}

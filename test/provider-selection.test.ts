@@ -73,6 +73,7 @@ describe("provider selection", () => {
       model: "gpt-5",
       input: [],
       instructions: ["system", SYSTEM_REMINDER_NOTICE].join("\n\n"),
+      parallel_tool_calls: true,
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal: expect.any(AbortSignal) })
@@ -155,6 +156,7 @@ describe("provider selection", () => {
       stream_options: {
         include_usage: true,
       },
+      parallel_tool_calls: true,
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal: expect.any(AbortSignal) })

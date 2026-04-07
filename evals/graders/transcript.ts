@@ -50,6 +50,21 @@ export function gradeTranscriptExpectation(input: {
         checkpointFailures.push(`message ${checkpoint.messageIndex} missing tool ${toolName}`)
       }
     }
+
+    const toolCallCount = message.partKinds.filter((kind) => kind === "tool_call").length
+    const toolResultCount = message.partKinds.filter((kind) => kind === "tool_result").length
+
+    if (checkpoint.toolCallCount !== undefined && toolCallCount !== checkpoint.toolCallCount) {
+      checkpointFailures.push(
+        `message ${checkpoint.messageIndex} expected ${checkpoint.toolCallCount} tool calls but observed ${toolCallCount}`,
+      )
+    }
+
+    if (checkpoint.toolResultCount !== undefined && toolResultCount !== checkpoint.toolResultCount) {
+      checkpointFailures.push(
+        `message ${checkpoint.messageIndex} expected ${checkpoint.toolResultCount} tool results but observed ${toolResultCount}`,
+      )
+    }
   }
 
   return {

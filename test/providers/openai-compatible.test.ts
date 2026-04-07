@@ -150,6 +150,7 @@ describe("openai-compatible provider", () => {
       stream_options: {
         include_usage: true,
       },
+      parallel_tool_calls: true,
       tools: [
         {
           type: "function",
@@ -390,6 +391,7 @@ describe("openai-compatible provider", () => {
       stream_options: {
         include_usage: true,
       },
+      parallel_tool_calls: true,
       tools: [],
     })
   })
@@ -472,6 +474,7 @@ describe("openai-compatible provider", () => {
       stream_options: {
         include_usage: true,
       },
+      parallel_tool_calls: true,
       tools: [
         {
           type: "function",

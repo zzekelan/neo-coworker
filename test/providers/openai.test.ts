@@ -92,6 +92,7 @@ describe("openai provider", () => {
       model: "gpt-5",
       input: [],
       instructions: "system",
+      parallel_tool_calls: true,
       tools: [],
     })
     expect(receivedOptions).toEqual({ signal })
@@ -198,6 +199,7 @@ describe("openai provider", () => {
         },
       ],
       instructions: "system",
+      parallel_tool_calls: true,
       tools: [],
     })
   })

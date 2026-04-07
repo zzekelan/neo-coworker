@@ -23,6 +23,8 @@ export const EvalTranscriptCheckpointSchema = z.object({
   partKinds: z.array(z.string()).default([]),
   textIncludes: z.array(z.string()).default([]),
   toolNames: z.array(z.string()).default([]),
+  toolCallCount: z.number().int().nonnegative().optional(),
+  toolResultCount: z.number().int().nonnegative().optional(),
 })
 
 export const EvalTranscriptExpectationSchema = z.object({

@@ -224,6 +224,7 @@ export function createOpenAICompatibleProvider(input: {
           stream_options: {
             include_usage: true,
           },
+          parallel_tool_calls: true,
           tools: request.tools.map(toChatCompletionTool) as OpenAICompatibleTools,
         },
         { signal: request.signal },

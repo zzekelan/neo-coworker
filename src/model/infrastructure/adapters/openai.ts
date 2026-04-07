@@ -91,6 +91,7 @@ export function createOpenAIProvider(input: {
           model: input.model,
           input: toResponseInputs(request.messages),
           instructions: request.system,
+          parallel_tool_calls: true,
           tools: request.tools as OpenAITools,
         },
         { signal: request.signal },

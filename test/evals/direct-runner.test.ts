@@ -136,6 +136,7 @@ describe("direct eval runner", () => {
       "live/tool-grep",
       "live/tool-webfetch",
       "live/tool-websearch",
+      "live/tool-websearch-parallel",
     ])
 
     const suite = await runDiscoveredEvalTasks({
@@ -454,6 +455,121 @@ describe("direct eval runner", () => {
           toolName: "websearch",
           query: "BACKEND_RESULT_TOKEN",
         }),
+      },
+    ])
+  })
+
+  test("runs the parallel websearch live eval through the real tool path", async () => {
+    const outputRoot = await mkdtemp(join(tmpdir(), "eval-live-parallel-search-output-"))
+    tempDirectories.push(outputRoot)
+
+    const searchRequests: Array<{ authorization: string | null; body: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const body = await request.text()
+        const parsed = JSON.parse(body) as { query?: string }
+        searchRequests.push({
+          authorization: request.headers.get("authorization"),
+          body,
+        })
+
+        if (parsed.query?.includes("Alan Turing")) {
+          return Response.json({
+            output:
+              "Alan Turing was born on 23 June 1912. Source: https://en.wikipedia.org/wiki/Alan_Turing",
+          })
+        }
+
+        if (parsed.query?.includes("Grace Hopper")) {
+          return Response.json({
+            output:
+              "Grace Hopper was born on December 9, 1906. Source: https://en.wikipedia.org/wiki/Grace_Hopper",
+          })
+        }
+
+        return Response.json({
+          output: `Unexpected query ${parsed.query ?? "<missing>"}`,
+        })
+      },
+    })
+    activeServers.push(server)
+
+    const suite = await runDiscoveredEvalTasks({
+      providerMode: "live",
+      taskIds: ["live/tool-websearch-parallel"],
+      outputRoot,
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "gpt-5",
+        SEARCH_BACKEND_URL: server.url.toString(),
+        SEARCH_BACKEND_BEARER_TOKEN: "search-token",
+      },
+      createClient() {
+        return {} as OpenAI
+      },
+      createOpenAIProviderImpl(input) {
+        let turn = 0
+
+        return createModelProvider({
+          observer: input.observer,
+          runtime: createModelRuntimeApi({
+            async *streamTurn() {
+              turn += 1
+
+              if (turn === 1) {
+                yield {
+                  type: "tool.call",
+                  callId: "call_websearch_turing",
+                  name: "websearch",
+                  inputText: '{"query":"Alan Turing exact birth date Wikipedia"}',
+                }
+                yield {
+                  type: "tool.call",
+                  callId: "call_websearch_hopper",
+                  name: "websearch",
+                  inputText: '{"query":"Grace Hopper exact birth date Wikipedia"}',
+                }
+                return
+              }
+
+              if (turn === 2) {
+                yield {
+                  type: "text.delta",
+                  text:
+                    "Alan Turing: 23 June 1912, https://en.wikipedia.org/wiki/Alan_Turing. Grace Hopper: December 9, 1906, https://en.wikipedia.org/wiki/Grace_Hopper.",
+                }
+                return
+              }
+
+              throw new Error(`Unexpected provider turn ${turn}`)
+            },
+          }),
+        })
+      },
+    })
+
+    expect(suite.pass).toBe(true)
+    expect(suite.results).toHaveLength(1)
+    expect(suite.results[0]?.result.artifact.metrics.toolCallCount).toBe(2)
+    expect(suite.results[0]?.result.grades.transcript.pass).toBe(true)
+    expect(searchRequests.map((request) => request.authorization)).toEqual([
+      "Bearer search-token",
+      "Bearer search-token",
+    ])
+    expect(
+      searchRequests
+        .map((request) => JSON.parse(request.body) as { toolName: string; query: string })
+        .sort((left, right) => left.query.localeCompare(right.query)),
+    ).toEqual([
+      {
+        toolName: "websearch",
+        query: "Alan Turing exact birth date Wikipedia",
+      },
+      {
+        toolName: "websearch",
+        query: "Grace Hopper exact birth date Wikipedia",
       },
     ])
   })
