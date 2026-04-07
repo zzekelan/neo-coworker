@@ -599,6 +599,19 @@ async function waitForServerStarted(child, fallbackOrigin) {
     let stderr = ""
     let settled = false
 
+    function handleStartupOutput(text) {
+      const lines = text.split(/\r?\n/)
+      for (const line of lines) {
+        if (!line.startsWith("server.started ")) {
+          continue
+        }
+
+        settled = true
+        clearTimeout(timeout)
+        resolvePromise(line.slice("server.started ".length).trim() || fallbackOrigin)
+      }
+    }
+
     const timeout = setTimeout(() => {
       settled = true
       child.kill("SIGTERM")
@@ -611,22 +624,13 @@ async function waitForServerStarted(child, fallbackOrigin) {
       if (!bootstrapLogPath) {
         process.stdout.write(text)
       }
-      const lines = text.split(/\r?\n/)
-      for (const line of lines) {
-        if (!line.startsWith("server.started ")) {
-          continue
-        }
-
-        settled = true
-        clearTimeout(timeout)
-        resolvePromise(line.slice("server.started ".length).trim() || fallbackOrigin)
-      }
     })
 
     child.stderr.setEncoding("utf8")
     child.stderr.on("data", (chunk) => {
       const text = String(chunk)
       stderr += text
+      handleStartupOutput(text)
       if (!bootstrapLogPath) {
         process.stderr.write(text)
       }
@@ -821,7 +825,7 @@ function logBootstrap(message) {
     return
   }
 
-  console.log(line)
+  process.stderr.write(`${line}\n`)
 }
 
 function sanitizeBootstrapMessage(message) {

@@ -74,11 +74,11 @@ async function waitForShutdown(input: { stop(): Promise<void> }) {
   })
 }
 
-if (import.meta.main) {
+if ((import.meta as ImportMeta & { main?: boolean }).main) {
   try {
     const standaloneServer = await startStandaloneServer()
-    console.log(`server.started ${standaloneServer.server.baseUrl}`)
-    console.log(`server.storage ${standaloneServer.config.databasePath}`)
+    process.stderr.write(`server.started ${standaloneServer.server.baseUrl}\n`)
+    process.stderr.write(`server.storage ${standaloneServer.config.databasePath}\n`)
     await waitForShutdown(standaloneServer)
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))

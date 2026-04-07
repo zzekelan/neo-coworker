@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { createServer as createNetServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -14,9 +14,43 @@ import {
 } from "../../src/session"
 
 const tempDirectories: string[] = []
-const activeProcesses: Bun.Subprocess[] = []
+type ServerSubprocess = {
+  exitCode: number | null
+  kill(signal?: string): void
+  exited: Promise<number>
+  stdout: ReadableStream<Uint8Array> | null
+  stderr: ReadableStream<Uint8Array> | null
+}
 
-afterEach(async () => {
+const bunRuntime = (globalThis as unknown as {
+  Bun: {
+    spawn(input: {
+      cmd: string[]
+      cwd: string
+      env: Record<string, string>
+      stdout: "pipe"
+      stderr: "pipe"
+      stdin: "ignore"
+    }): ServerSubprocess
+    spawnSync(input: {
+      cmd: string[]
+      cwd: string
+      env: Record<string, string>
+      stdout: "pipe"
+      stderr: "pipe"
+      stdin: "ignore"
+    }): {
+      exitCode: number | null
+      stdout: Uint8Array
+      stderr: Uint8Array
+    }
+    sleep(ms: number): Promise<void>
+  }
+}).Bun
+
+const activeProcesses: ServerSubprocess[] = []
+
+async function cleanupState() {
   while (activeProcesses.length > 0) {
     const process = activeProcesses.pop()!
     if (process.exitCode == null) {
@@ -28,7 +62,7 @@ afterEach(async () => {
   while (tempDirectories.length > 0) {
     await rm(tempDirectories.pop()!, { force: true, recursive: true })
   }
-})
+}
 
 describe("standalone server config", () => {
   test("derives the default storage path from the launch cwd", () => {
@@ -86,67 +120,75 @@ describe("agent server origin", () => {
 
 describe("server main entrypoint", () => {
   test("starts through the public entrypoint and serves /health on loopback", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "server-main-success-"))
-    tempDirectories.push(directory)
+    try {
+      const directory = await mkdtemp(join(tmpdir(), "server-main-success-"))
+      tempDirectories.push(directory)
 
-    const databasePath = join(directory, "server.sqlite")
-    const port = await allocateLoopbackPort()
-    const process = spawnServerMain({
-      AGENT_SERVER_DB_PATH: databasePath,
-      AGENT_SERVER_HOST: "127.0.0.1",
-      AGENT_SERVER_PORT: String(port),
-      LLM_PROVIDER: "openai-compatible",
-      LLM_API_KEY: "test-key",
-      LLM_MODEL: "fake-model",
-      LLM_BASE_URL: "https://example.invalid/v1",
-    })
+      const databasePath = join(directory, "server.sqlite")
+      const port = await allocateLoopbackPort()
+      const process = spawnServerMain({
+        AGENT_SERVER_DB_PATH: databasePath,
+        AGENT_SERVER_HOST: "127.0.0.1",
+        AGENT_SERVER_PORT: String(port),
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "fake-model",
+        LLM_BASE_URL: "https://example.invalid/v1",
+      })
 
-    await waitForHealth(`http://127.0.0.1:${port}/health`)
+      await waitForHealth(`http://127.0.0.1:${port}/health`)
 
-    process.kill("SIGINT")
-    expect(await waitForExit(process)).toBe(0)
+      process.kill("SIGINT")
+      expect(await waitForExit(process)).toBe(0)
 
-    const stdout = await readProcessStream(process.stdout)
-    const stderr = await readProcessStream(process.stderr)
+      const stdout = await readProcessStream(process.stdout)
+      const stderr = await readProcessStream(process.stderr)
 
-    expect(stdout).toContain(`server.started http://127.0.0.1:${port}`)
-    expect(stdout).toContain(`server.storage ${databasePath}`)
-    expect(stderr.trim()).toBe("")
+      expect(stdout.trim()).toBe("")
+      expect(stderr).toContain(`server.started http://127.0.0.1:${port}`)
+      expect(stderr).toContain(`server.storage ${databasePath}`)
+    } finally {
+      await cleanupState()
+    }
   })
 
   test("surfaces database initialization failures through the public entrypoint", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "server-main-failure-"))
-    tempDirectories.push(directory)
+    try {
+      const directory = await mkdtemp(join(tmpdir(), "server-main-failure-"))
+      tempDirectories.push(directory)
 
-    const databasePath = join(directory, "future.sqlite")
-    const database = openStorageDatabase(databasePath)
-    database.exec("PRAGMA user_version = 999")
-    database.close(false)
+      const databasePath = join(directory, "future.sqlite")
+      const database = openStorageDatabase(databasePath)
+      database.exec("PRAGMA user_version = 999")
+      database.close(false)
 
-    const process = spawnServerMain({
-      AGENT_SERVER_DB_PATH: databasePath,
-      AGENT_SERVER_HOST: "127.0.0.1",
-      AGENT_SERVER_PORT: "3100",
-      LLM_PROVIDER: "openai-compatible",
-      LLM_API_KEY: "test-key",
-      LLM_MODEL: "fake-model",
-      LLM_BASE_URL: "https://example.invalid/v1",
-    })
+      const process = spawnServerMain({
+        AGENT_SERVER_DB_PATH: databasePath,
+        AGENT_SERVER_HOST: "127.0.0.1",
+        AGENT_SERVER_PORT: "3100",
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "fake-model",
+        LLM_BASE_URL: "https://example.invalid/v1",
+      })
 
-    expect(await waitForExit(process)).toBe(1)
+      expect(await waitForExit(process)).toBe(1)
 
-    const stdout = await readProcessStream(process.stdout)
-    const stderr = await readProcessStream(process.stderr)
+      const stdout = await readProcessStream(process.stdout)
+      const stderr = await readProcessStream(process.stderr)
 
-    expect(stdout.trim()).toBe("")
-    expect(stderr).toContain(
-      `Failed to initialize storage at ${databasePath}: Database schema version 999 is newer than supported version ${CURRENT_STORAGE_SCHEMA_VERSION}`,
-    )
+      expect(stdout.trim()).toBe("")
+      expect(stderr).toContain(
+        `Failed to initialize storage at ${databasePath}: Database schema version 999 is newer than supported version ${CURRENT_STORAGE_SCHEMA_VERSION}`,
+      )
+    } finally {
+      await cleanupState()
+    }
   })
 })
 
 function spawnServerMain(overrides: Record<string, string>) {
-  const subprocess = Bun.spawn({
+  const subprocess = bunRuntime.spawn({
     cmd: ["bun", "run", "src/app-server/main.ts"],
     cwd: globalThis.process.cwd(),
     env: buildLoopbackEnv(overrides),
@@ -210,7 +252,7 @@ async function waitForHealth(url: string, timeoutMs = 5_000) {
 
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const healthCheck = Bun.spawnSync({
+        const healthCheck = bunRuntime.spawnSync({
         cmd: [
           "bun",
           "-e",
@@ -231,16 +273,16 @@ async function waitForHealth(url: string, timeoutMs = 5_000) {
       // Keep polling until the subprocess starts listening.
     }
 
-    await Bun.sleep(50)
+    await bunRuntime.sleep(50)
   }
 
   throw new Error(`Timed out waiting for healthy server at ${url}`)
 }
 
-async function waitForExit(process: Bun.Subprocess, timeoutMs = 5_000) {
+async function waitForExit(process: ServerSubprocess, timeoutMs = 5_000) {
   return await Promise.race([
     process.exited,
-    Bun.sleep(timeoutMs).then(() => {
+    bunRuntime.sleep(timeoutMs).then(() => {
       throw new Error("Timed out waiting for server-main process to exit")
     }),
   ])
