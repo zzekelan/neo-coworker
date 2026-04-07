@@ -68,7 +68,7 @@ export function updateToolProgress(
   for (let i = 0; i < next.length; i++) {
     const target = next[i]
     const partIndex = target.parts.findIndex(
-      (p) => p.kind === "tool_call" && (p.data as any)?.callId === toolCallId
+      (part) => readToolCallId(part) === toolCallId
     )
 
     if (partIndex !== -1) {
@@ -91,4 +91,17 @@ export function updateToolProgress(
   }
 
   return modified ? next : messages
+}
+
+function readToolCallId(part: DesktopPart) {
+  if (part.kind !== "tool_call") {
+    return null
+  }
+
+  if (!part.data || typeof part.data !== "object" || Array.isArray(part.data)) {
+    return null
+  }
+
+  const candidate = (part.data as Record<string, unknown>).callId
+  return typeof candidate === "string" ? candidate : null
 }

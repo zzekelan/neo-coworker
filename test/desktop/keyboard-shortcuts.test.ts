@@ -8,6 +8,10 @@ describe("desktop keyboard shortcuts", () => {
     expect(source).toContain("window.addEventListener(\"keydown\"")
     expect(source).toContain("event.metaKey || event.ctrlKey")
     expect(source).toContain("isInputFocused")
+    expect(source).toContain('registerShortcut("meta+d"')
+    expect(source).toContain("if (onToggleTheme) onToggleTheme()")
+    expect(source).toContain('registerShortcut("meta+l"')
+    expect(source).toContain("if (onClearTranscript) onClearTranscript()")
   })
 
   test("CommandPalette includes proper linear-style animations and fuzzy filtering", () => {
@@ -25,5 +29,7 @@ describe("desktop keyboard shortcuts", () => {
 
     expect(source).toContain("<KeyboardShortcutProvider")
     expect(source).toContain("<CommandPalette />")
+    expect(source).toContain("onToggleTheme={handleToggleTheme}")
+    expect(source).toContain("onClearTranscript={handleClearTranscriptDisplay}")
   })
 })

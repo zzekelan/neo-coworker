@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, Suspense } from "react"
+import React, { useMemo, useState, Suspense } from "react"
 import {
   AlertCircle,
   CheckCircle2,
@@ -21,6 +21,7 @@ import { ErrorBoundary } from "./ErrorBoundary"
 import { CompactionDivider } from "./CompactionDivider"
 
 const MarkdownText = React.lazy(() => import("./MarkdownText"))
+const ToolDetails = React.lazy(() => import("./ToolDetails"))
 
 const PulsePlaceholder = () => <div className="pulse-placeholder" />
 
@@ -257,17 +258,16 @@ const ToolActivityCard: React.FC<{
           transition={{ duration: 0.2, ease: "easeOut" }}
           className="overflow-hidden"
         >
-          {details.length > 0 ? (
-            <div className="space-y-3 rounded-xl border border-border bg-paper p-3">
-              {details.map((detail, index) => (
-                <ToolDetailRow key={`${detail.label}:${index}`} detail={detail} />
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-border bg-paper px-3 py-2 text-[12px] text-muted">
-              {emptyDetailsLabel ?? text.message.noAdditionalDetails}
-            </div>
-          )}
+          {isDetailsOpen ? (
+            <ErrorBoundary>
+              <Suspense fallback={<PulsePlaceholder />}>
+                <ToolDetails
+                  details={details}
+                  emptyDetailsLabel={emptyDetailsLabel ?? text.message.noAdditionalDetails}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          ) : null}
         </motion.div>
       </div>
     </div>
@@ -340,107 +340,9 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus; toolName?: string }> = Rea
   )
 })
 
-type DetailItem = {
+export type DetailItem = {
   label: string
   value: unknown
-}
-
-const ToolDetailRow: React.FC<{ detail: DetailItem }> = ({ detail }) => (
-  <div className="flex flex-col gap-1.5">
-    <div className="text-[11px] font-semibold tracking-[0.18em] text-accent uppercase">{detail.label}</div>
-    <div className="text-[13px] leading-6 text-ink">
-            <ToolValue fieldName={detail.label} value={detail.value} />
-    </div>
-  </div>
-)
-
-const ToolValue: React.FC<{
-  fieldName: string | null
-  value: unknown
-  depth?: number
-}> = ({ fieldName, value, depth = 0 }) => {
-  const text = useDesktopText()
-
-  if (value === null || value === undefined) {
-    return <span className="italic text-accent">null</span>
-  }
-
-  if (typeof value === "string") {
-    return <ExpandableFieldValue fieldName={fieldName} value={value} />
-  }
-
-  if (typeof value !== "object") {
-    return <span className="whitespace-pre-wrap">{String(value)}</span>
-  }
-
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return <span className="italic text-accent">[]</span>
-    }
-
-    return (
-      <div className={cn("flex flex-col gap-1.5", depth > 0 && "mt-1 border-l border-border pl-4")}>
-        {value.map((entry, index) => (
-          <div key={`${fieldName ?? "item"}:${index}`} className="flex flex-col gap-1">
-            <span className="text-[12px] font-medium text-muted">{index + 1}</span>
-            <div className="break-all whitespace-pre-wrap text-ink">
-              <ToolValue fieldName={fieldName} value={entry} depth={depth + 1} />
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  const entries = Object.entries(value).filter(([key]) => !HIDDEN_TOOL_KEYS.has(key))
-  if (entries.length === 0) {
-    return <span className="italic text-accent">{"{}"}</span>
-  }
-
-  return (
-    <div className={cn("flex flex-col gap-2", depth > 0 && "mt-1 border-l border-border pl-4")}>
-      {entries.map(([key, nestedValue]) => (
-        <div key={key} className="flex flex-col gap-1">
-          <span className="text-[12px] font-medium text-muted">{formatDetailLabel(key, text)}</span>
-          <div className="break-all whitespace-pre-wrap text-ink">
-            <ToolValue fieldName={key} value={nestedValue} depth={depth + 1} />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const ExpandableFieldValue: React.FC<{
-  fieldName: string | null
-  value: string
-}> = ({ fieldName, value }) => {
-  const text = useDesktopText()
-  const isCollapsedByDefault = shouldCollapseFieldValue(fieldName, value)
-  const [isExpanded, setIsExpanded] = useState(!isCollapsedByDefault)
-
-  useEffect(() => {
-    setIsExpanded(!isCollapsedByDefault)
-  }, [fieldName, isCollapsedByDefault, value])
-
-  if (!isCollapsedByDefault) {
-    return <span className="whitespace-pre-wrap">{value}</span>
-  }
-
-  const preview = buildCollapsedPreview(value)
-
-  return (
-    <div className="flex flex-col items-start gap-2">
-      <span className="whitespace-pre-wrap">{isExpanded ? value : preview}</span>
-      <button
-        type="button"
-        onClick={() => setIsExpanded((previous) => !previous)}
-        className="rounded-md border border-border bg-paper px-2 py-1 text-[11px] font-semibold tracking-wide text-muted transition-colors hover:bg-surface"
-      >
-        {isExpanded ? text.message.showLess : text.message.showMore}
-      </button>
-    </div>
-  )
 }
 
 function getToolIcon(toolName: string | undefined) {
@@ -791,42 +693,6 @@ function asRecord(value: unknown) {
 function readRecordString(value: Record<string, unknown>, key: string) {
   const candidate = value[key]
   return typeof candidate === "string" ? candidate : null
-}
-
-function shouldCollapseFieldValue(fieldName: string | null, value: string) {
-  if (!value) {
-    return false
-  }
-
-  const normalizedFieldName = fieldName?.toLowerCase() ?? null
-  const lineCount = value.split("\n").length
-  const isLargePatchText = /^diff --git |^@@ |^\+\+\+ |^--- /m.test(value)
-  const isLongValue =
-    value.length > DEFAULT_COLLAPSED_CHAR_LIMIT || lineCount > DEFAULT_COLLAPSED_LINE_LIMIT
-
-  if (isLargePatchText) {
-    return true
-  }
-
-  if (
-    normalizedFieldName &&
-    ["details", "output", "error details", "additional data"].includes(normalizedFieldName) &&
-    (value.length > 72 || lineCount > 1)
-  ) {
-    return true
-  }
-
-  return isLongValue
-}
-
-function buildCollapsedPreview(value: string) {
-  const lines = value.split("\n")
-  const limitedLines = lines.slice(0, DEFAULT_COLLAPSED_LINE_LIMIT).join("\n")
-  const limitedText = limitedLines.slice(0, DEFAULT_COLLAPSED_CHAR_LIMIT).trimEnd()
-  const wasTruncated =
-    lines.length > DEFAULT_COLLAPSED_LINE_LIMIT || limitedLines.length > DEFAULT_COLLAPSED_CHAR_LIMIT
-
-  return wasTruncated ? `${limitedText}\n...` : limitedText
 }
 
 function summarizeText(value: string) {

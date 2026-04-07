@@ -417,7 +417,9 @@ function recordRuntimeEvent(input: {
       event: input.event,
       occurredAt: input.occurredAt,
     })
-  } catch {}
+  } catch (_error) {
+    return
+  }
 }
 
 function createAbortError(message = "Operation aborted") {

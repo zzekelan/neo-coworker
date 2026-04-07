@@ -36,13 +36,46 @@ export default function App() {
   } = useAgent()
   const desktopSettings = useDesktopSettings()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [clearedTranscriptState, setClearedTranscriptState] = useState<{
+    sessionId: string
+    hiddenCount: number
+  } | null>(null)
 
   useEffect(() => {
     document.documentElement.dataset.theme = desktopSettings.settings.theme
   }, [desktopSettings.settings.theme])
 
+  useEffect(() => {
+    setClearedTranscriptState(null)
+  }, [activeSessionId])
+
+  const visibleTranscript =
+    activeSessionId && clearedTranscriptState?.sessionId === activeSessionId
+      ? transcript.slice(Math.min(clearedTranscriptState.hiddenCount, transcript.length))
+      : transcript
+
+  const handleToggleTheme = () => {
+    const nextTheme = desktopSettings.settings.theme === "dark" ? "light" : "dark"
+    desktopSettings.updateSettings({ theme: nextTheme })
+  }
+
+  const handleClearTranscriptDisplay = () => {
+    if (!activeSessionId) {
+      return
+    }
+
+    setClearedTranscriptState({
+      sessionId: activeSessionId,
+      hiddenCount: transcript.length,
+    })
+  }
+
   return (
-    <KeyboardShortcutProvider onNewSession={() => void createSession()}>
+    <KeyboardShortcutProvider
+      onNewSession={() => void createSession()}
+      onToggleTheme={handleToggleTheme}
+      onClearTranscript={handleClearTranscriptDisplay}
+    >
       <DesktopTextProvider language={desktopSettings.appliedSettings.language}>
         <div className="flex h-screen w-full overflow-hidden bg-paper font-sans text-ink selection:bg-accent/20 selection:text-ink">
           <Sidebar
@@ -93,7 +126,7 @@ export default function App() {
             hasSessions={sessions.length > 0}
             session={session}
             skills={skills}
-            transcript={transcript}
+            transcript={visibleTranscript}
             permissionRequests={permissionRequests}
             contextUsage={contextUsage}
             onSendMessage={sendMessage}

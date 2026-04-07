@@ -552,7 +552,7 @@ export function ChatArea({
         )}
       </div>
 
-      <div className="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-paper via-paper/80 to-transparent p-4">
+      <div className="absolute right-0 bottom-0 left-0 border-t border-border bg-paper/95 p-4 backdrop-blur-sm">
         <motion.div layout transition={SKILL_DRAWER_TRANSITION} className="relative mx-auto max-w-4xl">
           <div ref={skillPanelShellRef}>
             <motion.div

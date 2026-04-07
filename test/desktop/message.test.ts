@@ -3,16 +3,18 @@ import { readFileSync } from "node:fs"
 
 describe("desktop message", () => {
   test("uses a shared expandable renderer for noisy tool input and result fields", () => {
-    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+    const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+    const detailsSource = readFileSync("src/desktop/src/components/ToolDetails.tsx", "utf8")
 
-    expect(source).toContain("const HIDDEN_TOOL_KEYS = new Set([")
-    expect(source).toContain("\"command\"")
-    expect(source).toContain("\"content\"")
-    expect(source).toContain("\"inputText\"")
-    expect(source).toContain("fieldName={detail.label} value={detail.value}")
-    expect(source).toContain("fieldName={fieldName} value={value}")
-    expect(source).toContain("const ExpandableFieldValue")
-    expect(source).toContain("{isExpanded ? text.message.showLess : text.message.showMore}")
+    expect(messageSource).toContain('React.lazy(() => import("./ToolDetails"))')
+    expect(messageSource).toContain("<ToolDetails")
+    expect(detailsSource).toContain("const HIDDEN_TOOL_KEYS = new Set([")
+    expect(detailsSource).toContain("\"content\"")
+    expect(detailsSource).toContain("\"inputText\"")
+    expect(detailsSource).toContain("fieldName={detail.label} value={detail.value}")
+    expect(detailsSource).toContain("fieldName={fieldName} value={value}")
+    expect(detailsSource).toContain("const ExpandableFieldValue")
+    expect(detailsSource).toContain("{isExpanded ? text.message.showLess : text.message.showMore}")
   })
 
   test("renders compaction_boundary parts using the CompactionDivider component", () => {
@@ -30,7 +32,7 @@ describe("desktop message", () => {
   })
 
   test("collapses large patch text and long multiline values by default", () => {
-    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+    const source = readFileSync("src/desktop/src/components/ToolDetails.tsx", "utf8")
 
     expect(source).toContain("const DEFAULT_COLLAPSED_CHAR_LIMIT = 280")
     expect(source).toContain("const DEFAULT_COLLAPSED_LINE_LIMIT = 8")

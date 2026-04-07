@@ -8,6 +8,7 @@
   --color-ink: #e4e4e7;
   --color-accent: #a1a1aa;
   --color-surface: #141416;
+  --color-surface-hover: #1b1b1f;
   --color-border: #27272a;
   --color-muted: #71717a;
   --color-highlight: #5b5bd6;
@@ -20,6 +21,7 @@
   --color-ink: #1d1b18;
   --color-accent: #625d52;
   --color-surface: #e8e0d2;
+  --color-surface-hover: #efe7db;
   --color-border: #d4c8b6;
   --color-muted: #8b8171;
   --color-highlight: #3f6f83;

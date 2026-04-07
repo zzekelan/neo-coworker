@@ -169,7 +169,7 @@ export function Sidebar({
       <div className="flex h-full w-64 flex-col border-r border-border bg-paper font-sans text-muted">
         <div className="flex h-14 items-center justify-between border-b border-border bg-paper px-4 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-gradient-to-br from-surface to-paper text-ink shadow-sm">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface text-ink shadow-sm">
               <div className="flex items-center -space-x-[1px]">
                 <span className="text-xs font-bold">N</span>
                 <span className="text-xs font-light text-accent">C</span>
