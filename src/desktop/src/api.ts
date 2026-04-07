@@ -65,6 +65,7 @@ export async function loadDesktopSettings() {
     return {
       settings: {
         language: "en",
+        theme: "dark",
         provider: "",
         apiKey: "",
         model: "",

@@ -140,6 +140,7 @@ function normalizeBrowserSettings(value: unknown): DesktopSettings {
 
   return {
     language: candidate.language === "zh" ? "zh" : "en",
+    theme: candidate.theme === "light" ? "light" : "dark",
     provider:
       candidate.provider === "openai-compatible"
         ? "openai-compatible"

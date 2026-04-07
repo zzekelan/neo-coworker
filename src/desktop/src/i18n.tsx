@@ -128,6 +128,10 @@ type DesktopText = {
     llm: string
     storagePath: string
     language: string
+    appearance: string
+    theme: string
+    themeDark: string
+    themeLight: string
     provider: string
     providerUnset: string
     apiKey: string
@@ -302,6 +306,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       llm: "LLM Settings",
       storagePath: "Stored in .ncoworker/desktop-settings.json",
       language: "Language",
+      appearance: "Appearance",
+      theme: "Theme",
+      themeDark: "Dark",
+      themeLight: "Light",
       provider: "LLM provider",
       providerUnset: "Not configured",
       apiKey: "API key",
@@ -474,6 +482,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       llm: "LLM 设置",
       storagePath: "存储于 .ncoworker/desktop-settings.json",
       language: "语言",
+      appearance: "外观",
+      theme: "主题",
+      themeDark: "深色",
+      themeLight: "浅色",
       provider: "LLM 提供商",
       providerUnset: "未设置",
       apiKey: "API Key",

@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useAgent } from "./hooks/useAgent"
 import { useDesktopSettings } from "./useDesktopSettings"
 import { DesktopTextProvider } from "./i18n"
@@ -36,6 +36,10 @@ export default function App() {
   } = useAgent()
   const desktopSettings = useDesktopSettings()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = desktopSettings.settings.theme
+  }, [desktopSettings.settings.theme])
 
   return (
     <KeyboardShortcutProvider onNewSession={() => void createSession()}>

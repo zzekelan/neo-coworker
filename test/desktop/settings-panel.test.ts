@@ -7,6 +7,7 @@ describe("desktop settings panel", () => {
     const hookSource = readFileSync("src/desktop/src/useDesktopSettings.ts", "utf8")
 
     expect(appSource).toContain("<DesktopTextProvider language={desktopSettings.appliedSettings.language}>")
+    expect(appSource).toContain("document.documentElement.dataset.theme = desktopSettings.settings.theme")
     expect(appSource).toContain("void desktopSettings.applyGeneralSettings()")
     expect(appSource).toContain("void desktopSettings.applyLlmSettings().then((restarted) => {")
     expect(appSource).toContain("void refreshAppState()")
@@ -20,6 +21,9 @@ describe("desktop settings panel", () => {
 
     expect(panelSource).toContain('{ value: "en", label: "English" }')
     expect(panelSource).toContain('{ value: "zh", label: "中文" }')
+    expect(panelSource).toContain("text.settings.theme")
+    expect(panelSource).toContain('{ value: "dark", label: text.settings.themeDark }')
+    expect(panelSource).toContain('{ value: "light", label: text.settings.themeLight }')
     expect(panelSource).toContain("const llmFieldsDisabled = serverMode !== \"managed-local\"")
     expect(panelSource).toContain("llmFieldsDisabled || isApplying || hasBusySession")
     expect(panelSource).toContain("text.settings.externalHint")

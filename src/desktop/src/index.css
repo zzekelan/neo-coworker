@@ -15,6 +15,18 @@
   --color-success: #30a46c;
 }
 
+:root[data-theme="light"] {
+  --color-paper: #f4f1e8;
+  --color-ink: #1d1b18;
+  --color-accent: #625d52;
+  --color-surface: #e8e0d2;
+  --color-border: #d4c8b6;
+  --color-muted: #8b8171;
+  --color-highlight: #3f6f83;
+  --color-danger: #b4232a;
+  --color-success: #237a55;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--color-paper);

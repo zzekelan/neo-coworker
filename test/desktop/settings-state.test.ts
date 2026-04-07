@@ -23,6 +23,7 @@ describe("desktop settings state", () => {
 
     const written = writeDesktopSettingsState(filePath, {
       language: "zh",
+      theme: "light",
       provider: "openai-compatible",
       apiKey: "test-key",
       model: "kimi-k2.5",
@@ -32,6 +33,7 @@ describe("desktop settings state", () => {
 
     expect(written).toEqual({
       language: "zh",
+      theme: "light",
       provider: "openai-compatible",
       apiKey: "test-key",
       model: "kimi-k2.5",
@@ -51,10 +53,12 @@ describe("desktop settings state", () => {
       LLM_MODEL: "env-model",
       LLM_BASE_URL: "https://env.invalid/v1",
       LLM_TIMEOUT_MS: "45000",
+      DESKTOP_THEME: "light",
     })
 
     expect(readDesktopSettingsState(filePath, defaults)).toEqual({
       language: "en",
+      theme: "light",
       provider: "openai-compatible",
       apiKey: "env-key",
       model: "env-model",
@@ -66,6 +70,7 @@ describe("desktop settings state", () => {
   test("uses blank LLM settings when neither env nor persisted settings are present", () => {
     expect(createDefaultDesktopSettings({})).toEqual({
       language: "en",
+      theme: "dark",
       provider: "",
       apiKey: "",
       model: "",

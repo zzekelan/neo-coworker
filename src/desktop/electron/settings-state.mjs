@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path"
 
 const DEFAULT_SETTINGS = {
   language: "en",
+  theme: "dark",
   provider: "",
   apiKey: "",
   model: "",
@@ -21,6 +22,7 @@ export function createDefaultDesktopSettings(env = process.env) {
   const provider = normalizeProvider(env.LLM_PROVIDER) ?? DEFAULT_SETTINGS.provider
   return {
     language: "en",
+    theme: normalizeTheme(env.DESKTOP_THEME) ?? DEFAULT_SETTINGS.theme,
     provider,
     apiKey: normalizeString(env.LLM_API_KEY),
     model: normalizeString(env.LLM_MODEL),
@@ -79,6 +81,7 @@ export function normalizeDesktopSettingsState(value, defaults = DEFAULT_SETTINGS
 
   return {
     language: normalizeLanguage(value.language) ?? defaults.language,
+    theme: normalizeTheme(value.theme) ?? defaults.theme,
     provider,
     apiKey: typeof value.apiKey === "string" ? value.apiKey : defaults.apiKey,
     model:
@@ -95,6 +98,10 @@ export function normalizeDesktopSettingsState(value, defaults = DEFAULT_SETTINGS
 
 function normalizeLanguage(value) {
   return value === "zh" ? "zh" : value === "en" ? "en" : null
+}
+
+function normalizeTheme(value) {
+  return value === "light" ? "light" : value === "dark" ? "dark" : null
 }
 
 function normalizeProvider(value) {

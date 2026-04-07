@@ -51,7 +51,7 @@ export function SettingsPanel({
         {
           id: "general",
           label: text.settings.general,
-          description: text.settings.language,
+          description: `${text.settings.language} / ${text.settings.appearance}`,
         },
         {
           id: "llm",
@@ -126,6 +126,16 @@ export function SettingsPanel({
                     options={[
                       { value: "en", label: "English" },
                       { value: "zh", label: "中文" },
+                    ]}
+                  />
+                </Field>
+                <Field label={text.settings.theme}>
+                  <SettingsSelect
+                    value={settings.theme}
+                    onChange={(value) => void onUpdateSettings({ theme: value })}
+                    options={[
+                      { value: "dark", label: text.settings.themeDark },
+                      { value: "light", label: text.settings.themeLight },
                     ]}
                   />
                 </Field>
