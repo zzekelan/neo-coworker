@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url"
 import http from "node:http"
 import https from "node:https"
 import { app, BrowserWindow, dialog, ipcMain } from "electron"
+import { buildLoopbackEnv } from "./env.mjs"
 import { createQuitCoordinator, waitForManagedChildStartup } from "./lifecycle.mjs"
 import {
   readDesktopSelectionState,
@@ -768,22 +769,6 @@ function readConfiguredServerOrigin(value) {
   }
 
   return url.origin
-}
-
-function buildLoopbackEnv(overrides) {
-  const env = { ...process.env }
-  delete env.HTTP_PROXY
-  delete env.HTTPS_PROXY
-  delete env.ALL_PROXY
-  delete env.http_proxy
-  delete env.https_proxy
-  delete env.all_proxy
-  env.NO_PROXY = "127.0.0.1,localhost"
-  env.no_proxy = "127.0.0.1,localhost"
-  return {
-    ...env,
-    ...overrides,
-  }
 }
 
 function resolveLegacyDesktopPath(root, fileName) {

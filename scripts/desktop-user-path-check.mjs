@@ -35,17 +35,29 @@ try {
   await page.getByRole("button", { name: /Settings|设置/ }).click()
   await page.waitForSelector("text=.ncoworker/desktop-settings.json", { timeout: 10_000 })
   const settingsSnapshot = await page.evaluate(() => {
-    const selects = Array.from(document.querySelectorAll("select"))
-    const textInputs = Array.from(document.querySelectorAll("input"))
-    return {
-      language: selects[0] instanceof HTMLSelectElement ? selects[0].value : null,
-      provider: selects[1] instanceof HTMLSelectElement ? selects[1].value : null,
-      model: textInputs[1] instanceof HTMLInputElement ? textInputs[1].value : null,
+    const bridge = window.neoCoworkerDesktop
+    if (!bridge.loadDesktopSettings) {
+      return {
+        language: null,
+        provider: null,
+        model: null,
+      }
     }
+
+    return bridge.loadDesktopSettings().then((result) => {
+      const settings = result?.settings ?? null
+
+      return {
+        language: settings?.language ?? null,
+        provider: settings?.provider ?? null,
+        model: settings?.model ?? null,
+      }
+    })
   })
   let appliedSettings = false
   if (settingsSnapshot.provider && settingsSnapshot.model) {
-    await page.getByRole("button", { name: /Apply|应用/ }).click()
+    await page.getByRole("button", { name: /LLM Settings|LLM 设置/ }).click()
+    await page.getByRole("button", { name: /Apply LLM Settings|应用 LLM 设置/ }).click()
     await page.waitForFunction(
       () => document.body.innerText.includes("Applying") === false && document.body.innerText.includes("应用中") === false,
       null,
@@ -58,7 +70,7 @@ try {
     }
     appliedSettings = true
   }
-  await page.getByRole("button", { name: "Close", exact: true }).click()
+  await page.getByRole("button", { name: /^Close$|^关闭$/ }).click()
 
   const workspaceRoot = await page.evaluate(
     () =>

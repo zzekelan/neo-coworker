@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { EventEmitter } from "node:events"
 import { readFileSync } from "node:fs"
+import { buildLoopbackEnv } from "../../src/desktop/electron/env.mjs"
 import {
   createChildHandle,
   createQuitCoordinator,
@@ -89,6 +90,30 @@ describe("desktop electron lifecycle", () => {
 
     expect(started).toBe("ready")
     expect(order).toEqual(["assign", "ready"])
+  })
+
+  test("preserves outbound proxy variables while bypassing loopback", () => {
+    const env = buildLoopbackEnv(
+      {
+        NCOWORKER_SERVER_HOST: "127.0.0.1",
+        NCOWORKER_SERVER_PORT: "3100",
+      },
+      {
+        HTTP_PROXY: "http://127.0.0.1:7897",
+        HTTPS_PROXY: "http://127.0.0.1:7897",
+        ALL_PROXY: "socks5://127.0.0.1:7897",
+        NO_PROXY: "example.internal",
+        no_proxy: "metadata.internal",
+      },
+    )
+
+    expect(env.HTTP_PROXY).toBe("http://127.0.0.1:7897")
+    expect(env.HTTPS_PROXY).toBe("http://127.0.0.1:7897")
+    expect(env.ALL_PROXY).toBe("socks5://127.0.0.1:7897")
+    expect(env.NO_PROXY).toBe("example.internal,127.0.0.1,localhost")
+    expect(env.no_proxy).toBe("metadata.internal,127.0.0.1,localhost")
+    expect(env.NCOWORKER_SERVER_HOST).toBe("127.0.0.1")
+    expect(env.NCOWORKER_SERVER_PORT).toBe("3100")
   })
 
   test("closes the child when startup readiness fails", async () => {
