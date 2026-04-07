@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   ArrowUp,
   ChevronDown,
@@ -43,6 +43,7 @@ function useVirtualizer<T extends { id: string }>({
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
   const measurementsRef = useRef<Map<string, number>>(new Map())
+  const observedElementsRef = useRef<Map<string, HTMLElement>>(new Map())
   const [, forceRender] = useState({})
 
   const resizeObserver = useRef<ResizeObserver | null>(null)
@@ -52,7 +53,7 @@ function useVirtualizer<T extends { id: string }>({
       for (const entry of entries) {
         const id = (entry.target as HTMLElement).dataset.itemId
         if (id) {
-          const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
+          const height = Math.ceil(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height)
           const existing = measurementsRef.current.get(id)
           if (existing !== height && Math.abs((existing || 0) - height) > 1) {
             measurementsRef.current.set(id, height)
@@ -68,19 +69,44 @@ function useVirtualizer<T extends { id: string }>({
     const ro = resizeObserver.current
     return () => {
       ro?.disconnect()
+      observedElementsRef.current.clear()
     }
   }, [])
 
-  const measureElement = React.useCallback((id: string, el: HTMLElement | null) => {
-    if (el) {
-      el.dataset.itemId = id
-      resizeObserver.current?.observe(el)
-      const height = el.getBoundingClientRect().height
-      const existing = measurementsRef.current.get(id)
-      if (existing !== height && Math.abs((existing || 0) - height) > 1) {
-        measurementsRef.current.set(id, height)
-        forceRender({})
+  useEffect(() => {
+    const currentIds = new Set(items.map((item) => item.id))
+    for (const [id, element] of observedElementsRef.current) {
+      if (!currentIds.has(id)) {
+        resizeObserver.current?.unobserve(element)
+        observedElementsRef.current.delete(id)
       }
+    }
+    for (const id of measurementsRef.current.keys()) {
+      if (!currentIds.has(id)) {
+        measurementsRef.current.delete(id)
+      }
+    }
+  }, [items])
+
+  const measureElement = React.useCallback((id: string, el: HTMLElement | null) => {
+    const previousElement = observedElementsRef.current.get(id)
+    if (previousElement && previousElement !== el) {
+      resizeObserver.current?.unobserve(previousElement)
+      observedElementsRef.current.delete(id)
+    }
+
+    if (!el) {
+      return
+    }
+
+    el.dataset.itemId = id
+    observedElementsRef.current.set(id, el)
+    resizeObserver.current?.observe(el)
+    const height = Math.ceil(el.getBoundingClientRect().height)
+    const existing = measurementsRef.current.get(id)
+    if (existing !== height && Math.abs((existing || 0) - height) > 1) {
+      measurementsRef.current.set(id, height)
+      forceRender({})
     }
   }, [])
 
@@ -185,10 +211,11 @@ export function ChatArea({
     overscan: 3,
   })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = transcriptViewportRef.current
     if (!el) return
     virtualizer.setViewportHeight(el.clientHeight)
+    if (typeof ResizeObserver === "undefined") return
     
     const ro = new ResizeObserver(() => {
       virtualizer.setViewportHeight(el.clientHeight)
@@ -265,7 +292,7 @@ export function ChatArea({
     }
   }, [isSkillPanelOpen])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const viewport = transcriptViewportRef.current
 
     if (!viewport || !shouldStickToBottomRef.current) {
@@ -450,6 +477,7 @@ export function ChatArea({
           virtualizer.onScroll(event)
         }}
         className="flex-1 overflow-y-auto px-4 pb-32 md:px-8"
+        style={{ overflowAnchor: "none" }}
       >
         {transcript.length === 0 ? (
           <EmptyChatState
@@ -476,9 +504,11 @@ export function ChatArea({
                       key={virtualItem.id}
                       ref={(el) => virtualizer.measureElement(virtualItem.id, el)}
                       style={{
+                        boxSizing: "border-box",
                         position: "absolute",
                         top: 0,
                         left: 0,
+                        paddingBottom: "1.5rem",
                         width: "100%",
                         transform: `translateY(${virtualItem.top}px)`,
                       }}

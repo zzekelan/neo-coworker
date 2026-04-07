@@ -68,49 +68,49 @@ const MessageComponent: React.FC<{ message: DesktopTranscriptMessage }> = ({ mes
   return (
     <ErrorBoundary>
       <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={cn("mb-6 flex w-full flex-col", isUser ? "items-end" : "items-start")}
+        initial={false}
+        animate={{ opacity: 1, y: 0 }}
+        className={cn("flex w-full flex-col", isUser ? "items-end" : "items-start")}
       >
-      <div className={cn("mb-1.5 flex items-center gap-2 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
-        <span className="text-[11px] font-medium text-accent">
-          {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
-      </div>
+        <div className={cn("mb-1.5 flex items-center gap-2 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
+          <span className="text-[11px] font-medium text-accent">
+            {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
 
-      <div className={cn("flex max-w-3xl flex-col", isUser ? "items-end" : "w-full items-start")}>
-        {message.parts ? (
-          <div className="w-full space-y-4">
-            {message.parts.map((part, index) => (
-              <MessagePartRenderer
-                key={`${message.id}:${index}`}
-                part={part}
-                role={message.role}
-                relatedToolCall={part.type === "tool_result" ? toolCallLookup.get(part.callId) ?? null : null}
-              />
-            ))}
-          </div>
-        ) : (
-          <div
-            className={cn(
-              "text-[15px] leading-relaxed",
-              isUser
-                ? "rounded-2xl rounded-tr-sm bg-surface px-5 py-3 text-ink"
-                : "py-2 text-ink",
-            )}
-          >
-            {isUser ? (
-              <div className="whitespace-pre-wrap">{message.content}</div>
-            ) : (
-              <ErrorBoundary>
-                <Suspense fallback={<PulsePlaceholder />}>
-                  <MarkdownText text={message.content} />
-                </Suspense>
-              </ErrorBoundary>
-            )}
-          </div>
-        )}
-      </div>
+        <div className={cn("flex max-w-3xl flex-col", isUser ? "items-end" : "w-full items-start")}>
+          {message.parts ? (
+            <div className="w-full space-y-4">
+              {message.parts.map((part, index) => (
+                <MessagePartRenderer
+                  key={`${message.id}:${index}`}
+                  part={part}
+                  role={message.role}
+                  relatedToolCall={part.type === "tool_result" ? toolCallLookup.get(part.callId) ?? null : null}
+                />
+              ))}
+            </div>
+          ) : (
+            <div
+              className={cn(
+                "text-[15px] leading-relaxed",
+                isUser
+                  ? "rounded-2xl rounded-tr-sm bg-surface px-5 py-3 text-ink"
+                  : "py-2 text-ink",
+              )}
+            >
+              {isUser ? (
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              ) : (
+                <ErrorBoundary>
+                  <Suspense fallback={<PulsePlaceholder />}>
+                    <MarkdownText text={message.content} />
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </div>
+          )}
+        </div>
       </motion.div>
     </ErrorBoundary>
   )

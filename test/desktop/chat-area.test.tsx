@@ -44,6 +44,20 @@ describe("desktop chat area", () => {
     expect(source).toContain("return onReplyPermission(requestId, decision)")
   })
 
+  test("keeps virtualized transcript rows stable across remounts and height changes", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+    const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    expect(source).toContain("useLayoutEffect")
+    expect(source).toContain("observedElementsRef")
+    expect(source).toContain("resizeObserver.current?.unobserve")
+    expect(source).toContain("style={{ overflowAnchor: \"none\" }}")
+    expect(source).toContain("paddingBottom: \"1.5rem\"")
+    expect(messageSource).toContain("initial={false}")
+    expect(messageSource).not.toContain("initial={{ opacity: 0, y: 10 }}")
+    expect(messageSource).not.toContain("\"mb-6 flex w-full flex-col\"")
+  })
+
   test("closes the skill panel on outside click and defers Enter submission during IME composition", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
