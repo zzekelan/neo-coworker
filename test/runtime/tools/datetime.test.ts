@@ -11,11 +11,12 @@ describe("datetime tool", () => {
       workspaceRoot: process.cwd(),
     })
 
-    expect(result.output).toMatch(/^Current datetime: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}\nTimezone: .+\nUTC offset: [+-]\d{2}:\d{2}$/)
+    expect(result.output).toMatch(/^Current datetime: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}\nTimezone: .+\nUTC offset: [+-]\d{2}:\d{2}\nEpoch ms: \d+$/)
     expect(result.metadata).toEqual({
       iso: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/),
       timezone: expect.any(String),
       utcOffset: expect.stringMatching(/^[+-]\d{2}:\d{2}$/),
+      epoch_ms: expect.any(Number),
     })
   })
 })
