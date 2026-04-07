@@ -224,4 +224,22 @@ describe("bootstrap", () => {
       source: "default",
     })
   })
+
+  test("does not block startup when provider context window metadata hangs", async () => {
+    const result = await resolveContextWindowSize({
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "slow-model",
+        LLM_BASE_URL: "https://example.invalid/v1",
+      },
+      metadataTimeoutMs: 1,
+      fetchImpl: async () => new Promise<Response>(() => {}),
+    })
+
+    expect(result).toEqual({
+      contextWindow: 128000,
+      source: "default",
+    })
+  })
 })

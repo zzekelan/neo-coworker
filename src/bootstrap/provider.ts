@@ -143,10 +143,12 @@ export function resolveDefaultProviderConfig(
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 const DEFAULT_CONTEXT_WINDOW_SIZE = 128_000
+const DEFAULT_CONTEXT_WINDOW_METADATA_TIMEOUT_MS = 2_000
 
 export async function resolveContextWindowSize(input: {
   env?: Record<string, string | undefined>
   fetchImpl?: typeof fetch
+  metadataTimeoutMs?: number
 } = {}): Promise<ContextWindowMetadata> {
   const env = input.env ?? process.env
   const fetchImpl = input.fetchImpl ?? fetch
@@ -166,6 +168,7 @@ export async function resolveContextWindowSize(input: {
     metadata = await fetchContextWindowMetadata({
       config,
       fetchImpl,
+      timeoutMs: input.metadataTimeoutMs ?? DEFAULT_CONTEXT_WINDOW_METADATA_TIMEOUT_MS,
     })
   } catch {
     metadata = null
@@ -225,18 +228,41 @@ export async function createDefaultProvider(
 async function fetchContextWindowMetadata(input: {
   config: ProviderConfig
   fetchImpl: typeof fetch
+  timeoutMs: number
 }) {
   const baseURL = input.config.baseURL ?? DEFAULT_OPENAI_BASE_URL
   const requestUrl = new URL(
     `models/${encodeURIComponent(input.config.model)}`,
     ensureTrailingSlash(baseURL),
   )
-  const response = await input.fetchImpl(requestUrl, {
-    headers: {
-      Authorization: `Bearer ${input.config.apiKey}`,
-      Accept: "application/json",
-    },
+  const abortController = new AbortController()
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeout = setTimeout(() => {
+      abortController.abort()
+      resolve(null)
+    }, input.timeoutMs)
   })
+
+  const response = await Promise.race([
+    input.fetchImpl(requestUrl, {
+      headers: {
+        Authorization: `Bearer ${input.config.apiKey}`,
+        Accept: "application/json",
+      },
+      signal: abortController.signal,
+    }),
+    timeoutPromise,
+  ]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout)
+      timeout = null
+    }
+  })
+
+  if (!response) {
+    return null
+  }
 
   if (!response.ok) {
     return null
