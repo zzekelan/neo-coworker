@@ -1,3 +1,9 @@
+/** Minimal structural type for agent profile — avoids cross-module imports. */
+export type PromptAgentProfile = {
+  systemPromptOverride?: string
+  instructions?: string
+}
+
 export type PromptSection = {
   id: string
   content: string
@@ -194,6 +200,25 @@ export function buildLateContextMessage(context: DynamicPromptContext) {
 
 export function composeFullPrompt(_context: DynamicPromptContext, toolGuidances?: ToolGuidanceEntry[]) {
   return getStaticPrompt(toolGuidances)
+}
+
+export function composeAgentAwarePrompt(
+  context: DynamicPromptContext,
+  profile?: PromptAgentProfile,
+  toolGuidances?: ToolGuidanceEntry[],
+) {
+  const override = profile?.systemPromptOverride?.trim()
+  if (override) {
+    return override
+  }
+
+  const basePrompt = composeFullPrompt(context, toolGuidances)
+  const instructions = profile?.instructions?.trim()
+  if (!instructions) {
+    return basePrompt
+  }
+
+  return [basePrompt, instructions].join("\n\n")
 }
 
 function getDefaultDynamicContext(): DynamicPromptContext {

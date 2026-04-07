@@ -12,6 +12,11 @@ import type {
 } from "../domain"
 import { estimateModelTurnUsage } from "./token-usage"
 
+type ModelAgentProfile = {
+  systemPromptOverride?: string
+  instructions?: string
+}
+
 export const SYSTEM_REMINDER_NOTICE =
   "Tool results and user messages may include <system-reminder> tags. They are automatically added by the system, and bear no direct relation to the specific tool results or user messages in which they appear."
 export const MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT = "[Old tool result content cleared]"
@@ -107,10 +112,12 @@ export function buildModelPromptSections(
   input: Pick<
     ModelProjectionInput,
     "systemPrompt" | "lateContextMessage" | "skillCatalog" | "activeSkills" | "systemReminders"
-  >,
+  > & {
+    agentProfile?: ModelAgentProfile
+  },
 ): ModelPromptSections {
   return {
-    baseSystemPrompt: input.systemPrompt,
+    baseSystemPrompt: resolveBaseSystemPrompt(input.systemPrompt, input.agentProfile),
     systemReminderNotice: SYSTEM_REMINDER_NOTICE,
     systemReminderMessages: buildSystemReminderTexts(input),
     lateContextMessage: input.lateContextMessage?.trim() ? input.lateContextMessage : null,
@@ -411,6 +418,20 @@ function buildSystemReminderTexts(
 
   const legacyReminder = renderSystemReminderMessage(input.skillCatalog, input.activeSkills)
   return legacyReminder ? [legacyReminder] : []
+}
+
+function resolveBaseSystemPrompt(systemPrompt: string, agentProfile?: ModelAgentProfile) {
+  const override = agentProfile?.systemPromptOverride?.trim()
+  if (override) {
+    return override
+  }
+
+  const instructions = agentProfile?.instructions?.trim()
+  if (!instructions) {
+    return systemPrompt
+  }
+
+  return [systemPrompt, instructions].join("\n\n")
 }
 
 function renderSystemReminderMessage(skillCatalog: ModelSkillCatalogEntry[], activeSkills: ModelActiveSkill[]) {
