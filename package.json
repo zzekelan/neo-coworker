@@ -11,6 +11,7 @@
     "server": "bun run src/app-server/main.ts",
     "desktop:open": "cd src/desktop && bun run electron",
     "desktop:setup": "bun install && cd src/desktop && bun install && cd ../.. && bun run desktop:open",
+    "desktop:start": "bun install && cd src/desktop && bun install && cd ../.. && cd src/desktop && bun run electron",
     "desktop:verify": "node ./scripts/desktop-user-path-check.mjs",
     "desktop:web:server": "NCOWORKER_SERVER_HOST=127.0.0.1 NCOWORKER_SERVER_PORT=3100 bun run src/app-server/main.ts",
     "desktop:web:ui": "cd src/desktop && DESKTOP_UI_HOST=127.0.0.1 DESKTOP_APP_SERVER_URL=http://127.0.0.1:3100 bun run dev",

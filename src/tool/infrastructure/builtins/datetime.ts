@@ -45,13 +45,15 @@ export function createDatetimeTool(): ToolDefinition {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC"
       const utcOffset = formatUtcOffset(now)
       const iso = formatLocalIso(now)
+      const epochMs = now.getTime()
 
       return {
-        output: `Current datetime: ${iso}\nTimezone: ${timezone}\nUTC offset: ${utcOffset}`,
+        output: `Current datetime: ${iso}\nTimezone: ${timezone}\nUTC offset: ${utcOffset}\nEpoch ms: ${epochMs}`,
         metadata: {
           iso,
           timezone,
           utcOffset,
+          epoch_ms: epochMs,
         },
       }
     },
