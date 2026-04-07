@@ -32,6 +32,34 @@ try {
     timeout: 20_000,
   })
 
+  await page.getByRole("button", { name: /Settings|设置/ }).click()
+  await page.waitForSelector("text=.ncoworker/desktop-settings.json", { timeout: 10_000 })
+  const settingsSnapshot = await page.evaluate(() => {
+    const selects = Array.from(document.querySelectorAll("select"))
+    const textInputs = Array.from(document.querySelectorAll("input"))
+    return {
+      language: selects[0] instanceof HTMLSelectElement ? selects[0].value : null,
+      provider: selects[1] instanceof HTMLSelectElement ? selects[1].value : null,
+      model: textInputs[1] instanceof HTMLInputElement ? textInputs[1].value : null,
+    }
+  })
+  let appliedSettings = false
+  if (settingsSnapshot.provider && settingsSnapshot.model) {
+    await page.getByRole("button", { name: /Apply|应用/ }).click()
+    await page.waitForFunction(
+      () => document.body.innerText.includes("Applying") === false && document.body.innerText.includes("应用中") === false,
+      null,
+      { timeout: 20_000 },
+    )
+
+    const sessionsHealthcheck = await requestJson("/sessions")
+    if (!sessionsHealthcheck.ok) {
+      throw new Error("Desktop settings apply did not leave the managed app-server reachable.")
+    }
+    appliedSettings = true
+  }
+  await page.getByRole("button", { name: "Close", exact: true }).click()
+
   const workspaceRoot = await page.evaluate(
     () =>
       window.neoCoworkerDesktop.persistedWorkspaceRoot ??
@@ -127,6 +155,8 @@ try {
     JSON.stringify(
       {
         workspaceRoot,
+        settingsSnapshot,
+        appliedSettings,
         sessionId,
         latestRunStatus,
         transcriptCount: transcript.length,
