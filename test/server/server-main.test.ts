@@ -62,7 +62,7 @@ describe("standalone server config", () => {
         },
         "/tmp/neo-workspace",
       ),
-    ).toThrow("AGENT_SERVER_PORT must be a valid integer")
+    ).toThrow("NCOWORKER_SERVER_PORT must be a valid integer")
   })
 })
 
@@ -80,7 +80,7 @@ describe("agent server origin", () => {
       resolveAgentServerOrigin({
         AGENT_SERVER_URL: "http://127.0.0.1:3100/agent",
       }),
-    ).toThrow("AGENT_SERVER_URL must not include a path, query, or hash")
+    ).toThrow("NCOWORKER_SERVER_URL must not include a path, query, or hash")
   })
 })
 

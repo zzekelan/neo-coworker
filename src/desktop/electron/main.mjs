@@ -28,7 +28,7 @@ const workspaceRoot =
 const desktopSelectionStatePath = resolveLegacyDesktopPath(repositoryRoot, "desktop-state.json")
 const desktopSettingsStatePath = resolveLegacyDesktopPath(repositoryRoot, "desktop-settings.json")
 const desktopServerDatabasePath =
-  process.env.AGENT_SERVER_DB_PATH?.trim() || resolveLegacyDesktopPath(repositoryRoot, "server.sqlite")
+  (process.env.NCOWORKER_SERVER_DB_PATH?.trim() || process.env.AGENT_SERVER_DB_PATH?.trim()) || resolveLegacyDesktopPath(repositoryRoot, "server.sqlite")
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
 const defaultDesktopSettings = createDefaultDesktopSettings({
   ...readDesktopSettingsEnvFiles(repositoryRoot),
@@ -72,7 +72,9 @@ app.whenReady().then(startDesktop).catch((error) => {
 
 async function startDesktop() {
   logBootstrap("ready")
-  currentServerMode = readConfiguredServerOrigin(process.env.AGENT_SERVER_URL)
+  currentServerMode = readConfiguredServerOrigin(
+      process.env.NCOWORKER_SERVER_URL ?? process.env.AGENT_SERVER_URL,
+    )
     ? "external"
     : "managed-local"
   const uiOrigin = await startUiServer()
@@ -225,7 +227,9 @@ function closeRuntimeHandles() {
 }
 
 async function resolveServerOrigin(input) {
-  const configuredOrigin = readConfiguredServerOrigin(process.env.AGENT_SERVER_URL)
+  const configuredOrigin = readConfiguredServerOrigin(
+    process.env.NCOWORKER_SERVER_URL ?? process.env.AGENT_SERVER_URL,
+  )
   if (input.serverMode === "external") {
     logBootstrap(`server.external ${configuredOrigin}`)
     return configuredOrigin
@@ -341,9 +345,9 @@ function isBusySessionRunStatus(status) {
 
 function buildManagedServerEnv(input) {
   const env = buildLoopbackEnv({
-    AGENT_SERVER_HOST: "127.0.0.1",
-    AGENT_SERVER_PORT: String(input.port),
-    AGENT_SERVER_DB_PATH: desktopServerDatabasePath,
+    NCOWORKER_SERVER_HOST: "127.0.0.1",
+    NCOWORKER_SERVER_PORT: String(input.port),
+    NCOWORKER_SERVER_DB_PATH: desktopServerDatabasePath,
   })
 
   delete env.LLM_PROVIDER

@@ -5,6 +5,7 @@ import {
   type ModelObserverPort,
   type ModelProvider,
 } from "../model"
+import { readEnvWithFallback } from "./env"
 
 type ProviderKind = "openai" | "openai-compatible"
 
@@ -89,7 +90,7 @@ function parsePositiveInteger(value: string | undefined, variableName: string) {
 export function resolveAgentServerOrigin(
   env: Record<string, string | undefined> = process.env,
 ) {
-  const value = readEnvValue(env, "AGENT_SERVER_URL")
+  const value = readEnvWithFallback(env, "NCOWORKER_SERVER_URL", "AGENT_SERVER_URL")
   if (!value) {
     return undefined
   }
@@ -98,15 +99,15 @@ export function resolveAgentServerOrigin(
   try {
     url = new URL(value)
   } catch {
-    throw new Error("AGENT_SERVER_URL must be a valid absolute URL")
+    throw new Error("NCOWORKER_SERVER_URL must be a valid absolute URL")
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("AGENT_SERVER_URL must use http or https")
+    throw new Error("NCOWORKER_SERVER_URL must use http or https")
   }
 
   if (url.pathname !== "/" || url.search || url.hash) {
-    throw new Error("AGENT_SERVER_URL must not include a path, query, or hash")
+    throw new Error("NCOWORKER_SERVER_URL must not include a path, query, or hash")
   }
 
   return url.origin

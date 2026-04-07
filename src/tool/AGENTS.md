@@ -10,7 +10,7 @@
 | Execution and registry | `application/execute-service.ts`, `application/registry-service.ts` | Runtime-facing behavior |
 | Builtin runtime assembly | `infrastructure/runtime/create-builtin-runtime.ts` | Default tool set and ordering |
 | Search providers | `infrastructure/builtins/search-backend.ts` | Exa/public provider parsing hotspot |
-| Workspace file visibility | `infrastructure/builtins/workspace-files.ts` | Excludes `.agents/**` and hidden state |
+| Workspace file visibility | `infrastructure/builtins/workspace-files.ts` | Excludes `.ncoworker/**` and hidden state |
 | File mutation tools | `infrastructure/builtins/{write,edit}.ts` | Safe path resolution and permission flow |
 | Shell/web tools | `infrastructure/builtins/{shell,webfetch}.ts` | OS/network boundaries |
 
@@ -18,7 +18,7 @@
 - Builtins are infrastructure implementations of the domain `ToolDefinition` contract.
 - Validate input with local schemas before touching filesystem, shell, or network.
 - Request permission for mutating, shell, and network-sensitive operations.
-- Preserve workspace safety: keep path resolution inside the workspace and keep `.agents/**` hidden from normal search flows.
+- Preserve workspace safety: keep path resolution inside the workspace and keep `.ncoworker/**` hidden from normal search flows.
 - **Concurrency Classification**: Tools are classified as `read-only` or `mutating`. Read-only tools can run in parallel; mutating tools must run serially.
 - **Tool Enhancement Standard**: Every tool must have a rich `description`, use `.describe()` for all parameters in the `inputSchema`, and provide `usageGuidance`.
 
@@ -54,4 +54,4 @@ bun run test:structure
 ## CHANGE CHECKLIST
 - New builtin: add factory, register it, add runtime-tool tests, and verify permission UX.
 - Search backend changes: test provider parsing, timeout behavior, and abort handling.
-- File visibility changes: verify `.agents/**` remains hidden unless the product requirement changes explicitly.
+- File visibility changes: verify `.ncoworker/**` remains hidden unless the product requirement changes explicitly.

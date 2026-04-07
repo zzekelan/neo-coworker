@@ -9,7 +9,7 @@
 | Package commands | `package.json` | `dev`, `build`, `check`, `electron` |
 | Electron main process | `electron/main.mjs` | Starts UI server, managed local server, IPC bridge |
 | Preload bridge | `electron/preload.cjs` | `window.neoCoworkerDesktop` contract |
-| Persisted settings/state | `electron/{settings-state,selection-state}.mjs` | Writes `.agents/desktop-*.json` |
+| Persisted settings/state | `electron/{settings-state,selection-state}.mjs` | Writes `.ncoworker/desktop-*.json` |
 | Renderer entry | `src/main.tsx` | Browser-mode shim for non-Electron dev |
 | Renderer app | `src/App.tsx`, `src/useDesktopApp.ts` | Main UI orchestration hotspot |
 | API/dev proxy | `src/api.ts`, `dev-server-config.ts` | Browser-mode server routing |
@@ -26,7 +26,7 @@ node ./scripts/desktop-user-path-check.mjs
 
 ## CONVENTIONS
 - Browser-mode dev uses a shimmed desktop bridge in `src/main.tsx`; Electron mode uses the preload bridge.
-- Managed-local mode starts `src/app-server/main.ts` via Bun and persists desktop state under repo-root `.agents/`.
+- Managed-local mode starts `src/app-server/main.ts` via Bun and persists desktop state under repo-root `.ncoworker/` (`.agents/` still works as legacy fallback).
 - `useDesktopApp.ts` is the main orchestration hotspot; keep UI state logic there coherent instead of scattering side effects.
 - Dev proxy behavior belongs in `dev-server-config.ts`, not ad hoc in components.
 - **Theme System**: CSS-variable-based theme system using Linear-inspired naming (e.g., `--color-paper`, `--color-ink`, `--color-accent`, `--color-surface`).
@@ -40,7 +40,7 @@ node ./scripts/desktop-user-path-check.mjs
 
 ## ANTI-PATTERNS
 - Do not treat browser-mode shim behavior as equivalent to the real preload bridge without checking Electron.
-- Do not commit `.agents/desktop-state.json`, `.agents/desktop-settings.json`, or local server DBs.
+- Do not commit `.ncoworker/desktop-state.json`, `.ncoworker/desktop-settings.json`, or local server DBs.
 - Do not add generic UI patterns that ignore the repo’s frontend-design rules.
 - Do not restart the managed local server while active runs still exist.
 - Do not perform expensive re-renders in the transcript; use virtual scrolling and memoization.

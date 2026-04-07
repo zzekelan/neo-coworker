@@ -16,6 +16,7 @@ import { createDefaultProvider, resolveContextWindowSize } from "./provider"
 import { createDefaultSearchBackend } from "./search"
 import { createRuntime } from "./runtime"
 import { getServerStoragePath } from "./paths"
+import { readEnvWithFallback } from "./env"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
 const DEFAULT_SERVER_PORT = 3100
@@ -35,10 +36,11 @@ export function resolveStandaloneServerConfig(
   cwd: string = process.cwd(),
 ): StandaloneServerConfig {
   return {
-    host: readEnvValue(env, "AGENT_SERVER_HOST") ?? DEFAULT_SERVER_HOST,
-    port: parseServerPort(readEnvValue(env, "AGENT_SERVER_PORT")),
+    host: readEnvWithFallback(env, "NCOWORKER_SERVER_HOST", "AGENT_SERVER_HOST") ?? DEFAULT_SERVER_HOST,
+    port: parseServerPort(readEnvWithFallback(env, "NCOWORKER_SERVER_PORT", "AGENT_SERVER_PORT")),
     databasePath:
-      readEnvValue(env, "AGENT_SERVER_DB_PATH") ?? getDefaultStandaloneServerStoragePath(cwd),
+      readEnvWithFallback(env, "NCOWORKER_SERVER_DB_PATH", "AGENT_SERVER_DB_PATH") ??
+      getDefaultStandaloneServerStoragePath(cwd),
   }
 }
 
@@ -190,12 +192,12 @@ function parseServerPort(value: string | undefined) {
   }
 
   if (!/^\d+$/.test(value)) {
-    throw new Error("AGENT_SERVER_PORT must be a valid integer")
+    throw new Error("NCOWORKER_SERVER_PORT must be a valid integer")
   }
 
   const port = Number.parseInt(value, 10)
   if (port < 1 || port > 65535) {
-    throw new Error("AGENT_SERVER_PORT must be between 1 and 65535")
+    throw new Error("NCOWORKER_SERVER_PORT must be between 1 and 65535")
   }
 
   return port
