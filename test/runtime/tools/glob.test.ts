@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile, utimes } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, writeFile, utimes } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -156,6 +156,34 @@ describe("glob tool", () => {
     expect(lines[0]).toBe("src/newest.ts")
     expect(lines[1]).toBe("src/middle.ts")
     expect(lines[2]).toBe("src/oldest.ts")
+  })
+
+  test("skips unreadable directories with a notice instead of crashing", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "glob-workspace-unreadable-"))
+    const readableDir = join(workspaceRoot, "src")
+    const unreadableDir = join(workspaceRoot, "private")
+
+    await mkdir(readableDir, { recursive: true })
+    await mkdir(unreadableDir, { recursive: true })
+    await writeFile(join(readableDir, "visible.ts"), "export const visible = true\n")
+    await writeFile(join(unreadableDir, "hidden.ts"), "export const hidden = true\n")
+
+    try {
+      await chmod(unreadableDir, 0o000)
+
+      const result = await registry.execute({
+        toolName: "glob",
+        args: { pattern: "**/*.ts" },
+        workspaceRoot,
+      })
+
+      expect(result.output).toContain("src/visible.ts")
+      expect(result.output).toContain("Skipped unreadable directory: private")
+      expect(result.output).not.toContain("private/hidden.ts")
+    } finally {
+      await chmod(unreadableDir, 0o755)
+    }
   })
 
   test("tool definition has correct concurrency and isCompressible flags", () => {

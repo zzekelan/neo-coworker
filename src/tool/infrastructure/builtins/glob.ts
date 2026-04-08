@@ -1,10 +1,21 @@
-import { stat } from "node:fs/promises"
-import { normalize, relative, resolve, sep } from "node:path"
+import { type Dirent } from "node:fs"
+import { readdir, stat } from "node:fs/promises"
+import { join, normalize, relative, resolve, sep } from "node:path"
 import { z } from "zod"
-import { type ToolDefinition } from "../../domain"
+import {
+  throwIfToolAborted,
+  WORKSPACE_SKIPPED_DIRECTORIES,
+  type ToolDefinition,
+} from "../../domain"
 import { listWorkspaceFiles } from "./workspace-files"
 
 const DEFAULT_LIMIT = 100
+
+declare const Bun: {
+  Glob: new (pattern: string) => {
+    match(path: string): boolean
+  }
+}
 
 const GlobArgsSchema = z.object({
   pattern: z.string().trim().min(1, "Pattern must not be empty").describe(
@@ -33,7 +44,7 @@ export function createGlobTool(): ToolDefinition {
       const { pattern, path, limit = DEFAULT_LIMIT } = GlobArgsSchema.parse(input.args)
       const workspaceRoot = resolve(input.workspaceRoot)
 
-      const matches = await listWorkspaceFiles({
+      const { matches, notices } = await listWorkspaceFilesWithUnreadableDirectoryNotices({
         workspaceRoot,
         signal: input.signal,
         pattern,
@@ -46,16 +57,96 @@ export function createGlobTool(): ToolDefinition {
       const sortedMatches = await sortByMtimeDesc(scopedMatches, workspaceRoot)
 
       if (sortedMatches.length <= limit) {
-        return { output: sortedMatches.join("\n") }
+        return { output: [...sortedMatches, ...notices].join("\n") }
       }
 
       const truncated = [
         ...sortedMatches.slice(0, limit),
         `... truncated after ${limit} matches`,
+        ...notices,
       ]
       return { output: truncated.join("\n") }
     },
   }
+}
+
+async function listWorkspaceFilesWithUnreadableDirectoryNotices(input: {
+  workspaceRoot: string
+  signal?: AbortSignal
+  pattern: string
+}): Promise<{ matches: string[]; notices: string[] }> {
+  try {
+    return {
+      matches: await listWorkspaceFiles(input),
+      notices: [],
+    }
+  } catch {
+    return collectFilesWithUnreadableDirectoryNotices(
+      input.workspaceRoot,
+      input.workspaceRoot,
+      new Bun.Glob(input.pattern),
+      input.signal,
+    )
+  }
+}
+
+async function collectFilesWithUnreadableDirectoryNotices(
+  workspaceRoot: string,
+  directory: string,
+  glob: { match(path: string): boolean },
+  signal: AbortSignal | undefined,
+): Promise<{ matches: string[]; notices: string[] }> {
+  throwIfToolAborted(signal)
+
+  let entries: Dirent<string>[]
+
+  try {
+    entries = await readdir(directory, { withFileTypes: true })
+  } catch (error) {
+    if (!isUnreadableDirectoryError(error) || directory === workspaceRoot) {
+      throw error
+    }
+
+    return {
+      matches: [],
+      notices: [
+        `Skipped unreadable directory: ${toWorkspaceRelativePath(workspaceRoot, directory)}`,
+      ],
+    }
+  }
+
+  const matches: string[] = []
+  const notices: string[] = []
+
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    throwIfToolAborted(signal)
+    const entryPath = join(directory, entry.name)
+
+    if (entry.isDirectory()) {
+      if (WORKSPACE_SKIPPED_DIRECTORIES.has(entry.name)) {
+        continue
+      }
+
+      const nested = await collectFilesWithUnreadableDirectoryNotices(
+        workspaceRoot,
+        entryPath,
+        glob,
+        signal,
+      )
+      matches.push(...nested.matches)
+      notices.push(...nested.notices)
+      continue
+    }
+
+    if (entry.isFile()) {
+      const relativePath = toWorkspaceRelativePath(workspaceRoot, entryPath)
+      if (glob.match(relativePath)) {
+        matches.push(relativePath)
+      }
+    }
+  }
+
+  return { matches, notices }
 }
 
 async function sortByMtimeDesc(matches: string[], workspaceRoot: string): Promise<string[]> {
@@ -92,4 +183,17 @@ function filterMatchesByPathPrefix(matches: string[], workspaceRoot: string, inp
   return matches.filter(
     (match) => match === normalizedPrefix || match.startsWith(`${normalizedPrefix}/`),
   )
+}
+
+function isUnreadableDirectoryError(error: unknown): error is NodeJS.ErrnoException {
+  return (
+    error instanceof Error
+    && "code" in error
+    && ((error as NodeJS.ErrnoException).code === "EACCES"
+      || (error as NodeJS.ErrnoException).code === "EPERM")
+  )
+}
+
+function toWorkspaceRelativePath(workspaceRoot: string, path: string) {
+  return normalize(relative(workspaceRoot, path)).replaceAll("\\", "/")
 }
