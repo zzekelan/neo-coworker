@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react"
+import { useTheme } from "./ThemeProvider"
 
 export type ShortcutHandler = {
   handler: () => void
@@ -27,11 +28,11 @@ export function useKeyboardShortcuts() {
 interface KeyboardShortcutProviderProps {
   children: React.ReactNode
   onNewSession?: () => void
-  onToggleTheme?: () => void
   onClearTranscript?: () => void
 }
 
-export function KeyboardShortcutProvider({ children, onNewSession, onToggleTheme, onClearTranscript }: KeyboardShortcutProviderProps) {
+export function KeyboardShortcutProvider({ children, onNewSession, onClearTranscript }: KeyboardShortcutProviderProps) {
+  const { toggleTheme } = useTheme()
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const registryRef = useRef<Map<string, ShortcutHandler>>(new Map())
   const [, setVersion] = useState(0)
@@ -75,7 +76,7 @@ export function KeyboardShortcutProvider({ children, onNewSession, onToggleTheme
       registerShortcut("meta+d", {
         label: "Toggle Dark Mode",
         handler: () => {
-          if (onToggleTheme) onToggleTheme()
+          toggleTheme()
         },
       })
     )
@@ -92,7 +93,7 @@ export function KeyboardShortcutProvider({ children, onNewSession, onToggleTheme
     return () => {
       unregisters.forEach((unreg) => unreg())
     }
-  }, [registerShortcut, onNewSession, onToggleTheme, onClearTranscript])
+  }, [registerShortcut, onNewSession, toggleTheme, onClearTranscript])
 
   // Global keydown listener
   useEffect(() => {

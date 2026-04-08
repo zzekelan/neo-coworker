@@ -4,6 +4,7 @@ import {
   DEFAULT_DESKTOP_SETTINGS,
   type DesktopServerMode,
   type DesktopSettings,
+  type DesktopTheme,
 } from "./desktop-settings"
 
 export type DesktopSettingsSuccessMessage = "general-applied" | "llm-applied"
@@ -72,6 +73,20 @@ export function useDesktopSettings() {
       setSettings(nextSettings)
       setErrorMessage(null)
       setSuccessMessage(null)
+    },
+    async persistTheme(next: DesktopTheme) {
+      const nextSettings = { ...settings, theme: next }
+      setSettings(nextSettings)
+      setErrorMessage(null)
+
+      try {
+        const result = await saveDesktopSettings(nextSettings)
+        setSettings(result.settings)
+        setAppliedSettings(result.settings)
+        setServerMode(result.serverMode)
+      } catch (error) {
+        setErrorMessage(toErrorMessage(error))
+      }
     },
     async applyGeneralSettings() {
       setIsApplying(true)

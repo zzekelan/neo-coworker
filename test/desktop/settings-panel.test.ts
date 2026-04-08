@@ -7,7 +7,8 @@ describe("desktop settings panel", () => {
     const hookSource = readFileSync("src/desktop/src/useDesktopSettings.ts", "utf8")
 
     expect(appSource).toContain("<DesktopTextProvider language={desktopSettings.appliedSettings.language}>")
-    expect(appSource).toContain("document.documentElement.dataset.theme = desktopSettings.settings.theme")
+    expect(appSource).toContain("<ThemeProvider")
+    expect(appSource).toContain("desktopSettings.settings.theme")
     expect(appSource).toContain("void desktopSettings.applyGeneralSettings()")
     expect(appSource).toContain("void desktopSettings.applyLlmSettings().then((restarted) => {")
     expect(appSource).toContain("void refreshAppState()")

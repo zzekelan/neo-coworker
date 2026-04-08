@@ -5,6 +5,7 @@ import { DesktopTextProvider } from "./i18n"
 import { Sidebar } from "./components/Sidebar"
 import { ChatArea } from "./components/ChatArea"
 import { KeyboardShortcutProvider } from "./providers/KeyboardShortcutProvider"
+import { ThemeProvider } from "./providers/ThemeProvider"
 import { CommandPalette } from "./components/CommandPalette"
 
 export default function App() {
@@ -42,10 +43,6 @@ export default function App() {
   } | null>(null)
 
   useEffect(() => {
-    document.documentElement.dataset.theme = desktopSettings.settings.theme
-  }, [desktopSettings.settings.theme])
-
-  useEffect(() => {
     setClearedTranscriptState(null)
   }, [activeSessionId])
 
@@ -53,11 +50,6 @@ export default function App() {
     activeSessionId && clearedTranscriptState?.sessionId === activeSessionId
       ? transcript.slice(Math.min(clearedTranscriptState.hiddenCount, transcript.length))
       : transcript
-
-  const handleToggleTheme = () => {
-    const nextTheme = desktopSettings.settings.theme === "dark" ? "light" : "dark"
-    desktopSettings.updateSettings({ theme: nextTheme })
-  }
 
   const handleClearTranscriptDisplay = () => {
     if (!activeSessionId) {
@@ -71,9 +63,12 @@ export default function App() {
   }
 
   return (
+    <ThemeProvider
+      theme={desktopSettings.settings.theme}
+      onThemeChange={(next) => { void desktopSettings.persistTheme(next) }}
+    >
     <KeyboardShortcutProvider
       onNewSession={() => void createSession()}
-      onToggleTheme={handleToggleTheme}
       onClearTranscript={handleClearTranscriptDisplay}
     >
       <DesktopTextProvider language={desktopSettings.appliedSettings.language}>
@@ -146,5 +141,6 @@ export default function App() {
       </div>
     </DesktopTextProvider>
     </KeyboardShortcutProvider>
+    </ThemeProvider>
   )
 }

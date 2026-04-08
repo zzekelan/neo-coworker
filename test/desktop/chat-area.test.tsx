@@ -9,13 +9,17 @@ describe("desktop chat area", () => {
     expect(source).not.toContain("scroll-smooth")
   })
 
-  test("keeps a sticky-bottom guard instead of forcing scroll reset unconditionally", () => {
-    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+  test("delegates sticky-bottom scrolling to VirtualTranscript instead of inlining it", () => {
+    const chatSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
 
-    expect(source).toContain("shouldStickToBottomRef")
-    expect(source).toContain("viewport.scrollTop = viewport.scrollHeight")
-    expect(source).toContain("isNearTranscriptBottom")
-    expect(source).not.toContain("scrollIntoView")
+    expect(chatSource).toContain("scrollToBottomRef")
+    expect(chatSource).toContain("<VirtualTranscript")
+    expect(chatSource).not.toContain("scrollIntoView")
+
+    expect(vtSource).toContain("stickToBottomRef")
+    expect(vtSource).toContain("distanceFromBottom")
+    expect(vtSource).toContain("scrollToIndex")
   })
 
   test("locks user-driven skill edits while an active run is present", () => {
@@ -33,8 +37,7 @@ describe("desktop chat area", () => {
     expect(source).toContain("import { isBusyRunStatus } from \"../busy-state\"")
     expect(source).toContain("const activeRunStatus = session?.activeRun?.status ?? null")
     expect(source).toContain("const isBusy = isBusyRunStatus(activeRunStatus)")
-    expect(source).toContain("const stickTranscriptToBottom = useCallback(() => {")
-    expect(source).toContain("shouldStickToBottomRef.current = true")
+    expect(source).toContain("scrollToBottomRef.current?.()")
     expect(source).toContain("await sessionSkillQueueRef.current.queue?.flush()")
     expect(source).toContain("const sent = await onSendMessage(nextInput)")
     expect(source).toContain("const isInputLocked = isBusy || isSubmittingMessage")
@@ -44,15 +47,19 @@ describe("desktop chat area", () => {
     expect(source).toContain("return onReplyPermission(requestId, decision)")
   })
 
-  test("keeps virtualized transcript rows stable across remounts and height changes", () => {
-    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+  test("keeps virtualized transcript rows stable via @tanstack/react-virtual", () => {
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
+    const chatSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
     const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
-    expect(source).toContain("useLayoutEffect")
-    expect(source).toContain("observedElementsRef")
-    expect(source).toContain("resizeObserver.current?.unobserve")
-    expect(source).toContain("style={{ overflowAnchor: \"none\" }}")
-    expect(source).toContain("paddingBottom: \"1.5rem\"")
+    expect(vtSource).toContain("useVirtualizer")
+    expect(vtSource).toContain("@tanstack/react-virtual")
+    expect(vtSource).toContain("measureElement")
+    expect(vtSource).toContain("style={{ overflowAnchor: \"none\" }}")
+    expect(vtSource).toContain("useLayoutEffect")
+
+    expect(chatSource).toContain("paddingBottom: \"1.5rem\"")
+
     expect(messageSource).toContain("initial={false}")
     expect(messageSource).not.toContain("initial={{ opacity: 0, y: 10 }}")
     expect(messageSource).not.toContain("\"mb-6 flex w-full flex-col\"")

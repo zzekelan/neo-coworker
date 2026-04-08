@@ -16,7 +16,7 @@
   --color-success: #30a46c;
 }
 
-:root[data-theme="light"] {
+:root:not(.dark) {
   --color-paper: #f4f1e8;
   --color-ink: #1d1b18;
   --color-accent: #625d52;
@@ -46,12 +46,13 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-border);
   border-radius: 3px;
+  opacity: 0.5;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  opacity: 0.8;
 }
 
 
