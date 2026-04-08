@@ -123,6 +123,7 @@ describe("direct eval runner", () => {
       "live/context-compaction-manual",
       "live/context-compaction-recovery",
       "live/datetime",
+      "live/golden-full-integration",
       "live/read-only",
       "live/skill-activation-persistence",
       "live/skill-explicit-activation",
