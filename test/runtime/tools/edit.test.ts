@@ -219,7 +219,8 @@ describe("edit tool — match context return", () => {
     })
 
     expect(result.isError).toBeFalsy()
-    expect(result.output).toMatch(/line [0-9]+|L[0-9]+|:[0-9]+/i)
+    expect(result.output).toMatch(/lines? [0-9]+(?:-[0-9]+)?/i)
+    expect(result.output).toContain("Updated lines")
   })
 
   test("includes surrounding context lines in successful replacement output", async () => {
@@ -246,8 +247,34 @@ describe("edit tool — match context return", () => {
     })
 
     expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("Before:")
+    expect(result.output).toContain("After:")
     expect(result.output).toContain("before1")
     expect(result.output).toContain("after1")
+    expect(result.output).toContain("REPLACED")
+  })
+
+  test("includes before and after preview context for replaceAll output", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const registry = createToolRuntimeApi({
+      tools: [createEditTool({ requestPermission })],
+    })
+
+    const filePath = join(workspaceRoot, "replace-all.ts")
+    await writeFile(filePath, ["before", "target", "middle", "target", "after"].join("\n") + "\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: { path: "replace-all.ts", oldText: "target", newText: "updated", replaceAll: true },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("Replaced 2 occurrences")
+    expect(result.output).toContain("First replacement preview (before):")
+    expect(result.output).toContain("First replacement preview (after):")
+    expect(result.output).toContain("updated")
   })
 })
 

@@ -60,6 +60,20 @@ function getLineContext(lines: string[], lineIndex: number, contextSize: number)
     .join("\n")
 }
 
+function getLineRangeContext(
+  lines: string[],
+  startLine: number,
+  endLine: number,
+  contextSize: number,
+): string {
+  const start = Math.max(0, startLine - 1 - contextSize)
+  const end = Math.min(lines.length - 1, endLine - 1 + contextSize)
+  return lines
+    .slice(start, end + 1)
+    .map((line, i) => `L${start + i + 1}: ${line}`)
+    .join("\n")
+}
+
 function findMatchPositions(text: string, pattern: string): number[] {
   const positions: number[] = []
   let searchFrom = 0
@@ -76,6 +90,17 @@ function matchIndexToLineNumber(text: string, matchIndex: number): number {
   return text.slice(0, matchIndex).split("\n").length
 }
 
+function getSpanLineRange(text: string, startIndex: number, endIndex: number) {
+  return {
+    startLine: matchIndexToLineNumber(text, startIndex),
+    endLine: matchIndexToLineNumber(text, endIndex),
+  }
+}
+
+function formatLineRange(startLine: number, endLine: number): string {
+  return startLine === endLine ? `${startLine}` : `${startLine}-${endLine}`
+}
+
 export function createEditTool(input: { requestPermission: RequestToolPermission }): ToolDefinition {
   return {
     name: "edit",
@@ -84,6 +109,8 @@ export function createEditTool(input: { requestPermission: RequestToolPermission
     inputSchema: EditArgsSchema,
     concurrency: "mutating",
     isCompressible: false,
+    usageGuidance:
+      "Read the file before editing it. Keep `oldText` unique by including enough surrounding context, or set `replaceAll: true` when every match should change. Preserve exact indentation and do not include line-number prefixes inside `oldText` or `newText`.",
     async execute(value) {
       throwIfToolAborted(value.signal)
       const { path, oldText, newText, replaceAll = false } = EditArgsSchema.parse(value.args)
@@ -152,13 +179,36 @@ export function createEditTool(input: { requestPermission: RequestToolPermission
 
       await Bun.write(file, updated)
 
-      const lines = original.split("\n")
-      const firstLineNum = matchIndexToLineNumber(original, firstMatch)
-      const ctx = getLineContext(lines, firstLineNum - 1, 2)
+      const originalLines = original.split("\n")
+      const updatedLines = updated.split("\n")
+      const firstBeforeRange = getSpanLineRange(original, firstMatch, firstMatch + oldText.length)
+      const firstAfterRange = getSpanLineRange(updated, firstMatch, firstMatch + newText.length)
+      const lastMatch = matchPositions.at(-1) ?? firstMatch
+      const overallBeforeRange = getSpanLineRange(original, firstMatch, lastMatch + oldText.length)
+      const beforePreview = getLineRangeContext(
+        originalLines,
+        firstBeforeRange.startLine,
+        firstBeforeRange.endLine,
+        2,
+      )
+      const afterPreview = getLineRangeContext(
+        updatedLines,
+        firstAfterRange.startLine,
+        firstAfterRange.endLine,
+        2,
+      )
+      const summary = occurrences > 1
+        ? `Replaced ${occurrences} occurrences in ${path} across lines ${formatLineRange(overallBeforeRange.startLine, overallBeforeRange.endLine)}.`
+        : `Edited ${path} at lines ${formatLineRange(firstBeforeRange.startLine, firstBeforeRange.endLine)}.`
+      const beforeLabel = occurrences > 1 ? "First replacement preview (before):" : "Before:"
+      const afterLabel = occurrences > 1 ? "First replacement preview (after):" : "After:"
 
-      const countNote = occurrences > 1 ? `Replaced ${occurrences} occurrences. ` : ""
       return {
-        output: `${countNote}Edited ${path} at line ${firstLineNum}.\n\nContext:\n${ctx}`,
+        output:
+          `${summary}\n` +
+          `Updated lines ${formatLineRange(firstBeforeRange.startLine, firstBeforeRange.endLine)} -> ${formatLineRange(firstAfterRange.startLine, firstAfterRange.endLine)}.\n\n` +
+          `${beforeLabel}\n${beforePreview}\n\n` +
+          `${afterLabel}\n${afterPreview}`,
       }
     },
   }
