@@ -7,6 +7,8 @@ export type OrchestrationTool = {
   inputSchema?: ZodTypeAny
   concurrency?: "read-only" | "mutating"
   isConcurrencySafe?: (input: unknown) => boolean
+  usageGuidance?: string
+  isCompressible?: boolean
 }
 
 export type OrchestrationToolExecutionInput = {
@@ -43,6 +45,7 @@ export type OrchestrationBatchExecutionResult = {
 
 export type OrchestrationToolPort = {
   list(): OrchestrationTool[]
+  listCatalog?(): OrchestrationTool[]
   execute(
     input: OrchestrationToolExecutionInput,
   ): Promise<OrchestrationToolExecutionResult> | OrchestrationToolExecutionResult

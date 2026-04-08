@@ -22,6 +22,8 @@ export type ToolCatalogEntry = {
   inputSchema?: ZodTypeAny
   concurrency?: "read-only" | "mutating"
   isConcurrencySafe?: (input: unknown) => boolean
+  usageGuidance?: string
+  isCompressible?: boolean
 }
 
 export type ToolDefinition = ToolCatalogEntry & {

@@ -21,12 +21,16 @@ export function createToolRegistryService(tools: ToolDefinition[]) {
         inputSchema,
         concurrency,
         isConcurrencySafe,
+        usageGuidance,
+        isCompressible,
       }) => ({
         name,
         description,
         inputSchema,
         concurrency,
         isConcurrencySafe,
+        usageGuidance,
+        isCompressible,
       }))
     },
     getTool(toolName: string) {
