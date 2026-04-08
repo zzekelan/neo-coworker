@@ -1,0 +1,252 @@
+{
+  "id": "live/golden-full-integration",
+  "providerMode": "live",
+  "prompt": "Review README.md, write a short handoff note, and verify it with shell progress across multiple turns.",
+  "workspaceFixture": "workspaces/basic",
+  "steps": [
+    {
+      "kind": "prompt",
+      "prompt": "Use the read tool to read README.md. In your reply, include the phrase `read-only regression task` and end exactly with `Ready for the note`."
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Use the write tool to create handoff/live-summary.md with exactly these two lines:\n# Live integration note\n- README says this fixture exists for the read-only regression task.\nThen answer exactly `Note saved`."
+    },
+    {
+      "kind": "prompt",
+      "prompt": "Use the shell tool with description `Verify draft note`, timeout 5000, and this exact command: `sleep 2.2 && test -f handoff/live-summary.md && grep -n \"read-only regression task\" handoff/live-summary.md`. After the command succeeds, answer exactly `Verification complete`."
+    }
+  ],
+  "permissionPolicy": {
+    "write": "allow",
+    "shell": "allow"
+  },
+  "autoReplyPermission": "deny",
+  "outcomeExpectation": {
+    "runStatus": "completed",
+    "watchedFiles": [
+      {
+        "path": "handoff/live-summary.md",
+        "shouldExist": true,
+        "contentIncludes": "read-only regression task"
+      }
+    ]
+  },
+  "protocolExpectation": {
+    "requiredRuntimeEventTypes": [
+      "run.started",
+      "tool.progress",
+      "tool.call.completed",
+      "run.completed"
+    ],
+    "forbiddenRuntimeEventTypes": [
+      "permission.requested",
+      "run.failed",
+      "run.cancelled"
+    ]
+  },
+  "toolPolicyExpectation": {
+    "requiredToolNames": [
+      "shell"
+    ],
+    "forbiddenToolNames": [
+      "codesearch",
+      "edit",
+      "glob",
+      "grep",
+      "webfetch",
+      "websearch"
+    ]
+  },
+  "traceExpectation": {
+    "requiredEventTypes": [
+      "run.started",
+      "tool.progress",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "transcriptExpectation": {
+    "checkpoints": [
+      {
+        "messageIndex": 1,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "read"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "textIncludes": [
+          "read-only regression task",
+          "Ready for the note"
+        ]
+      },
+      {
+        "messageIndex": 4,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "write"
+        ]
+      },
+      {
+        "messageIndex": 5,
+        "role": "assistant",
+        "textIncludes": [
+          "Note saved"
+        ]
+      },
+      {
+        "messageIndex": 7,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "shell"
+        ]
+      },
+      {
+        "messageIndex": 8,
+        "role": "assistant",
+        "textIncludes": [
+          "Verification complete"
+        ]
+      }
+    ]
+  },
+  "traceSequenceExpectation": {
+    "orderedEventTypes": [
+      "run.started",
+      "tool.progress",
+      "tool.call.completed",
+      "run.completed"
+    ]
+  },
+  "toolConsumptionExpectation": {
+    "requiredConsumptions": [
+      {
+        "toolName": "read",
+        "toolResultIncludes": [
+          "read-only regression task"
+        ],
+        "assistantTextIncludes": [
+          "read-only regression task",
+          "Ready for the note"
+        ]
+      },
+      {
+        "toolName": "write",
+        "toolResultIncludes": [
+          "Wrote handoff/live-summary.md"
+        ],
+        "assistantTextIncludes": [
+          "Note saved"
+        ]
+      },
+      {
+        "toolName": "shell",
+        "toolResultIncludes": [
+          "read-only regression task"
+        ],
+        "assistantTextIncludes": [
+          "Verification complete"
+        ]
+      }
+    ]
+  },
+  "traceDataExpectation": {
+    "events": [
+      {
+        "runIndex": 0,
+        "eventType": "tool.call.completed",
+        "fields": [
+          {
+            "field": "name",
+            "equalsString": "read"
+          },
+          {
+            "field": "output",
+            "includes": "read-only regression task"
+          }
+        ]
+      },
+      {
+        "runIndex": 1,
+        "eventType": "tool.call.completed",
+        "fields": [
+          {
+            "field": "name",
+            "equalsString": "write"
+          },
+          {
+            "field": "output",
+            "includes": "Wrote handoff/live-summary.md"
+          }
+        ]
+      },
+      {
+        "runIndex": 2,
+        "eventType": "tool.progress",
+        "fields": [
+          {
+            "field": "message",
+            "includes": "Verify draft note"
+          },
+          {
+            "field": "timestamp",
+            "valueType": "number",
+            "greaterThanNumber": 0
+          }
+        ]
+      },
+      {
+        "runIndex": 2,
+        "eventType": "tool.call.completed",
+        "fields": [
+          {
+            "field": "name",
+            "equalsString": "shell"
+          },
+          {
+            "field": "output",
+            "includes": "read-only regression task"
+          }
+        ]
+      }
+    ]
+  },
+  "runRecordsExpectation": {
+    "checkpoints": [
+      {
+        "runIndex": 0,
+        "trigger": "cli",
+        "status": "completed"
+      },
+      {
+        "runIndex": 1,
+        "trigger": "cli",
+        "status": "completed"
+      },
+      {
+        "runIndex": 2,
+        "trigger": "cli",
+        "status": "completed",
+        "tokenUsageSources": [
+          "provider",
+          "estimated"
+        ]
+      }
+    ]
+  }
+}

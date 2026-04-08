@@ -74,6 +74,19 @@ describe("eval main entrypoint", () => {
     expect(stderr).not.toContain("error:")
   })
 
+  test("lists scripted and live eval tasks by default", async () => {
+    const process = spawnEvalMain(["--list"])
+
+    expect(await process.exited).toBe(0)
+
+    const stdout = await readProcessStream(process.stdout)
+    const stderr = await readProcessStream(process.stderr)
+
+    expect(stdout).toContain("eval.task regression/read-only")
+    expect(stdout).toContain("eval.task live/golden-full-integration")
+    expect(stderr).not.toContain("error:")
+  })
+
   test("surfaces live provider setup failures as explicit operator-facing errors", async () => {
     const process = spawnEvalMain(["--mode", "live", "--task", "live/read-only"], {
       LLM_PROVIDER: "",

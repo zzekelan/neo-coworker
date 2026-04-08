@@ -4,6 +4,7 @@ import type { EvalProviderMode } from "./schemas/task"
 type EvalCommand = {
   listOnly: boolean
   providerMode: EvalProviderMode
+  providerModeExplicit: boolean
   outputRoot?: string
   taskIds: string[]
 }
@@ -12,6 +13,7 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
   const taskIds: string[] = []
   let listOnly = false
   let providerMode: EvalProviderMode = "scripted"
+  let providerModeExplicit = false
   let outputRoot: string | undefined
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -33,6 +35,7 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
       }
 
       providerMode = parseProviderMode(value)
+      providerModeExplicit = true
       index += 1
       continue
     }
@@ -44,6 +47,7 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
       }
 
       providerMode = parseProviderMode(value)
+      providerModeExplicit = true
       continue
     }
 
@@ -95,6 +99,7 @@ export function parseEvalCommand(argv: string[]): EvalCommand {
   return {
     listOnly,
     providerMode,
+    providerModeExplicit,
     outputRoot,
     taskIds,
   }
@@ -112,9 +117,19 @@ export async function runEvalCommand(argv: string[]) {
   const command = parseEvalCommand(argv)
 
   if (command.listOnly) {
-    const tasks = await loadEvalTasks({
-      providerMode: command.providerMode,
-    })
+    const providerModes = command.providerModeExplicit
+      ? [command.providerMode]
+      : (["scripted", "live"] as const)
+    const taskSets = await Promise.all(
+      providerModes.map((providerMode) =>
+        loadEvalTasks({
+          providerMode,
+        }),
+      ),
+    )
+    const tasks = [...new Map(taskSets.flat().map((task) => [task.id, task])).values()].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    )
 
     for (const task of tasks) {
       console.log(`eval.task ${task.id}`)
