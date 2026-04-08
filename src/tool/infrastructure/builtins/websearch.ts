@@ -15,6 +15,12 @@ import {
 const NO_RESULTS_MESSAGE =
   "No results found. Try: broader query terms, different keywords, checking spelling, or use webfetch with a specific URL if you already know the source."
 
+const WEBSERCH_METADATA_SOURCE = {
+  type: "search-backend",
+  channel: "web",
+  toolName: "websearch",
+} as const
+
 const WebsearchArgsSchema = z.object({
   query: z.string().trim().min(1, "Query must not be empty").describe(
     "Natural-language description of the ideal page to find, such as 'blog post comparing React and Vue performance 2024' or 'Next.js getServerSession JWT authentication example'. Describe the ideal content rather than using keyword fragments. Prefer full sentences or rich phrases over abbreviations.",
@@ -60,16 +66,32 @@ export function createWebsearchTool(input: {
 
       const isEmpty = !raw || raw.trim().length === 0
       const output = isEmpty ? NO_RESULTS_MESSAGE : raw
-      const resultCount = isEmpty ? 0 : 1
+      const resultCount = isEmpty ? 0 : countSearchResults(raw)
 
       return {
         output,
         metadata: {
+          source: WEBSERCH_METADATA_SOURCE,
           query,
+          queryEcho: query,
           resultCount,
           truncated: false,
         },
       }
     },
   }
+}
+
+function countSearchResults(raw: string) {
+  const numberedResults = raw.match(/^\d+\.\s+/gm)
+  if (numberedResults && numberedResults.length > 0) {
+    return numberedResults.length
+  }
+
+  const urlResults = raw.match(/^URL:\s+/gm)
+  if (urlResults && urlResults.length > 0) {
+    return urlResults.length
+  }
+
+  return 1
 }

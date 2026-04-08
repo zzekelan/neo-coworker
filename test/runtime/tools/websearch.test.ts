@@ -6,7 +6,7 @@ import {
 } from "../../../src/tool"
 
 describe("websearch tool — metadata standardization", () => {
-  test("returns resultCount, query, and truncated in metadata when results are found", async () => {
+  test("returns standardized metadata with source attribution, query echo, result count, and truncation flag", async () => {
     const runtime = createToolRuntimeApi({
       tools: [
         createWebsearchTool({
@@ -14,7 +14,15 @@ describe("websearch tool — metadata standardization", () => {
             return { decision: "allow" as const }
           },
           async searchBackend() {
-            return "Result 1\nResult 2\nResult 3"
+            return [
+              'Top web results for "latest bun runtime features"',
+              "1. Bun 1.3 release notes",
+              "URL: https://bun.sh/blog/bun-v1.3",
+              "2. Bun runtime reference",
+              "URL: https://bun.sh/docs/runtime",
+              "3. Bun changelog",
+              "URL: https://bun.sh/docs/project/changelog",
+            ].join("\n")
           },
         }),
       ],
@@ -28,13 +36,19 @@ describe("websearch tool — metadata standardization", () => {
 
     expect(result.metadata).toBeDefined()
     expect(result.metadata).toMatchObject({
+      source: {
+        type: "search-backend",
+        channel: "web",
+        toolName: "websearch",
+      },
       query: "latest bun runtime features",
-      resultCount: expect.any(Number),
-      truncated: expect.any(Boolean),
+      queryEcho: "latest bun runtime features",
+      resultCount: 3,
+      truncated: false,
     })
   })
 
-  test("metadata.query equals the original query string", async () => {
+  test("metadata.query and metadata.queryEcho equal the original query string", async () => {
     const runtime = createToolRuntimeApi({
       tools: [
         createWebsearchTool({
@@ -55,6 +69,7 @@ describe("websearch tool — metadata standardization", () => {
     })
 
     expect(result.metadata?.query).toBe("TypeScript generics tutorial")
+    expect(result.metadata?.queryEcho).toBe("TypeScript generics tutorial")
   })
 
   test("resultCount is greater than zero when backend returns content", async () => {
@@ -78,6 +93,49 @@ describe("websearch tool — metadata standardization", () => {
     })
 
     expect(result.metadata?.resultCount).toBeGreaterThan(0)
+  })
+
+  test("websearch and codesearch expose the same standardized metadata keys", async () => {
+    const runtime = createToolRuntimeApi({
+      tools: [
+        createWebsearchTool({
+          requestPermission() {
+            return { decision: "allow" as const }
+          },
+          async searchBackend() {
+            return "1. Web result\nURL: https://example.com"
+          },
+        }),
+        createCodesearchTool({
+          requestPermission() {
+            return { decision: "allow" as const }
+          },
+          async searchBackend() {
+            return "1. Code result\nURL: https://github.com/example/repo"
+          },
+        }),
+      ],
+    })
+
+    const webResult = await runtime.execute({
+      toolName: "websearch",
+      args: { query: "bun runtime" },
+      workspaceRoot: process.cwd(),
+    })
+    const codeResult = await runtime.execute({
+      toolName: "codesearch",
+      args: { query: "Bun.serve(" },
+      workspaceRoot: process.cwd(),
+    })
+
+    expect(Object.keys(webResult.metadata ?? {}).sort()).toEqual(
+      Object.keys(codeResult.metadata ?? {}).sort(),
+    )
+    expect(
+      Object.keys((webResult.metadata?.source as Record<string, unknown>) ?? {}).sort(),
+    ).toEqual(
+      Object.keys((codeResult.metadata?.source as Record<string, unknown>) ?? {}).sort(),
+    )
   })
 })
 
@@ -132,7 +190,7 @@ describe("websearch tool — empty result friendly message", () => {
 })
 
 describe("codesearch tool — metadata standardization", () => {
-  test("returns resultCount, query, and truncated in metadata when results are found", async () => {
+  test("returns standardized metadata with source attribution, query echo, result count, and truncation flag", async () => {
     const runtime = createToolRuntimeApi({
       tools: [
         createCodesearchTool({
@@ -140,7 +198,13 @@ describe("codesearch tool — metadata standardization", () => {
             return { decision: "allow" as const }
           },
           async searchBackend() {
-            return "function useState(\n  https://react.dev/reference/react/useState"
+            return [
+              'Top code/API results for "useState hook React"',
+              "1. useState reference",
+              "URL: https://react.dev/reference/react/useState",
+              "2. React hooks examples",
+              "URL: https://github.com/facebook/react",
+            ].join("\n")
           },
         }),
       ],
@@ -154,13 +218,19 @@ describe("codesearch tool — metadata standardization", () => {
 
     expect(result.metadata).toBeDefined()
     expect(result.metadata).toMatchObject({
+      source: {
+        type: "search-backend",
+        channel: "code",
+        toolName: "codesearch",
+      },
       query: "useState hook React",
-      resultCount: expect.any(Number),
-      truncated: expect.any(Boolean),
+      queryEcho: "useState hook React",
+      resultCount: 2,
+      truncated: false,
     })
   })
 
-  test("metadata.query equals the original query string", async () => {
+  test("metadata.query and metadata.queryEcho equal the original query string", async () => {
     const runtime = createToolRuntimeApi({
       tools: [
         createCodesearchTool({
@@ -181,6 +251,7 @@ describe("codesearch tool — metadata standardization", () => {
     })
 
     expect(result.metadata?.query).toBe("zod schema parse")
+    expect(result.metadata?.queryEcho).toBe("zod schema parse")
   })
 
   test("output is non-empty and contains suggestions when backend returns empty string", async () => {
