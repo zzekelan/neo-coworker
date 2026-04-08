@@ -15,6 +15,12 @@ import {
 const NO_RESULTS_MESSAGE =
   "No results found. Try: searching for actual code patterns (e.g. 'useState(' not 'how to use useState'), different library names, specific error messages, or use grep for local repository searches."
 
+const CODESEARCH_METADATA_SOURCE = {
+  type: "search-backend",
+  channel: "code",
+  toolName: "codesearch",
+} as const
+
 const CodesearchArgsSchema = z.object({
   query: z.string().trim().min(1, "Query must not be empty").describe(
     "Actual code patterns, API names, or technical identifiers to search for, such as 'useState(' or 'import React from' or 'async function $NAME($$$)'. Search for literal code that would appear in files, not keyword descriptions. Include library names, method signatures, or error text for best results.",
@@ -60,16 +66,32 @@ export function createCodesearchTool(input: {
 
       const isEmpty = !raw || raw.trim().length === 0
       const output = isEmpty ? NO_RESULTS_MESSAGE : raw
-      const resultCount = isEmpty ? 0 : 1
+      const resultCount = isEmpty ? 0 : countSearchResults(raw)
 
       return {
         output,
         metadata: {
+          source: CODESEARCH_METADATA_SOURCE,
           query,
+          queryEcho: query,
           resultCount,
           truncated: false,
         },
       }
     },
   }
+}
+
+function countSearchResults(raw: string) {
+  const numberedResults = raw.match(/^\d+\.\s+/gm)
+  if (numberedResults && numberedResults.length > 0) {
+    return numberedResults.length
+  }
+
+  const urlResults = raw.match(/^URL:\s+/gm)
+  if (urlResults && urlResults.length > 0) {
+    return urlResults.length
+  }
+
+  return 1
 }
