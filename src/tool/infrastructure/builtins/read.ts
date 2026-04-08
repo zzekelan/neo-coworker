@@ -1,5 +1,5 @@
-import { readdir, realpath } from "node:fs/promises"
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path"
+import { realpath } from "node:fs/promises"
+import { extname, relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import {
   assertWorkspacePathNotReserved,
@@ -47,35 +47,6 @@ function isBinaryExtension(filePath: string): boolean {
 
 function isBlockedDevicePath(filePath: string): boolean {
   return BLOCKED_DEVICE_PREFIXES.some(prefix => filePath.startsWith(prefix))
-}
-
-function levenshtein(a: string, b: string): number {
-  const m = a.length
-  const n = b.length
-  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
-    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
-  )
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-    }
-  }
-  return dp[m][n]
-}
-
-async function findSimilarFiles(targetPath: string): Promise<string[]> {
-  const dir = dirname(targetPath)
-  const name = basename(targetPath)
-  try {
-    const entries = await readdir(dir)
-    return entries
-      .filter(entry => levenshtein(name, entry) <= 3)
-      .map(entry => join(relative(process.cwd(), dir), entry))
-  } catch {
-    return []
-  }
 }
 
 async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string) {
@@ -126,12 +97,10 @@ export function createReadTool(): ToolDefinition {
         }
         const code = (err as NodeJS.ErrnoException).code
         if (code === "ENOENT") {
-          const absolute = resolve(input.workspaceRoot, path)
-          const similar = await findSimilarFiles(absolute)
-          const suggestion = similar.length > 0
-            ? ` Did you mean: ${similar.join(", ")}?`
-            : ""
-          throw new Error(`File not found: ${path}.${suggestion}`)
+          return {
+            output: `File not found: ${path}. Check the path and try again.`,
+            isError: true,
+          }
         }
         throw err
       }

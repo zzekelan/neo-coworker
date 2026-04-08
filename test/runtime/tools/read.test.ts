@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -55,20 +55,41 @@ describe("read tool enhancements", () => {
     expect(result.isError).toBeFalsy()
   })
 
-  test("ENOENT friendly suggestion: reading a typo path throws with similar file suggestion", async () => {
+  test("ENOENT friendly error: missing file returns structured tool error instead of throwing", async () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()
 
     await mkdir(join(workspaceRoot, "src"), { recursive: true })
     await writeFile(join(workspaceRoot, "src", "read.ts"), "export {}\n")
 
+    const result = await registry.execute({
+      toolName: "read",
+      args: { path: "src/raed.ts" },
+      workspaceRoot,
+    })
+
+    expect(result).toEqual({
+      output: "File not found: src/raed.ts. Check the path and try again.",
+      isError: true,
+    })
+  })
+
+  test("non-ENOENT resolution failures still propagate", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await makeTmpWorkspace()
+    const externalRoot = await makeTmpWorkspace()
+
+    await mkdir(join(workspaceRoot, "links"), { recursive: true })
+    await writeFile(join(externalRoot, "secret.txt"), "top secret\n")
+    await symlink(join(externalRoot, "secret.txt"), join(workspaceRoot, "links", "secret.txt"))
+
     await expect(
       registry.execute({
         toolName: "read",
-        args: { path: "src/raed.ts" },
+        args: { path: "links/secret.txt" },
         workspaceRoot,
       }),
-    ).rejects.toThrow(/read\.ts/)
+    ).rejects.toThrow("Path must stay inside workspace")
   })
 
   test("line numbering: each line is prefixed with its 1-based line number", async () => {
