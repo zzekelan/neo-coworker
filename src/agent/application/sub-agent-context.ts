@@ -92,6 +92,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     session: input.session,
     sessionId: input.sessionId,
     activeSkills,
+    subRunId: context.subRunId,
   })
   const stepService = input.createStepService({
     session,
@@ -241,6 +242,7 @@ function createScopedSessionPort(input: {
   session: AgentSessionPort
   sessionId: string
   activeSkills: string[]
+  subRunId: string
 }): AgentSessionPort {
   return {
     storageIdentity: input.session.storageIdentity,
@@ -260,7 +262,13 @@ function createScopedSessionPort(input: {
       return input.session.getRun(runId)
     },
     listTranscript(sessionId) {
-      return input.session.listTranscript(sessionId)
+      const transcript = input.session.listTranscript(sessionId)
+
+      if (sessionId !== input.sessionId) {
+        return transcript
+      }
+
+      return transcript.filter((message) => message.runId === input.subRunId)
     },
     createRun(run) {
       return input.session.createRun(run)
