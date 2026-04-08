@@ -26,8 +26,12 @@ const repositoryRoot = resolve(__dirname, "..", "..", "..")
 const preloadPath = resolve(__dirname, "preload.cjs")
 const workspaceRoot =
   process.env.DESKTOP_WORKSPACE_ROOT || resolveLegacyDesktopPath(repositoryRoot, "workspace")
-const desktopSelectionStatePath = resolveLegacyDesktopPath(repositoryRoot, "desktop-state.json")
-const desktopSettingsStatePath = resolveLegacyDesktopPath(repositoryRoot, "desktop-settings.json")
+const desktopSelectionStatePath =
+  process.env.DESKTOP_SELECTION_STATE_PATH?.trim() ||
+  resolveLegacyDesktopPath(repositoryRoot, "desktop-state.json")
+const desktopSettingsStatePath =
+  process.env.DESKTOP_SETTINGS_STATE_PATH?.trim() ||
+  resolveLegacyDesktopPath(repositoryRoot, "desktop-settings.json")
 const desktopServerDatabasePath =
   (process.env.NCOWORKER_SERVER_DB_PATH?.trim() || process.env.AGENT_SERVER_DB_PATH?.trim()) || resolveLegacyDesktopPath(repositoryRoot, "server.sqlite")
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)

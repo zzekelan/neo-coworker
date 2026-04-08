@@ -1,14 +1,30 @@
 import { _electron as electron } from "playwright"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 const cwd = process.cwd()
 const prompt = process.env.DESKTOP_VERIFY_PROMPT?.trim() || "Reply with exactly OK."
 const expectedAssistantText =
   process.env.DESKTOP_VERIFY_EXPECTED_TEXT?.trim() || "OK."
+const isolatedDesktopStateRoot = mkdtempSync(join(tmpdir(), "neo-coworker-desktop-verify-"))
 
 const app = await electron.launch({
   args: ["src/desktop/electron/main.mjs"],
   cwd,
-  env: { ...process.env },
+  env: {
+    ...process.env,
+    DESKTOP_SELECTION_STATE_PATH:
+      process.env.DESKTOP_SELECTION_STATE_PATH?.trim() ||
+      join(isolatedDesktopStateRoot, "desktop-state.json"),
+    DESKTOP_SETTINGS_STATE_PATH:
+      process.env.DESKTOP_SETTINGS_STATE_PATH?.trim() ||
+      join(isolatedDesktopStateRoot, "desktop-settings.json"),
+    NCOWORKER_SERVER_DB_PATH:
+      process.env.NCOWORKER_SERVER_DB_PATH?.trim() ||
+      process.env.AGENT_SERVER_DB_PATH?.trim() ||
+      join(isolatedDesktopStateRoot, "server.sqlite"),
+  },
 })
 
 const page = await app.firstWindow()
