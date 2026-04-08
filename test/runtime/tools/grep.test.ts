@@ -222,6 +222,25 @@ describe("grep tool", () => {
     expect(result.output).not.toContain("src/b.js")
   })
 
+  test("path filter: only searches files under the scoped subdirectory", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "grep-path-"))
+
+    await mkdir(join(workspaceRoot, "src"), { recursive: true })
+    await mkdir(join(workspaceRoot, "docs"), { recursive: true })
+    await writeFile(join(workspaceRoot, "src", "inside.ts"), "SCOPED_NEEDLE\n")
+    await writeFile(join(workspaceRoot, "docs", "outside.md"), "SCOPED_NEEDLE\n")
+
+    const result = await registry.execute({
+      toolName: "grep",
+      args: { pattern: "SCOPED_NEEDLE", path: "src", output_mode: "files_with_matches" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toContain("src/inside.ts")
+    expect(result.output).not.toContain("docs/outside.md")
+  })
+
   test("tool definition has correct concurrency and isCompressible", () => {
     const tool = createGrepTool()
     expect(tool.concurrency).toBe("read-only")

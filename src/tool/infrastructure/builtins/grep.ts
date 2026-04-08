@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises"
-import { basename, join } from "node:path"
+import { basename, join, normalize, relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import { throwIfToolAborted, type ToolDefinition } from "../../domain"
 import {
@@ -73,6 +73,7 @@ export function createGrepTool(): ToolDefinition {
     async execute(input) {
       const {
         pattern,
+        path,
         include,
         output_mode: outputMode = "content",
         head_limit: headLimit,
@@ -80,34 +81,40 @@ export function createGrepTool(): ToolDefinition {
         context: contextLines = 0,
       } = GrepArgsSchema.parse(input.args)
 
+      const workspaceRoot = resolve(input.workspaceRoot)
+
       const files = await listWorkspaceFiles({
-        workspaceRoot: input.workspaceRoot,
+        workspaceRoot,
         signal: input.signal,
       })
 
+      const scopedFiles = path
+        ? filterMatchesByPathPrefix(files, workspaceRoot, path)
+        : files
+
       const includeGlob = include ? new Bun.Glob(include) : null
       const searchableFiles = includeGlob
-        ? files.filter((relativePath: string) => matchesIncludeGlob(includeGlob, include!, relativePath))
-        : files
+        ? scopedFiles.filter((relativePath: string) => matchesIncludeGlob(includeGlob, include!, relativePath))
+        : scopedFiles
 
       const regex = buildRegex(pattern, caseSensitive)
 
       if (outputMode === "files_with_matches") {
-        const matchingPaths = await collectMatchingPaths(searchableFiles, input.workspaceRoot, regex, input.signal)
-        const sorted = await sortByMtime(matchingPaths, input.workspaceRoot)
+        const matchingPaths = await collectMatchingPaths(searchableFiles, workspaceRoot, regex, input.signal)
+        const sorted = await sortByMtime(matchingPaths, workspaceRoot)
         const limited = applyHeadLimitToList(sorted, headLimit)
         return { output: limited.join("\n") }
       }
 
       if (outputMode === "count") {
-        const countLines = await collectCountLines(searchableFiles, input.workspaceRoot, regex, input.signal)
+        const countLines = await collectCountLines(searchableFiles, workspaceRoot, regex, input.signal)
         const limited = applyHeadLimitToList(countLines, headLimit)
         return { output: limited.join("\n") }
       }
 
       const contentLines = await collectContentLines(
         searchableFiles,
-        input.workspaceRoot,
+        workspaceRoot,
         regex,
         contextLines,
         input.signal,
@@ -124,6 +131,25 @@ export function createGrepTool(): ToolDefinition {
       }
     },
   }
+}
+
+function filterMatchesByPathPrefix(matches: string[], workspaceRoot: string, inputPath: string) {
+  const resolvedPath = resolve(workspaceRoot, inputPath)
+
+  if (resolvedPath !== workspaceRoot && !resolvedPath.startsWith(`${workspaceRoot}${sep}`)) {
+    throw new Error(`Path must stay inside workspace: ${inputPath}`)
+  }
+
+  const relativePath = normalize(relative(workspaceRoot, resolvedPath))
+  const normalizedPrefix = relativePath === "" || relativePath === "." ? "" : relativePath.replaceAll("\\", "/")
+
+  if (normalizedPrefix === "") {
+    return matches
+  }
+
+  return matches.filter(
+    (match) => match === normalizedPrefix || match.startsWith(`${normalizedPrefix}/`),
+  )
 }
 
 function matchesIncludeGlob(glob: { match(p: string): boolean }, rawPattern: string, relativePath: string): boolean {
