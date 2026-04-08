@@ -49,12 +49,12 @@ describe("shell tool — structured result metadata", () => {
 })
 
 describe("shell tool — configurable timeout", () => {
-  test("times out and returns isError=true with timeout message when command exceeds timeout", async () => {
+  test("times out and returns isError=true with timeout message when command exceeds timeout", { timeout: 10_000 }, async () => {
     const runtime = makeRuntime()
     const start = Date.now()
     const result = await runtime.execute({
       toolName: "shell",
-      args: { command: "sleep 30", timeoutMs: 800 },
+      args: { command: "sleep 30", timeout: 800 },
       workspaceRoot: process.cwd(),
     })
     const elapsed = Date.now() - start
@@ -62,13 +62,13 @@ describe("shell tool — configurable timeout", () => {
     expect(result.isError).toBe(true)
     expect(result.output.toLowerCase()).toMatch(/timeout/)
     expect(elapsed).toBeLessThan(5000)
-  }, 10_000)
+  })
 
   test("completes normally when command finishes before timeout", async () => {
     const runtime = makeRuntime()
     const result = await runtime.execute({
       toolName: "shell",
-      args: { command: "echo fast", timeoutMs: 5000 },
+      args: { command: "echo fast", timeout: 5000 },
       workspaceRoot: process.cwd(),
     })
 
@@ -79,7 +79,7 @@ describe("shell tool — configurable timeout", () => {
 })
 
 describe("shell tool — output size cap (512KB)", () => {
-  test("truncates output exceeding 512KB and sets metadata.truncated=true", async () => {
+  test("truncates output exceeding 512KB and sets metadata.truncated=true", { timeout: 30_000 }, async () => {
     const runtime = makeRuntime()
     const result = await runtime.execute({
       toolName: "shell",
@@ -91,7 +91,7 @@ describe("shell tool — output size cap (512KB)", () => {
     expect(byteSize).toBeLessThan(550 * 1024)
     expect(result.metadata?.truncated).toBe(true)
     expect(result.output).toContain("Output truncated")
-  }, 30_000)
+  })
 
   test("does not truncate output within 512KB and sets metadata.truncated=false", async () => {
     const runtime = makeRuntime()
@@ -119,7 +119,7 @@ describe("shell tool — description parameter", () => {
     expect(result.output).toContain("with-description")
   })
 
-  test("emits onProgress messages that include the description when provided", async () => {
+  test("emits onProgress messages that include the description when provided", { timeout: 15_000 }, async () => {
     const progressMessages: string[] = []
     const runtime = createToolRuntimeApi({
       tools: [
@@ -141,7 +141,7 @@ describe("shell tool — description parameter", () => {
     expect(progressMessages.length).toBeGreaterThan(0)
     const hasDescription = progressMessages.some((m) => m.includes("Testing description progress"))
     expect(hasDescription).toBe(true)
-  }, 15_000)
+  })
 })
 
 describe("shell tool — workspace path safety", () => {

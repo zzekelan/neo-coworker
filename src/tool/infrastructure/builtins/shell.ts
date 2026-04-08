@@ -39,7 +39,7 @@ const ShellArgsSchema = z
       .describe(
         "Bash command to execute in the workspace. Supports pipes, redirects, multi-step chains, and any OS-level capability. Prefer dedicated tools (read, write, edit, glob, grep) for simple file operations since they are safer and more structured. Commands that modify files, install packages, or run builds require permission before execution.",
       ),
-    timeoutMs: z
+    timeout: z
       .optional(z.number().int().min(1, "Timeout must be at least 1ms"))
       .describe(
         "Maximum time in milliseconds the command may run before it is force-killed. Defaults to 120000ms (2 minutes). Use a shorter value for commands known to complete quickly. When the timeout expires the process receives SIGTERM followed by SIGKILL after a brief grace period.",
@@ -83,12 +83,14 @@ async function terminateProcess(process: { kill(signal?: string): void; exited: 
   try {
     process.kill("SIGTERM")
   } catch {
+    void 0
   }
 
   const forceKillTimer = setTimeout(() => {
     try {
       process.kill("SIGKILL")
     } catch {
+      void 0
     }
   }, SHELL_ABORT_GRACE_MS)
 
@@ -127,7 +129,7 @@ export function createShellTool(input: { requestPermission: RequestToolPermissio
       const signal = value.signal
 
       throwIfToolAborted(signal)
-      const { command, timeoutMs, workdir, description } = ShellArgsSchema.parse(value.args)
+      const { command, timeout, workdir, description } = ShellArgsSchema.parse(value.args)
       const decision = await input.requestPermission({
         toolName: "shell",
         reason: `shell ${command}`,
@@ -179,7 +181,9 @@ export function createShellTool(input: { requestPermission: RequestToolPermissio
                 void (async () => {
                   try {
                     await terminateProcess(proc)
-                  } catch {}
+                  } catch {
+                    void 0
+                  }
 
                   reject(createToolAbortError())
                 })()
@@ -195,7 +199,7 @@ export function createShellTool(input: { requestPermission: RequestToolPermissio
           ])
         : completed
 
-      const effectiveTimeout = timeoutMs ?? 120_000
+      const effectiveTimeout = timeout ?? 120_000
       const timeoutExecution = Promise.race([
         execution,
         new Promise<never>((_resolve, reject) => {
@@ -204,7 +208,9 @@ export function createShellTool(input: { requestPermission: RequestToolPermissio
             void (async () => {
               try {
                 await terminateProcess(proc)
-              } catch {}
+              } catch {
+                void 0
+              }
 
               reject(new Error(`Shell command timeout: exceeded ${effectiveTimeout}ms`))
             })()
