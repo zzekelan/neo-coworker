@@ -129,8 +129,19 @@ type CompactionProjectionInput = {
   contextWindow: number
   tools: ReturnType<OrchestrationToolPort["list"]>
   transcript: OrchestrationTranscriptMessage[]
+  compressibleToolNames?: ReadonlySet<string>
   sessionId: string
   runId: string
+}
+
+function deriveCompressibleToolNames(
+  tools: ReturnType<OrchestrationToolPort["list"]>,
+) {
+  if (!tools.some((tool) => tool.isCompressible !== undefined)) {
+    return undefined
+  }
+
+  return new Set(tools.filter((tool) => tool.isCompressible).map((tool) => tool.name))
 }
 
 function isAbortError(error: unknown, signal: AbortSignal) {
@@ -393,6 +404,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const run = input.session.getRun(stepInput.runId)
       const skillCatalog = await input.skill.listCatalog(stepInput.workspaceRoot)
       const availableTools = stepInput.tools.list()
+      const compressibleToolNames = deriveCompressibleToolNames(availableTools)
       const exposedCatalogSkillNames = skillReminders.exposeCatalog(stepInput.sessionId, skillCatalog)
       if (exposedCatalogSkillNames.length > 0) {
         stepInput.emit({
@@ -410,23 +422,30 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         reason: "prompt",
       })
 
-      const autoCompaction = await maybeAutoCompact({
-        session: input.session,
-        model: input.model,
-        runtimeObserver: input.runtimeObserver,
-        skillReminders,
-        contextWindow,
-        sessionId: stepInput.sessionId,
-        run,
+      const pendingReminderBatch = skillReminders.peekSystemReminderBatch(stepInput.sessionId)
+      const autoCompaction = shouldDeferAutoCompactionUntilAfterManualRecovery({
         transcript,
-        systemPrompt: stepInput.systemPrompt,
-        workspaceRoot: stepInput.workspaceRoot,
-        skillCatalog,
-        tools: availableTools,
-        signal: stepInput.signal,
-        emit: stepInput.emit,
-        now,
+        reminderBatch: pendingReminderBatch,
       })
+        ? { compacted: false as const }
+        : await maybeAutoCompact({
+            session: input.session,
+            model: input.model,
+            runtimeObserver: input.runtimeObserver,
+            skillReminders,
+            contextWindow,
+            sessionId: stepInput.sessionId,
+            run,
+            transcript,
+            systemPrompt: stepInput.systemPrompt,
+            workspaceRoot: stepInput.workspaceRoot,
+            skillCatalog,
+            tools: availableTools,
+            compressibleToolNames,
+            signal: stepInput.signal,
+            emit: stepInput.emit,
+            now,
+          })
       if (autoCompaction.compacted) {
         skillReminders.resetAfterCompaction(stepInput.sessionId)
         await recoverCompactedContext({
@@ -454,11 +473,12 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           activeSkills,
           systemReminders,
           contextWindow,
-          tools: availableTools,
-          transcript,
-          sessionId: stepInput.sessionId,
-          runId: stepInput.runId,
-          turnKey: createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId)),
+           tools: availableTools,
+           transcript,
+           compressibleToolNames,
+           sessionId: stepInput.sessionId,
+           runId: stepInput.runId,
+           turnKey: createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId)),
         }).inputTokens
         const compressionRatio = calculateCompressionRatio(autoCompaction.tokensBefore, tokensAfter ?? 0)
         input.session.updateMessagePart({
@@ -516,6 +536,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             contextWindow,
             tools: availableTools,
             transcript,
+            compressibleToolNames,
             sessionId: stepInput.sessionId,
             runId: stepInput.runId,
             turnKey,
@@ -649,6 +670,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const run = input.session.getRun(compactionInput.runId)
       const skillCatalog = await input.skill.listCatalog(compactionInput.workspaceRoot)
       const availableTools = compactionInput.tools.list()
+      const compressibleToolNames = deriveCompressibleToolNames(availableTools)
       const transcript = input.session.listTranscript(compactionInput.sessionId)
 
       if (!input.model.projectTurn) {
@@ -706,6 +728,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         contextWindow,
         tools: availableTools,
         transcript,
+        compressibleToolNames,
         sessionId: compactionInput.sessionId,
         runId: compactionInput.runId,
       })
@@ -723,6 +746,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           now,
           tokensBefore: projectedBefore.inputTokens,
           trigger: "manual",
+          compressibleToolNames,
         })
         skillReminders.resetAfterCompaction(compactionInput.sessionId)
         await recoverCompactedContext({
@@ -750,12 +774,13 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             sessionActiveSkills,
           ),
           systemReminders: skillReminders.peekSystemReminderBatch(compactionInput.sessionId)?.messages ?? [],
-          contextWindow,
-          tools: availableTools,
-          transcript: compactedTranscript,
-          sessionId: compactionInput.sessionId,
-          runId: compactionInput.runId,
-        })
+           contextWindow,
+           tools: availableTools,
+           transcript: compactedTranscript,
+           compressibleToolNames,
+           sessionId: compactionInput.sessionId,
+           runId: compactionInput.runId,
+         })
         input.session.updateMessagePart({
           partId: manualCompaction.boundaryPartId,
           data: {
@@ -1095,6 +1120,7 @@ async function maybeAutoCompact(input: {
   workspaceRoot: string
   skillCatalog: Awaited<ReturnType<OrchestrationSkillPort["listCatalog"]>>
   tools: ReturnType<OrchestrationToolPort["list"]>
+  compressibleToolNames?: ReadonlySet<string>
   signal: AbortSignal
   emit: OrchestrationEventEmitter
   now: () => number
@@ -1119,6 +1145,7 @@ async function maybeAutoCompact(input: {
     contextWindow: input.contextWindow,
     tools: input.tools,
     transcript: input.transcript,
+    compressibleToolNames: input.compressibleToolNames,
     sessionId: input.sessionId,
     runId: input.run.id,
     turnKey: createTurnKey(input.run.id, getNextMessageSequence(input.transcript, input.run.id)),
@@ -1146,6 +1173,7 @@ async function maybeAutoCompact(input: {
       now: input.now,
       tokensBefore: projected.inputTokens,
       trigger: "auto",
+      compressibleToolNames: input.compressibleToolNames,
     })
     return {
       compacted: true,
@@ -1232,6 +1260,7 @@ function projectCompactionInputTokens(input: CompactionProjectionInput) {
     contextWindow: input.contextWindow,
     tools: input.tools,
     transcript: input.transcript,
+    compressibleToolNames: input.compressibleToolNames,
     sessionId: input.sessionId,
     runId: input.runId,
     turnKey: createTurnKey(input.runId, getNextMessageSequence(input.transcript, input.runId)),
@@ -1250,6 +1279,7 @@ async function performCompactionRun(input: {
   now: () => number
   tokensBefore: number
   trigger: CompactionMode
+  compressibleToolNames?: ReadonlySet<string>
 }) {
   const summarizeRunId = `run_${crypto.randomUUID()}`
   const summarizeStartedAt = input.now()
@@ -1271,6 +1301,7 @@ async function performCompactionRun(input: {
       sessionId: input.sessionId,
       summarizeRunId,
       transcript: input.transcript,
+      compressibleToolNames: input.compressibleToolNames,
       signal: input.signal,
     })
     const summarizeFinishedAt = input.now()
@@ -1419,6 +1450,7 @@ async function summarizeTranscript(input: {
   sessionId: string
   summarizeRunId: string
   transcript: OrchestrationTranscriptMessage[]
+  compressibleToolNames?: ReadonlySet<string>
   signal: AbortSignal
 }) {
   let summaryText = ""
@@ -1452,6 +1484,7 @@ async function summarizeTranscript(input: {
     contextWindow: input.contextWindow,
     tools: [],
     transcript: summaryTranscript,
+    compressibleToolNames: input.compressibleToolNames,
     sessionId: input.sessionId,
     runId: input.summarizeRunId,
     turnKey: `${input.summarizeRunId}:turn_0`,
@@ -1503,6 +1536,25 @@ function calculateCompressionRatio(tokensBefore: number, tokensAfter: number) {
   }
 
   return Math.max(0, Number(((tokensBefore - tokensAfter) / tokensBefore).toFixed(4)))
+}
+
+function shouldDeferAutoCompactionUntilAfterManualRecovery(input: {
+  transcript: OrchestrationTranscriptMessage[]
+  reminderBatch: ReturnType<ReturnType<typeof createSkillReminderTracker>["peekSystemReminderBatch"]>
+}) {
+  return (
+    readLatestCompactionBoundaryTrigger(input.transcript) === "manual" &&
+    hasPendingRecoveryContext(input.reminderBatch)
+  )
+}
+
+function hasPendingRecoveryContext(
+  reminderBatch: ReturnType<ReturnType<typeof createSkillReminderTracker>["peekSystemReminderBatch"]>,
+) {
+  return Boolean(
+    reminderBatch &&
+      (reminderBatch.recoveryFilePaths.length > 0 || reminderBatch.activeSkillNames.length > 0),
+  )
 }
 
 function stripAnalysisBlocks(text: string) {
@@ -1613,6 +1665,29 @@ function readAutoCompactionState(transcript: OrchestrationTranscriptMessage[]) {
     consecutiveFailures,
     lastError,
   }
+}
+
+function readLatestCompactionBoundaryTrigger(transcript: OrchestrationTranscriptMessage[]) {
+  for (let messageIndex = transcript.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = transcript[messageIndex]
+    if (!message) {
+      continue
+    }
+
+    for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+      const part = message.parts[partIndex]
+      if (!part || part.kind !== "compaction_boundary") {
+        continue
+      }
+
+      const trigger = readString(readObject(part.data), "trigger")
+      if (trigger === "manual" || trigger === "auto") {
+        return trigger
+      }
+    }
+  }
+
+  return null
 }
 
 function recordObservedRuntimeEvent(input: {
