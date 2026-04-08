@@ -68,6 +68,12 @@ export type ServerEventPayload =
       error: string
     }
   | {
+      type: "tool.progress"
+      toolCallId: string
+      message: string
+      timestamp: number
+    }
+  | {
       type: "context.usage.updated"
       sessionId: string
       runId: string
@@ -805,25 +811,37 @@ async function drainRunHandle(
 ) {
   try {
     for await (const event of handle.events) {
-      if (event.type !== "context.usage.updated") {
-        continue
+      switch (event.type) {
+        case "tool.progress": {
+          input.events.publish({
+            type: "tool.progress",
+            toolCallId: event.toolCallId,
+            message: event.message,
+            timestamp: event.timestamp,
+          })
+          break
+        }
+        case "context.usage.updated": {
+          input.contextUsageBySession.set(event.sessionId, {
+            contextTokens: event.contextTokens,
+            contextWindow: event.contextWindow,
+            utilizationPercent: event.utilizationPercent,
+            source: event.source,
+          })
+          input.events.publish({
+            type: "context.usage.updated",
+            sessionId: event.sessionId,
+            runId: event.runId,
+            contextTokens: event.contextTokens,
+            contextWindow: event.contextWindow,
+            utilizationPercent: event.utilizationPercent,
+            source: event.source,
+          })
+          break
+        }
+        default:
+          break
       }
-
-      input.contextUsageBySession.set(event.sessionId, {
-        contextTokens: event.contextTokens,
-        contextWindow: event.contextWindow,
-        utilizationPercent: event.utilizationPercent,
-        source: event.source,
-      })
-      input.events.publish({
-        type: "context.usage.updated",
-        sessionId: event.sessionId,
-        runId: event.runId,
-        contextTokens: event.contextTokens,
-        contextWindow: event.contextWindow,
-        utilizationPercent: event.utilizationPercent,
-        source: event.source,
-      })
     }
   } catch {
     // Runtime failures are persisted through repository updates.

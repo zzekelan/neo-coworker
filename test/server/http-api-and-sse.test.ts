@@ -614,6 +614,87 @@ describe("server HTTP API and SSE", () => {
     await subscriberB.close()
   })
 
+  test("SSE forwards tool.progress events to subscribers", async () => {
+    const harness = await createHarness(
+      "server-sse-tool-progress",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_shell_progress",
+            name: "shell",
+            inputText: JSON.stringify({
+              command: "sleep 1.2",
+              description: "Wait briefly",
+              timeoutMs: 5_000,
+            }),
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Done waiting." }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          shell: "allow",
+        },
+      },
+    )
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const subscriber = await connectSse(harness.server)
+    expect(await subscriber.next((event) => event.event === "heartbeat")).toMatchObject({
+      event: "heartbeat",
+      data: {
+        type: "heartbeat",
+      },
+    })
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Wait briefly with shell progress",
+      },
+    )
+    const runId = startedRun.body.data.run.id as string
+
+    const events = await collectEventsUntil(
+      subscriber,
+      (event) =>
+        event.event === "run.updated" &&
+        event.data.run.id === runId &&
+        event.data.run.status === "completed",
+    )
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "tool.progress",
+          data: expect.objectContaining({
+            type: "tool.progress",
+            toolCallId: "call_shell_progress",
+            message: expect.stringContaining("Wait briefly"),
+            timestamp: expect.any(Number),
+          }),
+        }),
+      ]),
+    )
+
+    const completedRun = await waitForRunStatus(harness.server, runId, "completed")
+    expect(completedRun.run).toMatchObject({
+      id: runId,
+      status: "completed",
+    })
+
+    await subscriber.close()
+  })
+
   test("disables Bun idle timeout for SSE subscriptions", async () => {
     const harness = await createHarness("server-sse-timeout", createTurnProvider([]))
     const request = new Request("http://server.test/events", {

@@ -22,6 +22,7 @@ const SERVER_EVENT_TYPES = [
   "permission.requested",
   "permission.updated",
   "runtime.error",
+  "tool.progress",
   "context.usage.updated",
 ] as const
 
