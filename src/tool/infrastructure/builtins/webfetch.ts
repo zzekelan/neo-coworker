@@ -37,9 +37,97 @@ const WebfetchArgsSchema = z.object({
   "Fetch text content from a specific URL and return it as readable text. Supports HTTP, HTTPS, and data URLs. HTTP responses are automatically followed for up to 20 redirects. Binary content (images, PDFs, archives) is detected by Content-Type header and described rather than returned raw. Responses exceeding 1 MB are automatically truncated. Use `websearch` first when you need to discover the right URL.",
 )
 
+function normalizeWebfetchUrl(url: string): string {
+  const parsedUrl = new URL(url)
+
+  if (parsedUrl.protocol === "http:") {
+    parsedUrl.protocol = "https:"
+  }
+
+  return parsedUrl.toString()
+}
+
 function isBinaryContentType(contentType: string): boolean {
   const lower = contentType.toLowerCase()
   return BINARY_CONTENT_TYPE_PREFIXES.some((prefix) => lower.startsWith(prefix))
+}
+
+function isHtmlContentType(contentType: string): boolean {
+  const lower = contentType.toLowerCase()
+  return lower.startsWith("text/html") || lower.startsWith("application/xhtml+xml")
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+}
+
+function normalizeFormattedText(value: string): string {
+  return decodeHtmlEntities(value)
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+function htmlToText(html: string): string {
+  return normalizeFormattedText(
+    html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<li\b[^>]*>/gi, "- ")
+      .replace(/<\/(?:p|div|section|article|main|aside|header|footer|nav|ul|ol|li|h[1-6]|table|tr)\s*>/gi, "\n")
+      .replace(/<[^>]+>/g, ""),
+  )
+}
+
+function htmlToMarkdown(html: string): string {
+  return normalizeFormattedText(
+    html
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi, "# $1\n\n")
+      .replace(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi, "## $1\n\n")
+      .replace(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi, "### $1\n\n")
+      .replace(/<h4\b[^>]*>([\s\S]*?)<\/h4>/gi, "#### $1\n\n")
+      .replace(/<h5\b[^>]*>([\s\S]*?)<\/h5>/gi, "##### $1\n\n")
+      .replace(/<h6\b[^>]*>([\s\S]*?)<\/h6>/gi, "###### $1\n\n")
+      .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
+      .replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, "**$1**")
+      .replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, "*$1*")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<li\b[^>]*>/gi, "- ")
+      .replace(/<\/(?:p|div|section|article|main|aside|header|footer|nav|ul|ol|li)\s*>/gi, "\n\n")
+      .replace(/<[^>]+>/g, ""),
+  )
+}
+
+function formatWebfetchOutput(input: {
+  bodyText: string
+  contentType: string
+  format: "markdown" | "text" | "html"
+}): string {
+  const { bodyText, contentType, format } = input
+
+  if (!isHtmlContentType(contentType)) {
+    return bodyText
+  }
+
+  if (format === "html") {
+    return bodyText
+  }
+
+  if (format === "text") {
+    return htmlToText(bodyText)
+  }
+
+  return htmlToMarkdown(bodyText)
 }
 
 export function createWebfetchTool(input: {
@@ -55,10 +143,11 @@ export function createWebfetchTool(input: {
     resultSizeLimit: 100000,
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
-      const { url, timeout = 30000 } = WebfetchArgsSchema.parse(toolInput.args)
+      const { url, format = "markdown", timeout = 30000 } = WebfetchArgsSchema.parse(toolInput.args)
+      const normalizedUrl = normalizeWebfetchUrl(url)
       const decision = await input.requestPermission({
         toolName: "webfetch",
-        reason: `webfetch ${url}`,
+        reason: `webfetch ${normalizedUrl}`,
       })
 
       if (decision.decision !== "allow") {
@@ -73,7 +162,7 @@ export function createWebfetchTool(input: {
         : timeoutController.signal
 
       try {
-        const response = await fetch(url, {
+        const response = await fetch(normalizedUrl, {
           signal: combinedSignal,
           redirect: "follow",
         })
@@ -114,9 +203,15 @@ export function createWebfetchTool(input: {
 
         const bodyText = await response.text()
         const truncated = bodyText.length > MAX_RESPONSE_BYTES
+        const limitedBody = truncated ? bodyText.slice(0, MAX_RESPONSE_BYTES) : bodyText
+        const formattedBody = formatWebfetchOutput({
+          bodyText: limitedBody,
+          contentType,
+          format,
+        })
         const finalBody = truncated
-          ? `${bodyText.slice(0, MAX_RESPONSE_BYTES)}\n\n[Response truncated: content exceeded 1 MB limit. ${bodyText.length - MAX_RESPONSE_BYTES} bytes omitted.]`
-          : bodyText
+          ? `${formattedBody}\n\n[Response truncated: content exceeded 1 MB limit. ${bodyText.length - MAX_RESPONSE_BYTES} bytes omitted.]`
+          : formattedBody
 
         const contentLength = contentLengthHeader !== null
           ? parseInt(contentLengthHeader, 10)
@@ -143,7 +238,7 @@ export function createWebfetchTool(input: {
             throw createToolAbortError()
           }
           return {
-            output: `webfetch timeout: request to ${url} exceeded ${timeout}ms limit.`,
+            output: `webfetch timeout: request to ${normalizedUrl} exceeded ${timeout}ms limit.`,
             isError: true,
             metadata: {
               statusCode: 0,
