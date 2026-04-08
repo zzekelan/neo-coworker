@@ -3,14 +3,26 @@ import {
   createGlobTool,
   createGrepTool,
   createReadTool,
+  createToolProvider,
+  createToolRegistryService,
+  createToolRuntimeApi,
   type ToolDefinition,
 } from "../../src/tool"
+import type { OrchestrationTool } from "../../src/orchestration"
 import { getStaticPrompt } from "../../src/orchestration/application/system-prompt"
 import type { ToolGuidanceEntry } from "../../src/orchestration/application/prompt-composer"
 
-function deriveToolGuidanceEntries(tools: readonly ToolDefinition[]): ToolGuidanceEntry[] {
+type GuidedOrchestrationTool = OrchestrationTool & {
+  usageGuidance?: string
+  isCompressible?: boolean
+}
+
+function deriveToolGuidanceEntries(tools: readonly GuidedOrchestrationTool[]): ToolGuidanceEntry[] {
   return tools
-    .filter((tool): tool is ToolDefinition & { usageGuidance: string } => Boolean(tool.usageGuidance?.trim()))
+    .filter(
+      (tool): tool is GuidedOrchestrationTool & { usageGuidance: string } =>
+        Boolean(tool.usageGuidance?.trim()),
+    )
     .map((tool) => ({
       name: tool.name,
       guidance: tool.usageGuidance,
@@ -19,21 +31,38 @@ function deriveToolGuidanceEntries(tools: readonly ToolDefinition[]): ToolGuidan
 }
 
 describe("integration: tool guidance in system prompt", () => {
-  test("injects ToolDefinition usageGuidance into the composed prompt with read-only tools first", () => {
+  test("propagates tool metadata through registry and orchestration listings into the composed prompt", () => {
     const customMutatingTool: ToolDefinition = {
       name: "custom_mutating",
       description: "Custom mutating tool with guidance",
       concurrency: "mutating",
+      isCompressible: false,
       usageGuidance: "Use only after read-only inspection is complete.",
       async execute() {
         return { output: "ok" }
       },
     }
     const tools = [customMutatingTool, createReadTool(), createGlobTool(), createGrepTool()]
-    const toolGuidances = deriveToolGuidanceEntries(tools)
+    const registryTools = createToolRegistryService(tools).listTools()
+    const orchestrationTools = createToolProvider({
+      runtime: createToolRuntimeApi({ tools }),
+    }).list() as GuidedOrchestrationTool[]
+    const toolGuidances = deriveToolGuidanceEntries(orchestrationTools)
 
     const prompt = getStaticPrompt(toolGuidances)
 
+    expect(registryTools.find((tool) => tool.name === "read")).toMatchObject({
+      usageGuidance: expect.stringContaining("offset"),
+      isCompressible: true,
+    })
+    expect(registryTools.find((tool) => tool.name === "custom_mutating")).toMatchObject({
+      usageGuidance: "Use only after read-only inspection is complete.",
+      isCompressible: false,
+    })
+    expect(orchestrationTools.find((tool) => tool.name === "custom_mutating")).toMatchObject({
+      usageGuidance: "Use only after read-only inspection is complete.",
+      isCompressible: false,
+    })
     expect(toolGuidances.map((entry) => entry.name)).toEqual([
       "custom_mutating",
       "read",
@@ -73,7 +102,15 @@ describe("integration: tool guidance in system prompt", () => {
       },
     }
 
-    const prompt = getStaticPrompt(deriveToolGuidanceEntries([customTool, createReadTool()]))
+    const prompt = getStaticPrompt(
+      deriveToolGuidanceEntries(
+        createToolProvider({
+          runtime: createToolRuntimeApi({
+            tools: [customTool, createReadTool()],
+          }),
+        }).list(),
+      ),
+    )
 
     expect(prompt).toContain("### Tool: read")
     expect(prompt).not.toContain("### Tool: custom_read_only")

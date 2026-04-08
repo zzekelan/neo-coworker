@@ -24,6 +24,15 @@ import {
 import { createOrchestrationRuntimeApi } from "../../src/orchestration/infrastructure/runtime/create-runtime"
 import { createInMemoryActiveRunRegistry } from "../../src/orchestration/infrastructure/runtime/active-run-registry"
 
+type GuidedOrchestrationToolStub = {
+  name: string
+  description: string
+  concurrency?: "read-only" | "mutating"
+  isConcurrencySafe?: (input: unknown) => boolean
+  usageGuidance?: string
+  isCompressible?: boolean
+}
+
 describe("orchestration prompt composer", () => {
   test("joins section content with blank lines", () => {
     expect(
@@ -305,7 +314,7 @@ describe("orchestration prompt composer", () => {
     const observedRequests: OrchestrationModelTurnRequest[] = []
     const session = createSessionPortStub()
     const model: OrchestrationModelPort = {
-      projectTurn(request) {
+      projectTurn() {
         return { inputTokens: 128 }
       },
       async *streamTurn(request) {
@@ -352,6 +361,72 @@ describe("orchestration prompt composer", () => {
     const reminderPayload = finalRequest?.systemReminders?.join("\n\n") ?? ""
     expect(reminderPayload).toContain("Active skill instructions:")
     expect(reminderPayload).toContain("Skill catalog:")
+  })
+
+  test("runtime default prompt injects tool guidance from orchestration tool metadata", async () => {
+    const observedRequests: OrchestrationModelTurnRequest[] = []
+    const session = createSessionPortStub()
+    const model: OrchestrationModelPort = {
+      projectTurn() {
+        return { inputTokens: 128 }
+      },
+      async *streamTurn(request) {
+        observedRequests.push(request)
+        yield {
+          type: "usage",
+          inputTokens: 128,
+          outputTokens: 0,
+          source: "estimated",
+        } as const
+      },
+    }
+
+    const runtime = createOrchestrationRuntimeApi({
+      model,
+      session,
+      skill: createSkillPortStub(),
+      permission: createPermissionPortStub(),
+      tools: createToolPortFactoryStub([
+        {
+          name: "read",
+          description: "Read a file",
+          concurrency: "read-only",
+          usageGuidance: "Use offset and limit to inspect large files.",
+          isCompressible: true,
+        },
+        {
+          name: "shell",
+          description: "Execute shell commands",
+          concurrency: "mutating",
+          usageGuidance: "Use only after read-only inspection is complete.",
+          isCompressible: false,
+        },
+      ]),
+      activeRuns: createInMemoryActiveRunRegistry(),
+      permissionPolicy: allowAllPermissionPolicy,
+      now: () => Date.parse("2026-04-07T00:00:00.000Z"),
+    })
+
+    const handle = await runtime.run({
+      sessionId: "session-1",
+      runId: "run-1",
+    })
+
+    for await (const _event of handle.events) {
+    }
+
+    const finalRequest = observedRequests.at(-1)
+    expect(finalRequest).toBeDefined()
+    expect(finalRequest?.systemPrompt).toContain("### Tool: read")
+    expect(finalRequest?.systemPrompt).toContain("Use offset and limit to inspect large files.")
+    expect(finalRequest?.systemPrompt).toContain("### Tool: shell")
+    expect(finalRequest?.systemPrompt).toContain("Use only after read-only inspection is complete.")
+
+    const readIndex = finalRequest?.systemPrompt.indexOf("### Tool: read") ?? -1
+    const shellIndex = finalRequest?.systemPrompt.indexOf("### Tool: shell") ?? -1
+    expect(readIndex).toBeGreaterThan(-1)
+    expect(shellIndex).toBeGreaterThan(-1)
+    expect(readIndex).toBeLessThan(shellIndex)
   })
 })
 
@@ -509,12 +584,12 @@ function createPermissionPortStub(): OrchestrationPermissionPort {
   }
 }
 
-function createToolPortFactoryStub(): OrchestrationToolPortFactory {
+function createToolPortFactoryStub(tools: GuidedOrchestrationToolStub[] = []): OrchestrationToolPortFactory {
   return {
     create() {
       return {
         list() {
-          return []
+          return tools
         },
         async execute() {
           throw new Error("No tools expected in this test")

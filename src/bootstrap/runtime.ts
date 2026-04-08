@@ -541,6 +541,9 @@ function createToolPortFactory(config: {
 
       return {
         ...provider,
+        listCatalog() {
+          return runtime.list()
+        },
         async executeBatch(batchInput) {
           const results = await batchExecutor.execute({
             calls: batchInput.calls,

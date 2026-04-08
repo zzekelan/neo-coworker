@@ -1,6 +1,7 @@
 import { createOrchestrationStepService } from "../../application/step-service"
 import { DEFAULT_CONTEXT_WINDOW_SIZE } from "../../application/context-usage"
 import { getStaticPrompt } from "../../application/system-prompt"
+import type { ToolGuidanceEntry } from "../../application/prompt-composer"
 import type { RuntimeEvent } from "../../application/event"
 import type { OrchestrationRunHandle } from "../../application/handle"
 import type { OrchestrationContextWindowPort } from "../../application/ports/context-window"
@@ -12,6 +13,7 @@ import type {
 import type { OrchestrationSessionPort } from "../../application/ports/session"
 import type { OrchestrationSkillPort } from "../../application/ports/skill"
 import type {
+  OrchestrationTool,
   OrchestrationToolPort,
   OrchestrationToolPortFactory,
 } from "../../application/ports/tool"
@@ -147,10 +149,18 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       sessionId: session.id,
       runId: inputValue.runId,
     })
+    const defaultSystemPrompt =
+      input.systemPrompt ??
+      buildDefaultSystemPrompt({
+        session,
+        now,
+        tools: tools.listCatalog?.() ?? tools.list(),
+      })
 
     return {
       activeRunKey,
       controller,
+      defaultSystemPrompt,
       emit,
       queue,
       session,
@@ -174,6 +184,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     emit: (event: RuntimeEvent) => void
     tools: OrchestrationToolPort
     workspaceRoot: string
+    defaultSystemPrompt: string
   }) {
     while (true) {
       if (inputValue.signal.aborted) {
@@ -190,11 +201,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         tools: inputValue.tools,
         workspaceRoot: inputValue.workspaceRoot,
         systemPrompt:
-          input.systemPrompt ??
-          buildDefaultSystemPrompt({
-            session: input.session.getSession(inputValue.sessionId),
-            now,
-          }),
+          input.systemPrompt ?? inputValue.defaultSystemPrompt,
         signal: inputValue.signal,
         emit: inputValue.emit,
       })
@@ -400,6 +407,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
           emit: execution.emit,
           tools: execution.tools,
           workspaceRoot: execution.session.workspaceRoot,
+          defaultSystemPrompt: execution.defaultSystemPrompt,
         })
       } catch (error) {
         if (stepService.isAbortError(error, execution.controller.signal)) {
@@ -490,12 +498,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         signal: execution.controller.signal,
         tools: execution.tools,
         workspaceRoot: execution.session.workspaceRoot,
-        systemPrompt:
-          input.systemPrompt ??
-          buildDefaultSystemPrompt({
-            session: execution.session,
-            now,
-          }),
+        systemPrompt: input.systemPrompt ?? execution.defaultSystemPrompt,
       }).finally(() => {
         execution.cleanup()
       })
@@ -528,12 +531,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
             runId: runInput.runId,
             tools: execution.tools,
             workspaceRoot: execution.session.workspaceRoot,
-            systemPrompt:
-              input.systemPrompt ??
-              buildDefaultSystemPrompt({
-                session: execution.session,
-                now,
-              }),
+            systemPrompt: input.systemPrompt ?? execution.defaultSystemPrompt,
             signal: execution.controller.signal,
             emit: execution.emit,
           })
@@ -598,10 +596,21 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
 function buildDefaultSystemPrompt(input: {
   session: OrchestrationSessionPort["getSession"] extends (sessionId: string) => infer T ? T : never
   now: () => number
+  tools: ReturnType<OrchestrationToolPort["list"]>
 }) {
   void input.session
   void input.now
-  return getStaticPrompt()
+  return getStaticPrompt(deriveToolGuidanceEntries(input.tools))
+}
+
+function deriveToolGuidanceEntries(tools: ReturnType<OrchestrationToolPort["list"]>): ToolGuidanceEntry[] {
+  return tools
+    .filter((tool): tool is OrchestrationTool & { usageGuidance: string } => Boolean(tool.usageGuidance?.trim()))
+    .map((tool) => ({
+      name: tool.name,
+      guidance: tool.usageGuidance,
+      isReadOnly: tool.concurrency === "read-only",
+    }))
 }
 
 export type OrchestrationRuntimeApi = ReturnType<typeof createOrchestrationRuntimeApi>
