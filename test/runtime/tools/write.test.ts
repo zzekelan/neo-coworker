@@ -1,6 +1,6 @@
-import { access, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { createPermissionCoordinator } from "../../../src/permission"
 import { createToolRuntimeApi, createWriteTool } from "../../../src/tool"
@@ -112,8 +112,8 @@ describe("write tool — atomic write", () => {
   })
 })
 
-describe("write tool — overwrite warning", () => {
-  test("returns isError=true with warning when file already exists", async () => {
+describe("write tool — conditional overwrite protection", () => {
+  test("allows overwrite for normal files", async () => {
     const workspaceRoot = await createTempWorkspace()
     const { requestPermission } = createAllowPermission()
     const registry = createToolRuntimeApi({
@@ -125,6 +125,26 @@ describe("write tool — overwrite warning", () => {
     const result = await registry.execute({
       toolName: "write",
       args: { path: "existing.txt", content: "new content" },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("existing.txt")
+    expect(await readFile(join(workspaceRoot, "existing.txt"), "utf8")).toBe("new content")
+  })
+
+  test("returns isError=true with warning when a protected file already exists", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const registry = createToolRuntimeApi({
+      tools: [createWriteTool({ requestPermission })],
+    })
+
+    await writeFile(join(workspaceRoot, "README.md"), "original content")
+
+    const result = await registry.execute({
+      toolName: "write",
+      args: { path: "README.md", content: "new content" },
       workspaceRoot,
     })
 
@@ -133,25 +153,25 @@ describe("write tool — overwrite warning", () => {
     expect(result.output).toContain("read")
   })
 
-  test("returns requiresRead=true in metadata when file already exists", async () => {
+  test("returns requiresRead=true in metadata when a protected file already exists", async () => {
     const workspaceRoot = await createTempWorkspace()
     const { requestPermission } = createAllowPermission()
     const registry = createToolRuntimeApi({
       tools: [createWriteTool({ requestPermission })],
     })
 
-    await writeFile(join(workspaceRoot, "existing.txt"), "original content")
+    await writeFile(join(workspaceRoot, "README.md"), "original content")
 
     const result = await registry.execute({
       toolName: "write",
-      args: { path: "existing.txt", content: "new content" },
+      args: { path: "README.md", content: "new content" },
       workspaceRoot,
     })
 
     expect(result.metadata?.requiresRead).toBe(true)
   })
 
-  test("does not overwrite existing file content when warning is returned", async () => {
+  test("does not overwrite protected file content when warning is returned", async () => {
     const workspaceRoot = await createTempWorkspace()
     const { requestPermission } = createAllowPermission()
     const registry = createToolRuntimeApi({
@@ -159,15 +179,15 @@ describe("write tool — overwrite warning", () => {
     })
 
     const original = "original content"
-    await writeFile(join(workspaceRoot, "existing.txt"), original)
+    await writeFile(join(workspaceRoot, "README.md"), original)
 
     await registry.execute({
       toolName: "write",
-      args: { path: "existing.txt", content: "new content" },
+      args: { path: "README.md", content: "new content" },
       workspaceRoot,
     })
 
-    const content = await readFile(join(workspaceRoot, "existing.txt"), "utf8")
+    const content = await readFile(join(workspaceRoot, "README.md"), "utf8")
     expect(content).toBe(original)
   })
 

@@ -1,4 +1,4 @@
-import { cp, mkdtemp, writeFile } from "node:fs/promises"
+import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -49,6 +49,27 @@ describe("mutating tools", () => {
     expect(result.output).toContain("notes.txt")
   })
 
+  test("returns overwrite warning for protected files after permission is granted", async () => {
+    const workspaceRoot = await createWorkspaceCopy()
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createWriteTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "write",
+      args: { path: "README.md", content: "updated fixture" },
+      workspaceRoot,
+    })
+
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBe(true)
+    expect(result.metadata?.requiresRead).toBe(true)
+    expect(result.output).toContain("File exists")
+  })
+
   test("rejects edit when permission is denied", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
@@ -87,7 +108,7 @@ describe("mutating tools", () => {
     const result = await pending
     expect(result.isError).toBe(true)
     expect(result.output).toContain("Found 2 matches")
-    expect(await Bun.file(repeatedFile).text()).toBe("demo demo\n")
+    expect(await readFile(repeatedFile, "utf8")).toBe("demo demo\n")
   })
 
   test("returns isError when target text has overlapping duplicate matches", async () => {
@@ -111,7 +132,7 @@ describe("mutating tools", () => {
     const result = await pending
     expect(result.isError).toBe(true)
     expect(result.output).toMatch(/Found \d+ matches/)
-    expect(await Bun.file(overlappingFile).text()).toBe("ababa\n")
+    expect(await readFile(overlappingFile, "utf8")).toBe("ababa\n")
   })
 
   test("runs shell in the workspace after permission is granted", async () => {

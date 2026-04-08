@@ -14,16 +14,31 @@ declare const Bun: {
   write(path: string, content: string): Promise<unknown>
 }
 
+const CONDITIONALLY_PROTECTED_WRITE_BASENAMES = new Set([
+  "readme.md",
+  "agents.md",
+  "claude.md",
+  "package.json",
+  "tsconfig.json",
+  "bun.lock",
+  "bun.lockb",
+])
+
 const WriteArgsSchema = z.object({
   path: z.string().trim().min(1, "Path must not be empty").describe(
-    "Workspace-relative file path to create or overwrite, for example `notes/todo.md` or `src/example.ts`. Parent directories are created automatically if they do not exist. If the target file already exists, the tool returns an error asking you to read it first before overwriting.",
+    "Workspace-relative file path to create or overwrite, for example `notes/todo.md` or `src/example.ts`. Parent directories are created automatically if they do not exist. Existing files are normally overwritten atomically, but protected files such as `README.md`, `AGENTS.md`, `package.json`, `tsconfig.json`, `bun.lock`, and `.env*` require a read-first confirmation before overwrite.",
   ),
   content: z.string().describe(
     "Complete UTF-8 file contents to write. Pass the full desired file body, not a patch or partial replacement. The entire file is replaced atomically.",
   ),
 }).describe(
-  "Create or overwrite a UTF-8 file inside the workspace. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. If the target file already exists, you must read it first to confirm intent before overwriting. Writes are performed atomically to prevent partial content on interruption. This tool requires permission because it mutates workspace state. Paths must stay inside the workspace.",
+  "Create or overwrite a UTF-8 file inside the workspace. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates workspace state. Paths must stay inside the workspace.",
 )
+
+function isConditionallyProtectedWritePath(relativePath: string): boolean {
+  const name = basename(relativePath).toLowerCase()
+  return CONDITIONALLY_PROTECTED_WRITE_BASENAMES.has(name) || name === ".env" || name.startsWith(".env.")
+}
 
 async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: string) {
   assertWorkspacePathNotReserved(relativePath)
@@ -68,10 +83,12 @@ export function createWriteTool(input: { requestPermission: RequestToolPermissio
   return {
     name: "write",
     description:
-      "Create or overwrite a UTF-8 file inside the workspace. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. If the target file already exists, you must read it first to confirm intent before overwriting. Writes are performed atomically to prevent partial content on interruption. This tool requires permission because it mutates workspace state. Paths must stay inside the workspace.",
+      "Create or overwrite a UTF-8 file inside the workspace. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates workspace state. Paths must stay inside the workspace.",
     inputSchema: WriteArgsSchema,
     concurrency: "mutating",
     isCompressible: false,
+    usageGuidance:
+      "Prefer `edit` for targeted changes. Use `write` for new files or full rewrites. Read protected files such as README.md, AGENTS.md, package.json, tsconfig.json, bun.lock, and .env* before overwriting them. Do not add emojis unless the user asks for them.",
     async execute(value) {
       throwIfToolAborted(value.signal)
       const { path, content } = WriteArgsSchema.parse(value.args)
@@ -89,7 +106,7 @@ export function createWriteTool(input: { requestPermission: RequestToolPermissio
       const file = await resolveWorkspaceWritePath(value.workspaceRoot, path)
       throwIfToolAborted(value.signal)
 
-      if (await fileExists(file)) {
+      if ((await fileExists(file)) && isConditionallyProtectedWritePath(path)) {
         return {
           output: "File exists. Please read it first to confirm overwrite.",
           isError: true,
