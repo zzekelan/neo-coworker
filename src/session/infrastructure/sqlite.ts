@@ -24,6 +24,7 @@ import {
   type CreateQueuedRunWithInitiatingMessageInput,
   type CreateRunInput,
   type CreateSessionInput,
+  type CreateSubSessionWithRunInput,
   SessionConflictError,
   SessionNotFoundError,
   SessionOwnershipError,
@@ -382,7 +383,8 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             title,
             updated_at,
             latest_user_message_preview,
-            active_skills_json
+            active_skills_json,
+            parent_session_id
           FROM session
           WHERE id = ?
         `,
@@ -402,12 +404,57 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             title,
             updated_at,
             latest_user_message_preview,
-            active_skills_json
+            active_skills_json,
+            parent_session_id
           FROM session
           ORDER BY created_at ASC, id ASC
         `,
       )
       .all() as SessionRow[]
+  }
+
+  function listTopLevelSessionRows() {
+    return database
+      .query(
+        `
+          SELECT
+            id,
+            directory,
+            workspace_root,
+            created_at,
+            title,
+            updated_at,
+            latest_user_message_preview,
+            active_skills_json,
+            parent_session_id
+          FROM session
+          WHERE parent_session_id IS NULL
+          ORDER BY created_at ASC, id ASC
+        `,
+      )
+      .all() as SessionRow[]
+  }
+
+  function listSubSessionRows(parentSessionId: string) {
+    return database
+      .query(
+        `
+          SELECT
+            id,
+            directory,
+            workspace_root,
+            created_at,
+            title,
+            updated_at,
+            latest_user_message_preview,
+            active_skills_json,
+            parent_session_id
+          FROM session
+          WHERE parent_session_id = ?
+          ORDER BY created_at ASC, id ASC
+        `,
+      )
+      .all(parentSessionId) as SessionRow[]
   }
 
   function getRunRow(runId: string) {
@@ -543,6 +590,10 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
 
   const sessions: SessionRepository["sessions"] = {
     create(session: CreateSessionInput): StoredSession {
+      if (session.parentSessionId) {
+        requireSession(session.parentSessionId)
+      }
+
       const createdAt = session.createdAt ?? now()
       const record: StoredSession = {
         id: buildId("session", session.id),
@@ -553,6 +604,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         updatedAt: session.updatedAt ?? createdAt,
         latestUserMessagePreview: session.latestUserMessagePreview ?? null,
         activeSkills: normalizeSessionActiveSkills(session.activeSkills),
+        parentSessionId: session.parentSessionId,
       }
 
       database
@@ -566,8 +618,9 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
               title,
               updated_at,
               latest_user_message_preview,
-              active_skills_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              active_skills_json,
+              parent_session_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -579,12 +632,20 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           record.updatedAt,
           record.latestUserMessagePreview,
           serializeJson(record.activeSkills),
+          record.parentSessionId ?? null,
         )
 
       return record
     },
     list() {
       return listSessionRows().map(mapSessionRow)
+    },
+    listTopLevel() {
+      return listTopLevelSessionRows().map(mapSessionRow)
+    },
+    listSubSessions(parentSessionId: string) {
+      requireSession(parentSessionId)
+      return listSubSessionRows(parentSessionId).map(mapSessionRow)
     },
     get(sessionId: string) {
       return requireSession(sessionId)
@@ -1039,6 +1100,25 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     },
   )
 
+  const createSubSessionWithRunTransaction = database.transaction(
+    (value: CreateSubSessionWithRunInput) => {
+      const session = sessions.create(value.session)
+      const created = createQueuedRunWithInitiatingMessageAndPartTransaction({
+        run: {
+          ...value.run,
+          sessionId: session.id,
+        },
+        message: value.message,
+        part: value.part,
+      })
+
+      return {
+        session: sessions.get(session.id),
+        run: created.run,
+      }
+    },
+  )
+
   function shouldRefreshSessionMetadataFromUserPart(
     message: StoredMessage,
     part: StoredPart,
@@ -1089,6 +1169,10 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     },
     createAssistantMessageWithFirstPart(input: CreateAssistantMessageWithFirstPartInput) {
       return createAssistantMessageWithFirstPartTransaction(input)
+    },
+    createSubSessionWithRun(input) {
+      const { session, run } = createSubSessionWithRunTransaction(input)
+      return { session, run }
     },
   }
 }

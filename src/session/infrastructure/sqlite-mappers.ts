@@ -19,6 +19,7 @@ export type SessionRow = {
   updated_at: number
   latest_user_message_preview: string | null
   active_skills_json: string
+  parent_session_id: string | null
 }
 
 export type RunRow = {
@@ -87,6 +88,7 @@ export function mapSessionRow(row: SessionRow): StoredSession {
     updatedAt: row.updated_at,
     latestUserMessagePreview: row.latest_user_message_preview,
     activeSkills: parseJson(row.active_skills_json) as string[],
+    parentSessionId: row.parent_session_id ?? undefined,
   }
 }
 

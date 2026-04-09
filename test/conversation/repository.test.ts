@@ -213,6 +213,331 @@ describe("storage repository", () => {
     })
   })
 
+  test("stores parentSessionId and lists sub-sessions separately from top-level sessions", () => {
+    const { repository } = createTestRepository("sub-session-crud")
+
+    const parentA = repository.sessions.create({
+      id: "session_parent_a",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    const childA = repository.sessions.create({
+      id: "session_child_a",
+      directory: "/workspace/sub-a",
+      workspaceRoot: "/workspace",
+      createdAt: 2,
+      parentSessionId: parentA.id,
+    })
+    const parentB = repository.sessions.create({
+      id: "session_parent_b",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 3,
+    })
+    const childB = repository.sessions.create({
+      id: "session_child_b",
+      directory: "/workspace/sub-b",
+      workspaceRoot: "/workspace",
+      createdAt: 4,
+      parentSessionId: parentA.id,
+    })
+    repository.sessions.create({
+      id: "session_other_child",
+      directory: "/workspace/sub-c",
+      workspaceRoot: "/workspace",
+      createdAt: 5,
+      parentSessionId: parentB.id,
+    })
+
+    expect(childA.parentSessionId).toBe(parentA.id)
+    expect(repository.sessions.get(childA.id)).toMatchObject({
+      id: childA.id,
+      parentSessionId: parentA.id,
+    })
+    expect(repository.sessions.listSubSessions(parentA.id).map((session) => session.id)).toEqual([
+      "session_child_a",
+      "session_child_b",
+    ])
+    expect(repository.sessions.listTopLevel().map((session) => session.id)).toEqual([
+      "session_parent_a",
+      "session_parent_b",
+    ])
+    expect(repository.sessions.listTopLevel()).toEqual([
+      expect.objectContaining({ id: parentA.id, parentSessionId: undefined }),
+      expect.objectContaining({ id: parentB.id, parentSessionId: undefined }),
+    ])
+    expect(repository.sessions.listSubSessions(parentA.id)).toEqual([
+      expect.objectContaining({ id: childA.id, parentSessionId: parentA.id }),
+      expect.objectContaining({ id: childB.id, parentSessionId: parentA.id }),
+    ])
+  })
+
+  test("creates a sub-session with its queued run and initiating transcript atomically", () => {
+    const { repository } = createTestRepository("sub-session-atomic-create")
+
+    const parent = repository.sessions.create({
+      id: "session_parent",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    const created = repository.createSubSessionWithRun({
+      session: {
+        id: "session_child",
+        directory: "/workspace/sub-agent",
+        workspaceRoot: "/workspace",
+        createdAt: 2,
+        parentSessionId: parent.id,
+      },
+      run: {
+        id: "run_child",
+        trigger: "prompt",
+        createdAt: 3,
+        activeSkills: [" reviewer ", "reviewer", "writer"],
+        parentRunId: "run_parent",
+      },
+      message: {
+        id: "message_child",
+        sequence: 0,
+        createdAt: 4,
+      },
+      part: {
+        id: "part_child",
+        kind: "text",
+        sequence: 0,
+        text: "Investigate why the child transcript leaked into the parent.",
+        createdAt: 5,
+      },
+    })
+
+    expect(created.session).toMatchObject({
+      id: "session_child",
+      parentSessionId: parent.id,
+    })
+    expect(created.run).toMatchObject({
+      id: "run_child",
+      sessionId: "session_child",
+      status: "queued",
+      activeSkills: ["reviewer", "writer"],
+      parentRunId: "run_parent",
+    })
+    expect(repository.sessions.get("session_child")).toMatchObject({
+      parentSessionId: parent.id,
+    })
+    expect(repository.runs.get("run_child")).toMatchObject({
+      sessionId: "session_child",
+      status: "queued",
+      parentRunId: "run_parent",
+    })
+    expect(repository.messages.listSessionTranscript("session_child")).toEqual([
+      {
+        id: "message_child",
+        sessionId: "session_child",
+        runId: "run_child",
+        role: "user",
+        sequence: 0,
+        createdAt: 4,
+        parts: [
+          {
+            id: "part_child",
+            sessionId: "session_child",
+            runId: "run_child",
+            messageId: "message_child",
+            kind: "text",
+            sequence: 0,
+            text: "Investigate why the child transcript leaked into the parent.",
+            data: null,
+            createdAt: 5,
+          },
+        ],
+      },
+    ])
+  })
+
+  test("rolls back createSubSessionWithRun when run creation fails", () => {
+    const { database, repository } = createTestRepository("sub-session-atomic-rollback")
+
+    const parent = repository.sessions.create({
+      id: "session_parent",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.runs.create({
+      id: "run_duplicate",
+      sessionId: parent.id,
+      trigger: "cli",
+      status: "completed",
+      createdAt: 2,
+    })
+
+    expect(() =>
+      repository.createSubSessionWithRun({
+        session: {
+          id: "session_child",
+          directory: "/workspace/sub-agent",
+          workspaceRoot: "/workspace",
+          createdAt: 3,
+          parentSessionId: parent.id,
+        },
+        run: {
+          id: "run_duplicate",
+          trigger: "prompt",
+          createdAt: 4,
+        },
+        message: {
+          id: "message_child",
+          sequence: 0,
+          createdAt: 5,
+        },
+        part: {
+          id: "part_child",
+          kind: "text",
+          sequence: 0,
+          text: "sub-agent prompt",
+          createdAt: 6,
+        },
+      }),
+    ).toThrow(/UNIQUE|constraint/i)
+
+    expect(() => repository.sessions.get("session_child")).toThrow(StorageNotFoundError)
+    expect(() => repository.messages.get("message_child")).toThrow(StorageNotFoundError)
+    expect(countRows(database, "session")).toBe(1)
+    expect(countRows(database, "run")).toBe(1)
+    expect(countRows(database, "message")).toBe(0)
+    expect(countRows(database, "part")).toBe(0)
+  })
+
+  test("deleting a parent session cascades to sub-sessions and their transcript rows", () => {
+    const { database, repository } = createTestRepository("sub-session-cascade")
+
+    const parent = repository.sessions.create({
+      id: "session_parent",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    repository.createSubSessionWithRun({
+      session: {
+        id: "session_child",
+        directory: "/workspace/sub-agent",
+        workspaceRoot: "/workspace",
+        createdAt: 2,
+        parentSessionId: parent.id,
+      },
+      run: {
+        id: "run_child",
+        trigger: "prompt",
+        createdAt: 3,
+      },
+      message: {
+        id: "message_child",
+        sequence: 0,
+        createdAt: 4,
+      },
+      part: {
+        id: "part_child",
+        kind: "text",
+        sequence: 0,
+        text: "sub-agent prompt",
+        createdAt: 5,
+      },
+    })
+
+    database.query("DELETE FROM session WHERE id = ?").run(parent.id)
+
+    expect(() => repository.sessions.get("session_parent")).toThrow(StorageNotFoundError)
+    expect(() => repository.sessions.get("session_child")).toThrow(StorageNotFoundError)
+    expect(countRows(database, "session")).toBe(0)
+    expect(countRows(database, "run")).toBe(0)
+    expect(countRows(database, "message")).toBe(0)
+    expect(countRows(database, "part")).toBe(0)
+  })
+
+  test("keeps transcripts isolated between parent sessions and sub-sessions", () => {
+    const { repository } = createTestRepository("sub-session-transcript-isolation")
+
+    const parent = repository.sessions.create({
+      id: "session_parent",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    repository.createQueuedRunWithInitiatingMessageAndPart({
+      run: {
+        id: "run_parent",
+        sessionId: parent.id,
+        trigger: "prompt",
+        createdAt: 2,
+      },
+      message: {
+        id: "message_parent",
+        sequence: 0,
+        createdAt: 3,
+      },
+      part: {
+        id: "part_parent",
+        kind: "text",
+        sequence: 0,
+        text: "parent prompt",
+        createdAt: 4,
+      },
+    })
+
+    repository.createSubSessionWithRun({
+      session: {
+        id: "session_child",
+        directory: "/workspace/sub-agent",
+        workspaceRoot: "/workspace",
+        createdAt: 5,
+        parentSessionId: parent.id,
+      },
+      run: {
+        id: "run_child",
+        trigger: "prompt",
+        createdAt: 6,
+      },
+      message: {
+        id: "message_child",
+        sequence: 0,
+        createdAt: 7,
+      },
+      part: {
+        id: "part_child",
+        kind: "text",
+        sequence: 0,
+        text: "child prompt",
+        createdAt: 8,
+      },
+    })
+
+    expect(repository.messages.listSessionTranscript(parent.id).map((message) => message.id)).toEqual([
+      "message_parent",
+    ])
+    expect(repository.messages.listSessionTranscript(parent.id).map((message) => message.parts[0]?.id)).toEqual([
+      "part_parent",
+    ])
+    expect(repository.messages.listSessionTranscript("session_child").map((message) => message.id)).toEqual([
+      "message_child",
+    ])
+    expect(
+      repository
+        .messages
+        .listSessionTranscript(parent.id)
+        .flatMap((message) => [message.id, ...message.parts.map((part) => part.id)]),
+    ).not.toContain("message_child")
+    expect(
+      repository
+        .messages
+        .listSessionTranscript(parent.id)
+        .flatMap((message) => [message.id, ...message.parts.map((part) => part.id)]),
+    ).not.toContain("part_child")
+  })
+
   test("returns session transcript with stable message and part ordering", () => {
     const { repository } = createTestRepository("transcript-ordering")
 
