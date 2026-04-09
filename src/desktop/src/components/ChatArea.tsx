@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react"
 import {
   ArrowUp,
   ChevronDown,
-  Loader2,
   MessageSquare,
   Moon,
   PanelLeft,
@@ -11,6 +10,7 @@ import {
   Sparkles,
   Square,
   Sun,
+  Zap,
 } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 import type {
@@ -55,6 +55,7 @@ interface ChatAreaProps {
   onToggleSidebar: () => void
   errorMessage: string | null
   skillWarningMessage: string | null
+  modelName?: string
 }
 
 export function ChatArea({
@@ -74,6 +75,7 @@ export function ChatArea({
   onToggleSidebar,
   errorMessage,
   skillWarningMessage,
+  modelName,
 }: ChatAreaProps) {
   const text = useDesktopText()
   const [input, setInput] = useState("")
@@ -273,7 +275,7 @@ export function ChatArea({
               <button
                 type="button"
                 onClick={() => void onCreateSession()}
-                className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-paper px-4 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-paper hover:text-ink"
+                className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-paper px-4 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-paper hover:text-ink"
               >
                 <Plus className="h-4 w-4" />
                 {text.chat.createSession}
@@ -288,7 +290,7 @@ export function ChatArea({
 
   return (
     <div className="relative flex h-full flex-1 flex-col bg-paper">
-      <div className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-paper px-4 backdrop-blur-md md:px-6">
+      <div className="chrome-edge-bottom sticky top-0 z-10 flex h-14 items-center justify-between bg-paper/95 px-4 backdrop-blur-md md:px-6">
         <div className="flex items-center gap-3">
           {!isSidebarOpen ? (
             <button
@@ -306,9 +308,6 @@ export function ChatArea({
 
         <div className="flex items-center gap-2">
           <ThemeToggleButton />
-          {contextUsage ? (
-            <ContextBudgetBar usage={contextUsage} />
-          ) : null}
         </div>
       </div>
 
@@ -328,8 +327,9 @@ export function ChatArea({
           estimatedItemHeight={100}
           overscan={5}
           className="px-4 pb-32 md:px-8"
-          renderItem={(message) => {
+          renderItem={(message, index) => {
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
+            const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined
             return (
               <div className="mx-auto max-w-4xl" style={{ paddingBottom: "1.5rem" }}>
                 {boundaryPart && boundaryPart.type === "compaction_boundary" ? (
@@ -338,7 +338,7 @@ export function ChatArea({
                     tokensAfter={boundaryPart.tokensAfter}
                   />
                 ) : (
-                  <Message message={message} />
+                  <Message message={message} previousTimestamp={prevTimestamp} />
                 )}
               </div>
             )
@@ -364,10 +364,15 @@ export function ChatArea({
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex items-center gap-3 p-6 text-accent"
+                  transition={{ duration: 0.3 }}
+                  className="flex items-center gap-1 py-3"
                 >
-                  <Loader2 className="h-4 w-4 animate-spin text-highlight" />
-                  <span className="animate-pulse text-sm font-medium text-muted">
+                  <div className="flex items-center gap-[3px]">
+                    <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0s' }} />
+                    <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0.15s' }} />
+                    <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0.3s' }} />
+                  </div>
+                  <span className="ml-2 text-[13px] text-muted">
                     {text.chat.thinking}
                   </span>
                 </motion.div>
@@ -377,46 +382,41 @@ export function ChatArea({
         />
       )}
 
-      <div className="absolute right-0 bottom-0 left-0 border-t border-border bg-paper/95 p-4 backdrop-blur-sm">
+      <div className="content-fade-top absolute right-0 bottom-0 left-0 bg-paper/95 p-4 backdrop-blur-sm">
         <motion.div layout transition={SKILL_DRAWER_TRANSITION} className="relative mx-auto max-w-4xl">
           <div ref={skillPanelShellRef}>
-            <motion.div
-              layout="position"
-              transition={SKILL_DRAWER_TRANSITION}
-              className="mb-3 flex flex-wrap items-center gap-2"
-            >
+            {skills.length > 0 ? (
+            <div className="mb-2 flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setIsSkillPanelOpen((previous) => !previous)}
                 className={cn(
-                  "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors",
+                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                   isSkillPanelOpen
-                    ? "border-border bg-surface text-ink"
-                    : "border-border bg-paper text-ink hover:bg-surface",
+                    ? "bg-surface text-ink"
+                    : "text-accent hover:bg-surface hover:text-ink",
                 )}
               >
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="h-3 w-3" />
                 {text.chat.skills}
                 <ChevronDown
-                  className={cn("h-4 w-4 transition-transform", !isSkillPanelOpen && "rotate-180")}
+                  className={cn("h-3 w-3 transition-transform", !isSkillPanelOpen && "rotate-180")}
                 />
               </button>
 
               {visibleActiveSkills.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {visibleActiveSkills.map((skillName) => (
-                    <span
-                      key={skillName}
-                      className="rounded-full border border-border bg-surface px-2 py-1 text-[11px] font-medium text-muted"
-                    >
-                      {skillName}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-xs text-accent">{text.chat.noActiveSkills}</span>
-              )}
-            </motion.div>
+                visibleActiveSkills.map((skillName) => (
+                  <span
+                    key={skillName}
+                    className="inline-flex items-center gap-1 rounded-md bg-highlight/10 px-1.5 py-0.5 text-[10px] font-medium text-highlight"
+                  >
+                    <Zap className="h-2.5 w-2.5" />
+                    {skillName}
+                  </span>
+                ))
+              ) : null}
+            </div>
+            ) : null}
 
             <AnimatePresence initial={false}>
               {isSkillPanelOpen ? (
@@ -447,7 +447,7 @@ export function ChatArea({
                         value={skillFilter}
                         onChange={(event) => setSkillFilter(event.target.value)}
                         placeholder={text.chat.filterSkills}
-                        className="h-11 w-full rounded-2xl border border-border bg-paper px-4 text-sm text-ink shadow-sm outline-none transition-colors placeholder:text-accent focus:border-border"
+                        className="h-11 w-full rounded-lg border border-border bg-paper px-4 text-sm text-ink shadow-sm outline-none transition-colors placeholder:text-accent focus:border-border"
                       />
                     </div>
                   </motion.div>
@@ -478,6 +478,7 @@ export function ChatArea({
                   : text.chat.askPlaceholder
               }
               disabled={isInputLocked}
+              aria-label={text.chat.askPlaceholder}
               className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent py-4 pr-14 pl-4 text-[15px] leading-relaxed text-ink placeholder:text-accent outline-none focus:ring-0"
               rows={1}
               onKeyDown={(event) => {
@@ -498,7 +499,7 @@ export function ChatArea({
                 <button
                   type="button"
                   onClick={() => void onCancelRun()}
-                  className="rounded-xl border border-danger/30 bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
+                className="rounded-lg border border-danger/30 bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
                   title="Cancel Run"
                 >
                   <Square className="h-4 w-4 fill-current" />
@@ -507,13 +508,35 @@ export function ChatArea({
                 <button
                   type="submit"
                   disabled={!input.trim() || isComposing || isSubmittingMessage}
-                  className="rounded-xl bg-ink p-2 text-ink shadow-sm transition-colors hover:bg-surface disabled:opacity-50 disabled:hover:bg-ink"
+                className="rounded-lg bg-ink p-2 text-paper shadow-sm transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 disabled:hover:bg-ink disabled:hover:text-paper"
                 >
                   <ArrowUp className="h-5 w-5" />
                 </button>
               )}
             </div>
           </motion.form>
+
+          {/* Status bar — context · run status · model · keyboard hints */}
+          <div className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent">
+            <div className="flex min-w-0 items-center gap-1.5">
+              {modelName ? (
+                <>
+                  <span className="shrink-0 text-accent" title={modelName}>{modelName}</span>
+                  {contextUsage ? <span className="text-muted/40">·</span> : null}
+                </>
+              ) : null}
+              {contextUsage ? (
+                <ContextBudgetBar usage={contextUsage} />
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <RunStatusDot status={activeRunStatus} />
+              <span className="text-muted/60 select-none">
+                ⏎ {text.chat.send} · ⇧⏎ {text.chat.newLine}
+              </span>
+            </div>
+          </div>
         </motion.div>
       </div>
     </div>
@@ -528,17 +551,17 @@ function ContextBudgetBar(input: { usage: DesktopContextUsage }) {
 
   return (
     <div
-      className="flex items-center gap-2.5"
+      className="flex items-center gap-1.5"
       title={`${input.usage.contextTokens.toLocaleString()} / ${input.usage.contextWindow.toLocaleString()} tokens`}
     >
-      <div className="relative h-1.5 w-24 overflow-hidden rounded-full bg-surface">
+      <div className="relative h-1 w-16 overflow-hidden rounded-full bg-surface">
         <div
           className={cn(
             "absolute inset-y-0 left-0 rounded-full transition-all duration-500 ease-out",
             isCritical
               ? "bg-danger"
               : isHigh
-                ? "bg-amber-500"
+                ? "bg-highlight"
                 : "bg-accent",
           )}
           style={{ width: `${percent}%` }}
@@ -550,7 +573,7 @@ function ContextBudgetBar(input: { usage: DesktopContextUsage }) {
           isCritical
             ? "text-danger"
             : isHigh
-              ? "text-amber-500"
+              ? "text-highlight"
               : "text-accent",
         )}
       >
@@ -558,6 +581,54 @@ function ContextBudgetBar(input: { usage: DesktopContextUsage }) {
       </span>
     </div>
   )
+}
+
+type RunStatus = string | null
+
+function RunStatusDot({ status }: { status: RunStatus }) {
+  const text = useDesktopText()
+
+  if (!status || status === "completed") {
+    return null
+  }
+
+  if (status === "running" || status === "queued") {
+    return (
+      <span className="flex items-center gap-1.5" role="status" aria-live="polite">
+        <span className="h-1.5 w-1.5 rounded-full bg-highlight animate-breathe" aria-hidden="true" />
+        <span className="font-medium text-highlight">{text.chat.runStatusRunning}</span>
+      </span>
+    )
+  }
+
+  if (status === "waiting_permission") {
+    return (
+      <span className="flex items-center gap-1.5" role="status" aria-live="polite">
+        <span className="h-1.5 w-1.5 rounded-full bg-highlight animate-breathe" aria-hidden="true" />
+        <span className="font-medium text-highlight">{text.chat.runStatusWaiting}</span>
+      </span>
+    )
+  }
+
+  if (status === "failed") {
+    return (
+      <span className="flex items-center gap-1.5" role="status" aria-live="polite">
+        <span className="h-1.5 w-1.5 rounded-full bg-danger" aria-hidden="true" />
+        <span className="font-medium text-danger">{text.chat.runStatusFailed}</span>
+      </span>
+    )
+  }
+
+  if (status === "cancelled") {
+    return (
+      <span className="flex items-center gap-1.5" role="status" aria-live="polite">
+        <span className="h-1.5 w-1.5 rounded-full bg-muted" aria-hidden="true" />
+        <span className="font-medium text-muted">{text.chat.runStatusCancelled}</span>
+      </span>
+    )
+  }
+
+  return null
 }
 
 function ThemeToggleButton() {
