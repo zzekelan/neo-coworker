@@ -26,6 +26,7 @@ export function mapTranscriptMessage(
     content,
     parts: hasStructuredParts ? parts : undefined,
     createdAt: toIsoString(message.createdAt),
+    runId: message.runId,
   }
 }
 

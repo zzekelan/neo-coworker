@@ -10,6 +10,7 @@ export interface DesktopSession {
   title: string
   workspaceRoot: string
   sessionId: string
+  createdAt: string
   updatedAt: string
   activeSkills: string[]
   latestRunStatus: DesktopRunStatus | null
@@ -29,6 +30,7 @@ export interface DesktopRun {
   status: DesktopRunStatus
   createdAt: string
   activeSkills: string[]
+  parentRunId?: string
 }
 
 export interface DesktopSessionSnapshot {
@@ -73,6 +75,7 @@ export interface DesktopTranscriptMessage {
   content: string
   parts?: MessagePart[]
   createdAt: string
+  runId?: string
 }
 
 export interface DesktopPermissionRequest {

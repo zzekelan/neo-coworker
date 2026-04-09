@@ -14,6 +14,9 @@ import { mapTranscriptMessage } from "../transcript-mapper"
 export function useAgent() {
   const desktop = useDesktopApp()
   const runStatusById = new Map(desktop.sessionRuns.map((run) => [run.id, run.status]))
+  const subagentRunIds = new Set(
+    desktop.sessionRuns.filter((run) => run.parentRunId != null).map((run) => run.id),
+  )
 
   return {
     workspaces: desktop.workspaces.map(mapWorkspace),
@@ -38,10 +41,14 @@ export function useAgent() {
     isManagingWorkspace: desktop.isManagingWorkspace,
     skills: desktop.skills.map(mapSkillCatalogEntry),
     session: desktop.sessionSnapshot ? mapSessionSnapshot(desktop.sessionSnapshot) : null,
-    transcript: desktop.transcript.map((message) =>
-      mapTranscriptMessage(message, {
-        runStatusById,
-      }),
+    transcript: mergeConsecutiveToolMessages(
+      desktop.transcript
+        .filter((message) => !subagentRunIds.has(message.runId))
+        .map((message) =>
+          mapTranscriptMessage(message, {
+            runStatusById,
+          }),
+        ),
     ),
     permissionRequests: desktop.permissionRequests.map(mapPermissionRequest),
     isOnline: desktop.connection.state === "online",
@@ -86,6 +93,7 @@ function mapSession(
     title: session.title,
     workspaceRoot: session.workspaceRoot,
     sessionId: session.id,
+    createdAt: toIsoString(session.createdAt),
     updatedAt: toIsoString(session.updatedAt),
     activeSkills: session.activeSkills,
     latestRunStatus: session.latestRunStatus,
@@ -111,6 +119,7 @@ function mapRun(run: import("../types").DesktopRun): DesktopRun {
     status: run.status,
     createdAt: toIsoString(run.createdAt),
     activeSkills: run.activeSkills,
+    parentRunId: run.parentRunId ?? undefined,
   }
 }
 
@@ -152,4 +161,25 @@ function mapContextUsage(
     utilizationPercent: usage.utilizationPercent,
     source: usage.source,
   }
+}
+
+function isToolOnlyMessage(msg: DesktopTranscriptMessage): boolean {
+  return msg.role === "assistant" && !!msg.parts && msg.parts.length > 0 && msg.parts.every((p) => p.type === "tool_call" || p.type === "tool_result")
+}
+
+/** Merge consecutive assistant messages that contain only tool calls into a single message for grouping. */
+function mergeConsecutiveToolMessages(messages: DesktopTranscriptMessage[]): DesktopTranscriptMessage[] {
+  const result: DesktopTranscriptMessage[] = []
+  for (const msg of messages) {
+    const prev = result[result.length - 1]
+    if (isToolOnlyMessage(msg) && prev && isToolOnlyMessage(prev)) {
+      result[result.length - 1] = {
+        ...prev,
+        parts: [...(prev.parts ?? []), ...(msg.parts ?? [])],
+      }
+    } else {
+      result.push(msg)
+    }
+  }
+  return result
 }
