@@ -56,7 +56,7 @@ export type CreateSubAgentRunInput = {
     activeSkills: string[]
     createdAt: number
     parentRunId: string
-  }): void
+  }): { subSessionId: string }
   runtimeObserver?: AgentRuntimeObserverPort
   now?: () => number
   signal?: AbortSignal
@@ -89,18 +89,15 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     createToolRuntime: input.createToolRuntime,
     createToolProvider: input.createToolProvider,
   })
-  const session = createScopedSessionPort({
-    session: input.session,
-    sessionId: input.sessionId,
-    activeSkills,
-    subRunId: context.subRunId,
-  })
   const stepService = input.createStepService({
-    session,
+    session: input.session,
     model: input.model,
     contextWindow: input.contextWindow,
     skill: scopedSkillPort,
-    runtimeObserver: input.runtimeObserver,
+    runtimeObserver: createCorrelatedRuntimeObserver({
+      runtimeObserver: input.runtimeObserver,
+      parentSessionId: input.sessionId,
+    }),
     now,
   })
   const maxTurns = input.profile.maxTurns ?? 10
@@ -128,7 +125,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     },
   })
 
-  input.createQueuedRun({
+  const { subSessionId } = input.createQueuedRun({
     subRunId: context.subRunId,
     sessionId: input.sessionId,
     prompt: input.prompt,
@@ -149,7 +146,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     }
 
     stepService.initializeRun({
-      sessionId: input.sessionId,
+      sessionId: subSessionId,
       runId: context.subRunId,
       emit,
     })
@@ -164,7 +161,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
       }
 
       const outcome = await stepService.executeStep({
-        sessionId: input.sessionId,
+        sessionId: subSessionId,
         runId: context.subRunId,
         tools,
         workspaceRoot: input.workspaceRoot,
@@ -200,8 +197,8 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
       })
 
       const output = getFinalAssistantText({
-        session,
-        sessionId: input.sessionId,
+        session: input.session,
+        sessionId: subSessionId,
         runId: context.subRunId,
       })
       recordRuntimeEvent({
@@ -237,71 +234,6 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     }
 
     throw error
-  }
-}
-
-function createScopedSessionPort(input: {
-  session: AgentSessionPort
-  sessionId: string
-  activeSkills: string[]
-  subRunId: string
-}): AgentSessionPort {
-  return {
-    storageIdentity: input.session.storageIdentity,
-    getSession(sessionId) {
-      const session = input.session.getSession(sessionId)
-
-      if (sessionId !== input.sessionId) {
-        return session
-      }
-
-      return {
-        ...session,
-        activeSkills: [...input.activeSkills],
-      }
-    },
-    getRun(runId) {
-      return input.session.getRun(runId)
-    },
-    listTranscript(sessionId) {
-      const transcript = input.session.listTranscript(sessionId)
-
-      if (sessionId !== input.sessionId) {
-        return transcript
-      }
-
-      return transcript.filter((message) => message.runId === input.subRunId)
-    },
-    createRun(run) {
-      return input.session.createRun(run)
-    },
-    createAssistantMessage(message) {
-      return input.session.createAssistantMessage(message)
-    },
-    createSyntheticMessage(message) {
-      return input.session.createSyntheticMessage(message)
-    },
-    createMessagePart(part) {
-      return input.session.createMessagePart(part)
-    },
-    updateMessagePart(update) {
-      return input.session.updateMessagePart(update)
-    },
-    recordRunTokenUsage(update) {
-      return input.session.recordRunTokenUsage(update)
-    },
-    transitionRunToRunning(runId) {
-      return input.session.transitionRunToRunning(runId)
-    },
-    completeRun(runId) {
-      return input.session.completeRun(runId)
-    },
-    failRun(run) {
-      return input.session.failRun(run)
-    },
-    cancelRun(runId) {
-      return input.session.cancelRun(runId)
-    },
   }
 }
 
@@ -411,6 +343,24 @@ function getFinalAssistantText(input: {
   }
 
   return ""
+}
+
+function createCorrelatedRuntimeObserver(input: {
+  runtimeObserver?: AgentRuntimeObserverPort
+  parentSessionId: string
+}): AgentRuntimeObserverPort | undefined {
+  if (!input.runtimeObserver) {
+    return undefined
+  }
+
+  return {
+    recordRuntimeEvent(eventInput) {
+      input.runtimeObserver?.recordRuntimeEvent?.({
+        ...eventInput,
+        sessionId: input.parentSessionId,
+      })
+    },
+  }
 }
 
 function recordRuntimeEvent(input: {

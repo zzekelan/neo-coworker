@@ -440,7 +440,8 @@ function createToolPortFactory(config: {
       prompt: string
       activeSkills: string[]
       createdAt: number
-    }): void
+      parentRunId: string
+    }): { subSessionId: string }
   }) => Promise<string>
   session: Pick<SessionProvider["runs"], "addActiveSkills">
   skill: OrchestrationSkillPort
@@ -502,10 +503,18 @@ function createToolPortFactory(config: {
                 },
                 signal,
                 createQueuedRun({ subRunId, sessionId, prompt, activeSkills, createdAt, parentRunId }) {
-                  config.repository.createQueuedRunWithInitiatingMessageAndPart({
+                  const parentSession = config.repository.sessions.get(sessionId)
+                  const result = config.repository.createSubSessionWithRun({
+                    session: {
+                      parentSessionId: sessionId,
+                      directory: parentSession.directory,
+                      workspaceRoot: parentSession.workspaceRoot,
+                      activeSkills,
+                      title: prompt.slice(0, 50) || "SubSession",
+                      latestUserMessagePreview: prompt.slice(0, 100) || null,
+                    },
                     run: {
                       id: subRunId,
-                      sessionId,
                       trigger: "prompt",
                       createdAt,
                       activeSkills,
@@ -521,8 +530,9 @@ function createToolPortFactory(config: {
                       text: prompt,
                       createdAt,
                     },
-                    allowConcurrentActiveRun: true,
                   })
+
+                  return { subSessionId: result.session.id }
                 },
               })
             },
