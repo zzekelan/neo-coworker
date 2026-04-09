@@ -34,6 +34,7 @@ export type StoredSession = {
   updatedAt: number
   latestUserMessagePreview: string | null
   activeSkills: string[]
+  parentSessionId?: string
 }
 
 export type StoredRun = {
@@ -88,6 +89,11 @@ export type CreateSessionInput = {
   updatedAt?: number
   latestUserMessagePreview?: string | null
   activeSkills?: string[]
+  parentSessionId?: string
+}
+
+export type CreateSubSessionInput = CreateSessionInput & {
+  parentSessionId: string
 }
 
 export type UpdateSessionInput = {
@@ -186,6 +192,17 @@ export type CreateAssistantMessageWithFirstPartInput = {
   part: Omit<CreatePartInput, "sessionId" | "runId" | "messageId">
 }
 
+export type CreateSubSessionWithRunInput = {
+  session: CreateSubSessionInput
+  run: Omit<CreateRunInput, "sessionId">
+  message: {
+    id?: string
+    sequence?: number
+    createdAt?: number
+  }
+  part: Omit<CreatePartInput, "sessionId" | "runId" | "messageId">
+}
+
 export class SessionRepositoryError extends Error {
   constructor(message: string) {
     super(message)
@@ -224,6 +241,8 @@ export type SessionRepository = {
   sessions: {
     create(session: CreateSessionInput): StoredSession
     list(): StoredSession[]
+    listTopLevel(): StoredSession[]
+    listSubSessions(parentSessionId: string): StoredSession[]
     get(sessionId: string): StoredSession
     update(session: UpdateSessionInput): StoredSession
   }
@@ -257,4 +276,8 @@ export type SessionRepository = {
   createAssistantMessageWithFirstPart(
     input: CreateAssistantMessageWithFirstPartInput,
   ): { message: StoredMessage; part: StoredPart }
+  createSubSessionWithRun(input: CreateSubSessionWithRunInput): {
+    session: StoredSession
+    run: StoredRun
+  }
 }
