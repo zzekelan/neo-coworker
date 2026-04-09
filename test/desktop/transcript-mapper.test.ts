@@ -32,6 +32,7 @@ describe("desktop transcript mapper", () => {
       content: "Reply exactly once.",
       parts: undefined,
       createdAt: new Date(1_710_000_000_000).toISOString(),
+      runId: "run-1",
     })
   })
 
@@ -92,6 +93,7 @@ describe("desktop transcript mapper", () => {
         },
       ],
       createdAt: new Date(1_710_000_000_500).toISOString(),
+      runId: "run-1",
     })
   })
 
@@ -136,6 +138,7 @@ describe("desktop transcript mapper", () => {
         },
       ],
       createdAt: new Date(1_710_000_001_000).toISOString(),
+      runId: "run-2",
     })
   })
 
@@ -198,6 +201,7 @@ describe("desktop transcript mapper", () => {
         },
       ],
       createdAt: new Date(1_710_000_001_500).toISOString(),
+      runId: "run-3",
     })
   })
 
