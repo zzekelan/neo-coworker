@@ -1,19 +1,24 @@
-import React, { useMemo, useState, Suspense } from "react"
+import React, { useCallback, useMemo, useState, Suspense, type ComponentType } from "react"
 import {
   AlertCircle,
-  CheckCircle2,
+  Bot,
+  Check,
   ChevronDown,
-  FilePenLine,
-  FileSearch,
+  ChevronRight,
+  Code2,
+  Copy,
+  FileEdit,
+  FilePen,
+  FileText,
   FolderSearch,
   Globe,
-  Loader2,
+  ScanSearch,
+  Search,
   Sparkles,
   Terminal,
   Wrench,
-  XCircle,
 } from "lucide-react"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "../lib/utils"
 import type { DesktopTranscriptMessage, MessagePart } from "../view-types"
 import { useDesktopText } from "../i18n"
@@ -54,42 +59,161 @@ const HIDDEN_TOOL_KEYS = new Set([
 
 type ToolStatus = Extract<MessagePart, { type: "tool_call" }>["status"]
 
-const MessageComponent: React.FC<{ message: DesktopTranscriptMessage }> = ({ message }) => {
+type ToolCallPart = Extract<MessagePart, { type: "tool_call" }>
+type ToolResultPart = Extract<MessagePart, { type: "tool_result" }>
+
+type RenderItem =
+  | { kind: "single"; part: MessagePart; index: number }
+  | {
+      kind: "group"
+      entries: Array<{
+        part: ToolCallPart
+        result: ToolResultPart | null
+        isError: boolean
+        isCancelled: boolean
+      }>
+      normalizedName: string
+      startIndex: number
+    }
+
+function formatTimestampToMinute(createdAt: string): string {
+  return new Date(createdAt).toLocaleString([], {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+const MessageComponent: React.FC<{
+  message: DesktopTranscriptMessage
+  previousTimestamp?: string
+}> = ({ message, previousTimestamp }) => {
+  const text = useDesktopText()
   const isUser = message.role === "user"
-  const toolCallLookup = useMemo(
+  const toolResultLookup = useMemo(
     () =>
       new Map(
         (message.parts ?? [])
-          .filter((part): part is Extract<MessagePart, { type: "tool_call" }> => part.type === "tool_call")
+          .filter((part): part is ToolResultPart => part.type === "tool_result")
           .map((part) => [part.callId, part]),
       ),
     [message.parts],
   )
+
+  const copyableText = useMemo(() => {
+    if (message.parts) {
+      return message.parts
+        .filter((p): p is Extract<MessagePart, { type: "text" }> => p.type === "text")
+        .map((p) => p.text)
+        .join("\n")
+    }
+    return message.content
+  }, [message.parts, message.content])
+
+  const formattedTimestamp = formatTimestampToMinute(message.createdAt)
+  const showTimestamp = !previousTimestamp || formatTimestampToMinute(previousTimestamp) !== formattedTimestamp
+
+  /** Group consecutive completed tool_call parts of the same normalized type. */
+  const renderItems = useMemo((): RenderItem[] => {
+    const filtered = (message.parts ?? []).filter((p) => p.type !== "tool_result")
+    const items: RenderItem[] = []
+    let i = 0
+    while (i < filtered.length) {
+      const part = filtered[i]
+      if (part.type === "tool_call") {
+        const norm = normalizeToolName(part.toolName)
+        const result = toolResultLookup.get(part.callId) ?? null
+        const isCompleted = result !== null
+        const isCancelled = part.status === "cancelled"
+
+        if (isCompleted || isCancelled) {
+          const group: RenderItem extends { kind: "group" } ? never : Array<{
+            part: ToolCallPart
+            result: ToolResultPart | null
+            isError: boolean
+            isCancelled: boolean
+          }> = [{
+            part,
+            result,
+            isError: (result?.isError ?? false) && !isCancelled,
+            isCancelled,
+          }]
+          let j = i + 1
+          while (j < filtered.length) {
+            const next = filtered[j]
+            if (next.type !== "tool_call") break
+            if (normalizeToolName(next.toolName) !== norm) break
+            const nextResult = toolResultLookup.get(next.callId) ?? null
+            const nextCompleted = nextResult !== null
+            const nextCancelled = next.status === "cancelled"
+            if (!nextCompleted && !nextCancelled) break
+            group.push({
+              part: next,
+              result: nextResult,
+              isError: (nextResult?.isError ?? false) && !nextCancelled,
+              isCancelled: nextCancelled,
+            })
+            j++
+          }
+
+          if (group.length >= 2) {
+            items.push({ kind: "group", entries: group, normalizedName: norm, startIndex: i })
+          } else {
+            items.push({ kind: "single", part, index: i })
+          }
+          i = j
+          continue
+        }
+      }
+      items.push({ kind: "single", part, index: i })
+      i++
+    }
+    return items
+  }, [message.parts, toolResultLookup])
 
   return (
     <ErrorBoundary>
       <motion.div
         initial={false}
         animate={{ opacity: 1, y: 0 }}
-        className={cn("flex w-full flex-col", isUser ? "items-end" : "items-start")}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className={cn("flex w-full flex-col", isUser ? "items-end" : "items-start", copyableText && "group/msg")}
       >
-        <div className={cn("mb-1.5 flex items-center gap-2 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
-          <span className="text-[11px] font-medium text-accent">
-            {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        </div>
+        {showTimestamp ? (
+          <div className={cn("mb-1.5 flex items-center gap-2 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
+            <span className="text-[11px] font-medium text-accent">
+              {formattedTimestamp}
+            </span>
+          </div>
+        ) : null}
 
         <div className={cn("flex max-w-3xl flex-col", isUser ? "items-end" : "w-full items-start")}>
           {message.parts ? (
-            <div className="w-full space-y-4">
-              {message.parts.map((part, index) => (
-                <MessagePartRenderer
-                  key={`${message.id}:${index}`}
-                  part={part}
-                  role={message.role}
-                  relatedToolCall={part.type === "tool_result" ? toolCallLookup.get(part.callId) ?? null : null}
-                />
-              ))}
+            <div className="w-full space-y-2">
+              {renderItems.map((item) => {
+                if (item.kind === "group") {
+                  return (
+                    <ToolCallGroup
+                      key={`${message.id}:grp:${item.entries[0].part.callId}`}
+                      entries={item.entries}
+                      normalizedName={item.normalizedName}
+                      startIndex={item.startIndex}
+                    />
+                  )
+                }
+                const part = item.part
+                return (
+                  <MessagePartRenderer
+                    key={part.type === "tool_call" ? `${message.id}:tc:${part.callId}` : `${message.id}:${part.type}:${item.index}`}
+                    part={part}
+                    role={message.role}
+                    relatedResult={part.type === "tool_call" ? toolResultLookup.get(part.callId) ?? null : null}
+                    partIndex={item.index}
+                  />
+                )
+              })}
             </div>
           ) : (
             <div
@@ -111,6 +235,10 @@ const MessageComponent: React.FC<{ message: DesktopTranscriptMessage }> = ({ mes
               )}
             </div>
           )}
+
+          {copyableText ? (
+            <CopyMessageButton text={copyableText} label={text.chat.copyMessage} copiedLabel={text.chat.copied} failedLabel={text.chat.clipboardUnavailable} />
+          ) : null}
         </div>
       </motion.div>
     </ErrorBoundary>
@@ -119,11 +247,50 @@ const MessageComponent: React.FC<{ message: DesktopTranscriptMessage }> = ({ mes
 
 export const Message = React.memo(MessageComponent)
 
+function CopyMessageButton({ text, label, copiedLabel, failedLabel }: { text: string; label: string; copiedLabel: string; failedLabel: string }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(text).then(
+      () => {
+        setCopyState("copied")
+        setTimeout(() => setCopyState("idle"), 2000)
+      },
+      () => {
+        setCopyState("failed")
+        setTimeout(() => setCopyState("idle"), 2000)
+      },
+    )
+  }, [text])
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={cn(
+        "mt-1 rounded-md p-1 transition-all duration-150",
+        copyState === "copied"
+          ? "text-success opacity-100"
+          : copyState === "failed"
+            ? "text-danger opacity-100"
+            : "text-muted opacity-0 hover:bg-surface hover:text-ink group-hover/msg:opacity-100",
+      )}
+      title={copyState === "copied" ? copiedLabel : copyState === "failed" ? failedLabel : label}
+      aria-label={copyState === "copied" ? copiedLabel : copyState === "failed" ? failedLabel : label}
+    >
+      {copyState === "copied" ? <Check className="h-3.5 w-3.5" /> :
+       copyState === "failed" ? <AlertCircle className="h-3.5 w-3.5" /> :
+       <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
+}
+
 const MessagePartRenderer: React.FC<{
   part: MessagePart
   role?: DesktopTranscriptMessage["role"]
-  relatedToolCall?: Extract<MessagePart, { type: "tool_call" }> | null
-}> = ({ part, role, relatedToolCall = null }) => {
+  relatedResult?: Extract<MessagePart, { type: "tool_result" }> | null
+  partIndex?: number
+}> = ({ part, role, relatedResult = null, partIndex = 0 }) => {
   const text = useDesktopText()
 
   if (part.type === "text") {
@@ -141,16 +308,39 @@ const MessagePartRenderer: React.FC<{
   }
 
   if (part.type === "tool_call") {
-    const details = buildToolCallDetails(text, part.toolName, part.toolInput)
+    const isCompleted = relatedResult !== null
+    const isCancelled = part.status === "cancelled"
+    const isError = relatedResult?.isError ?? false
+    const finalStatus: ToolStatus = isCancelled ? "cancelled" : isCompleted ? (isError ? "error" : "success") : (part.status ?? "pending")
+
+    const callDetails = buildToolCallDetails(text, part.toolName, part.toolInput)
+    const resultDetails = isCompleted ? buildToolResultDetails(text, relatedResult.result) : []
+    const allDetails = [...callDetails, ...resultDetails]
+
+    if (isCompleted || isCancelled) {
+      return (
+        <CompletedToolRow
+          toolName={part.toolName}
+          toolInput={part.toolInput}
+          isError={isError && !isCancelled}
+          isCancelled={isCancelled}
+          details={allDetails}
+          partIndex={partIndex}
+          icon={getToolIcon(part.toolName)}
+          isAgent={isAgentTool(part.toolName)}
+        />
+      )
+    }
 
     return (
-      <ToolActivityCard
-        toolName={part.toolName}
-        icon={getToolIcon(part.toolName)}
+      <ToolIndicator
         title={describeToolCallTitle(text, part.toolName)}
         subtitle={part.progress ?? describeToolCallSummary(text, part.toolName, part.toolInput)}
-        status={part.status ?? "pending"}
-        details={details}
+        status={finalStatus}
+        details={callDetails}
+        partIndex={partIndex}
+        icon={getToolIcon(part.toolName)}
+        isAgent={isAgentTool(part.toolName)}
       />
     )
   }
@@ -164,208 +354,346 @@ const MessagePartRenderer: React.FC<{
     )
   }
 
-  const details = buildToolResultDetails(text, part.result)
-
-  return (
-    <ToolActivityCard
-      toolName={relatedToolCall?.toolName}
-      icon={getToolIcon(relatedToolCall?.toolName)}
-      title={describeToolResultTitle(text, relatedToolCall?.toolName, part.isError)}
-      subtitle={describeToolResultSummary(text, relatedToolCall?.toolName, part.result, part.isError)}
-      status={part.isError ? "error" : "success"}
-      details={details}
-      resultTone
-      emptyDetailsLabel={text.message.noAdditionalDetails}
-    />
-  )
+  // tool_result parts are filtered out before reaching here
+  return null
 }
 
-const ToolActivityCard: React.FC<{
-  toolName?: string
-  icon: React.ReactNode
+/** Collapsible group for ≥2 consecutive completed tool calls of the same type. */
+const ToolCallGroup: React.FC<{
+  entries: Array<{
+    part: ToolCallPart
+    result: ToolResultPart | null
+    isError: boolean
+    isCancelled: boolean
+  }>
+  normalizedName: string
+  startIndex: number
+}> = React.memo(({ entries, normalizedName, startIndex }) => {
+  const text = useDesktopText()
+  const [isExpanded, setIsExpanded] = useState(entries.length <= 3)
+
+  const Icon = getToolIcon(entries[0].part.toolName)
+  const isAgent = isAgentTool(entries[0].part.toolName)
+  const errorCount = entries.filter((e) => e.isError).length
+  const cancelledCount = entries.filter((e) => e.isCancelled).length
+  const hasAnyError = errorCount > 0
+
+  const groupLabel = describeToolGroupLabel(text, entries[0].part.toolName)
+  const prefixChar = hasAnyError ? "✗" : cancelledCount === entries.length ? "—" : "✓"
+  const prefixColor = hasAnyError ? "text-danger" : cancelledCount === entries.length ? "text-muted" : "text-success"
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut", delay: Math.min(startIndex * 0.05, 0.5) }}
+      className={cn("relative", isAgent && "ml-2 border-l-2 border-highlight/20 pl-3")}
+    >
+      {/* Group header */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className="group/ghdr flex w-full items-center gap-1.5 py-0.5 text-left"
+      >
+        <div className="flex min-w-0 flex-1 items-center">
+          <Icon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted/60" />
+          <span className={cn("mr-1 shrink-0 text-[13px] leading-none", prefixColor)}>
+            {prefixChar}
+          </span>
+          <span className="min-w-0 truncate text-[13px] leading-none text-muted">
+            {groupLabel}
+          </span>
+          <span className="ml-1.5 shrink-0 rounded-full bg-surface px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted">
+            ×{entries.length}
+          </span>
+          {hasAnyError ? (
+            <span className="ml-1 shrink-0 text-[11px] leading-none text-danger">
+              {errorCount} failed
+            </span>
+          ) : null}
+        </div>
+        <div className="flex w-5 shrink-0 items-center justify-center">
+          <ChevronRight
+            className={cn(
+              "h-3 w-3 text-muted/50 transition-transform duration-200 group-hover/ghdr:text-ink",
+              isExpanded && "rotate-90",
+            )}
+          />
+        </div>
+      </button>
+
+      {/* Expanded sub-items with tree connectors */}
+      <AnimatePresence initial={false}>
+        {isExpanded ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="ml-1 mt-0.5">
+              {entries.map((entry, idx) => {
+                const isLast = idx === entries.length - 1
+                const callDetails = buildToolCallDetails(text, entry.part.toolName, entry.part.toolInput)
+                const resultDetails = entry.result ? buildToolResultDetails(text, entry.result.result) : []
+                const allDetails = [...callDetails, ...resultDetails]
+
+                return (
+                  <div key={entry.part.callId} className="flex items-start gap-0">
+                    <span className="w-4 shrink-0 select-none font-mono text-[12px] leading-none text-border pt-1.5">
+                      {isLast ? "└" : "├"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <CompletedToolRow
+                        toolName={entry.part.toolName}
+                        toolInput={entry.part.toolInput}
+                        isError={entry.isError}
+                        isCancelled={entry.isCancelled}
+                        details={allDetails}
+                        partIndex={0}
+                        icon={getToolIcon(entry.part.toolName)}
+                        isAgent={false}
+                        skipEntrance
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
+  )
+})
+
+const ToolIndicator: React.FC<{
   title: string
   subtitle: string
   status: ToolStatus
   details: DetailItem[]
-  resultTone?: boolean
-  emptyDetailsLabel?: string
-}> = React.memo(({ toolName, icon, title, subtitle, status, details, resultTone = false, emptyDetailsLabel }) => {
+  partIndex?: number
+  icon?: ComponentType<{ className?: string }>
+  isAgent?: boolean
+}> = React.memo(({ title, subtitle, status, details, partIndex = 0, icon: Icon, isAgent = false }) => {
   const text = useDesktopText()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
+  const hasDetails = details.length > 0
+  const isPending = status === "pending"
+
   return (
-    <div
-      className={cn(
-        "relative my-3 overflow-hidden rounded-[12px] border shadow-sm transition-colors",
-        status === "error"
-          ? "border-danger bg-danger/10"
-          : resultTone
-            ? "border-success/30 bg-success/10"
-            : "border-border bg-paper",
-      )}
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
+      className={cn("relative", isAgent && "ml-2 border-l-2 border-highlight/20 pl-3")}
     >
-      <div
-        className={cn(
-          "absolute bottom-0 left-0 top-0 w-[2px] transition-colors",
-          status === "pending" ? "animate-breathe bg-accent" :
-          status === "success" ? "bg-success opacity-100" :
-          status === "error" ? "bg-danger" : "bg-transparent"
-        )}
-      />
-      <div className="flex items-start justify-between gap-4 px-[16px] py-[12px]">
-        <div className="flex min-w-0 items-start gap-3">
-          <div
-            className={cn(
-              "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
-              status === "error"
-                ? "border-danger bg-paper text-danger"
-                : resultTone
-                  ? "border-success/30 bg-paper text-success"
-                  : "border-border bg-paper text-muted",
-            )}
-          >
-            {icon}
-          </div>
-          <div className="min-w-0">
-            <div className="text-[14px] font-semibold text-ink">{title}</div>
-            <div className="mt-1 text-[13px] leading-6 text-muted">{subtitle}</div>
-          </div>
+      {/* Indicator row */}
+      <div className="relative flex items-center gap-2 py-1.5">
+        {/* Title · Subtitle — single line, truncated */}
+        <div className="relative flex min-w-0 flex-1 items-center">
+          {/* Pending breathing dot — absolutely positioned so it never shifts text */}
+          {isPending && (
+            <div className="absolute -left-4 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full animate-breathe bg-highlight" />
+          )}
+          {Icon ? (
+            <Icon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-accent" />
+          ) : null}
+          <span className="shrink-0 text-[13px] font-medium leading-none text-ink">
+            {title}
+          </span>
+          <span className="mx-1.5 text-muted leading-none select-none">·</span>
+          <span className="min-w-0 truncate text-[13px] leading-none text-muted">
+            {subtitle}
+          </span>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <ToolStatusBadge status={status} toolName={toolName} />
+
+        {/* Status label + expand chevron (fixed-width chevron area for alignment) */}
+        <div className="flex shrink-0 items-center gap-1.5" role="status" aria-live="polite">
+          <ToolStatusBadge status={status} />
+          <div className="flex w-5 items-center justify-center">
+            {hasDetails ? (
+              <button
+                type="button"
+                onClick={() => setIsDetailsOpen((previous) => !previous)}
+                className="rounded-md p-0.5 text-muted transition-colors hover:text-ink"
+                aria-label={isDetailsOpen ? text.message.hideDetails : text.message.viewDetails}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform duration-200",
+                    !isDetailsOpen && "-rotate-90",
+                  )}
+                />
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      <div className="border-t border-border bg-paper px-[16px] py-[12px]">
-        <button
-          type="button"
-          onClick={() => setIsDetailsOpen((previous) => !previous)}
-          className="flex items-center gap-2 text-[12px] font-medium tracking-wide text-muted transition-colors hover:text-ink"
-        >
-          <ChevronDown
-            className={cn("h-4 w-4 transition-transform duration-200", isDetailsOpen && "rotate-180")}
-          />
-          {isDetailsOpen ? text.message.hideDetails : text.message.viewDetails}
-        </button>
-
-        <motion.div
-          initial={false}
-          animate={{
-            height: isDetailsOpen ? "auto" : 0,
-            opacity: isDetailsOpen ? 1 : 0,
-            marginTop: isDetailsOpen ? 12 : 0,
-          }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-          className="overflow-hidden"
-        >
-          {isDetailsOpen ? (
+      {/* Expanded details panel */}
+      <motion.div
+        initial={false}
+        animate={{
+          height: isDetailsOpen ? "auto" : 0,
+          opacity: isDetailsOpen ? 1 : 0,
+        }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="overflow-hidden"
+      >
+        {isDetailsOpen ? (
+          <div className="border-l-2 border-border/30 ml-2 pl-3 pb-2">
             <ErrorBoundary>
               <Suspense fallback={<PulsePlaceholder />}>
                 <ToolDetails
                   details={details}
-                  emptyDetailsLabel={emptyDetailsLabel ?? text.message.noAdditionalDetails}
+                  emptyDetailsLabel={text.message.noAdditionalDetails}
                 />
               </Suspense>
             </ErrorBoundary>
-          ) : null}
-        </motion.div>
-      </div>
-    </div>
+          </div>
+        ) : null}
+      </motion.div>
+    </motion.div>
   )
 })
 
-const ToolStatusBadge: React.FC<{ status: ToolStatus; toolName?: string }> = React.memo(({ status, toolName }) => {
+const ToolStatusBadge: React.FC<{ status: ToolStatus }> = React.memo(({ status }) => {
   const text = useDesktopText()
-
-  const isMutating = isToolMutating(toolName)
-  
-  const toolCategoryLabel = toolName ? (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-[8px] py-[2px] text-[12px] font-medium uppercase tracking-wide",
-        isMutating ? "bg-highlight/10 text-highlight" : "bg-surface text-muted"
-      )}
-    >
-      {isMutating ? "mutating" : "read-only"}
-    </span>
-  ) : null;
 
   if (status === "pending") {
     return (
-      <>
-        {toolCategoryLabel}
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-highlight/30 bg-highlight/10 px-2.5 py-1 text-[12px] font-medium text-highlight">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-highlight opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-highlight"></span>
-          </span>
-          {text.message.running}
-        </span>
-      </>
+      <span className="text-[12px] font-medium text-highlight">
+        {text.message.running}
+      </span>
     )
   }
 
   if (status === "success") {
     return (
-      <>
-        {toolCategoryLabel}
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[12px] font-medium text-success">
-          <CheckCircle2 className="h-3 w-3" />
-          {text.message.completed}
-        </span>
-      </>
+      <motion.span
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+        className="text-[12px] font-medium text-success"
+      >
+        ✓ {text.message.completed}
+      </motion.span>
     )
   }
 
   if (status === "cancelled") {
     return (
-      <>
-        {toolCategoryLabel}
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-[12px] font-medium text-muted">
-          <XCircle className="h-3 w-3" />
-          {text.message.cancelled}
-        </span>
-      </>
+      <span className="text-[12px] font-medium text-muted">
+        {text.message.cancelled}
+      </span>
     )
   }
 
   return (
-    <>
-      {toolCategoryLabel}
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-danger bg-danger/10 px-2.5 py-1 text-[11px] font-semibold text-danger">
-        <AlertCircle className="h-3 w-3" />
-        {text.message.failed}
-      </span>
-    </>
+    <motion.span
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+      className="text-[12px] font-medium text-danger"
+    >
+      ✗ {text.message.failed}
+    </motion.span>
+  )
+})
+
+const CompletedToolRow: React.FC<{
+  toolName: string
+  toolInput: unknown
+  isError: boolean
+  isCancelled: boolean
+  details: DetailItem[]
+  partIndex?: number
+  icon?: ComponentType<{ className?: string }>
+  isAgent?: boolean
+  skipEntrance?: boolean
+}> = React.memo(({ toolName, toolInput, isError, isCancelled, details, partIndex = 0, icon: Icon, isAgent = false, skipEntrance = false }) => {
+  const text = useDesktopText()
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const hasDetails = details.length > 0
+
+  const summary = describeCompletedToolSummary(text, toolName, toolInput)
+  const suffix = isCancelled ? ` ${text.message.cancelledSuffix}` : isError ? ` — ${text.message.failedSuffix}` : ""
+
+  const prefixChar = isError ? "✗" : isCancelled ? "—" : "✓"
+  const prefixColor = isError ? "text-danger" : isCancelled ? "text-muted" : "text-success"
+
+  return (
+    <motion.div
+      initial={skipEntrance ? false : { opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={skipEntrance ? { duration: 0 } : { duration: 0.25, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
+      className={cn("relative", isAgent && "ml-2 border-l-2 border-highlight/20 pl-3")}
+    >
+      <div className="relative flex items-center gap-1.5 py-0.5">
+        <div className="flex min-w-0 flex-1 items-center">
+          {Icon ? (
+            <Icon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted/60" />
+          ) : null}
+          <span className={cn("mr-1 shrink-0 text-[13px] leading-none", prefixColor)}>
+            {prefixChar}
+          </span>
+          <span className="min-w-0 truncate text-[13px] leading-none text-muted">
+            {summary}{suffix}
+          </span>
+        </div>
+
+        <div className="flex w-5 shrink-0 items-center justify-center">
+          {hasDetails ? (
+            <button
+              type="button"
+              onClick={() => setIsDetailsOpen((previous) => !previous)}
+              className="rounded-md p-0.5 text-muted/50 transition-colors hover:text-ink"
+              aria-label={isDetailsOpen ? text.message.hideDetails : text.message.viewDetails}
+            >
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 transition-transform duration-200",
+                  !isDetailsOpen && "-rotate-90",
+                )}
+              />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Expanded details panel */}
+      <motion.div
+        initial={false}
+        animate={{
+          height: isDetailsOpen ? "auto" : 0,
+          opacity: isDetailsOpen ? 1 : 0,
+        }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="overflow-hidden"
+      >
+        {isDetailsOpen ? (
+          <div className="border-l-2 border-border/30 ml-2 pl-3 pb-2">
+            <ErrorBoundary>
+              <Suspense fallback={<PulsePlaceholder />}>
+                <ToolDetails
+                  details={details}
+                  emptyDetailsLabel={text.message.noAdditionalDetails}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          </div>
+        ) : null}
+      </motion.div>
+    </motion.div>
   )
 })
 
 export type DetailItem = {
   label: string
   value: unknown
-}
-
-function getToolIcon(toolName: string | undefined) {
-  switch (normalizeToolName(toolName)) {
-    case "read":
-      return <FileSearch className="h-4 w-4" />
-    case "write":
-    case "edit":
-      return <FilePenLine className="h-4 w-4" />
-    case "shell":
-      return <Terminal className="h-4 w-4" />
-    case "websearch":
-    case "webfetch":
-      return <Globe className="h-4 w-4" />
-    case "codesearch":
-    case "grep":
-    case "glob":
-      return <FolderSearch className="h-4 w-4" />
-    case "skill":
-      return <Sparkles className="h-4 w-4" />
-    default:
-      return <Wrench className="h-4 w-4" />
-  }
 }
 
 function describeToolCallTitle(text: ReturnType<typeof useDesktopText>, toolName: string) {
@@ -392,46 +720,6 @@ function describeToolCallTitle(text: ReturnType<typeof useDesktopText>, toolName
       return text.message.updatingSkills
     default:
       return text.message.usingTool(formatToolDisplayName(toolName))
-  }
-}
-
-function describeToolResultTitle(
-  text: ReturnType<typeof useDesktopText>,
-  toolName: string | undefined,
-  isError: boolean | undefined,
-) {
-  if (isError) {
-    switch (normalizeToolName(toolName)) {
-      case "shell":
-        return text.message.commandDidNotComplete
-      case "read":
-      case "write":
-      case "edit":
-        return text.message.fileActionDidNotComplete
-      default:
-        return text.message.toolActionDidNotComplete
-    }
-  }
-
-  switch (normalizeToolName(toolName)) {
-    case "read":
-      return text.message.fileReady
-    case "write":
-      return text.message.fileUpdated
-    case "edit":
-      return text.message.editApplied
-    case "shell":
-      return text.message.commandFinished
-    case "websearch":
-      return text.message.searchFinished
-    case "webfetch":
-      return text.message.pageLoaded
-    case "codesearch":
-      return text.message.codeSearchFinished
-    case "skill":
-      return text.message.skillsUpdated
-    default:
-      return text.message.toolFinished
   }
 }
 
@@ -471,31 +759,145 @@ function describeToolCallSummary(
   }
 }
 
-function describeToolResultSummary(
+function describeCompletedToolSummary(
   text: ReturnType<typeof useDesktopText>,
-  toolName: string | undefined,
-  value: unknown,
-  isError: boolean | undefined,
-) {
-  const summary = summarizeToolResult(text, value)
-  if (summary) {
-    return summary
-  }
+  toolName: string,
+  toolInput: unknown,
+): string {
+  const detail = extractCompactToolDetail(toolName, toolInput)
+  const name = normalizeToolName(toolName)
 
-  if (isError) {
-    return text.message.toolReturnedError
+  switch (name) {
+    case "read":
+      return detail ? text.message.completedRead(detail) : text.message.completedReadFallback
+    case "write":
+      return detail ? text.message.completedWrote(detail) : text.message.completedWroteFallback
+    case "edit":
+      return detail ? text.message.completedEdited(detail) : text.message.completedEditedFallback
+    case "shell":
+      return detail ? text.message.completedRan(detail) : text.message.completedRanFallback
+    case "websearch":
+      return detail ? text.message.completedSearched(detail) : text.message.completedSearchedFallback
+    case "webfetch":
+      return detail ? text.message.completedFetched(detail) : text.message.completedFetchedFallback
+    case "codesearch":
+      return detail ? text.message.completedCodeSearch(detail) : text.message.completedCodeSearchFallback
+    case "grep":
+      return detail ? text.message.completedScanned(detail) : text.message.completedScannedFallback
+    case "glob":
+      return detail ? text.message.completedFound(detail) : text.message.completedFoundFallback
+    case "skill":
+      return text.message.completedSkills
+    default: {
+      if (name.includes("agent")) {
+        return detail ? text.message.completedAgent(detail) : text.message.completedAgentFallback
+      }
+      return detail ? text.message.completedGenericTool(formatToolDisplayName(toolName), detail) : formatToolDisplayName(toolName)
+    }
   }
+}
+
+/** Returns the generic fallback label for a tool type (e.g. "Searched the web") used in group headers. */
+function describeToolGroupLabel(
+  text: ReturnType<typeof useDesktopText>,
+  toolName: string,
+): string {
+  const name = normalizeToolName(toolName)
+  switch (name) {
+    case "read":
+      return text.message.completedReadFallback
+    case "write":
+      return text.message.completedWroteFallback
+    case "edit":
+      return text.message.completedEditedFallback
+    case "shell":
+      return text.message.completedRanFallback
+    case "websearch":
+      return text.message.completedSearchedFallback
+    case "webfetch":
+      return text.message.completedFetchedFallback
+    case "codesearch":
+      return text.message.completedCodeSearchFallback
+    case "grep":
+      return text.message.completedScannedFallback
+    case "glob":
+      return text.message.completedFoundFallback
+    case "skill":
+      return text.message.completedSkills
+    default: {
+      if (name.includes("agent")) {
+        return text.message.completedAgentFallback
+      }
+      return formatToolDisplayName(toolName)
+    }
+  }
+}
+
+/** Try to extract structured args from the tool_call data (args may be JSON-encoded in inputText). */
+function parseToolArgs(data: Record<string, unknown>): Record<string, unknown> {
+  // Direct keys take priority (some tools store args at top level)
+  if (data.path || data.query || data.pattern || data.url || data.command) {
+    return data
+  }
+  // Tool_call parts store args as a JSON string in inputText
+  const inputText = data.inputText
+  if (typeof inputText === "string") {
+    try {
+      const args = JSON.parse(inputText)
+      if (args && typeof args === "object" && !Array.isArray(args)) {
+        return args as Record<string, unknown>
+      }
+    } catch { /* not valid JSON, ignore */ }
+  }
+  return data
+}
+
+/** Extracts a compact primary identifier (bare path, command, query) without decorative prose. */
+function extractCompactToolDetail(toolName: string, value: unknown): string | null {
+  const raw = asRecord(value)
+  if (!raw) return null
+  const parsed = parseToolArgs(raw)
+
+  const path = readRecordString(parsed, "path")
+  const query = readRecordString(parsed, "query")
+  const pattern = readRecordString(parsed, "pattern")
+  const url = readRecordString(parsed, "url")
+  const command = readRecordString(parsed, "command")
 
   switch (normalizeToolName(toolName)) {
     case "read":
-      return text.message.fileContentReady
     case "write":
     case "edit":
-      return text.message.fileChangeApplied
+      return path ?? null
     case "shell":
-      return text.message.commandCompleted
+      return command ? truncateShellCommand(command) : null
+    case "websearch":
+      return query ?? null
+    case "webfetch":
+      return url ? truncateUrl(url) : null
+    case "codesearch":
+      return query ?? null
+    case "grep":
+      return pattern ?? query ?? null
+    case "glob":
+      return pattern ?? null
     default:
-      return text.message.toolCompleted
+      return path ?? query ?? pattern ?? url ?? command ?? null
+  }
+}
+
+function truncateShellCommand(command: string): string {
+  const clean = command.trim().replace(/\s+/g, " ")
+  return clean.length <= 60 ? clean : `${clean.slice(0, 57)}...`
+}
+
+function truncateUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    const short = parsed.hostname + (parsed.pathname !== "/" ? parsed.pathname : "")
+    return short.length <= 50 ? short : `${short.slice(0, 47)}...`
+  } catch {
+    return url.length <= 50 ? url : `${url.slice(0, 47)}...`
   }
 }
 
@@ -567,59 +969,16 @@ function buildToolResultDetails(text: ReturnType<typeof useDesktopText>, value: 
   return details
 }
 
-function summarizeToolResult(text: ReturnType<typeof useDesktopText>, value: unknown) {
-  if (typeof value === "string") {
-    return summarizeText(value)
-  }
-
-  if (Array.isArray(value)) {
-    return text.message.returnedItems(value.length)
-  }
-
-  const parsed = asRecord(value)
-  if (!parsed) {
-    return value === null || value === undefined ? "" : summarizeText(String(value))
-  }
-
-  if (typeof parsed.output === "string" && parsed.output.trim()) {
-    return summarizeText(parsed.output)
-  }
-
-  if (typeof parsed.stderr === "string" && parsed.stderr.trim()) {
-    return summarizeText(parsed.stderr)
-  }
-
-  if (typeof parsed.stdout === "string" && parsed.stdout.trim()) {
-    return summarizeText(parsed.stdout)
-  }
-
-  for (const key of ["path", "url", "query", "pattern"] as const) {
-    const entry = parsed[key]
-    if (typeof entry === "string" && entry.trim()) {
-      return summarizeText(entry)
-    }
-  }
-
-  const countKeys = ["results", "matches", "files", "items"] as const
-  for (const key of countKeys) {
-    const entry = parsed[key]
-    if (Array.isArray(entry)) {
-      return text.message.returnedNamedItems(entry.length, key.slice(0, -1), key)
-    }
-  }
-
-  return ""
-}
-
 function extractPrimaryToolDetail(
   text: ReturnType<typeof useDesktopText>,
   toolName: string,
   value: unknown,
 ) {
-  const parsed = asRecord(value)
-  if (!parsed) {
+  const raw = asRecord(value)
+  if (!raw) {
     return null
   }
+  const parsed = parseToolArgs(raw)
 
   const path = readRecordString(parsed, "path")
   const query = readRecordString(parsed, "query")
@@ -667,6 +1026,31 @@ function normalizeToolName(toolName: string | undefined) {
   return toolName
 }
 
+function getToolIcon(toolName: string | undefined): ComponentType<{ className?: string }> {
+  switch (normalizeToolName(toolName)) {
+    case "shell": return Terminal
+    case "websearch": return Search
+    case "webfetch": return Globe
+    case "read": return FileText
+    case "write": return FilePen
+    case "edit": return FileEdit
+    case "grep": return ScanSearch
+    case "glob": return FolderSearch
+    case "codesearch": return Code2
+    case "skill": return Sparkles
+    default: {
+      const name = normalizeToolName(toolName)
+      if (name.includes("agent")) return Bot
+      return Wrench
+    }
+  }
+}
+
+function isAgentTool(toolName: string | undefined): boolean {
+  const name = normalizeToolName(toolName)
+  return name.includes("agent")
+}
+
 function formatToolDisplayName(toolName: string) {
   return toolName.replaceAll("_", " ")
 }
@@ -690,26 +1074,10 @@ function asRecord(value: unknown) {
   return value as Record<string, unknown>
 }
 
-function readRecordString(value: Record<string, unknown>, key: string) {
+function readRecordString(value: Record<string, unknown> | null, key: string) {
+  if (!value) return null
   const candidate = value[key]
   return typeof candidate === "string" ? candidate : null
 }
 
-function summarizeText(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return ""
-  }
 
-  const singleLine = trimmed.replace(/\s+/g, " ")
-  if (singleLine.length <= 120) {
-    return singleLine
-  }
-
-  return `${singleLine.slice(0, 117).trimEnd()}...`
-}
-
-function isToolMutating(toolName: string | undefined) {
-  const name = normalizeToolName(toolName)
-  return ["write", "edit", "shell", "skill"].includes(name)
-}
