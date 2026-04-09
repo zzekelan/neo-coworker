@@ -11,6 +11,8 @@ export {
   type CreateQueuedRunWithInitiatingMessageAndPartInput,
   type CreateRunInput,
   type CreateSessionInput,
+  type CreateSubSessionInput,
+  type CreateSubSessionWithRunInput,
   type SessionRepository,
   type StoredMessage,
   type StoredPart,
