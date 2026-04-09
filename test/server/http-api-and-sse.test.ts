@@ -1,7 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
+declare const afterEach: (fn: () => void | Promise<void>) => void
+declare const describe: (label: string, fn: () => void | Promise<void>) => void
+declare const expect: any
+declare const test: (label: string, fn: () => void | Promise<void>) => void
+
+declare const Bun: {
+  sleep(ms: number): Promise<void>
+  write(path: string, data: string): Promise<number>
+}
 
 import {
   createModelRuntimeApi,
@@ -212,6 +221,37 @@ describe("server HTTP API and SSE", () => {
         trigger: "prompt",
       }),
     ])
+  })
+
+  test("excludes sub-sessions from the session list API", async () => {
+    const harness = await createHarness("server-list-top-level-only", createTurnProvider([]))
+    const session = harness.repository.sessions.create({
+      id: "session_parent",
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: harness.now(),
+      updatedAt: harness.now(),
+    })
+    const subSession = harness.repository.sessions.create({
+      id: "session_child",
+      directory: join(harness.workspaceRoot, "sub-session"),
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: harness.now(),
+      updatedAt: harness.now(),
+      parentSessionId: session.id,
+    })
+
+    const listedSessions = await requestJson(harness.server, "GET", "/sessions")
+
+    expect(listedSessions.status).toBe(200)
+    expect(listedSessions.body.data.sessions).toHaveLength(1)
+    expect(listedSessions.body.data.sessions[0]).toMatchObject({
+      id: session.id,
+      latestRunStatus: null,
+    })
+    expect(listedSessions.body.data.sessions).not.toContainEqual(
+      expect.objectContaining({ id: subSession.id }),
+    )
   })
 
   test("starts a manual compaction command run and streams the compaction artifacts", async () => {
@@ -705,7 +745,7 @@ describe("server HTTP API and SSE", () => {
     const timeoutCalls: Array<{ request: Request; seconds: number }> = []
 
     const response = await harness.server.fetch(request, {
-      timeout(receivedRequest, seconds) {
+      timeout(receivedRequest: Request, seconds: number) {
         timeoutCalls.push({
           request: receivedRequest,
           seconds,
@@ -1794,6 +1834,8 @@ type SseEnvelope = {
   data: Record<string, any>
 }
 
+type Waiter = (value?: void | PromiseLike<void>) => void
+
 async function connectSse(server: { fetch(request: Request): Promise<Response> | Response }) {
   const response = await server.fetch(
     new Request("http://server.test/events", {
@@ -1812,14 +1854,14 @@ async function connectSse(server: { fetch(request: Request): Promise<Response> |
   const queue: SseEnvelope[] = []
   let buffer = ""
   let closed = false
-  let waiter: (() => void) | null = null
+  let waiter: Waiter | null = null
 
   const pump = (async () => {
     while (true) {
       const next = await reader.read()
       if (next.done) {
         closed = true
-        waiter?.()
+        notifyWaiter(waiter)
         waiter = null
         return
       }
@@ -1841,7 +1883,7 @@ async function connectSse(server: { fetch(request: Request): Promise<Response> |
         }
 
         queue.push(parsed)
-        waiter?.()
+        notifyWaiter(waiter)
         waiter = null
       }
     }
@@ -1879,6 +1921,12 @@ async function connectSse(server: { fetch(request: Request): Promise<Response> |
       await reader.cancel()
       await pump
     },
+  }
+}
+
+function notifyWaiter(waiter: Waiter | null) {
+  if (waiter !== null) {
+    waiter()
   }
 }
 

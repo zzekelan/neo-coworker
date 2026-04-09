@@ -669,7 +669,7 @@ export function createServerApp(input: {
         }
       },
       list() {
-        return repository.sessions.list().map((session) => ({
+        return repository.sessions.listTopLevel().map((session) => ({
           ...session,
           latestRunStatus: getLatestVisibleRunBySession(repository, session.id)?.status ?? null,
         }))
