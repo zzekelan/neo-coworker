@@ -68,6 +68,7 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
       ref={cardRef}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
       tabIndex={0}
       onKeyDown={(event) => {
         if (isSubmitting) {
@@ -84,7 +85,7 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
           void submitReply("deny")
         }
       }}
-      className="relative my-6 max-w-3xl overflow-hidden rounded-[12px] border border-border bg-surface px-[20px] py-[16px] shadow-sm"
+      className="relative my-6 max-w-3xl overflow-hidden rounded-xl border border-border bg-surface px-5 py-4 shadow-sm"
     >
       <div className={`absolute bottom-0 left-0 top-0 w-[3px] ${risk.colorClass}`} />
       

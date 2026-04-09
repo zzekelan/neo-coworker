@@ -70,7 +70,7 @@ const markdownComponents: Components = {
         href={href}
         target="_blank"
         rel="noreferrer"
-        className="text-highlight underline decoration-indigo-300 underline-offset-4 hover:text-highlight"
+        className="text-highlight underline decoration-highlight/40 underline-offset-4 hover:text-highlight"
       >
         {children}
       </a>
@@ -97,12 +97,12 @@ const markdownComponents: Components = {
   ),
   hr: () => <hr className="my-6 border-0 border-t border-border" />,
   table: ({ children }) => (
-    <div className="my-5 overflow-x-auto rounded-2xl border border-border bg-paper shadow-sm">
+    <div className="my-5 overflow-x-auto rounded-xl border border-border bg-paper shadow-sm">
       <table className="min-w-full border-collapse text-left text-sm text-ink">{children}</table>
     </div>
   ),
   thead: ({ children }) => <thead className="bg-paper text-ink">{children}</thead>,
-  tbody: ({ children }) => <tbody className="divide-y divide-zinc-200">{children}</tbody>,
+  tbody: ({ children }) => <tbody className="divide-y divide-border">{children}</tbody>,
   tr: ({ children }) => <tr className="align-top">{children}</tr>,
   th: ({ children }) => (
     <th className="border-b border-border px-4 py-3 text-xs font-semibold tracking-[0.08em] text-muted uppercase">
@@ -111,7 +111,7 @@ const markdownComponents: Components = {
   ),
   td: ({ children }) => <td className="px-4 py-3 leading-6 text-ink">{children}</td>,
   pre: ({ children }) => (
-    <pre className="my-4 overflow-x-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-ink shadow-sm selection:bg-highlight/30 selection:text-ink">
+    <pre className="my-4 overflow-x-auto rounded-xl border border-border bg-surface px-4 py-3 text-sm text-ink shadow-sm selection:bg-highlight/30 selection:text-ink">
       {children}
     </pre>
   ),
@@ -141,7 +141,7 @@ const markdownComponents: Components = {
           disabled={disabled}
           readOnly
           aria-label={Boolean(checked) ? "Completed task" : "Incomplete task"}
-          className="mt-1 h-4 w-4 shrink-0 rounded border-border text-ink accent-zinc-900"
+          className="mt-1 h-4 w-4 shrink-0 rounded border-border text-ink accent-ink"
         />
       )
     }

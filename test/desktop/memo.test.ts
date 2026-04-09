@@ -6,8 +6,8 @@ describe("desktop performance optimizations", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
     expect(source).toContain("export const Message = React.memo(MessageComponent)")
-    expect(source).toContain("const ToolActivityCard: React.FC<")
-    expect(source).toMatch(/const ToolActivityCard[\s\S]*?=\s*React\.memo\(/)
+    expect(source).toContain("const ToolIndicator: React.FC<")
+    expect(source).toMatch(/const ToolIndicator[\s\S]*?=\s*React\.memo\(/)
     expect(source).toMatch(/const ToolStatusBadge[\s\S]*?=\s*React\.memo\(/)
   })
 

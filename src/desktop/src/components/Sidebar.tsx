@@ -135,9 +135,17 @@ export function Sidebar({
       }
     }
 
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsWorkspaceMenuOpen(false)
+      }
+    }
+
     window.addEventListener("mousedown", handlePointerDown)
+    window.addEventListener("keydown", handleKeyDown)
     return () => {
       window.removeEventListener("mousedown", handlePointerDown)
+      window.removeEventListener("keydown", handleKeyDown)
     }
   }, [isWorkspaceMenuOpen])
 
@@ -200,7 +208,7 @@ export function Sidebar({
       )}
     >
       <div className="flex h-full w-64 flex-col border-r border-border bg-paper font-sans text-muted">
-        <div className="flex h-14 items-center justify-between border-b border-border bg-paper px-4 backdrop-blur-sm">
+        <div className="chrome-edge-bottom flex h-14 items-center justify-between bg-paper px-4 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface text-ink shadow-sm">
               <div className="flex items-center -space-x-[1px]">
@@ -214,6 +222,7 @@ export function Sidebar({
             onClick={onToggle}
             className="rounded-md p-1.5 text-accent transition-colors hover:bg-border hover:text-ink"
             title="Close Sidebar"
+            aria-label="Close Sidebar"
           >
             <PanelLeftClose className="h-5 w-5" />
           </button>
@@ -389,7 +398,9 @@ export function Sidebar({
             </div>
           </section>
 
-          <div ref={settingsPanelRef} className="relative mt-3">
+          <div className="mx-1 border-t border-border" />
+
+          <div ref={settingsPanelRef} className="relative z-40 mt-3">
             <SettingsPanel
               isOpen={isSettingsOpen}
               settings={settings}
@@ -404,27 +415,30 @@ export function Sidebar({
               onApplyLlmSettings={onApplyLlmSettings}
             />
 
-            <div className="flex items-end justify-between px-1 pt-2">
+            <div className="flex items-center justify-center pt-2">
               <button
                 type="button"
                 onClick={() => setIsSettingsOpen((previous) => !previous)}
                 aria-label={text.sidebar.settings}
                 aria-expanded={isSettingsOpen}
                 className={cn(
-                  "group flex h-10 w-10 items-center justify-center rounded-full border border-border bg-paper text-muted shadow-sm transition-all hover:-translate-y-0.5 hover:bg-paper hover:text-ink",
-                  isSettingsOpen && "border-border bg-paper text-ink shadow-lg",
+                  "rounded-lg p-2 text-accent transition-colors hover:bg-surface hover:text-ink",
+                  isSettingsOpen && "text-ink",
                 )}
               >
-                <Settings2 className={cn("h-4.5 w-4.5 transition-transform", isSettingsOpen && "rotate-45")} />
+                <Settings2 className={cn("h-5 w-5 transition-transform", isSettingsOpen && "rotate-45")} />
               </button>
-
-              <div className="flex flex-col items-end text-[11px] tracking-[0.08em] text-accent uppercase">
-                <span>{text.sidebar.desktop}</span>
-                <span className="mt-1">{isOnline ? text.sidebar.online : text.sidebar.offline}</span>
-              </div>
             </div>
           </div>
         </div>
+
+        {isSettingsOpen ? (
+          <div
+            className="fixed inset-0 z-30 bg-paper/40 backdrop-blur-[1px] transition-opacity"
+            onClick={() => setIsSettingsOpen(false)}
+            aria-hidden="true"
+          />
+        ) : null}
 
         {sessionContextMenu && contextMenuSession ? (
           <div
@@ -465,6 +479,7 @@ function SessionListItem(input: {
     <button
       onClick={input.onSelect}
       onContextMenu={input.onOpenContextMenu}
+      aria-current={input.isActive ? "page" : undefined}
       className={cn(
         "group flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
         input.isActive
@@ -482,13 +497,10 @@ function SessionListItem(input: {
         <span className="min-w-0 flex-1 truncate">{input.session.title || "Untitled Session"}</span>
         {badge ? (
           <span
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
-              badge.className,
-            )}
+            className={cn("inline-flex shrink-0", badge.className)}
+            title={badge.label}
           >
-            <badge.icon className={cn("h-3 w-3", badge.iconClassName)} />
-            {badge.label}
+            <badge.icon className={cn("h-3.5 w-3.5", badge.iconClassName)} />
           </span>
         ) : null}
       </div>
@@ -503,7 +515,7 @@ function getSessionStatusBadge(
   if (status === "running") {
     return {
       label: text.sidebar.running,
-      className: "border-highlight/30 bg-highlight/10 text-highlight",
+      className: "text-highlight",
       icon: Loader2,
       iconClassName: "animate-spin",
     }
@@ -512,7 +524,7 @@ function getSessionStatusBadge(
   if (status === "waiting_permission") {
     return {
       label: text.sidebar.waiting,
-      className: "border-amber-500/30 bg-amber-500/10 text-amber-500",
+      className: "text-highlight",
       icon: ShieldAlert,
       iconClassName: "",
     }
@@ -521,7 +533,7 @@ function getSessionStatusBadge(
   if (status === "failed") {
     return {
       label: text.sidebar.failed,
-      className: "border-danger bg-danger/10 text-danger",
+      className: "text-danger",
       icon: AlertCircle,
       iconClassName: "",
     }

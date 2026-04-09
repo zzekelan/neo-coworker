@@ -6,8 +6,8 @@ describe("desktop permission request", () => {
     const source = readFileSync("src/desktop/src/components/PermissionRequest.tsx", "utf8")
 
     expect(source).toContain("border-border bg-surface")
-    expect(source).toContain("px-[20px] py-[16px]")
-    expect(source).toContain("rounded-[12px]")
+    expect(source).toContain("px-5 py-4")
+    expect(source).toContain("rounded-xl")
 
     expect(source).toContain("font-semibold text-ink")
     expect(source).toContain("{request.toolName}")

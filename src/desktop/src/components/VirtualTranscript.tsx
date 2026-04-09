@@ -101,7 +101,7 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
   )
 
   return (
-    <div className={cn("relative flex-1", className)}>
+    <div className={cn("relative min-h-0 flex-1", className)}>
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
@@ -161,10 +161,10 @@ const ScrollToBottomButton = React.memo(function ScrollToBottomButton({
       onClick={onClick}
       aria-label="Scroll to bottom"
       className={cn(
-        "absolute bottom-4 left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center",
-        "rounded-full bg-accent text-paper shadow-md",
-        "transition-opacity duration-150 ease-out",
-        visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+        "absolute bottom-36 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center",
+        "rounded-full border border-border bg-surface text-ink shadow-lg",
+        "transition-all duration-200 ease-out hover:bg-surface-hover hover:shadow-xl",
+        visible ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0",
       )}
     >
       <ChevronDown className="h-4 w-4" />

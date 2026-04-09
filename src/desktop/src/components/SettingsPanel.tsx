@@ -72,7 +72,7 @@ export function SettingsPanel({
     <div
       aria-hidden={!isOpen}
       className={cn(
-        "absolute bottom-14 left-0 z-30 h-[36rem] w-[min(38rem,calc(100vw-2rem))] origin-bottom-left overflow-hidden rounded-[1.55rem] border border-border bg-paper shadow-[0_24px_60px_rgba(24,24,27,0.18)] backdrop-blur-xl transition-all duration-200 ease-out",
+        "absolute bottom-14 left-0 z-30 h-[36rem] w-[min(38rem,calc(100vw-2rem))] origin-bottom-left overflow-hidden rounded-[1.55rem] border border-border bg-paper shadow-[0_24px_60px_rgba(18,17,14,0.18)] backdrop-blur-xl transition-all duration-200 ease-out",
         isOpen
           ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
           : "pointer-events-none translate-y-3 scale-[0.985] opacity-0",
@@ -101,9 +101,9 @@ export function SettingsPanel({
                 type="button"
                 onClick={() => setActiveSection(section.id)}
                 className={cn(
-                  "w-full rounded-2xl border px-3 py-3 text-left transition-all",
+                  "w-full rounded-xl border px-3 py-3 text-left transition-all",
                   activeSection === section.id
-                    ? "border-border bg-paper text-ink shadow-[0_10px_24px_rgba(24,24,27,0.08)]"
+                    ? "border-border bg-paper text-ink shadow-[0_10px_24px_rgba(18,17,14,0.08)]"
                     : "border-transparent text-muted hover:border-border hover:bg-paper hover:text-ink",
                 )}
               >
@@ -208,19 +208,19 @@ export function SettingsPanel({
 
             <div className="mt-5 space-y-3">
               {activeSection === "llm" && serverMode !== "managed-local" ? (
-                <p className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-500">
+                <p className="rounded-xl border border-highlight/30 bg-highlight/10 px-3 py-2.5 text-xs leading-relaxed text-highlight">
                   {text.settings.externalHint}
                 </p>
               ) : null}
 
               {activeSection === "llm" && hasBusySession ? (
-                <p className="rounded-2xl border border-highlight/30 bg-highlight/10 px-3 py-2.5 text-xs leading-relaxed text-highlight">
+                <p className="rounded-xl border border-highlight/30 bg-highlight/10 px-3 py-2.5 text-xs leading-relaxed text-highlight">
                   {text.settings.stopRunsFirst}
                 </p>
               ) : null}
 
               {errorMessage ? (
-                <p className="rounded-2xl border border-danger bg-danger/10 px-3 py-2.5 text-xs leading-relaxed text-danger">
+                <p className="rounded-xl border border-danger bg-danger/10 px-3 py-2.5 text-xs leading-relaxed text-danger">
                   {errorMessage}
                 </p>
               ) : null}
@@ -234,7 +234,7 @@ export function SettingsPanel({
               onClick={() =>
                 void (isGeneralSection ? onApplyGeneralSettings() : onApplyLlmSettings())
               }
-              className="rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-ink shadow-[0_12px_24px_rgba(24,24,27,0.18)] transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-paper shadow-[0_12px_24px_rgba(18,17,14,0.18)] transition-colors hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-ink disabled:hover:text-paper"
             >
               {isApplying
                 ? text.settings.applying
@@ -252,7 +252,7 @@ export function SettingsPanel({
           successMessage ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
         )}
       >
-        <div className="rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-center text-sm leading-relaxed text-success shadow-[0_16px_30px_rgba(34,197,94,0.12)] backdrop-blur-sm">
+        <div className="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-center text-sm leading-relaxed text-success shadow-[0_16px_30px_color-mix(in_srgb,var(--color-success)_12%,transparent)] backdrop-blur-sm">
           {successMessage === "general-applied"
             ? text.settings.appliedGeneral
             : text.settings.appliedLlm}
@@ -290,7 +290,7 @@ function Field(input: {
 
 function fieldClassName(disabled: boolean) {
   return cn(
-    "h-11 w-full rounded-2xl border border-border bg-paper px-3.5 text-sm text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none transition-colors focus:border-border focus:ring-2 focus:ring-border",
+    "h-11 w-full rounded-lg border border-border bg-paper px-3.5 text-sm text-ink shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-ink)_8%,transparent)] outline-none transition-colors focus:border-border focus:ring-2 focus:ring-border",
     disabled && "cursor-not-allowed bg-surface text-accent shadow-none",
   )
 }
@@ -355,7 +355,7 @@ function SettingsSelect<T extends string>(input: {
 
       <div
         className={cn(
-          "absolute top-[calc(100%+0.5rem)] left-0 right-0 z-20 origin-top overflow-hidden rounded-2xl border border-border bg-paper p-1.5 shadow-[0_16px_36px_rgba(24,24,27,0.12)] backdrop-blur-sm transition-all duration-150",
+          "absolute top-[calc(100%+0.5rem)] left-0 right-0 z-20 origin-top overflow-hidden rounded-xl border border-border bg-paper p-1.5 shadow-[0_16px_36px_rgba(18,17,14,0.12)] backdrop-blur-sm transition-all duration-150",
           isOpen ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none -translate-y-1 opacity-0",
         )}
       >

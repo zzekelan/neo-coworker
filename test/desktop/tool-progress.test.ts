@@ -35,22 +35,22 @@ describe("Tool Progress UI (Source Analysis)", () => {
     expect(cssSource).toContain("animation: breathe 2s ease-in-out infinite")
   })
 
-  test("should have vertical breathing line in ToolActivityCard for pending status", () => {
-    expect(messageSource).toContain("w-[2px]")
-    expect(messageSource).toContain("animate-breathe bg-accent")
-    expect(messageSource).toContain("bg-success opacity-100")
-    expect(messageSource).toContain("bg-danger")
+  test("should define typing-dot keyframes in CSS for thinking indicator", () => {
+    expect(cssSource).toContain("@keyframes typing-dot")
+    expect(cssSource).toContain(".animate-typing-dot")
+    expect(cssSource).toContain("animation: typing-dot")
   })
 
-  test("should extract progress text to subtitle in ToolActivityCard", () => {
+  test("should have status indicators in ToolIndicator for pending status", () => {
+    expect(messageSource).toContain("animate-breathe bg-highlight")
+    expect(messageSource).toContain("text-success")
+    expect(messageSource).toContain("text-danger")
+  })
+
+  test("should extract progress text to subtitle in ToolIndicator", () => {
     expect(messageSource).toContain("part.progress ?? describeToolCallSummary")
   })
 
-  test("should classify tools correctly as mutating or read-only", () => {
-    expect(messageSource).toContain("isToolMutating")
-    expect(messageSource).toContain("bg-highlight/10 text-highlight")
-    expect(messageSource).toContain("bg-surface text-muted")
-  })
 
   test("should define ToolProgressEvent type", () => {
     expect(typesSource).toContain('type: "tool.progress"')

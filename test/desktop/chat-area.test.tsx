@@ -87,7 +87,7 @@ describe("desktop chat area", () => {
     expect(source).toContain("const isHigh = percent >= 80")
     expect(source).toContain("const isCritical = percent >= 95")
     expect(source).toContain("bg-danger")
-    expect(source).toContain("bg-amber-500")
+    expect(source).toContain("bg-highlight")
     expect(source).toContain("bg-accent")
     expect(source).toContain("text.chat.contextUsed(percent)")
     expect(source).toContain("style={{ width: `${percent}%` }}")

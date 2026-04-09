@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode } from "react"
-import { Loader2, Sparkles, Star, Zap } from "lucide-react"
+import { Loader2, Star, Zap } from "lucide-react"
 import type { DesktopSession, DesktopRun, DesktopSkillCatalogEntry } from "../view-types"
 import { cn } from "../lib/utils"
 import { useDesktopText } from "../i18n"
@@ -36,23 +36,18 @@ export function SkillPanel({
   const filteredSkills = filterSkillCatalog(skills, query)
 
   return (
-    <div className="mb-3 overflow-hidden rounded-[1.35rem] border border-border bg-paper shadow-[0_18px_48px_rgba(24,24,27,0.1)]">
+    <div className="mb-3 overflow-hidden rounded-[1.35rem] border border-border bg-paper shadow-[0_18px_48px_rgba(18,17,14,0.1)]">
       <div className="border-b border-border bg-paper px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-ink">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-border bg-paper text-ink shadow-sm">
-            <Sparkles className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <p>{text.skillPanel.title}</p>
-            <p className="truncate text-xs font-normal text-muted">
-              {text.skillPanel.subtitle}
-            </p>
-          </div>
+        <div className="min-w-0 text-sm font-medium text-ink">
+          <p>{text.skillPanel.title}</p>
+          <p className="truncate text-xs font-normal text-muted">
+            {text.skillPanel.subtitle}
+          </p>
         </div>
       </div>
 
       {warningMessage ? (
-        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-500">
+        <div className="border-b border-highlight/30 bg-highlight/10 px-4 py-2 text-sm text-highlight">
           {warningMessage}
         </div>
       ) : null}
@@ -69,7 +64,7 @@ export function SkillPanel({
 
       <div className="max-h-72 overflow-y-auto p-2">
         {filteredSkills.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-paper px-4 py-6 text-sm text-muted">
+          <div className="rounded-xl border border-dashed border-border bg-paper px-4 py-6 text-sm text-muted">
             {skills.length === 0
               ? text.skillPanel.noWorkspaceSkills
               : text.skillPanel.noFilteredSkills}
@@ -87,7 +82,7 @@ export function SkillPanel({
               return (
                 <div
                   key={skill.path}
-                  className="rounded-2xl border border-border bg-paper px-4 py-3"
+                  className="rounded-xl border border-border bg-paper px-4 py-3"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -166,7 +161,7 @@ function Badge(input: {
         "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
         input.tone === "active"
           ? "border-success/30 bg-success/10 text-success"
-          : "border-amber-500/30 bg-amber-500/10 text-amber-500",
+          : "border-highlight/30 bg-highlight/10 text-highlight",
       )}
     >
       <Icon className="h-3 w-3" />
@@ -187,10 +182,10 @@ function ActionButton(input: {
       disabled={input.disabled}
       onClick={input.onClick}
       className={cn(
-        "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        input.tone === "primary" && "border-border bg-ink text-ink hover:bg-surface",
+        "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        input.tone === "primary" && "border-border bg-ink text-paper hover:bg-surface hover:text-ink disabled:hover:bg-ink disabled:hover:text-paper",
         input.tone === "secondary" && "border-border bg-paper text-ink hover:bg-surface",
-        input.tone === "ghost" && "border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20",
+        input.tone === "ghost" && "border-highlight/30 bg-highlight/10 text-highlight hover:bg-highlight/20",
       )}
     >
       {input.children}

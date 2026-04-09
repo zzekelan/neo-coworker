@@ -38,6 +38,15 @@ type DesktopText = {
     contextUsed(percent: number): string
     sessionCompacted: string
     compactionSaved(tokensBefore: number, tokensAfter: number): string
+    send: string
+    newLine: string
+    runStatusRunning: string
+    runStatusWaiting: string
+    runStatusFailed: string
+    runStatusCancelled: string
+    copied: string
+    copyMessage: string
+    clipboardUnavailable: string
   }
   skillPanel: {
     title: string
@@ -123,6 +132,30 @@ type DesktopText = {
     findingMatches(query: string): string
     returnedItems(count: number): string
     returnedNamedItems(count: number, singular: string, plural: string): string
+    completedRead(detail: string): string
+    completedReadFallback: string
+    completedWrote(detail: string): string
+    completedWroteFallback: string
+    completedEdited(detail: string): string
+    completedEditedFallback: string
+    completedRan(detail: string): string
+    completedRanFallback: string
+    completedSearched(detail: string): string
+    completedSearchedFallback: string
+    completedFetched(detail: string): string
+    completedFetchedFallback: string
+    completedCodeSearch(detail: string): string
+    completedCodeSearchFallback: string
+    completedScanned(detail: string): string
+    completedScannedFallback: string
+    completedFound(detail: string): string
+    completedFoundFallback: string
+    completedAgent(detail: string): string
+    completedAgentFallback: string
+    completedGenericTool(name: string, detail: string): string
+    completedSkills: string
+    cancelledSuffix: string
+    failedSuffix: string
   }
   settings: {
     title: string
