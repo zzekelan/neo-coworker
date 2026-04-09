@@ -15,6 +15,16 @@ export const BUILTIN_AGENTS: Record<string, AgentProfile> = {
     parallel: true,
     skills: [],
   },
+  websearch: {
+    name: "websearch",
+    description: "Web research agent for searching and fetching online information",
+    tools: [
+      "websearch",
+      "webfetch",
+    ],
+    parallel: true,
+    skills: [],
+  },
 }
 
 export function getBuiltinAgent(name: string): AgentProfile | undefined {

@@ -106,10 +106,14 @@ export function createAgentTool(config: {
   createSubAgentRun: (profile: AgentProfile, prompt: string, signal?: AbortSignal) => Promise<string>
   currentDepth: number
 }) {
+  const builtinSummary = Object.values(BUILTIN_AGENTS)
+    .map((a) => `${a.name} (${a.description ?? "no description"})`)
+    .join(", ")
+
   return {
     name: "agent",
     description:
-      "Delegate focused work to a named sub-agent when you need isolated codebase exploration, parallel research, or a constrained specialist workflow with a specific tool budget.",
+      `Delegate focused work to a named sub-agent when you need isolated codebase exploration, parallel research, or a constrained specialist workflow with a specific tool budget. Built-in agents: ${builtinSummary}.`,
     inputSchema: AgentToolArgsSchema,
     concurrency: "read-only" as const,
     isConcurrencySafe(input: unknown) {
