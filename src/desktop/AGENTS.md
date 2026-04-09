@@ -32,7 +32,7 @@ node ./scripts/desktop-user-path-check.mjs
 - **Theme System**: CSS-variable-based theme system using Linear-inspired naming (e.g., `--color-paper`, `--color-ink`, `--color-accent`, `--color-surface`).
 - **UI Performance**:
   - Use `useVirtualizer` (ResizeObserver-based virtual scrolling) for long lists like the chat transcript.
-  - Wrap high-frequency components (`Message`, `ToolActivityCard`, `MarkdownText`) in `React.memo`.
+  - Wrap high-frequency components (`Message`, `ToolIndicator`, `MarkdownText`) in `React.memo`.
   - Use `React.lazy` for heavy components like `MarkdownText` with `Suspense` and pulse placeholders.
 - **Accessibility**: Wrap the application in `KeyboardShortcutProvider` for global shortcuts (e.g., Cmd+K for `CommandPalette`).
 - **Resilience**: Chat area and individual messages are wrapped in `ErrorBoundary` to prevent total UI failure.
