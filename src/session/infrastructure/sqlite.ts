@@ -318,6 +318,15 @@ const sessionMigrations = [
       `,
     ],
   },
+  {
+    version: 9,
+    statements: [
+      `
+        ALTER TABLE session
+        ADD COLUMN parent_session_id TEXT REFERENCES session(id) ON DELETE CASCADE
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {
