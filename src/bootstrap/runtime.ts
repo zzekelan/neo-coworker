@@ -501,7 +501,7 @@ function createToolPortFactory(config: {
                   },
                 },
                 signal,
-                createQueuedRun({ subRunId, sessionId, prompt, activeSkills, createdAt }) {
+                createQueuedRun({ subRunId, sessionId, prompt, activeSkills, createdAt, parentRunId }) {
                   config.repository.createQueuedRunWithInitiatingMessageAndPart({
                     run: {
                       id: subRunId,
@@ -509,6 +509,7 @@ function createToolPortFactory(config: {
                       trigger: "prompt",
                       createdAt,
                       activeSkills,
+                      parentRunId,
                     },
                     message: {
                       sequence: 0,

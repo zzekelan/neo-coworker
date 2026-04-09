@@ -37,6 +37,7 @@ export type StoredRun = {
   inputTokens: number
   outputTokens: number
   tokenUsageSource: RunTokenUsageSource | null
+  parentRunId: string | null
 }
 
 export function normalizeRunActiveSkills(activeSkills: readonly string[] | null | undefined) {

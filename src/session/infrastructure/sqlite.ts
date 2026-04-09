@@ -309,6 +309,15 @@ const sessionMigrations = [
       `,
     ],
   },
+  {
+    version: 8,
+    statements: [
+      `
+        ALTER TABLE run
+        ADD COLUMN parent_run_id TEXT
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {
@@ -395,7 +404,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
   function getRunRow(runId: string) {
     return database
       .query(
-        "SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text, active_skills_json, input_tokens, output_tokens, token_usage_source FROM run WHERE id = ?",
+        "SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text, active_skills_json, input_tokens, output_tokens, token_usage_source, parent_run_id FROM run WHERE id = ?",
       )
       .get(runId) as RunRow | null
   }
@@ -405,7 +414,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
-            , active_skills_json, input_tokens, output_tokens, token_usage_source
+            , active_skills_json, input_tokens, output_tokens, token_usage_source, parent_run_id
           FROM run
           WHERE session_id = ?
           ORDER BY created_at ASC, session_sequence ASC
@@ -419,7 +428,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
-            , active_skills_json, input_tokens, output_tokens, token_usage_source
+            , active_skills_json, input_tokens, output_tokens, token_usage_source, parent_run_id
           FROM run
           WHERE session_id = ?
           ORDER BY created_at DESC, session_sequence DESC
@@ -434,7 +443,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .query(
         `
           SELECT id, session_id, trigger, status, created_at, session_sequence, started_at, finished_at, error_text
-            , active_skills_json, input_tokens, output_tokens, token_usage_source
+            , active_skills_json, input_tokens, output_tokens, token_usage_source, parent_run_id
           FROM run
           WHERE session_id = ? AND status IN (${activeRunStatusCheck})
           ORDER BY created_at DESC, session_sequence DESC
@@ -627,6 +636,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         inputTokens: run.inputTokens ?? 0,
         outputTokens: run.outputTokens ?? 0,
         tokenUsageSource: run.tokenUsageSource ?? null,
+        parentRunId: run.parentRunId ?? null,
       }
 
       database
@@ -644,8 +654,9 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
               active_skills_json,
               input_tokens,
               output_tokens,
-              token_usage_source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              token_usage_source,
+              parent_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -661,6 +672,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           record.inputTokens,
           record.outputTokens,
           record.tokenUsageSource,
+          record.parentRunId,
         )
 
       return record

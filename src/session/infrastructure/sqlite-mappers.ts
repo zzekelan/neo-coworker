@@ -35,6 +35,7 @@ export type RunRow = {
   input_tokens: number
   output_tokens: number
   token_usage_source: RunTokenUsageSource | null
+  parent_run_id: string | null
 }
 
 export type MessageRow = {
@@ -103,6 +104,7 @@ export function mapRunRow(row: RunRow): StoredRun {
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
     tokenUsageSource: row.token_usage_source,
+    parentRunId: row.parent_run_id,
   }
 }
 

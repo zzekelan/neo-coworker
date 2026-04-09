@@ -49,6 +49,7 @@ export type StoredRun = {
   inputTokens: number
   outputTokens: number
   tokenUsageSource: RunTokenUsageSource | null
+  parentRunId: string | null
 }
 
 export type StoredMessage = {
@@ -110,6 +111,7 @@ export type CreateRunInput = {
   inputTokens?: number
   outputTokens?: number
   tokenUsageSource?: RunTokenUsageSource | null
+  parentRunId?: string | null
 }
 
 export type UpdateRunStatusInput = {

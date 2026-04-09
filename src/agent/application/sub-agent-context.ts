@@ -55,6 +55,7 @@ export type CreateSubAgentRunInput = {
     prompt: string
     activeSkills: string[]
     createdAt: number
+    parentRunId: string
   }): void
   runtimeObserver?: AgentRuntimeObserverPort
   now?: () => number
@@ -133,6 +134,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     prompt: input.prompt,
     activeSkills,
     createdAt: now(),
+    parentRunId: input.parentRunId,
   })
 
   const systemPrompt = input.buildAgentAwarePrompt(input.profile)
