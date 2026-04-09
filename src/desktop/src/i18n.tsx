@@ -18,6 +18,9 @@ type DesktopText = {
     running: string
     waiting: string
     failed: string
+    today: string
+    yesterday: string
+    earlier: string
   }
   chat: {
     selectSession: string
@@ -167,6 +170,9 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       running: "Running",
       waiting: "Waiting",
       failed: "Failed",
+      today: "Today",
+      yesterday: "Yesterday",
+      earlier: "Earlier",
     },
     chat: {
       selectSession: "Select a session to start",
@@ -189,6 +195,15 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
         const saved = tokensBefore - tokensAfter
         return `${saved.toLocaleString()} tokens freed`
       },
+      send: "Send",
+      newLine: "New line",
+      runStatusRunning: "Running",
+      runStatusWaiting: "Waiting",
+      runStatusFailed: "Failed",
+      runStatusCancelled: "Cancelled",
+      copied: "Copied!",
+      copyMessage: "Copy message",
+      clipboardUnavailable: "Clipboard unavailable",
     },
     skillPanel: {
       title: "Skills",
@@ -298,6 +313,30 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       returnedNamedItems(count: number, singular: string, plural: string) {
         return count === 1 ? `Returned 1 ${singular}.` : `Returned ${count} ${plural}.`
       },
+      completedRead(detail: string) { return `Read ${detail}` },
+      completedReadFallback: "Read file",
+      completedWrote(detail: string) { return `Wrote ${detail}` },
+      completedWroteFallback: "Wrote file",
+      completedEdited(detail: string) { return `Edited ${detail}` },
+      completedEditedFallback: "Edited file",
+      completedRan(detail: string) { return `Ran ${detail}` },
+      completedRanFallback: "Ran command",
+      completedSearched(detail: string) { return `Searched "${detail}"` },
+      completedSearchedFallback: "Searched the web",
+      completedFetched(detail: string) { return `Fetched ${detail}` },
+      completedFetchedFallback: "Fetched webpage",
+      completedCodeSearch(detail: string) { return `Found ${detail}` },
+      completedCodeSearchFallback: "Searched codebase",
+      completedScanned(detail: string) { return `Scanned ${detail}` },
+      completedScannedFallback: "Scanned files",
+      completedFound(detail: string) { return `Found ${detail}` },
+      completedFoundFallback: "Found matching files",
+      completedAgent(detail: string) { return `Agent: ${detail}` },
+      completedAgentFallback: "Ran agent",
+      completedGenericTool(name: string, detail: string) { return `${name}: ${detail}` },
+      completedSkills: "Updated skills",
+      cancelledSuffix: "(cancelled)",
+      failedSuffix: "failed",
     },
     settings: {
       title: "Settings",
@@ -343,6 +382,9 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       running: "运行中",
       waiting: "等待授权",
       failed: "失败",
+      today: "今天",
+      yesterday: "昨天",
+      earlier: "更早",
     },
     chat: {
       selectSession: "选择一个会话开始",
@@ -365,6 +407,15 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
         const saved = tokensBefore - tokensAfter
         return `释放了 ${saved.toLocaleString()} 个 token`
       },
+      send: "发送",
+      newLine: "换行",
+      runStatusRunning: "运行中",
+      runStatusWaiting: "等待中",
+      runStatusFailed: "失败",
+      runStatusCancelled: "已取消",
+      copied: "已复制！",
+      copyMessage: "复制消息",
+      clipboardUnavailable: "剪贴板不可用",
     },
     skillPanel: {
       title: "技能",
@@ -474,6 +525,30 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       returnedNamedItems(count: number, singular: string, plural: string) {
         return count === 1 ? `返回了 1 个${singular}。` : `返回了 ${count} 个${plural}。`
       },
+      completedRead(detail: string) { return `读取了 ${detail}` },
+      completedReadFallback: "读取了文件",
+      completedWrote(detail: string) { return `写入了 ${detail}` },
+      completedWroteFallback: "写入了文件",
+      completedEdited(detail: string) { return `编辑了 ${detail}` },
+      completedEditedFallback: "编辑了文件",
+      completedRan(detail: string) { return `运行了 ${detail}` },
+      completedRanFallback: "运行了命令",
+      completedSearched(detail: string) { return `搜索了"${detail}"` },
+      completedSearchedFallback: "搜索了网页",
+      completedFetched(detail: string) { return `获取了 ${detail}` },
+      completedFetchedFallback: "获取了网页",
+      completedCodeSearch(detail: string) { return `搜索了 ${detail}` },
+      completedCodeSearchFallback: "搜索了代码库",
+      completedScanned(detail: string) { return `扫描了 ${detail}` },
+      completedScannedFallback: "扫描了文件",
+      completedFound(detail: string) { return `找到了 ${detail}` },
+      completedFoundFallback: "找到了匹配文件",
+      completedAgent(detail: string) { return `代理: ${detail}` },
+      completedAgentFallback: "运行了代理",
+      completedGenericTool(name: string, detail: string) { return `${name}: ${detail}` },
+      completedSkills: "更新了技能",
+      cancelledSuffix: "（已取消）",
+      failedSuffix: "失败",
     },
     settings: {
       title: "设置",

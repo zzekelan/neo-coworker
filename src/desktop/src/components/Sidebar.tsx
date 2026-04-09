@@ -18,6 +18,38 @@ import { isBusyRunStatus, shouldBlockSettingsApplyFromBusyState } from "../busy-
 import { SettingsPanel } from "./SettingsPanel"
 import { hasVisibleWorkspaceSelect } from "./sidebar-workspace-state"
 
+type DateGroup = { label: string; sessions: DesktopSession[] }
+
+function groupSessionsByDate(
+  sessions: DesktopSession[],
+  text: ReturnType<typeof useDesktopText>,
+): DateGroup[] {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today.getTime() - 86_400_000)
+
+  const groups: DateGroup[] = []
+  const todaySessions: DesktopSession[] = []
+  const yesterdaySessions: DesktopSession[] = []
+  const earlierSessions: DesktopSession[] = []
+
+  for (const session of sessions) {
+    const created = new Date(session.createdAt)
+    if (created >= today) todaySessions.push(session)
+    else if (created >= yesterday) yesterdaySessions.push(session)
+    else earlierSessions.push(session)
+  }
+
+  if (todaySessions.length > 0)
+    groups.push({ label: text.sidebar.today, sessions: todaySessions })
+  if (yesterdaySessions.length > 0)
+    groups.push({ label: text.sidebar.yesterday, sessions: yesterdaySessions })
+  if (earlierSessions.length > 0)
+    groups.push({ label: text.sidebar.earlier, sessions: earlierSessions })
+
+  return groups
+}
+
 interface SidebarProps {
   workspaces: DesktopWorkspace[]
   activeWorkspaceRoot: string | null
@@ -90,6 +122,7 @@ export function Sidebar({
     workspaces,
   })
   const text = useDesktopText()
+  const sessionGroups = groupSessionsByDate(sessions, text)
 
   useEffect(() => {
     if (!isWorkspaceMenuOpen) {
@@ -320,29 +353,39 @@ export function Sidebar({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-1">
-              <div className="space-y-1">
-                {sessions.map((session) => (
-                  <SessionListItem
-                    key={session.id}
-                    session={session}
-                    isActive={activeSessionId === session.id}
-                    onSelect={() => setActiveSessionId(session.id)}
-                    onOpenContextMenu={(event) => {
-                      event.preventDefault()
-                      setSessionContextMenu({
-                        sessionId: session.id,
-                        x: event.clientX,
-                        y: event.clientY,
-                      })
-                    }}
-                  />
-                ))}
-                {sessions.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border bg-paper px-3 py-4 text-xs italic text-muted">
-                    {text.sidebar.noSessions}
-                  </div>
-                ) : null}
-              </div>
+              {sessionGroups.length > 0 ? (
+                <div className="space-y-3">
+                  {sessionGroups.map((group) => (
+                    <div key={group.label}>
+                      <div className="mb-1.5 px-1 text-[10px] font-medium tracking-widest text-accent/60 uppercase">
+                        {group.label}
+                      </div>
+                      <div className="space-y-1">
+                        {group.sessions.map((session) => (
+                          <SessionListItem
+                            key={session.id}
+                            session={session}
+                            isActive={activeSessionId === session.id}
+                            onSelect={() => setActiveSessionId(session.id)}
+                            onOpenContextMenu={(event) => {
+                              event.preventDefault()
+                              setSessionContextMenu({
+                                sessionId: session.id,
+                                x: event.clientX,
+                                y: event.clientY,
+                              })
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border bg-paper px-3 py-4 text-xs italic text-muted">
+                  {text.sidebar.noSessions}
+                </div>
+              )}
             </div>
           </section>
 

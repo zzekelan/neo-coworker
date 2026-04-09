@@ -135,6 +135,7 @@ export default function App() {
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             errorMessage={errorMessage}
             skillWarningMessage={skillWarningMessage}
+            modelName={desktopSettings.settings.model || undefined}
           />
         </div>
         <CommandPalette />
