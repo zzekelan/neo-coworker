@@ -426,10 +426,10 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             updated_at,
             latest_user_message_preview,
             active_skills_json,
-            parent_session_id
+           parent_session_id
           FROM session
           WHERE parent_session_id IS NULL
-          ORDER BY created_at ASC, id ASC
+          ORDER BY updated_at DESC, id ASC
         `,
       )
       .all() as SessionRow[]

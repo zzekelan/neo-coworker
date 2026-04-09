@@ -213,7 +213,7 @@ describe("storage repository", () => {
     })
   })
 
-  test("stores parentSessionId and lists sub-sessions separately from top-level sessions", () => {
+  test("lists top-level sessions by updatedAt desc, keeps list() unchanged, and filters direct sub-sessions by parent", () => {
     const { repository } = createTestRepository("sub-session-crud")
 
     const parentA = repository.sessions.create({
@@ -221,6 +221,7 @@ describe("storage repository", () => {
       directory: "/workspace",
       workspaceRoot: "/workspace",
       createdAt: 1,
+      updatedAt: 20,
     })
     const childA = repository.sessions.create({
       id: "session_child_a",
@@ -234,6 +235,7 @@ describe("storage repository", () => {
       directory: "/workspace",
       workspaceRoot: "/workspace",
       createdAt: 3,
+      updatedAt: 40,
     })
     const childB = repository.sessions.create({
       id: "session_child_b",
@@ -249,6 +251,13 @@ describe("storage repository", () => {
       createdAt: 5,
       parentSessionId: parentB.id,
     })
+    repository.sessions.create({
+      id: "session_grandchild",
+      directory: "/workspace/sub-a/grandchild",
+      workspaceRoot: "/workspace",
+      createdAt: 6,
+      parentSessionId: childA.id,
+    })
 
     expect(childA.parentSessionId).toBe(parentA.id)
     expect(repository.sessions.get(childA.id)).toMatchObject({
@@ -259,18 +268,72 @@ describe("storage repository", () => {
       "session_child_a",
       "session_child_b",
     ])
+    expect(repository.sessions.listSubSessions(parentB.id).map((session) => session.id)).toEqual([
+      "session_other_child",
+    ])
     expect(repository.sessions.listTopLevel().map((session) => session.id)).toEqual([
-      "session_parent_a",
       "session_parent_b",
+      "session_parent_a",
+    ])
+    expect(repository.sessions.list().map((session) => session.id)).toEqual([
+      "session_parent_a",
+      "session_child_a",
+      "session_parent_b",
+      "session_child_b",
+      "session_other_child",
+      "session_grandchild",
     ])
     expect(repository.sessions.listTopLevel()).toEqual([
-      expect.objectContaining({ id: parentA.id, parentSessionId: undefined }),
       expect.objectContaining({ id: parentB.id, parentSessionId: undefined }),
+      expect.objectContaining({ id: parentA.id, parentSessionId: undefined }),
     ])
     expect(repository.sessions.listSubSessions(parentA.id)).toEqual([
       expect.objectContaining({ id: childA.id, parentSessionId: parentA.id }),
       expect.objectContaining({ id: childB.id, parentSessionId: parentA.id }),
     ])
+  })
+
+  test("listTopLevel returns all sessions when no sub-sessions exist and listSubSessions returns an empty array", () => {
+    const { repository } = createTestRepository("sub-session-listing-edge")
+
+    const sessionA = repository.sessions.create({
+      id: "session_a",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+      updatedAt: 10,
+    })
+    const sessionB = repository.sessions.create({
+      id: "session_b",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 2,
+      updatedAt: 30,
+    })
+    const sessionC = repository.sessions.create({
+      id: "session_c",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 3,
+      updatedAt: 20,
+    })
+
+    expect(repository.sessions.listTopLevel().map((session) => session.id)).toEqual([
+      "session_b",
+      "session_c",
+      "session_a",
+    ])
+    expect(repository.sessions.listTopLevel()).toEqual([
+      expect.objectContaining({ id: sessionB.id, parentSessionId: undefined }),
+      expect.objectContaining({ id: sessionC.id, parentSessionId: undefined }),
+      expect.objectContaining({ id: sessionA.id, parentSessionId: undefined }),
+    ])
+    expect(repository.sessions.list().map((session) => session.id)).toEqual([
+      "session_a",
+      "session_b",
+      "session_c",
+    ])
+    expect(repository.sessions.listSubSessions(sessionA.id)).toEqual([])
   })
 
   test("creates a sub-session with its queued run and initiating transcript atomically", () => {
