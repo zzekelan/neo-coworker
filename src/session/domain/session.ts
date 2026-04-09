@@ -13,6 +13,7 @@ export type StoredSession = {
   updatedAt: number
   latestUserMessagePreview: string | null
   activeSkills: string[]
+  parentSessionId?: string
 }
 
 export function buildDefaultSessionTitle() {
