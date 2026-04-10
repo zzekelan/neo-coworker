@@ -44,6 +44,15 @@ const HIDDEN_TOOL_KEYS = new Set([
   "source",
 ])
 
+function expandKeyDown(toggle: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      toggle()
+    }
+  }
+}
+
 type ToolStatus = Extract<MessagePart, { type: "tool_call" }>["status"]
 
 type ToolCallPart = Extract<MessagePart, { type: "tool_call" }>
@@ -380,7 +389,8 @@ const ToolCallGroup: React.FC<{
       <button
         type="button"
         onClick={() => setIsExpanded((prev) => !prev)}
-        className="group/ghdr flex w-full items-center gap-1.5 py-0.5 text-left"
+        aria-expanded={isExpanded}
+        className="group flex w-full items-center gap-1.5 py-0.5 text-left rounded-md cursor-pointer transition-colors hover:bg-surface/50 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:rounded-md focus-visible:outline-none"
       >
         <div className="flex min-w-0 flex-1 items-center">
           <span className={cn(
@@ -401,7 +411,7 @@ const ToolCallGroup: React.FC<{
         <div className="flex w-5 shrink-0 items-center justify-center">
           <ChevronLeft
             className={cn(
-              "h-3 w-3 text-muted/30 transition-all duration-200 group-hover/ghdr:text-muted/60",
+              "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
               isExpanded && "rotate-[-90deg]",
             )}
           />
@@ -467,7 +477,17 @@ const ToolIndicator: React.FC<{
       className={cn("relative", isAgent && "ml-2 border-l-2 border-highlight/20 pl-3")}
     >
       {/* Indicator row */}
-      <div className="relative flex items-center gap-2 py-1.5">
+      <div
+        className={cn(
+          "group relative flex items-center gap-2 py-1.5 rounded-md transition-colors",
+          hasDetails && "cursor-pointer hover:bg-surface/50 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:rounded-md focus-visible:outline-none",
+        )}
+        onClick={hasDetails ? () => setIsDetailsOpen((previous) => !previous) : undefined}
+        role={hasDetails ? "button" : undefined}
+        tabIndex={hasDetails ? 0 : undefined}
+        aria-expanded={hasDetails ? isDetailsOpen : undefined}
+        onKeyDown={hasDetails ? expandKeyDown(() => setIsDetailsOpen(prev => !prev)) : undefined}
+      >
         {/* Title · Subtitle · Status — single line, truncated */}
         <div className="flex min-w-0 flex-1 items-center">
           <span className="shrink-0 text-[13px] font-medium leading-snug text-ink">
@@ -485,19 +505,12 @@ const ToolIndicator: React.FC<{
         {/* Expand chevron */}
         <div className="flex w-5 shrink-0 items-center justify-center">
           {hasDetails ? (
-            <button
-              type="button"
-              onClick={() => setIsDetailsOpen((previous) => !previous)}
-              className="rounded-md p-0.5 text-muted/30 transition-colors hover:text-muted/60"
-              aria-label={isDetailsOpen ? text.message.hideDetails : text.message.viewDetails}
-            >
-              <ChevronLeft
-                className={cn(
-                  "h-3 w-3 transition-all duration-200",
-                  isDetailsOpen && "rotate-[-90deg]",
-                )}
-              />
-            </button>
+            <ChevronLeft
+              className={cn(
+                "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
+                isDetailsOpen && "rotate-[-90deg]",
+              )}
+            />
           ) : null}
         </div>
       </div>
@@ -592,8 +605,18 @@ const CompletedToolRow: React.FC<{
         isError && !isAgent && "border-l-2 border-danger pl-2",
       )}
     >
-      <div className="relative flex items-center gap-1.5 py-0.5">
-        <div className="flex min-w-0 flex-1 items-center">
+      <div
+        className={cn(
+          "group relative flex items-center gap-1.5 py-0.5 rounded-md transition-colors",
+          hasDetails && "cursor-pointer hover:bg-surface/50 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:rounded-md focus-visible:outline-none",
+        )}
+        onClick={hasDetails ? () => setIsDetailsOpen((previous) => !previous) : undefined}
+        role={hasDetails ? "button" : undefined}
+        tabIndex={hasDetails ? 0 : undefined}
+        aria-expanded={hasDetails ? isDetailsOpen : undefined}
+        onKeyDown={hasDetails ? expandKeyDown(() => setIsDetailsOpen(prev => !prev)) : undefined}
+      >
+        <div className="flex min-w-0 flex-1 items-center overflow-hidden">
           <span className={cn(
             "min-w-0 truncate text-[13px] leading-snug",
             isCancelled
@@ -604,6 +627,9 @@ const CompletedToolRow: React.FC<{
           )}>
             {summary}
           </span>
+          {isCancelled && !isError && (
+            <span className="ml-1 shrink-0 text-[12px] leading-snug text-muted/50 italic">— {text.message.cancelledSuffix}</span>
+          )}
           {failSuffix ? (
             <span className="ml-1 shrink-0 text-[12px] leading-snug text-danger/60">
               {failSuffix}
@@ -613,19 +639,12 @@ const CompletedToolRow: React.FC<{
 
         <div className="flex w-5 shrink-0 items-center justify-center">
           {hasDetails ? (
-            <button
-              type="button"
-              onClick={() => setIsDetailsOpen((previous) => !previous)}
-              className="rounded-md p-0.5 text-muted/30 transition-colors hover:text-muted/60"
-              aria-label={isDetailsOpen ? text.message.hideDetails : text.message.viewDetails}
-            >
-              <ChevronLeft
-                className={cn(
-                  "h-3 w-3 transition-all duration-200",
-                  isDetailsOpen && "rotate-[-90deg]",
-                )}
-              />
-            </button>
+            <ChevronLeft
+              className={cn(
+                "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
+                isDetailsOpen && "rotate-[-90deg]",
+              )}
+            />
           ) : null}
         </div>
       </div>
