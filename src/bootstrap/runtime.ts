@@ -2,6 +2,7 @@ import { z } from "zod"
 import { getStoragePath } from "./paths"
 import {
   assertRunStatusTransition,
+  buildCreateSubSessionInput,
   createSessionRepository as createStorageRepository,
   createSessionRuntimeApi,
   openSessionDatabase as openStorageDatabase,
@@ -502,22 +503,22 @@ function createToolPortFactory(config: {
                   },
                 },
                 signal,
-                createQueuedRun({ subRunId, sessionId, prompt, activeSkills, createdAt, parentRunId }) {
+                createQueuedRun({ subRunId, sessionId, prompt, createdAt, parentRunId }) {
                   const parentSession = config.repository.sessions.get(sessionId)
+                  const subSession = buildCreateSubSessionInput({
+                    parentSession,
+                    prompt,
+                    trigger: "prompt",
+                    skills:
+                      profile.skills?.some((skill) => skill.trim().length > 0) ? profile.skills : undefined,
+                  })
                   const result = config.repository.createSubSessionWithRun({
-                    session: {
-                      parentSessionId: sessionId,
-                      directory: parentSession.directory,
-                      workspaceRoot: parentSession.workspaceRoot,
-                      activeSkills,
-                      title: prompt.slice(0, 50) || "SubSession",
-                      latestUserMessagePreview: prompt.slice(0, 100) || null,
-                    },
+                    session: subSession,
                     run: {
                       id: subRunId,
                       trigger: "prompt",
                       createdAt,
-                      activeSkills,
+                      activeSkills: subSession.activeSkills,
                       parentRunId,
                     },
                     message: {
