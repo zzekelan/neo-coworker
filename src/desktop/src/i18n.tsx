@@ -150,6 +150,8 @@ type DesktopText = {
     completedScannedFallback: string
     completedFound(detail: string): string
     completedFoundFallback: string
+    spawningSubagent: string
+    delegatingTask: string
     completedAgent(detail: string): string
     completedAgentFallback: string
     completedGenericTool(name: string, detail: string): string
@@ -364,8 +366,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedScannedFallback: "Scanned files",
       completedFound(detail: string) { return `Found ${detail}` },
       completedFoundFallback: "Found matching files",
-      completedAgent(detail: string) { return `Agent: ${detail}` },
-      completedAgentFallback: "Ran agent",
+      spawningSubagent: "Spawning subagent",
+      delegatingTask: "Delegating task to subagent",
+      completedAgent(detail: string) { return `Spawned ${detail} subagent` },
+      completedAgentFallback: "Spawned subagent",
       completedGenericTool(name: string, detail: string) { return `${name}: ${detail}` },
       completedSkills: "Updated skills",
       cancelledSuffix: "(cancelled)",
@@ -576,8 +580,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedScannedFallback: "扫描了文件",
       completedFound(detail: string) { return `找到了 ${detail}` },
       completedFoundFallback: "找到了匹配文件",
-      completedAgent(detail: string) { return `代理: ${detail}` },
-      completedAgentFallback: "运行了代理",
+      spawningSubagent: "正在派遣子代理",
+      delegatingTask: "正在委派任务给子代理",
+      completedAgent(detail: string) { return `派遣了 ${detail} 子代理` },
+      completedAgentFallback: "派遣了子代理",
       completedGenericTool(name: string, detail: string) { return `${name}: ${detail}` },
       completedSkills: "更新了技能",
       cancelledSuffix: "（已取消）",

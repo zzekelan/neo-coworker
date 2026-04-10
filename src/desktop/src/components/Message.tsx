@@ -703,6 +703,8 @@ function describeToolCallTitle(text: ReturnType<typeof useDesktopText>, toolName
       return text.message.findingMatchingFiles
     case "skill":
       return text.message.updatingSkills
+    case "agent":
+      return text.message.spawningSubagent
     default:
       return text.message.usingTool(formatToolDisplayName(toolName))
   }
@@ -739,6 +741,8 @@ function describeToolCallSummary(
       return text.message.lookingForMatchingFiles
     case "skill":
       return text.message.updatingSkills
+    case "agent":
+      return text.message.delegatingTask
     default:
       return text.message.toolWorking
   }
@@ -773,10 +777,9 @@ function describeCompletedToolSummary(
       return detail ? text.message.completedFound(detail) : text.message.completedFoundFallback
     case "skill":
       return text.message.completedSkills
+    case "agent":
+      return detail ? text.message.completedAgent(detail) : text.message.completedAgentFallback
     default: {
-      if (name.includes("agent")) {
-        return detail ? text.message.completedAgent(detail) : text.message.completedAgentFallback
-      }
       return detail ? text.message.completedGenericTool(formatToolDisplayName(toolName), detail) : formatToolDisplayName(toolName)
     }
   }
@@ -809,10 +812,9 @@ function describeToolGroupLabel(
       return text.message.completedFoundFallback
     case "skill":
       return text.message.completedSkills
+    case "agent":
+      return text.message.completedAgentFallback
     default: {
-      if (name.includes("agent")) {
-        return text.message.completedAgentFallback
-      }
       return formatToolDisplayName(toolName)
     }
   }
@@ -866,6 +868,8 @@ function extractCompactToolDetail(toolName: string, value: unknown): string | nu
       return pattern ?? query ?? null
     case "glob":
       return pattern ?? null
+    case "agent":
+      return readRecordString(parsed, "agent") ?? null
     default:
       return path ?? query ?? pattern ?? url ?? command ?? null
   }
