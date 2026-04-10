@@ -66,6 +66,10 @@ export {
   type SessionRuntimeApiInput,
 } from "./runtime-api"
 export {
+  buildCreateSubSessionInput,
+  type BuildCreateSubSessionInput,
+} from "./sub-session-input"
+export {
   DEFAULT_SESSION_TITLE,
   MESSAGE_ROLES,
   RUN_ACTIVE_SKILLS_MAX_LENGTH,

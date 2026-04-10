@@ -16,6 +16,10 @@ export type StoredSession = {
   parentSessionId?: string
 }
 
+export function isSubSession(session: Pick<StoredSession, "parentSessionId">) {
+  return Boolean(session.parentSessionId)
+}
+
 export function buildDefaultSessionTitle() {
   return DEFAULT_SESSION_TITLE
 }
