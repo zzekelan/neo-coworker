@@ -35,6 +35,14 @@ describe("desktop app state flow", () => {
     expect(source).toContain("async refreshAppState()")
   })
 
+  test("ignores sub-session live events when maintaining the sidebar session list", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    expect(source).toContain("function isSidebarVisibleSession(session: DesktopSessionSummary & { parentSessionId?: string })")
+    expect(source).toContain("if (!isSidebarVisibleSession(session))")
+    expect(source).toContain("return sessions.filter((candidate) => candidate.id !== session.id)")
+  })
+
   test("stores context usage from events and clears it on terminal run or session switch", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 

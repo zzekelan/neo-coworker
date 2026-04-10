@@ -23,9 +23,11 @@ import { createPermissionRepository } from "../../src/permission"
 import { createAgentServer } from "../../src/app-server"
 import {
   createSessionDeletionCoordinator,
+  createObservedRepository,
   createObservabilityRepository,
   createObservabilityRuntimeApi,
   createRuntime,
+  createServerEventBus,
 } from "../../src/bootstrap"
 import { createWorkspaceSkillRuntime } from "../../src/skill"
 import {
@@ -252,6 +254,103 @@ describe("server HTTP API and SSE", () => {
     expect(listedSessions.body.data.sessions).not.toContainEqual(
       expect.objectContaining({ id: subSession.id }),
     )
+  })
+
+  test("does not emit session.updated events for sub-sessions over the observed event bus", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "server-subsession-events-"))
+    tempDirectories.push(directory)
+
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+
+    const databasePath = join(directory, "agent.sqlite")
+    const database = openStorageDatabase(databasePath)
+    openDatabases.push(database)
+
+    const now = createMonotonicClock()
+    const repository = createStorageRepository({
+      database,
+      now,
+    })
+    const permissionRepository = createPermissionRepository({
+      database,
+      now,
+    })
+    const events = createServerEventBus({ now })
+    const observed = createObservedRepository({
+      repository,
+      permissionRepository,
+      events,
+    })
+
+    const parentSession = repository.sessions.create({
+      id: "session_parent",
+      directory: workspaceRoot,
+      workspaceRoot,
+      createdAt: now(),
+      updatedAt: now(),
+    })
+    const created = observed.repository.createSubSessionWithRun({
+      session: {
+        id: "session_child",
+        directory: join(workspaceRoot, "sub-agent"),
+        workspaceRoot,
+        createdAt: now(),
+        updatedAt: now(),
+        parentSessionId: parentSession.id,
+      },
+      run: {
+        id: "run_child",
+        trigger: "prompt",
+        createdAt: now(),
+        activeSkills: [],
+        parentRunId: "run_parent",
+      },
+      message: {
+        id: "message_child",
+        sequence: 0,
+        createdAt: now(),
+      },
+      part: {
+        id: "part_child",
+        kind: "text",
+        sequence: 0,
+        text: "Delegate to a child session.",
+        createdAt: now(),
+      },
+    })
+
+    const subscription = events.subscribe()
+    const iterator = subscription.events[Symbol.asyncIterator]()
+
+    observed.repository.runs.updateStatus({
+      runId: created.run.id,
+      status: "running",
+      startedAt: now(),
+    })
+
+    const firstEvent = await iterator.next()
+    expect(firstEvent.done).toBe(false)
+    expect(firstEvent.value).toMatchObject({
+      type: "run.updated",
+      run: {
+        id: created.run.id,
+        sessionId: created.session.id,
+        status: "running",
+      },
+    })
+
+    const secondEvent = await Promise.race([
+      iterator.next(),
+      Bun.sleep(25).then(() => ({ done: true, value: null })),
+    ])
+
+    expect(secondEvent).toEqual({
+      done: true,
+      value: null,
+    })
+
+    subscription.unsubscribe()
   })
 
   test("starts a manual compaction command run and streams the compaction artifacts", async () => {

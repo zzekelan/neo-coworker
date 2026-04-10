@@ -272,11 +272,17 @@ export function createObservedRepository(input: {
   const events = input.events
 
   function publishSessionUpdated(sessionId: string, reason: string) {
+    const snapshot = buildSessionSnapshot(repository, sessionId, {
+      contextUsage: input.getContextUsage?.(sessionId) ?? null,
+    })
+
+    if (snapshot.session.parentSessionId != null) {
+      return
+    }
+
     events.publish({
       type: "session.updated",
-      ...buildSessionSnapshot(repository, sessionId, {
-        contextUsage: input.getContextUsage?.(sessionId) ?? null,
-      }),
+      ...snapshot,
       reason,
     })
   }
@@ -320,6 +326,10 @@ export function createObservedRepository(input: {
       ...repository.sessions,
       create(session) {
         const created = repository.sessions.create(session)
+        if (created.parentSessionId != null) {
+          return created
+        }
+
         events.publish({
           type: "session.created",
           ...buildSessionSnapshot(repository, created.id, {

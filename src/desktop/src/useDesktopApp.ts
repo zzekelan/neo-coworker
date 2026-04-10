@@ -966,11 +966,19 @@ export function pickNextSessionIdAfterDelete(
 
 function upsertSession(
   sessions: DesktopSessionSummary[],
-  session: DesktopSessionSummary,
+  session: DesktopSessionSummary & { parentSessionId?: string },
 ) {
+  if (!isSidebarVisibleSession(session)) {
+    return sessions.filter((candidate) => candidate.id !== session.id)
+  }
+
   const withoutCurrent = sessions.filter((candidate) => candidate.id !== session.id)
   withoutCurrent.push(session)
   return withoutCurrent.sort((left, right) => right.updatedAt - left.updatedAt)
+}
+
+function isSidebarVisibleSession(session: DesktopSessionSummary & { parentSessionId?: string }) {
+  return session.parentSessionId == null
 }
 
 function upsertPermissionRequest(
