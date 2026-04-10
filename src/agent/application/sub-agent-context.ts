@@ -73,14 +73,24 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     sessionId: input.sessionId,
     signal: input.signal,
   })
-  const activeSkills = [...new Set((input.profile.skills ?? []).filter((skill) => skill.trim().length > 0))]
+  const requestedSkills = normalizeSkillNames(input.profile.skills)
+  const activeSkills =
+    requestedSkills.length > 0
+      ? requestedSkills
+      : normalizeSkillNames(input.session.getSession(input.sessionId).activeSkills)
   const scopedSkillPort = createScopedSkillPort({
     skill: input.skill,
     allowedSkillNames: activeSkills,
     agentName: input.profile.name,
     workspaceRoot: input.workspaceRoot,
   })
-  const skillTools = await loadSkillsForAgent(input.profile, scopedSkillPort)
+  const skillTools = await loadSkillsForAgent(
+    {
+      ...input.profile,
+      skills: activeSkills,
+    },
+    scopedSkillPort,
+  )
   const tools = createScopedToolPort({
     parentTools: input.parentTools,
     profile: input.profile,
@@ -96,15 +106,23 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     skill: scopedSkillPort,
     runtimeObserver: createCorrelatedRuntimeObserver({
       runtimeObserver: input.runtimeObserver,
-      parentSessionId: input.sessionId,
     }),
     now,
   })
   const maxTurns = input.profile.maxTurns ?? 10
+
+  const { subSessionId } = input.createQueuedRun({
+    subRunId: context.subRunId,
+    sessionId: input.sessionId,
+    prompt: input.prompt,
+    activeSkills,
+    createdAt: now(),
+    parentRunId: input.parentRunId,
+  })
   const emit = (event: AgentRuntimeEvent) => {
     recordRuntimeEvent({
       runtimeObserver: input.runtimeObserver,
-      sessionId: input.sessionId,
+      sessionId: subSessionId,
       runId: context.subRunId,
       occurredAt: now(),
       event,
@@ -113,7 +131,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
 
   recordRuntimeEvent({
     runtimeObserver: input.runtimeObserver,
-    sessionId: input.sessionId,
+    sessionId: subSessionId,
     runId: context.subRunId,
     occurredAt: now(),
     event: {
@@ -123,15 +141,6 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
       subRunId: context.subRunId,
       maxTurns,
     },
-  })
-
-  const { subSessionId } = input.createQueuedRun({
-    subRunId: context.subRunId,
-    sessionId: input.sessionId,
-    prompt: input.prompt,
-    activeSkills,
-    createdAt: now(),
-    parentRunId: input.parentRunId,
   })
 
   const systemPrompt = input.buildAgentAwarePrompt(input.profile)
@@ -203,7 +212,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
       })
       recordRuntimeEvent({
         runtimeObserver: input.runtimeObserver,
-        sessionId: input.sessionId,
+        sessionId: subSessionId,
         runId: context.subRunId,
         occurredAt: now(),
         event: {
@@ -347,7 +356,6 @@ function getFinalAssistantText(input: {
 
 function createCorrelatedRuntimeObserver(input: {
   runtimeObserver?: AgentRuntimeObserverPort
-  parentSessionId: string
 }): AgentRuntimeObserverPort | undefined {
   if (!input.runtimeObserver) {
     return undefined
@@ -355,12 +363,13 @@ function createCorrelatedRuntimeObserver(input: {
 
   return {
     recordRuntimeEvent(eventInput) {
-      input.runtimeObserver?.recordRuntimeEvent?.({
-        ...eventInput,
-        sessionId: input.parentSessionId,
-      })
+      input.runtimeObserver?.recordRuntimeEvent?.(eventInput)
     },
   }
+}
+
+function normalizeSkillNames(skillNames: readonly string[] | null | undefined) {
+  return [...new Set((skillNames ?? []).filter((skill) => skill.trim().length > 0))]
 }
 
 function recordRuntimeEvent(input: {

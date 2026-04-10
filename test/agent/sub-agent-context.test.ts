@@ -1,3 +1,4 @@
+// @ts-expect-error Bun test types are provided by the Bun runtime.
 import { describe, expect, test } from "bun:test"
 import {
   createSubAgentContext,
@@ -7,7 +8,10 @@ import {
 
 type SessionPort = CreateSubAgentRunInput["session"]
 type SessionPortStub = SessionPort & {
-  setSession(input: { sessionId: string; activeSkills?: string[] }): void
+  setSession(input: { sessionId: string; activeSkills?: string[]; parentSessionId?: string }): void
+  setRunParentRunId(input: { runId: string; parentRunId: string | null }): void
+  getSessionParentSessionId(sessionId: string): string | null
+  getRunParentRunId(runId: string): string | null
   seedTranscriptMessage(input: {
     sessionId: string
     runId: string
@@ -64,7 +68,9 @@ function createSessionPortStub(input: {
   const transcripts = new Map<string, TranscriptMessage[]>([
     [input.sessionId, (input.transcript ?? []).map(cloneTranscriptMessage)],
   ])
+  const sessionParentIds = new Map<string, string | null>([[input.sessionId, null]])
   const runs = new Map<string, RunRecord>()
+  const runParentIds = new Map<string, string | null>()
   const messages = new Map<string, TranscriptMessage>()
   const parts = new Map<string, TranscriptPart>()
   let messageCounter = 0
@@ -113,6 +119,7 @@ function createSessionPortStub(input: {
       tokenUsageSource: null,
     }
     runs.set(runId, created)
+    runParentIds.set(runId, null)
     return created
   }
 
@@ -163,6 +170,7 @@ function createSessionPortStub(input: {
         tokenUsageSource: run.tokenUsageSource ?? null,
       }
       runs.set(run.id, record)
+      runParentIds.set(run.id, null)
       return cloneRunRecord(record)
     },
     createAssistantMessage(message) {
@@ -243,13 +251,25 @@ function createSessionPortStub(input: {
     cancelRun(runId) {
       return mutateRun(runId, { status: "cancelled" })
     },
-    setSession({ sessionId, activeSkills }) {
+    setSession({ sessionId, activeSkills, parentSessionId }) {
       sessions.set(sessionId, {
         id: sessionId,
         workspaceRoot: "/workspace",
         activeSkills: [...(activeSkills ?? [])],
       })
+      sessionParentIds.set(sessionId, parentSessionId ?? null)
       getTranscript(sessionId)
+    },
+    setRunParentRunId({ runId, parentRunId }) {
+      ensureRun(runId)
+      runParentIds.set(runId, parentRunId)
+    },
+    getSessionParentSessionId(sessionId) {
+      return sessionParentIds.get(sessionId) ?? null
+    },
+    getRunParentRunId(runId) {
+      ensureRun(runId)
+      return runParentIds.get(runId) ?? null
     },
     seedTranscriptMessage({ sessionId, runId, role, sequence, parts: messageParts }) {
       getTranscript(sessionId).push({
@@ -407,6 +427,256 @@ describe("createSubAgentContext", () => {
 })
 
 describe("createSubAgentRun", () => {
+  test("inherits parent activeSkills when profile.skills is empty", async () => {
+    const session = createSessionPortStub({
+      sessionId: "session-parent",
+      activeSkills: ["review", "explore"],
+    })
+    const subSessionId = "sub-session-inherited-skills"
+    let queuedActiveSkills: string[] = []
+    let subRunId = ""
+
+    await createSubAgentRun(
+      createSubAgentRunInput({
+        session,
+        sessionId: "session-parent",
+        profile: {
+          name: "explore",
+          tools: ["read"],
+          skills: [],
+        },
+        createQueuedRun({ subRunId: queuedRunId, prompt, activeSkills, createdAt }) {
+          queuedActiveSkills = [...activeSkills]
+          subRunId = queuedRunId
+          session.setSession({ sessionId: subSessionId, activeSkills })
+          session.createRun({
+            id: queuedRunId,
+            sessionId: subSessionId,
+            trigger: "summarize",
+            status: "queued",
+            createdAt,
+            activeSkills,
+          })
+          session.seedTranscriptMessage({
+            sessionId: subSessionId,
+            runId: queuedRunId,
+            role: "user",
+            sequence: 0,
+            parts: [{ kind: "text", text: prompt }],
+          })
+
+          return { subSessionId }
+        },
+      }),
+    )
+
+    expect(queuedActiveSkills).toEqual(["review", "explore"])
+    expect(session.getSession(subSessionId).activeSkills).toEqual(["review", "explore"])
+    expect(session.getRun(subRunId).activeSkills).toEqual(["review", "explore"])
+  })
+
+  test("records context usage events against the subsession sessionId", async () => {
+    const session = createSessionPortStub({
+      sessionId: "session-parent",
+    })
+    const subSessionId = "sub-session-usage"
+    const observed: Array<{
+      sessionId: string
+      runId: string
+      event: Record<string, unknown>
+    }> = []
+
+    await createSubAgentRun(
+      createSubAgentRunInput({
+        session,
+        runtimeObserver: {
+          recordRuntimeEvent(input) {
+            observed.push({
+              sessionId: input.sessionId,
+              runId: input.runId,
+              event: input.event as Record<string, unknown>,
+            })
+          },
+        },
+        createQueuedRun({ subRunId, prompt, activeSkills, createdAt }) {
+          session.setSession({ sessionId: subSessionId, activeSkills })
+          session.createRun({
+            id: subRunId,
+            sessionId: subSessionId,
+            trigger: "summarize",
+            status: "queued",
+            createdAt,
+            activeSkills,
+          })
+          session.seedTranscriptMessage({
+            sessionId: subSessionId,
+            runId: subRunId,
+            role: "user",
+            sequence: 0,
+            parts: [{ kind: "text", text: prompt }],
+          })
+
+          return { subSessionId }
+        },
+        createStepService({ runtimeObserver }) {
+          return {
+            isAbortError() {
+              return false
+            },
+            isDetachedError() {
+              return false
+            },
+            initializeRun() {},
+            completeRun() {},
+            failRun() {},
+            cancelRun() {
+              return false
+            },
+            async executeStep(stepInput) {
+              const usageEvent = {
+                type: "context.usage.updated",
+                sessionId: stepInput.sessionId,
+                runId: stepInput.runId,
+                contextTokens: 42,
+                contextWindow: 100,
+                utilizationPercent: 42,
+                source: "provider",
+              } satisfies Record<string, unknown>
+
+              stepInput.emit(usageEvent)
+              runtimeObserver?.recordRuntimeEvent?.({
+                sessionId: stepInput.sessionId,
+                runId: stepInput.runId,
+                event: usageEvent,
+              })
+
+              return { status: "complete" }
+            },
+          }
+        },
+      }),
+    )
+
+    const usageEvents = observed.filter((event) => event.event.type === "context.usage.updated")
+
+    expect(usageEvents).toHaveLength(2)
+    expect(usageEvents).toEqual([
+      expect.objectContaining({
+        sessionId: subSessionId,
+        event: expect.objectContaining({ sessionId: subSessionId }),
+      }),
+      expect.objectContaining({
+        sessionId: subSessionId,
+        event: expect.objectContaining({ sessionId: subSessionId }),
+      }),
+    ])
+    expect(usageEvents.every((event) => event.sessionId !== "session-parent")).toBe(true)
+  })
+
+  test("cancels the child SubSession run when the parent signal aborts", async () => {
+    const session = createSessionPortStub({
+      sessionId: "session-parent",
+    })
+    const parent = new AbortController()
+    const subSessionId = "sub-session-abort"
+    let queuedRunId = ""
+    let executedSessionId = ""
+    let resolveExecuteStepStarted: (() => void) | undefined
+    const executeStepStarted = new Promise<void>((resolve) => {
+      resolveExecuteStepStarted = resolve
+    })
+
+    const runPromise = createSubAgentRun(
+      createSubAgentRunInput({
+        session,
+        sessionId: "session-parent",
+        signal: parent.signal,
+        createQueuedRun({ subRunId, prompt, activeSkills, createdAt, parentRunId }) {
+          queuedRunId = subRunId
+          session.setSession({
+            sessionId: subSessionId,
+            activeSkills,
+            parentSessionId: "session-parent",
+          })
+          session.createRun({
+            id: subRunId,
+            sessionId: subSessionId,
+            trigger: "summarize",
+            status: "queued",
+            createdAt,
+            activeSkills,
+          })
+          session.setRunParentRunId({ runId: subRunId, parentRunId })
+          session.seedTranscriptMessage({
+            sessionId: subSessionId,
+            runId: subRunId,
+            role: "user",
+            sequence: 0,
+            parts: [{ kind: "text", text: prompt }],
+          })
+
+          return { subSessionId }
+        },
+        createStepService({ session }) {
+          return {
+            isAbortError(error) {
+              return error instanceof Error && error.name === "AbortError"
+            },
+            isDetachedError() {
+              return false
+            },
+            initializeRun({ runId }) {
+              session.transitionRunToRunning(runId)
+            },
+            completeRun() {},
+            failRun() {},
+            cancelRun({ runId }) {
+              session.cancelRun(runId)
+              return true
+            },
+            async executeStep(stepInput) {
+              executedSessionId = stepInput.sessionId
+              await new Promise<void>((resolve) => {
+                if (stepInput.signal.aborted) {
+                  resolveExecuteStepStarted?.()
+                  resolve()
+                  return
+                }
+
+                stepInput.signal.addEventListener("abort", () => resolve(), { once: true })
+                resolveExecuteStepStarted?.()
+              })
+
+              expect(stepInput.signal.aborted).toBe(true)
+              return { status: "cancelled" }
+            },
+          }
+        },
+      }),
+    )
+
+    await executeStepStarted
+
+    expect(session.getSessionParentSessionId(subSessionId)).toBe("session-parent")
+    expect(session.getRun(queuedRunId)).toMatchObject({
+      sessionId: subSessionId,
+      status: "running",
+    })
+
+    parent.abort("stop-child")
+
+    await expect(runPromise).rejects.toMatchObject({
+      name: "AbortError",
+      message: "Sub-agent run cancelled",
+    })
+
+    expect(executedSessionId).toBe(subSessionId)
+    expect(session.getRun(queuedRunId)).toMatchObject({
+      sessionId: subSessionId,
+      status: "cancelled",
+    })
+  })
+
   test("scoped sub-agent transcript only includes its own run and still returns final assistant output", async () => {
     const session = createSessionPortStub({
       sessionId: "session-1",
@@ -515,7 +785,7 @@ describe("createSubAgentRun", () => {
     ])
   })
 
-  test("createSubAgentRun writes all messages to SubSession, not parent session", async () => {
+  test("createSubAgentRun creates a new SubSession that receives the child run instead of parent-session writes", async () => {
     const session = createSessionPortStub({
       sessionId: "session-1",
       transcript: [
@@ -528,12 +798,20 @@ describe("createSubAgentRun", () => {
       ],
     })
     const subSessionId = "test-sub-session"
+    let queuedRunId = ""
+    let executedSessionId = ""
+    let executedRunId = ""
 
     await createSubAgentRun(
       createSubAgentRunInput({
         session,
-        createQueuedRun({ subRunId, prompt, activeSkills, createdAt }) {
-          session.setSession({ sessionId: subSessionId, activeSkills })
+        createQueuedRun({ subRunId, prompt, activeSkills, createdAt, parentRunId }) {
+          queuedRunId = subRunId
+          session.setSession({
+            sessionId: subSessionId,
+            activeSkills,
+            parentSessionId: "session-1",
+          })
           session.createRun({
             id: subRunId,
             sessionId: subSessionId,
@@ -542,6 +820,7 @@ describe("createSubAgentRun", () => {
             createdAt,
             activeSkills,
           })
+          session.setRunParentRunId({ runId: subRunId, parentRunId })
           session.seedTranscriptMessage({
             sessionId: subSessionId,
             runId: subRunId,
@@ -567,6 +846,8 @@ describe("createSubAgentRun", () => {
               return false
             },
             async executeStep(stepInput) {
+              executedSessionId = stepInput.sessionId
+              executedRunId = stepInput.runId
               const assistantMessage = session.createAssistantMessage({
                 sessionId: stepInput.sessionId,
                 runId: stepInput.runId,
@@ -590,6 +871,10 @@ describe("createSubAgentRun", () => {
       }),
     )
 
+    expect(session.getSessionParentSessionId(subSessionId)).toBe("session-1")
+    expect(session.getRun(queuedRunId).sessionId).toBe(subSessionId)
+    expect(executedSessionId).toBe(subSessionId)
+    expect(executedRunId).toBe(queuedRunId)
     expect(session.listTranscript("session-1")).toEqual([
       {
         runId: "parent-run",
@@ -612,5 +897,49 @@ describe("createSubAgentRun", () => {
         parts: [{ kind: "text", text: "isolated output" }],
       },
     ])
+  })
+
+  test("createSubAgentRun preserves parentRunId on the child SubSession run for backward compatibility", async () => {
+    const session = createSessionPortStub({
+      sessionId: "session-1",
+    })
+    const subSessionId = "test-sub-session-backward-compat"
+    let queuedRunId = ""
+
+    await createSubAgentRun(
+      createSubAgentRunInput({
+        session,
+        parentRunId: "parent-run-task-8",
+        createQueuedRun({ subRunId, prompt, activeSkills, createdAt, parentRunId }) {
+          queuedRunId = subRunId
+          session.setSession({
+            sessionId: subSessionId,
+            activeSkills,
+            parentSessionId: "session-1",
+          })
+          session.createRun({
+            id: subRunId,
+            sessionId: subSessionId,
+            trigger: "summarize",
+            status: "queued",
+            createdAt,
+            activeSkills,
+          })
+          session.setRunParentRunId({ runId: subRunId, parentRunId })
+          session.seedTranscriptMessage({
+            sessionId: subSessionId,
+            runId: subRunId,
+            role: "user",
+            sequence: 0,
+            parts: [{ kind: "text", text: prompt }],
+          })
+
+          return { subSessionId }
+        },
+      }),
+    )
+
+    expect(session.getRun(queuedRunId).sessionId).toBe(subSessionId)
+    expect(session.getRunParentRunId(queuedRunId)).toBe("parent-run-task-8")
   })
 })
