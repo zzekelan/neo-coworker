@@ -1,22 +1,9 @@
-import React, { useCallback, useMemo, useState, Suspense, type ComponentType } from "react"
+import React, { useCallback, useMemo, useState, Suspense } from "react"
 import {
   AlertCircle,
-  Bot,
   Check,
-  ChevronDown,
-  ChevronRight,
-  Code2,
+  ChevronLeft,
   Copy,
-  FileEdit,
-  FilePen,
-  FileText,
-  FolderSearch,
-  Globe,
-  ScanSearch,
-  Search,
-  Sparkles,
-  Terminal,
-  Wrench,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "../lib/utils"
@@ -326,7 +313,6 @@ const MessagePartRenderer: React.FC<{
           isCancelled={isCancelled}
           details={allDetails}
           partIndex={partIndex}
-          icon={getToolIcon(part.toolName)}
           isAgent={isAgentTool(part.toolName)}
         />
       )
@@ -339,7 +325,6 @@ const MessagePartRenderer: React.FC<{
         status={finalStatus}
         details={callDetails}
         partIndex={partIndex}
-        icon={getToolIcon(part.toolName)}
         isAgent={isAgentTool(part.toolName)}
       />
     )
@@ -372,22 +357,24 @@ const ToolCallGroup: React.FC<{
   const text = useDesktopText()
   const [isExpanded, setIsExpanded] = useState(entries.length <= 3)
 
-  const Icon = getToolIcon(entries[0].part.toolName)
   const isAgent = isAgentTool(entries[0].part.toolName)
   const errorCount = entries.filter((e) => e.isError).length
   const cancelledCount = entries.filter((e) => e.isCancelled).length
   const hasAnyError = errorCount > 0
+  const allCancelled = cancelledCount === entries.length
 
   const groupLabel = describeToolGroupLabel(text, entries[0].part.toolName)
-  const prefixChar = hasAnyError ? "✗" : cancelledCount === entries.length ? "—" : "✓"
-  const prefixColor = hasAnyError ? "text-danger" : cancelledCount === entries.length ? "text-muted" : "text-success"
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: "easeOut", delay: Math.min(startIndex * 0.05, 0.5) }}
-      className={cn("relative", isAgent && "ml-2 border-l-2 border-highlight/20 pl-3")}
+      transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(startIndex * 0.05, 0.5) }}
+      className={cn(
+        "relative",
+        isAgent && "ml-2 border-l-2 border-highlight/20 pl-3",
+        hasAnyError && !isAgent && "border-l-2 border-danger pl-2",
+      )}
     >
       {/* Group header */}
       <button
@@ -396,33 +383,32 @@ const ToolCallGroup: React.FC<{
         className="group/ghdr flex w-full items-center gap-1.5 py-0.5 text-left"
       >
         <div className="flex min-w-0 flex-1 items-center">
-          <Icon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted/60" />
-          <span className={cn("mr-1 shrink-0 text-[13px] leading-none", prefixColor)}>
-            {prefixChar}
-          </span>
-          <span className="min-w-0 truncate text-[13px] leading-none text-muted">
+          <span className={cn(
+            "min-w-0 truncate text-[13px] leading-snug",
+            allCancelled ? "text-muted/50 italic" : "text-muted",
+          )}>
             {groupLabel}
           </span>
-          <span className="ml-1.5 shrink-0 rounded-full bg-surface px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted">
-            ×{entries.length}
+          <span className="ml-1.5 shrink-0 text-[13px] leading-snug font-medium text-muted/70">
+            ({entries.length})
           </span>
           {hasAnyError ? (
-            <span className="ml-1 shrink-0 text-[11px] leading-none text-danger">
-              {errorCount} failed
+            <span className="ml-1.5 shrink-0 text-[12px] leading-snug text-danger/80">
+              · {errorCount} failed
             </span>
           ) : null}
         </div>
         <div className="flex w-5 shrink-0 items-center justify-center">
-          <ChevronRight
+          <ChevronLeft
             className={cn(
-              "h-3 w-3 text-muted/50 transition-transform duration-200 group-hover/ghdr:text-ink",
-              isExpanded && "rotate-90",
+              "h-3 w-3 text-muted/30 transition-all duration-200 group-hover/ghdr:text-muted/60",
+              isExpanded && "rotate-[-90deg]",
             )}
           />
         </div>
       </button>
 
-      {/* Expanded sub-items with tree connectors */}
+      {/* Expanded sub-items with clean indentation */}
       <AnimatePresence initial={false}>
         {isExpanded ? (
           <motion.div
@@ -432,32 +418,24 @@ const ToolCallGroup: React.FC<{
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="ml-1 mt-0.5">
-              {entries.map((entry, idx) => {
-                const isLast = idx === entries.length - 1
+            <div className="ml-4 mt-0.5 border-l border-border/40 pl-3">
+              {entries.map((entry) => {
                 const callDetails = buildToolCallDetails(text, entry.part.toolName, entry.part.toolInput)
                 const resultDetails = entry.result ? buildToolResultDetails(text, entry.result.result) : []
                 const allDetails = [...callDetails, ...resultDetails]
 
                 return (
-                  <div key={entry.part.callId} className="flex items-start gap-0">
-                    <span className="w-4 shrink-0 select-none font-mono text-[12px] leading-none text-border pt-1.5">
-                      {isLast ? "└" : "├"}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <CompletedToolRow
-                        toolName={entry.part.toolName}
-                        toolInput={entry.part.toolInput}
-                        isError={entry.isError}
-                        isCancelled={entry.isCancelled}
-                        details={allDetails}
-                        partIndex={0}
-                        icon={getToolIcon(entry.part.toolName)}
-                        isAgent={false}
-                        skipEntrance
-                      />
-                    </div>
-                  </div>
+                  <CompletedToolRow
+                    key={entry.part.callId}
+                    toolName={entry.part.toolName}
+                    toolInput={entry.part.toolInput}
+                    isError={entry.isError}
+                    isCancelled={entry.isCancelled}
+                    details={allDetails}
+                    partIndex={0}
+                    isAgent={false}
+                    skipEntrance
+                  />
                 )
               })}
             </div>
@@ -474,62 +452,53 @@ const ToolIndicator: React.FC<{
   status: ToolStatus
   details: DetailItem[]
   partIndex?: number
-  icon?: ComponentType<{ className?: string }>
   isAgent?: boolean
-}> = React.memo(({ title, subtitle, status, details, partIndex = 0, icon: Icon, isAgent = false }) => {
+}> = React.memo(({ title, subtitle, status, details, partIndex = 0, isAgent = false }) => {
   const text = useDesktopText()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
   const hasDetails = details.length > 0
-  const isPending = status === "pending"
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
+      transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
       className={cn("relative", isAgent && "ml-2 border-l-2 border-highlight/20 pl-3")}
     >
       {/* Indicator row */}
       <div className="relative flex items-center gap-2 py-1.5">
-        {/* Title · Subtitle — single line, truncated */}
-        <div className="relative flex min-w-0 flex-1 items-center">
-          {/* Pending breathing dot — absolutely positioned so it never shifts text */}
-          {isPending && (
-            <div className="absolute -left-4 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full animate-breathe bg-highlight" />
-          )}
-          {Icon ? (
-            <Icon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-accent" />
-          ) : null}
-          <span className="shrink-0 text-[13px] font-medium leading-none text-ink">
+        {/* Title · Subtitle · Status — single line, truncated */}
+        <div className="flex min-w-0 flex-1 items-center">
+          <span className="shrink-0 text-[13px] font-medium leading-snug text-ink">
             {title}
           </span>
-          <span className="mx-1.5 text-muted leading-none select-none">·</span>
-          <span className="min-w-0 truncate text-[13px] leading-none text-muted">
+          <span className="mx-1.5 text-muted leading-snug select-none">·</span>
+          <span className="min-w-0 truncate text-[13px] leading-snug text-muted">
             {subtitle}
+          </span>
+          <span className="ml-2 shrink-0" role="status" aria-live="polite">
+            <ToolStatusBadge status={status} />
           </span>
         </div>
 
-        {/* Status label + expand chevron (fixed-width chevron area for alignment) */}
-        <div className="flex shrink-0 items-center gap-1.5" role="status" aria-live="polite">
-          <ToolStatusBadge status={status} />
-          <div className="flex w-5 items-center justify-center">
-            {hasDetails ? (
-              <button
-                type="button"
-                onClick={() => setIsDetailsOpen((previous) => !previous)}
-                className="rounded-md p-0.5 text-muted transition-colors hover:text-ink"
-                aria-label={isDetailsOpen ? text.message.hideDetails : text.message.viewDetails}
-              >
-                <ChevronDown
-                  className={cn(
-                    "h-3 w-3 transition-transform duration-200",
-                    !isDetailsOpen && "-rotate-90",
-                  )}
-                />
-              </button>
-            ) : null}
-          </div>
+        {/* Expand chevron */}
+        <div className="flex w-5 shrink-0 items-center justify-center">
+          {hasDetails ? (
+            <button
+              type="button"
+              onClick={() => setIsDetailsOpen((previous) => !previous)}
+              className="rounded-md p-0.5 text-muted/30 transition-colors hover:text-muted/60"
+              aria-label={isDetailsOpen ? text.message.hideDetails : text.message.viewDetails}
+            >
+              <ChevronLeft
+                className={cn(
+                  "h-3 w-3 transition-all duration-200",
+                  isDetailsOpen && "rotate-[-90deg]",
+                )}
+              />
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -544,7 +513,7 @@ const ToolIndicator: React.FC<{
         className="overflow-hidden"
       >
         {isDetailsOpen ? (
-          <div className="border-l-2 border-border/30 ml-2 pl-3 pb-2">
+          <div className="border-l border-border/30 ml-1 pl-3 pb-2">
             <ErrorBoundary>
               <Suspense fallback={<PulsePlaceholder />}>
                 <ToolDetails
@@ -565,28 +534,19 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus }> = React.memo(({ status }
 
   if (status === "pending") {
     return (
-      <span className="text-[12px] font-medium text-highlight">
+      <span className="animate-breathe text-[12px] font-medium text-highlight">
         {text.message.running}
       </span>
     )
   }
 
   if (status === "success") {
-    return (
-      <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.2 }}
-        className="text-[12px] font-medium text-success"
-      >
-        ✓ {text.message.completed}
-      </motion.span>
-    )
+    return null
   }
 
   if (status === "cancelled") {
     return (
-      <span className="text-[12px] font-medium text-muted">
+      <span className="text-[12px] font-medium text-muted/50">
         {text.message.cancelled}
       </span>
     )
@@ -597,9 +557,9 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus }> = React.memo(({ status }
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      className="text-[12px] font-medium text-danger"
+      className="text-[12px] font-medium text-danger/80"
     >
-      ✗ {text.message.failed}
+      {text.message.failed}
     </motion.span>
   )
 })
@@ -611,38 +571,44 @@ const CompletedToolRow: React.FC<{
   isCancelled: boolean
   details: DetailItem[]
   partIndex?: number
-  icon?: ComponentType<{ className?: string }>
   isAgent?: boolean
   skipEntrance?: boolean
-}> = React.memo(({ toolName, toolInput, isError, isCancelled, details, partIndex = 0, icon: Icon, isAgent = false, skipEntrance = false }) => {
+}> = React.memo(({ toolName, toolInput, isError, isCancelled, details, partIndex = 0, isAgent = false, skipEntrance = false }) => {
   const text = useDesktopText()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const hasDetails = details.length > 0
 
   const summary = describeCompletedToolSummary(text, toolName, toolInput)
-  const suffix = isCancelled ? ` ${text.message.cancelledSuffix}` : isError ? ` — ${text.message.failedSuffix}` : ""
-
-  const prefixChar = isError ? "✗" : isCancelled ? "—" : "✓"
-  const prefixColor = isError ? "text-danger" : isCancelled ? "text-muted" : "text-success"
+  const failSuffix = isError ? ` — ${text.message.failedSuffix}` : ""
 
   return (
     <motion.div
       initial={skipEntrance ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={skipEntrance ? { duration: 0 } : { duration: 0.25, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className={cn("relative", isAgent && "ml-2 border-l-2 border-highlight/20 pl-3")}
+      transition={skipEntrance ? { duration: 0 } : { duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
+      className={cn(
+        "relative",
+        isAgent && "ml-2 border-l-2 border-highlight/20 pl-3",
+        isError && !isAgent && "border-l-2 border-danger pl-2",
+      )}
     >
       <div className="relative flex items-center gap-1.5 py-0.5">
         <div className="flex min-w-0 flex-1 items-center">
-          {Icon ? (
-            <Icon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted/60" />
+          <span className={cn(
+            "min-w-0 truncate text-[13px] leading-snug",
+            isCancelled
+              ? "text-muted/50 italic"
+              : isError
+                ? "text-danger/80"
+                : "text-muted",
+          )}>
+            {summary}
+          </span>
+          {failSuffix ? (
+            <span className="ml-1 shrink-0 text-[12px] leading-snug text-danger/60">
+              {failSuffix}
+            </span>
           ) : null}
-          <span className={cn("mr-1 shrink-0 text-[13px] leading-none", prefixColor)}>
-            {prefixChar}
-          </span>
-          <span className="min-w-0 truncate text-[13px] leading-none text-muted">
-            {summary}{suffix}
-          </span>
         </div>
 
         <div className="flex w-5 shrink-0 items-center justify-center">
@@ -650,13 +616,13 @@ const CompletedToolRow: React.FC<{
             <button
               type="button"
               onClick={() => setIsDetailsOpen((previous) => !previous)}
-              className="rounded-md p-0.5 text-muted/50 transition-colors hover:text-ink"
+              className="rounded-md p-0.5 text-muted/30 transition-colors hover:text-muted/60"
               aria-label={isDetailsOpen ? text.message.hideDetails : text.message.viewDetails}
             >
-              <ChevronDown
+              <ChevronLeft
                 className={cn(
-                  "h-3 w-3 transition-transform duration-200",
-                  !isDetailsOpen && "-rotate-90",
+                  "h-3 w-3 transition-all duration-200",
+                  isDetailsOpen && "rotate-[-90deg]",
                 )}
               />
             </button>
@@ -675,7 +641,7 @@ const CompletedToolRow: React.FC<{
         className="overflow-hidden"
       >
         {isDetailsOpen ? (
-          <div className="border-l-2 border-border/30 ml-2 pl-3 pb-2">
+          <div className="border-l border-border/30 ml-1 pl-3 pb-2">
             <ErrorBoundary>
               <Suspense fallback={<PulsePlaceholder />}>
                 <ToolDetails
@@ -1024,26 +990,6 @@ function normalizeToolName(toolName: string | undefined) {
   }
 
   return toolName
-}
-
-function getToolIcon(toolName: string | undefined): ComponentType<{ className?: string }> {
-  switch (normalizeToolName(toolName)) {
-    case "shell": return Terminal
-    case "websearch": return Search
-    case "webfetch": return Globe
-    case "read": return FileText
-    case "write": return FilePen
-    case "edit": return FileEdit
-    case "grep": return ScanSearch
-    case "glob": return FolderSearch
-    case "codesearch": return Code2
-    case "skill": return Sparkles
-    default: {
-      const name = normalizeToolName(toolName)
-      if (name.includes("agent")) return Bot
-      return Wrench
-    }
-  }
 }
 
 function isAgentTool(toolName: string | undefined): boolean {

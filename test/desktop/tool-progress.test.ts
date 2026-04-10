@@ -42,7 +42,8 @@ describe("Tool Progress UI (Source Analysis)", () => {
   })
 
   test("should have status indicators in ToolIndicator for pending status", () => {
-    expect(messageSource).toContain("animate-breathe bg-highlight")
+    expect(messageSource).toContain("animate-breathe")
+    expect(messageSource).toContain("text-highlight")
     expect(messageSource).toContain("text-success")
     expect(messageSource).toContain("text-danger")
   })

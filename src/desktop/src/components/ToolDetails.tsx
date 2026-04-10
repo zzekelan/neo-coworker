@@ -26,14 +26,14 @@ type ToolDetailsProps = {
 const ToolDetailsComponent: React.FC<ToolDetailsProps> = ({ details, emptyDetailsLabel }) => {
   if (details.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-paper px-3 py-2 text-[12px] text-muted">
+      <div className="rounded-xl border border-dashed border-border/50 bg-paper px-3 py-2 text-[12px] text-muted">
         {emptyDetailsLabel}
       </div>
     )
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-border bg-paper p-3">
+    <div className="space-y-3 rounded-xl border border-border/50 bg-paper p-3">
       {details.map((detail, index) => (
         <ToolDetailRow key={`${detail.label}:${index}`} detail={detail} />
       ))}
@@ -45,7 +45,7 @@ export default React.memo(ToolDetailsComponent)
 
 const ToolDetailRow: React.FC<{ detail: DetailItem }> = ({ detail }) => (
   <div className="flex flex-col gap-1.5">
-    <div className="text-[11px] font-semibold tracking-[0.18em] text-accent uppercase">{detail.label}</div>
+    <div className="text-[11px] font-medium text-muted/70">{detail.label}</div>
     <div className="text-[13px] leading-6 text-ink">
       <ToolValue fieldName={detail.label} value={detail.value} />
     </div>
@@ -77,7 +77,7 @@ const ToolValue: React.FC<{
     }
 
     return (
-      <div className={cn("flex flex-col gap-1.5", depth > 0 && "mt-1 border-l border-border pl-4")}>
+      <div className={cn("flex flex-col gap-1.5", depth > 0 && "mt-1 border-l border-border/50 pl-4")}>
         {value.map((entry, index) => (
           <div key={`${fieldName ?? "item"}:${index}`} className="flex flex-col gap-1">
             <span className="text-[12px] font-medium text-muted">{index + 1}</span>
@@ -96,7 +96,7 @@ const ToolValue: React.FC<{
   }
 
   return (
-    <div className={cn("flex flex-col gap-2", depth > 0 && "mt-1 border-l border-border pl-4")}>
+    <div className={cn("flex flex-col gap-2", depth > 0 && "mt-1 border-l border-border/50 pl-4")}>
       {entries.map(([key, nestedValue]) => (
         <div key={key} className="flex flex-col gap-1">
           <span className="text-[12px] font-medium text-muted">{formatDetailLabel(key, text)}</span>
@@ -122,7 +122,8 @@ const ExpandableFieldValue: React.FC<{
   }, [fieldName, isCollapsedByDefault, value])
 
   if (!isCollapsedByDefault) {
-    return <span className="whitespace-pre-wrap">{value}</span>
+    const isMono = looksLikePathOrCommand(value)
+    return <span className={cn("whitespace-pre-wrap", isMono && "font-mono text-[12px]")}>{value}</span>
   }
 
   const preview = buildCollapsedPreview(value)
@@ -133,7 +134,7 @@ const ExpandableFieldValue: React.FC<{
       <button
         type="button"
         onClick={() => setIsExpanded((previous) => !previous)}
-        className="rounded-md border border-border bg-paper px-2 py-1 text-[11px] font-semibold tracking-wide text-muted transition-colors hover:bg-surface-hover"
+        className="rounded-md border border-border/50 bg-paper px-2 py-1 text-[11px] font-semibold tracking-wide text-muted transition-colors hover:bg-surface-hover"
       >
         {isExpanded ? text.message.showLess : text.message.showMore}
       </button>
@@ -186,4 +187,13 @@ function buildCollapsedPreview(value: string) {
     lines.length > DEFAULT_COLLAPSED_LINE_LIMIT || limitedLines.length > DEFAULT_COLLAPSED_CHAR_LIMIT
 
   return wasTruncated ? `${limitedText}\n...` : limitedText
+}
+
+/** Detect strings that look like file paths or shell commands for mono rendering. */
+function looksLikePathOrCommand(value: string): boolean {
+  const trimmed = value.trim()
+  if (trimmed.includes("\n")) return false
+  if (trimmed.startsWith("/") || trimmed.startsWith("./") || trimmed.startsWith("../")) return true
+  if (trimmed.length > 120) return false
+  return /^[a-z_][\w.-]*[\s/]/.test(trimmed)
 }
