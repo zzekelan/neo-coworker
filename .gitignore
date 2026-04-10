@@ -6,6 +6,7 @@ docs/ref
 /.github/
 .codex
 /.playwright-mcp/
+/playwright-screenshot/
 AGENTS.md
 .worktrees/
 node_modules/

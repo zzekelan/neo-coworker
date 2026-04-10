@@ -125,7 +125,7 @@ const MessageComponent: React.FC<{
         const isCancelled = part.status === "cancelled"
 
         if (isCompleted || isCancelled) {
-          const group: RenderItem extends { kind: "group" } ? never : Array<{
+          const group: Array<{
             part: ToolCallPart
             result: ToolResultPart | null
             isError: boolean
@@ -194,7 +194,6 @@ const MessageComponent: React.FC<{
                     <ToolCallGroup
                       key={`${message.id}:grp:${item.entries[0].part.callId}`}
                       entries={item.entries}
-                      normalizedName={item.normalizedName}
                       startIndex={item.startIndex}
                     />
                   )
@@ -360,9 +359,8 @@ const ToolCallGroup: React.FC<{
     isError: boolean
     isCancelled: boolean
   }>
-  normalizedName: string
   startIndex: number
-}> = React.memo(({ entries, normalizedName, startIndex }) => {
+}> = React.memo(({ entries, startIndex }) => {
   const text = useDesktopText()
   const [isExpanded, setIsExpanded] = useState(entries.length <= 3)
 

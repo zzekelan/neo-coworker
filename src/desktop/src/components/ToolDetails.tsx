@@ -134,12 +134,21 @@ const ExpandableFieldValue: React.FC<{
       <button
         type="button"
         onClick={() => setIsExpanded((previous) => !previous)}
-        className="rounded-md border border-border/50 bg-paper px-2 py-1 text-[11px] font-semibold tracking-wide text-muted transition-colors hover:bg-surface-hover"
+        className="text-[11px] text-muted/60 transition-colors hover:text-muted"
       >
         {isExpanded ? text.message.showLess : text.message.showMore}
       </button>
     </div>
   )
+}
+
+/** Detect strings that look like file paths or shell commands for mono rendering. */
+function looksLikePathOrCommand(value: string): boolean {
+  const trimmed = value.trim()
+  if (trimmed.includes("\n")) return false
+  if (trimmed.startsWith("/") || trimmed.startsWith("./") || trimmed.startsWith("../")) return true
+  if (trimmed.length > 120) return false
+  return /^[a-z_][\w.-]*[\s/]/.test(trimmed) && /[/.\\-]/.test(trimmed)
 }
 
 function formatDetailLabel(key: string, text?: ReturnType<typeof useDesktopText>) {
@@ -187,13 +196,4 @@ function buildCollapsedPreview(value: string) {
     lines.length > DEFAULT_COLLAPSED_LINE_LIMIT || limitedLines.length > DEFAULT_COLLAPSED_CHAR_LIMIT
 
   return wasTruncated ? `${limitedText}\n...` : limitedText
-}
-
-/** Detect strings that look like file paths or shell commands for mono rendering. */
-function looksLikePathOrCommand(value: string): boolean {
-  const trimmed = value.trim()
-  if (trimmed.includes("\n")) return false
-  if (trimmed.startsWith("/") || trimmed.startsWith("./") || trimmed.startsWith("../")) return true
-  if (trimmed.length > 120) return false
-  return /^[a-z_][\w.-]*[\s/]/.test(trimmed)
 }
