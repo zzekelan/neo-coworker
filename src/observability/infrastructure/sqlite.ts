@@ -84,7 +84,16 @@ export function createObservabilityRepository(
   return {
     runEvents: {
       append(inputValue: CreateRunEventInput) {
-        return appendRunEventTransaction(inputValue)
+        try {
+          return appendRunEventTransaction(inputValue)
+        } catch (error) {
+          if (!isStaleRunEventSourceConstraintError(error, inputValue.source)) {
+            throw error
+          }
+
+          recreateRunEventTable(database)
+          return appendRunEventTransaction(inputValue)
+        }
       },
       listByRun(runId: string) {
         const rows = database
@@ -105,6 +114,28 @@ export function createObservabilityRepository(
 }
 
 function ensureObservabilitySchema(database: ObservabilityDatabase) {
+  createRunEventTable(database)
+}
+
+function getNextRunEventSequence(database: ObservabilityDatabase, runId: string) {
+  const row = database
+    .query(
+      `
+        SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence
+        FROM run_event
+        WHERE run_id = ?
+      `,
+    )
+    .get(runId) as { next_sequence: number } | null
+
+  return row?.next_sequence ?? 0
+}
+
+function serializeRunEventData(value: RunEventData) {
+  return JSON.stringify(value)
+}
+
+function createRunEventTable(database: ObservabilityDatabase) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS run_event (
       id TEXT PRIMARY KEY,
@@ -124,22 +155,28 @@ function ensureObservabilitySchema(database: ObservabilityDatabase) {
   `)
 }
 
-function getNextRunEventSequence(database: ObservabilityDatabase, runId: string) {
-  const row = database
-    .query(
-      `
-        SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence
-        FROM run_event
-        WHERE run_id = ?
-      `,
-    )
-    .get(runId) as { next_sequence: number } | null
-
-  return row?.next_sequence ?? 0
+function recreateRunEventTable(database: ObservabilityDatabase) {
+  database.exec(`DROP TABLE IF EXISTS run_event`)
+  createRunEventTable(database)
 }
 
-function serializeRunEventData(value: RunEventData) {
-  return JSON.stringify(value)
+function isStaleRunEventSourceConstraintError(error: unknown, source: CreateRunEventInput["source"]) {
+  if (!isNewRunEventSource(source)) {
+    return false
+  }
+
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  return (
+    error.message.includes("CHECK constraint failed") &&
+    error.message.includes("source IN")
+  )
+}
+
+function isNewRunEventSource(source: CreateRunEventInput["source"]) {
+  return source === "memory" || source === "skill"
 }
 
 function mapRunEventRow(row: RunEventRow): StoredRunEvent {

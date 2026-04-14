@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
+  RUN_EVENT_SOURCES,
   createObservabilityRuntimeApi,
+  createNoopObservabilityRuntimeApi,
   type CreateRunEventInput,
   type StoredRunEvent,
 } from "../../src/observability"
@@ -35,6 +37,17 @@ function createRepository() {
 }
 
 describe("observability runtime api", () => {
+  test("exposes memory and skill run event sources", () => {
+    expect(RUN_EVENT_SOURCES).toEqual([
+      "model",
+      "orchestration",
+      "permission",
+      "tool",
+      "memory",
+      "skill",
+    ])
+  })
+
   test("normalizes source-specific observer events into durable run events", () => {
     const harness = createRepository()
     const runtime = createObservabilityRuntimeApi({
@@ -85,5 +98,27 @@ describe("observability runtime api", () => {
       runId: "run_1",
       events: harness.runEvents,
     })
+  })
+
+  test("noop memory and skill observers discard events without throwing", () => {
+    const runtime = createNoopObservabilityRuntimeApi()
+
+    expect(() =>
+      runtime.memoryObserver.recordMemoryEvent({
+        sessionId: "session_1",
+        runId: "run_1",
+        type: "memory.add",
+        payload: { target: "agent" },
+      }),
+    ).not.toThrow()
+
+    expect(() =>
+      runtime.skillObserver.recordSkillEvent({
+        sessionId: "session_1",
+        runId: "run_1",
+        type: "skill.created",
+        payload: { skillName: "planner" },
+      }),
+    ).not.toThrow()
   })
 })

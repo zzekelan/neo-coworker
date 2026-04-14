@@ -3,6 +3,8 @@ export const RUN_EVENT_SOURCES = [
   "orchestration",
   "permission",
   "tool",
+  "memory",
+  "skill",
 ] as const
 
 export type RunEventSource = (typeof RUN_EVENT_SOURCES)[number]

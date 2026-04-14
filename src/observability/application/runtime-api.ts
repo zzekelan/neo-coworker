@@ -24,6 +24,26 @@ type RuntimeObserverEvent = {
   [key: string]: unknown
 }
 
+type MemoryObserverEvent = {
+  sessionId: string
+  runId: string
+  type:
+    | "memory.loaded"
+    | "memory.add"
+    | "memory.replace"
+    | "memory.remove"
+    | "memory.overflow_rejected"
+    | "memory.security_blocked"
+  payload: Record<string, unknown>
+}
+
+type SkillObserverEvent = {
+  sessionId: string
+  runId: string
+  type: "skill.created" | "skill.patched" | "skill.deleted" | "skill.security_scan"
+  payload: Record<string, unknown>
+}
+
 function splitObservedEvent(event: RuntimeObserverEvent) {
   const {
     type,
@@ -116,6 +136,32 @@ export function createObservabilityRuntimeApi(input: CreateObservabilityRuntimeA
         })
       },
     },
+    memoryObserver: {
+      recordMemoryEvent(event: MemoryObserverEvent) {
+        const normalized = splitObservedEvent(event)
+
+        return recordRunEvent({
+          sessionId: event.sessionId,
+          runId: event.runId,
+          source: "memory",
+          eventType: normalized.eventType,
+          data: normalized.data,
+        })
+      },
+    },
+    skillObserver: {
+      recordSkillEvent(event: SkillObserverEvent) {
+        const normalized = splitObservedEvent(event)
+
+        return recordRunEvent({
+          sessionId: event.sessionId,
+          runId: event.runId,
+          source: "skill",
+          eventType: normalized.eventType,
+          data: normalized.data,
+        })
+      },
+    },
     listRunEvents(runId: string) {
       return repository.runEvents.listByRun(runId)
     },
@@ -136,26 +182,41 @@ export function createObservabilityRuntimeApi(input: CreateObservabilityRuntimeA
 
 export function createNoopObservabilityRuntimeApi() {
   return {
-    recordRunEvent() {
+    recordRunEvent(_event: RecordRunEventInput) {
       return null
     },
     runtimeObserver: {
-      recordRuntimeEvent() {
+      recordRuntimeEvent(_inputValue: {
+        sessionId: string
+        runId: string
+        event: RuntimeObserverEvent
+        occurredAt?: number
+      }) {
         return null
       },
     },
     modelObserver: {
-      recordModelEvent() {
+      recordModelEvent(_event: RuntimeObserverEvent & { sessionId: string; runId: string }) {
         return null
       },
     },
     toolObserver: {
-      recordToolEvent() {
+      recordToolEvent(_event: RuntimeObserverEvent & { sessionId: string; runId: string }) {
         return null
       },
     },
     permissionObserver: {
-      recordPermissionEvent() {
+      recordPermissionEvent(_event: RuntimeObserverEvent & { sessionId: string; runId: string }) {
+        return null
+      },
+    },
+    memoryObserver: {
+      recordMemoryEvent(_event: MemoryObserverEvent) {
+        return null
+      },
+    },
+    skillObserver: {
+      recordSkillEvent(_event: SkillObserverEvent) {
         return null
       },
     },
