@@ -39,7 +39,7 @@ export function createWebsearchTool(input: {
     concurrency: "read-only",
     isCompressible: true,
     usageGuidance:
-      "Prefer websearch over webfetch when you do not yet know the URL. Describe the ideal page content in natural language — 'tutorial on React server components with code examples' performs better than 'react server components'. Use webfetch once you have a URL to retrieve full page content. Do not use websearch for repository-local searches; use grep or glob instead.",
+      "Prefer websearch over webfetch when you do not yet know the URL. Describe the ideal page content in natural language — 'tutorial on React server components with code examples' performs better than 'react server components'. Use webfetch once you have a URL to retrieve full page content. Do not use websearch for repository-local searches; use grep or glob instead. IMPORTANT: Only present URLs that appear in websearch results — never fabricate or guess URLs. For multi-item requests, call websearch multiple times in parallel with varied queries in a single response.",
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
       const { query } = WebsearchArgsSchema.parse(toolInput.args)

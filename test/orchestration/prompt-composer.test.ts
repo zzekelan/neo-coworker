@@ -54,15 +54,15 @@ describe("orchestration prompt composer", () => {
   test("builds a static prompt with the five designed sections and key constraints", () => {
     const systemPrompt = getStaticPrompt()
 
-    expect(systemPrompt).toContain("You are Neo Coworker, an autonomous software engineering agent.")
-    expect(systemPrompt).toContain("## Executing Tasks")
-    expect(systemPrompt).toContain("Make the minimal change needed")
-    expect(systemPrompt).toContain("Do not add logging, telemetry, or error tracking unless asked.")
-    expect(systemPrompt).toContain("## Operating with Care")
-    expect(systemPrompt).toContain("Never skip pre-commit hooks or bypass safety checks.")
-    expect(systemPrompt).toContain("## Using Your Tools")
-    expect(systemPrompt).toContain("## Communication Style")
-    expect(systemPrompt).toContain('Never start responses with "I"')
+    expect(systemPrompt).toContain("You are Neo Coworker, a versatile personal work assistant")
+    expect(systemPrompt).toContain("# Executing Tasks")
+    expect(systemPrompt).toContain("Understand before acting")
+    expect(systemPrompt).toContain("Report outcomes faithfully")
+    expect(systemPrompt).toContain("# Operating with Care")
+    expect(systemPrompt).toContain("Measure twice, cut once")
+    expect(systemPrompt).toContain("# Using Your Tools")
+    expect(systemPrompt).toContain("# Communication Style")
+    expect(systemPrompt).toContain("Match your response depth to the task at hand")
   })
 
   test("keeps the static prompt token count identical across ten calls", () => {
@@ -348,7 +348,7 @@ describe("orchestration prompt composer", () => {
 
     const finalRequest = observedRequests.at(-1)
     expect(finalRequest).toBeDefined()
-    expect(finalRequest?.systemPrompt).toContain("You are Neo Coworker, an autonomous software engineering agent.")
+    expect(finalRequest?.systemPrompt).toContain("You are Neo Coworker, a versatile personal work assistant")
     expect(finalRequest?.systemPrompt).not.toContain("## Dynamic Context")
     expect(finalRequest?.lateContextMessage).toContain("- Working directory: /workspace/project")
     expect(finalRequest?.lateContextMessage).toContain("- Active skills: reviewer")
