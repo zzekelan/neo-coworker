@@ -6,6 +6,12 @@ export type {
   PermissionResponse,
 } from "./decision"
 export {
+  assessCommandRisk,
+  DANGEROUS_PATTERNS,
+  RiskLevel,
+  type RiskAssessment,
+} from "./risk-analyzer"
+export {
   PERMISSION_STATUSES,
   type PermissionStatus,
   type StoredPermissionRequest,

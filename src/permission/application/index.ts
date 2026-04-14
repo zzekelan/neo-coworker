@@ -28,6 +28,10 @@ export {
   type CreatePermissionRespondServiceInput,
 } from "./respond-service"
 export {
+  assessCommandRisk,
+  DANGEROUS_PATTERNS,
+  RiskLevel,
+  type RiskAssessment,
   type PermissionMode,
   type PermissionPolicy,
   type PermissionRequest,
