@@ -3,6 +3,7 @@ export type {
   ToolObserverPort,
 } from "./ports/tool-observer"
 export {
+  CHECKPOINT_TRIGGERS,
   ParallelizationClass,
   SEARCH_MAX_MATCHES,
   SEARCH_SKIPPED_DIRECTORIES,
@@ -10,6 +11,9 @@ export {
   TOOL_PARALLELIZATION_DEFAULTS,
   WORKSPACE_MAX_MATCHES,
   WORKSPACE_SKIPPED_DIRECTORIES,
+  shouldCheckpoint,
+  type Checkpoint,
+  type CheckpointStore,
   canParallelize,
   createToolAbortError,
   throwIfToolAborted,
