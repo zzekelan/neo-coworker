@@ -1,3 +1,14 @@
+type ModelFailoverReason =
+  | "auth"
+  | "billing"
+  | "rate_limit"
+  | "overloaded"
+  | "server_error"
+  | "timeout"
+  | "context_overflow"
+  | "model_not_found"
+  | "unknown"
+
 export type ModelObserverEvent = {
   type: "model.turn.requested"
   sessionId: string
@@ -32,6 +43,33 @@ export type ModelObserverEvent = {
   inputTokens: number
   outputTokens: number
   tokenUsageSource: "provider" | "estimated"
+} | {
+  type: "error.classified"
+  sessionId: string
+  runId: string
+  turnKey: string
+  errorType: ModelFailoverReason
+  severity: "warning" | "error"
+  shouldRetry: boolean
+  shouldRotateCredential: boolean
+  shouldFallback: boolean
+} | {
+  type: "credential.rotated"
+  sessionId: string
+  runId: string
+  turnKey?: string
+  failedKey: string
+  nextKey: string | null
+  reason: ModelFailoverReason
+  remainingCredentials: number
+} | {
+  type: "rate_limit.near_threshold"
+  sessionId: string
+  runId: string
+  turnKey?: string
+  rpm_remaining?: number
+  tpm_remaining?: number
+  threshold: number
 }
 
 export type ModelObserverPort = {

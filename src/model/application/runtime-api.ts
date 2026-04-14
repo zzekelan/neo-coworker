@@ -8,6 +8,7 @@ import {
 } from "./projection"
 import { estimateModelTurnUsage } from "./token-usage"
 import type { ModelObserverPort } from "./ports/model-observer"
+import { classifyError } from "../domain/error-classification"
 import type {
   ModelEvent,
   ModelProjectionInput,
@@ -36,6 +37,7 @@ export type ModelProviderRequest = ModelProjectionInput &
   Pick<ProviderTurnRequest, "signal"> & {
     sessionId?: string
     runId?: string
+    turnKey?: string
   }
 
 export type ModelProvider = {
@@ -149,6 +151,12 @@ export function createModelProvider(input: {
           yield estimatedUsage
         }
 
+        observeClassifiedError({
+          observer: input.observer,
+          request,
+          error,
+        })
+
         throw error
       }
 
@@ -194,4 +202,74 @@ function observeTurnUsage(input: {
   } catch {
     // Observability must not alter the model request path.
   }
+}
+
+function observeClassifiedError(input: {
+  observer?: ModelObserverPort
+  request: ModelProviderRequest
+  error: unknown
+}) {
+  if (!input.request.sessionId || !input.request.runId) {
+    return
+  }
+
+  const classified = classifyError(coerceError(input.error))
+
+  try {
+    input.observer?.recordModelEvent?.({
+      type: "error.classified",
+      sessionId: input.request.sessionId,
+      runId: input.request.runId,
+      turnKey: input.request.turnKey ?? `${input.request.runId}:turn_unkeyed`,
+      errorType: classified.reason,
+      severity: classified.retryable
+        || classified.shouldCompress
+        || classified.shouldRotateCredential
+        || classified.shouldFallback
+        ? "warning"
+        : "error",
+      shouldRetry: classified.retryable,
+      shouldRotateCredential: classified.shouldRotateCredential,
+      shouldFallback: classified.shouldFallback,
+    })
+  } catch {
+    // Observability must not alter the model request path.
+  }
+}
+
+function coerceError(error: unknown) {
+  if (error instanceof Error) {
+    return error
+  }
+
+  const wrapped = new Error(
+    typeof error === "object"
+      && error !== null
+      && "message" in error
+      && typeof error.message === "string"
+      ? error.message
+      : String(error),
+  )
+
+  if (typeof error === "object" && error !== null) {
+    const record = error as Record<string, unknown>
+
+    if (typeof record.name === "string" && record.name.length > 0) {
+      wrapped.name = record.name
+    }
+
+    if ("status" in record) {
+      ;(wrapped as Error & { status?: unknown }).status = record.status
+    }
+
+    if ("statusCode" in record) {
+      ;(wrapped as Error & { statusCode?: unknown }).statusCode = record.statusCode
+    }
+
+    if ("body" in record) {
+      ;(wrapped as Error & { body?: unknown }).body = record.body
+    }
+  }
+
+  return wrapped
 }

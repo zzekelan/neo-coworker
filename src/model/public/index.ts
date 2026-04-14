@@ -13,6 +13,19 @@ export {
   createOpenAIAdapter,
   createOpenAICompatibleAdapter,
 } from "../infrastructure/runner"
+export {
+  CredentialPool,
+  PoolStrategy,
+  type Credential,
+  type CredentialPoolOptions,
+  type CredentialPoolTelemetryContext,
+} from "../infrastructure/credential-pool"
+export {
+  RateLimitTracker,
+  type RateLimitInfo,
+  type RateLimitTrackerOptions,
+  type RateLimitWindow,
+} from "../infrastructure/rate-limit-tracker"
 
 export function createFakeProvider(
   input: Parameters<typeof createFakeAdapter>[0] = {},
