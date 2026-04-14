@@ -25,6 +25,11 @@ export {
   type ModelProviderRequest,
   type ModelRuntimeApi,
 } from "./runtime-api"
+export {
+  FailoverReason,
+  classifyError,
+} from "../domain/error-classification"
+export type { ClassifiedError } from "../domain/error-classification"
 export type {
   ModelActiveSkill,
   ModelEvent,
