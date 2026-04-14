@@ -11,6 +11,7 @@ export const STRUCTURE_BASELINE_PATH = join(
 )
 export const FINAL_CAPABILITY_TOP_LEVELS = new Set([
   "agent",
+  "memory",
   "observability",
   "model",
   "permission",

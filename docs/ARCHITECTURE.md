@@ -14,6 +14,7 @@ Approved top-level modules under `src/` fall into four groups:
 
 - Capability modules:
   - `agent`: agent profile definitions, schema validation, and multi-agent configuration contracts
+  - `memory`: Persistent user-level memory (Markdown-backed, cross-session)
   - `observability`: runtime telemetry, trace export policy, and durable run-event records
   - `session`: durable session, run, message, and transcript state
   - `permission`: durable permission-request state and decision flow
@@ -53,7 +54,7 @@ New code in this refactor must follow module-role-specific layouts instead.
 
 ### Capability Modules
 
-`agent`, `observability`, `session`, `permission`, `model`, `skill`, and `tool` are capability modules.
+`agent`, `memory`, `observability`, `session`, `permission`, `model`, `skill`, and `tool` are capability modules.
 
 Their target internal layout is:
 
@@ -78,7 +79,7 @@ Its target internal layout is:
 - `infrastructure/`
 - root `index.ts`
 
-`orchestration/application/ports/` defines the capability contracts that `orchestration` needs from `observability`, `session`, `permission`, `model`, `skill`, and `tool`.
+`orchestration/application/ports/` defines the capability contracts that `orchestration` needs from `memory`, `observability`, `session`, `permission`, `model`, `skill`, and `tool`.
 
 `orchestration` does not gain a mandatory `domain/` directory in this round.
 If future work reveals durable, reusable orchestration-owned business rules that deserve a `domain/`, that must come from a later design change, not from ad hoc implementation drift.
