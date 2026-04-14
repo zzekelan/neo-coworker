@@ -71,6 +71,9 @@ export {
 } from "./sub-session-input"
 export {
   DEFAULT_SESSION_TITLE,
+  type InsightsPort,
+  type InsightsQuery,
+  type InsightsSummary,
   MESSAGE_ROLES,
   RUN_ACTIVE_SKILLS_MAX_LENGTH,
   RUN_TOKEN_USAGE_SOURCES,
@@ -81,10 +84,12 @@ export {
   SESSION_PREVIEW_MAX_LENGTH,
   SESSION_TITLE_MAX_LENGTH,
   buildDefaultSessionTitle,
+  summarizeSessionInsights,
   normalizeRunActiveSkills,
   normalizeSessionActiveSkills,
   buildSessionPreviewFromUserPrompt,
   buildSessionTitleFromUserPrompt,
+  type SessionInsight,
   type MessageRole,
   type PartKind,
   type RunStatus,

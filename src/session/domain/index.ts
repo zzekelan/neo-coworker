@@ -27,3 +27,10 @@ export {
   buildSessionTitleFromUserPrompt,
   type StoredSession,
 } from "./session"
+export {
+  type SessionInsight,
+  type InsightsPort,
+  type InsightsQuery,
+  type InsightsSummary,
+  summarizeSessionInsights,
+} from "./insights"
