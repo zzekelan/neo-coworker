@@ -30,6 +30,44 @@ export type ToolObserverEvent =
       deduplicated: boolean
     }
   | {
+      type: "parallel.plan_generated"
+      sessionId: string
+      runId: string
+      payload: {
+        totalCalls: number
+        batchCount: number
+        maxBatchSize: number
+      }
+    }
+  | {
+      type: "parallel.batch_started"
+      sessionId: string
+      runId: string
+      payload: {
+        batchIndex: number
+        callCount: number
+        toolNames: string[]
+      }
+    }
+  | {
+      type: "parallel.batch_completed"
+      sessionId: string
+      runId: string
+      payload: {
+        batchIndex: number
+        durationMs: number
+      }
+    }
+  | {
+      type: "parallel.conflict_detected"
+      sessionId: string
+      runId: string
+      payload: {
+        tools: string[]
+        conflictingPaths: string[]
+      }
+    }
+  | {
       type: "checkpoint.created"
       sessionId: string
       runId: string
