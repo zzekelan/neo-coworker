@@ -1,4 +1,4 @@
-export const CURRENT_SESSION_SCHEMA_VERSION = 9
+export const CURRENT_SESSION_SCHEMA_VERSION = 10
 
 export const SESSION_TABLES = [
   "session",
@@ -6,4 +6,5 @@ export const SESSION_TABLES = [
   "message",
   "part",
   "permission_request",
+  "permission_allowlist",
 ] as const

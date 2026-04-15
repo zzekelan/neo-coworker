@@ -1,3 +1,4 @@
+// @ts-expect-error Bun runtime module is provided by Bun.
 import { Database } from "bun:sqlite"
 import { existsSync, mkdirSync, realpathSync } from "node:fs"
 import { dirname, resolve } from "node:path"
@@ -72,6 +73,17 @@ const partKindCheck = PART_KINDS.map((kind) => `'${kind}'`).join(", ")
 const permissionStatusCheck = ["pending", "approved", "denied", "cancelled"]
   .map((status) => `'${status}'`)
   .join(", ")
+
+const permissionAllowlistTableStatement = `
+  CREATE TABLE IF NOT EXISTS permission_allowlist (
+    workspace_root TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    pattern TEXT NOT NULL,
+    reason TEXT,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (workspace_root, tool_name, pattern)
+  )
+`
 
 const sessionMigrations = [
   {
@@ -327,6 +339,10 @@ const sessionMigrations = [
         ADD COLUMN parent_session_id TEXT REFERENCES session(id) ON DELETE CASCADE
       `,
     ],
+  },
+  {
+    version: 10,
+    statements: [permissionAllowlistTableStatement],
   },
 ] as const
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
+// @ts-expect-error Bun runtime module is provided by Bun.
 import { Database } from "bun:sqlite"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -12,6 +13,11 @@ import {
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
+const bunRuntime = (globalThis as unknown as {
+  Bun: {
+    file(path: string): { size: number }
+  }
+}).Bun
 
 afterEach(() => {
   while (openDatabases.length > 0) {
@@ -34,7 +40,7 @@ describe("storage schema", () => {
       )
       .all() as Array<{ name: string }>
 
-    expect(databasePath).toSatisfy((value) => Bun.file(value).size > 0)
+    expect(databasePath).toSatisfy((value: string) => bunRuntime.file(value).size > 0)
     expect(tables.map((row) => row.name)).toEqual([...STORAGE_TABLES].sort())
 
     const version = database.query("PRAGMA user_version").get() as { user_version: number }
@@ -565,7 +571,7 @@ describe("storage schema", () => {
       run_id: string
     }
 
-    expect(version.user_version).toBe(9)
+    expect(version.user_version).toBe(10)
     expect(columns.find((column) => column.name === 'parent_session_id')).toMatchObject({
       name: 'parent_session_id',
       type: 'TEXT',
@@ -603,6 +609,7 @@ describe("storage schema", () => {
     })
     expect(countRows(migrated, 'part')).toBe(1)
     expect(countRows(migrated, 'permission_request')).toBe(1)
+    expect(countRows(migrated, 'permission_allowlist')).toBe(0)
   })
 
   test("migrates v5 run records to include token usage columns", () => {
