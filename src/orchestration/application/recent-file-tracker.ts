@@ -1,4 +1,5 @@
 import { countTokens } from "gpt-tokenizer/model/gpt-4o"
+import type { OrchestrationTranscriptMessage } from "./ports/session"
 
 const MAX_TRACKED_FILES = 10
 const MAX_RECOVERY_FILES = 5
@@ -49,43 +50,139 @@ export function createRecentFileTracker() {
       sessionEntries.set(input.sessionId, deduped)
     },
     buildRecoveryReminder(sessionId: string): RecentFileRecoveryReminder | null {
-      const entries = (sessionEntries.get(sessionId) ?? []).slice().reverse()
-      if (entries.length === 0) {
-        return null
-      }
+      return buildRecoveryReminderFromEntries(sessionEntries.get(sessionId) ?? [])
+    },
+  }
+}
 
-      const selected: RecentFileEntry[] = []
-      let remainingTokens = MAX_FILE_RECOVERY_TOKENS
+export function buildRecentFileRecoveryReminderFromTranscript(
+  transcript: OrchestrationTranscriptMessage[],
+): RecentFileRecoveryReminder | null {
+  return buildRecoveryReminderFromEntries(collectRecentReadEntriesFromTranscript(transcript))
+}
 
-      for (const entry of entries) {
-        if (selected.length >= MAX_RECOVERY_FILES) {
-          break
-        }
+function buildRecoveryReminderFromEntries(
+  entriesInput: readonly RecentFileEntry[],
+): RecentFileRecoveryReminder | null {
+  const entries = entriesInput.slice().reverse()
+  if (entries.length === 0) {
+    return null
+  }
 
-        if (entry.tokenCount > remainingTokens) {
+  const selected: RecentFileEntry[] = []
+  let remainingTokens = MAX_FILE_RECOVERY_TOKENS
+
+  for (const entry of entries) {
+    if (selected.length >= MAX_RECOVERY_FILES) {
+      break
+    }
+
+    if (entry.tokenCount > remainingTokens) {
+      continue
+    }
+
+    selected.push(entry)
+    remainingTokens -= entry.tokenCount
+  }
+
+  if (selected.length === 0) {
+    return null
+  }
+
+  return {
+    text: [
+      "<system-reminder>",
+      "Recent file context:",
+      "",
+      ...selected.map((entry) => `### ${entry.path}\n${entry.content}`),
+      "</system-reminder>",
+    ].join("\n"),
+    filePaths: selected.map((entry) => entry.path),
+  }
+}
+
+function collectRecentReadEntriesFromTranscript(transcript: OrchestrationTranscriptMessage[]) {
+  const readCallPaths = new Map<string, string>()
+  const recentEntries = new Map<string, RecentFileEntry>()
+
+  for (const message of transcript) {
+    for (const part of message.parts) {
+      if (part.kind === "tool_call") {
+        const data = readObject(part.data)
+        if (readString(data, "toolName") !== "read") {
           continue
         }
 
-        selected.push(entry)
-        remainingTokens -= entry.tokenCount
+        const callId = readString(data, "callId")
+        const inputText = readString(data, "inputText") ?? part.text ?? ""
+        const path = parseReadToolPath(inputText)
+
+        if (!callId || !path) {
+          continue
+        }
+
+        readCallPaths.set(createToolCallKey(message.runId, callId), path)
+        continue
       }
 
-      if (selected.length === 0) {
-        return null
+      if (part.kind !== "tool_result") {
+        continue
       }
 
-      return {
-        text: [
-          "<system-reminder>",
-          "Recent file context:",
-          "",
-          ...selected.map((entry) => `### ${entry.path}\n${entry.content}`),
-          "</system-reminder>",
-        ].join("\n"),
-        filePaths: selected.map((entry) => entry.path),
+      const data = readObject(part.data)
+      if (readString(data, "toolName") !== "read") {
+        continue
       }
-    },
+
+      const callId = readString(data, "callId")
+      if (!callId) {
+        continue
+      }
+
+      const path = readCallPaths.get(createToolCallKey(message.runId, callId))
+      const content = (part.text ?? readString(data, "output") ?? "").trim()
+      if (!path || !content) {
+        continue
+      }
+
+      const entry = createRecentFileEntry(path, content)
+      recentEntries.delete(path)
+      recentEntries.set(path, entry)
+    }
   }
+
+  return [...recentEntries.values()]
+}
+
+function createRecentFileEntry(path: string, content: string): RecentFileEntry {
+  const truncatedContent = truncateTextToTokenLimit(content, MAX_TOKENS_PER_FILE)
+
+  return {
+    path,
+    content: truncatedContent,
+    tokenCount: countTokens(truncatedContent),
+  }
+}
+
+function createToolCallKey(runId: string, callId: string) {
+  return `${runId}:${callId}`
+}
+
+function parseReadToolPath(inputText: string) {
+  try {
+    const parsed = JSON.parse(inputText)
+    return readString(readObject(parsed), "path")?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+function readObject(value: unknown) {
+  return value != null && typeof value === "object" ? (value as Record<string, unknown>) : null
+}
+
+function readString(value: Record<string, unknown> | null, key: string) {
+  return typeof value?.[key] === "string" ? (value[key] as string) : null
 }
 
 function truncateTextToTokenLimit(text: string, tokenLimit: number) {

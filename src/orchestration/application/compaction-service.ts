@@ -14,7 +14,10 @@ import type {
 } from "./ports/session"
 import type { OrchestrationSkillPort } from "./ports/skill"
 import type { OrchestrationToolPort } from "./ports/tool"
-import { createRecentFileTracker } from "./recent-file-tracker"
+import {
+  buildRecentFileRecoveryReminderFromTranscript,
+  createRecentFileTracker,
+} from "./recent-file-tracker"
 import {
   createSkillReminderTracker,
   type SkillReminderBatch,
@@ -92,6 +95,10 @@ type CompactionRunResult = {
   tokensBefore: number
 }
 
+type CompletedCompactionResult = CompactionRunResult & {
+  tokensAfter: number
+}
+
 type CompactionPromptPlan = {
   sourceMessages: OrchestrationTranscriptMessage[]
   messagesToSummarize: OrchestrationTranscriptMessage[]
@@ -162,7 +169,11 @@ export function createOrchestrationCompactionService(input: {
       emit: inputValue.emit,
     })
 
-    const recentFileReminder = input.recentFiles.buildRecoveryReminder(inputValue.sessionId)
+    const recentFileReminder =
+      input.recentFiles.buildRecoveryReminder(inputValue.sessionId)
+      ?? buildRecentFileRecoveryReminderFromTranscript(
+        input.session.listTranscript(inputValue.sessionId),
+      )
     if (recentFileReminder) {
       input.skillReminders.appendRecoveryReminder({
         sessionId: inputValue.sessionId,
@@ -177,13 +188,21 @@ export function createOrchestrationCompactionService(input: {
       transcript: OrchestrationTranscriptMessage[]
       reminderBatch: SkillReminderBatch | undefined
     }) {
+      if (readLatestCompactionBoundaryTrigger(inputValue.transcript) !== "manual") {
+        return false
+      }
+
       return (
-        readLatestCompactionBoundaryTrigger(inputValue.transcript) === "manual" &&
         hasPendingRecoveryContext(inputValue.reminderBatch)
+        || isAwaitingFirstPostManualCompactionReply(inputValue.transcript)
       )
     },
     async maybeAutoCompact(inputValue: AutoCompactionInput) {
       if (!input.model.projectTurn) {
+        return { compacted: false as const }
+      }
+
+      if (!hasAutoCompactionSourceContext(inputValue.transcript, inputValue.run.id)) {
         return { compacted: false as const }
       }
 
@@ -213,7 +232,7 @@ export function createOrchestrationCompactionService(input: {
       }
 
       try {
-        await completeCompaction({
+        const completedCompaction = await completeCompaction({
           session: input.session,
           model: input.model,
           runtimeObserver: input.runtimeObserver,
@@ -341,7 +360,7 @@ export function createOrchestrationCompactionService(input: {
       })
 
       try {
-        await completeCompaction({
+        const completedCompaction = await completeCompaction({
           session: input.session,
           model: input.model,
           runtimeObserver: input.runtimeObserver,
@@ -360,21 +379,7 @@ export function createOrchestrationCompactionService(input: {
           sessionId: inputValue.sessionId,
           runId: inputValue.runId,
           ...buildContextUsageSnapshot({
-            contextTokens: projectCompactionInputTokens({
-              model: input.model,
-              systemPrompt: inputValue.systemPrompt,
-              contextWindow: inputValue.contextWindow,
-              sessionId: inputValue.sessionId,
-              runId: inputValue.runId,
-              workspaceRoot: inputValue.workspaceRoot,
-              skillCatalog: inputValue.skillCatalog,
-              activeSkillNames: input.session.getSession(inputValue.sessionId).activeSkills,
-              tools: inputValue.tools,
-              transcript: input.session.listTranscript(inputValue.sessionId),
-              compressibleToolNames: inputValue.compressibleToolNames,
-              skillReminders: input.skillReminders,
-              buildLateContextMessage: input.buildLateContextMessage,
-            }).inputTokens,
+            contextTokens: completedCompaction.tokensAfter,
             contextWindow: inputValue.contextWindow,
             source: "estimated",
           }),
@@ -430,7 +435,7 @@ async function completeCompaction(input: CompactionRunInput & {
     systemReminders: readonly string[]
   }): string
   now: () => number
-}) {
+}): Promise<CompletedCompactionResult> {
   const result = await performCompactionRun(input)
 
   input.skillReminders.resetAfterCompaction(input.sessionId)
@@ -475,6 +480,11 @@ async function completeCompaction(input: CompactionRunInput & {
     tokensAfter: projectionAfter.inputTokens,
     compressionRatio,
   })
+
+  return {
+    ...result,
+    tokensAfter: projectionAfter.inputTokens,
+  }
 }
 
 async function performCompactionRun(input: CompactionRunInput & {
@@ -835,12 +845,16 @@ function buildCompactionPromptPlan(input: {
       : null
   const sourceMessages =
     latestBoundaryIndex >= 0 ? input.transcript.slice(latestBoundaryIndex + 1) : input.transcript
-  const tailStartIndex = findTailStartIndexByTokenBudget(sourceMessages, input.tailTokenBudget)
+  const protectedTailMessages = selectTailMessagesByTokenBudget({
+    transcript: sourceMessages,
+    tailTokenBudget: input.tailTokenBudget,
+  })
+  const protectedTailSet = new Set(protectedTailMessages)
 
   return {
     sourceMessages,
-    messagesToSummarize: sourceMessages.slice(0, tailStartIndex),
-    protectedTailMessages: sourceMessages.slice(tailStartIndex),
+    messagesToSummarize: sourceMessages.filter((message) => !protectedTailSet.has(message)),
+    protectedTailMessages,
     previousSummary,
   }
 }
@@ -849,33 +863,29 @@ export function selectTailMessagesByTokenBudget(input: {
   transcript: OrchestrationTranscriptMessage[]
   tailTokenBudget: number
 }) {
-  return input.transcript.slice(
-    findTailStartIndexByTokenBudget(input.transcript, input.tailTokenBudget),
-  )
-}
-
-function findTailStartIndexByTokenBudget(
-  transcript: OrchestrationTranscriptMessage[],
-  tailTokenBudget: number,
-) {
-  if (transcript.length <= 1) {
-    return transcript.length
+  if (input.transcript.length <= 1) {
+    return []
   }
 
+  const selected: OrchestrationTranscriptMessage[] = []
   let accumulatedTokens = 0
-  let tailStartIndex = transcript.length
 
-  for (let index = transcript.length - 1; index >= 0; index -= 1) {
-    const nextTokens = estimateTranscriptMessageTokens(transcript[index])
-    if (accumulatedTokens + nextTokens > tailTokenBudget && tailStartIndex < transcript.length) {
+  for (let index = input.transcript.length - 1; index >= 0; index -= 1) {
+    const message = input.transcript[index]
+    if (!isProtectedTailCandidate(message)) {
+      continue
+    }
+
+    const nextTokens = estimateTranscriptMessageTokens(message)
+    if (accumulatedTokens + nextTokens > input.tailTokenBudget && selected.length > 0) {
       break
     }
 
     accumulatedTokens += nextTokens
-    tailStartIndex = index
+    selected.unshift(message)
   }
 
-  return tailStartIndex === 0 ? 1 : tailStartIndex
+  return selected.length === input.transcript.length ? selected.slice(1) : selected
 }
 
 function estimateTranscriptMessageTokens(message: OrchestrationTranscriptMessage | undefined) {
@@ -1019,6 +1029,42 @@ function hasPendingRecoveryContext(reminderBatch: SkillReminderBatch | undefined
   return Boolean(
     reminderBatch &&
       (reminderBatch.recoveryFilePaths.length > 0 || reminderBatch.activeSkillNames.length > 0),
+  )
+}
+
+function hasAutoCompactionSourceContext(
+  transcript: OrchestrationTranscriptMessage[],
+  currentRunId: string,
+) {
+  return transcript.some((message) => message.runId !== currentRunId)
+}
+
+function isAwaitingFirstPostManualCompactionReply(transcript: OrchestrationTranscriptMessage[]) {
+  const latestBoundaryIndex = findLatestCompactionBoundaryIndex(transcript)
+  if (latestBoundaryIndex < 0) {
+    return false
+  }
+
+  return !transcript
+    .slice(latestBoundaryIndex + 1)
+    .some((message) => message.role === "assistant" || message.role === "synthetic")
+}
+
+function isProtectedTailCandidate(message: OrchestrationTranscriptMessage | undefined) {
+  if (!message) {
+    return false
+  }
+
+  if (message.role === "user" || message.role === "system") {
+    return true
+  }
+
+  return message.parts.some((part) =>
+    part.kind === "text"
+    || part.kind === "reasoning"
+    || part.kind === "step_start"
+    || part.kind === "step_finish"
+    || part.kind === "patch",
   )
 }
 
