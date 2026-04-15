@@ -11,12 +11,14 @@ import { createShellTool } from "../builtins/shell"
 import { createWebfetchTool } from "../builtins/webfetch"
 import { createWebsearchTool } from "../builtins/websearch"
 import { createWriteTool } from "../builtins/write"
+import { createMemoryTools, type MemoryToolStore } from "./memory-tools"
 
 const denyPermission: RequestToolPermission = async () => ({ decision: "deny" })
 
 export type CreateBuiltinToolRuntimeInput = {
   requestPermission?: RequestToolPermission
   searchBackend?: SearchToolBackend
+  memory?: MemoryToolStore
   extraTools?: ToolDefinition[]
 }
 
@@ -24,15 +26,15 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
   const requestPermission = input.requestPermission ?? denyPermission
 
   function annotateDefaults(tool: ToolDefinition): ToolDefinition {
-      if (
-        tool.name === "read" ||
-        tool.name === "glob" ||
-        tool.name === "grep" ||
-        tool.name === "get_current_datetime" ||
-        tool.name === "webfetch" ||
-        tool.name === "websearch" ||
-        tool.name === "codesearch"
-      ) {
+    if (
+      tool.name === "read" ||
+      tool.name === "glob" ||
+      tool.name === "grep" ||
+      tool.name === "get_current_datetime" ||
+      tool.name === "webfetch" ||
+      tool.name === "websearch" ||
+      tool.name === "codesearch"
+    ) {
       return {
         ...tool,
         concurrency: tool.concurrency ?? "read-only",
@@ -66,6 +68,7 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
         searchBackend: input.searchBackend,
       })),
       annotateDefaults(createDatetimeTool()),
+      ...(input.memory ? createMemoryTools({ memory: input.memory }).map(annotateDefaults) : []),
       annotateDefaults(createWriteTool({ requestPermission })),
       annotateDefaults(createEditTool({ requestPermission })),
       annotateDefaults(createShellTool({ requestPermission })),
