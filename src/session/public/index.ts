@@ -1,5 +1,9 @@
 export * from "../application"
 export {
+  createSessionInsightsAdapter,
+  type CreateSessionInsightsAdapterInput,
+} from "../infrastructure/insights-adapter"
+export {
   getSessionDatabaseIdentity,
   openSessionDatabase,
   createSessionRepository,
