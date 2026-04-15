@@ -13,6 +13,7 @@ import {
   createPermissionRepository,
   createPermissionRuntimeApi,
   type PermissionMode,
+  type PermissionObserverPort,
   type PermissionResponse,
   type PermissionRepository,
 } from "../permission"
@@ -23,11 +24,15 @@ import {
   createToolRuntimeApi,
   manageResultSize,
   throwIfToolAborted,
+  type RequestToolPermission,
   type SearchToolBackend,
   type ToolDefinition,
 } from "../tool"
 import {
+  createSkillWriteService,
+  createWorkspaceSkillStore,
   createWorkspaceSkillRuntime,
+  type SkillObserverPort,
   type SkillRuntimeApi,
 } from "../skill"
 import {
@@ -72,7 +77,7 @@ type RuntimeInput = {
   skillRuntime?: SkillRuntimeApi
   observability?: Pick<
     ObservabilityRuntimeApi,
-    "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver"
+    "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver" | "skillObserver"
   >
   searchBackend?: SearchToolBackend
   permissionPolicy?: Partial<
@@ -128,7 +133,7 @@ export function createRuntime(input: RuntimeInput) {
       repository: input.repository,
       session: sessionProvider.runs,
     }),
-    observer: observability?.permissionObserver,
+    observer: createPermissionObserver(observability?.permissionObserver),
     now,
   })
 
@@ -145,6 +150,7 @@ export function createRuntime(input: RuntimeInput) {
       contextWindow,
       sessionPort,
       runtimeObserver: observability?.runtimeObserver,
+      skillObserver: createSkillObserver(observability?.skillObserver),
       searchBackend: input.searchBackend,
       agentProfileService(workspaceRoot) {
         return createAgentProfileService(workspaceRoot)
@@ -399,7 +405,7 @@ function createSessionPort(input: {
 function createPermissionPort(input: {
   repository: PermissionRepository
   session: ReturnType<typeof createPermissionSessionPort>
-  observer?: Pick<ObservabilityRuntimeApi, "permissionObserver">["permissionObserver"]
+  observer?: PermissionObserverPort
   now: () => number
 }): OrchestrationPermissionPort {
   const permissionsApi = createPermissionRuntimeApi({
@@ -425,6 +431,7 @@ function createToolPortFactory(config: {
   contextWindow: { getContextWindow(): number }
   sessionPort: OrchestrationSessionPort
   runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
+  skillObserver?: SkillObserverPort
   searchBackend?: SearchToolBackend
   agentProfileService: (workspaceRoot: string) => AgentProfileService
   createSubAgentRun: (input: {
@@ -469,6 +476,14 @@ function createToolPortFactory(config: {
             sessionId: input.sessionId,
             runId: input.runId,
             now: config.now,
+          }),
+          ...createSkillWriteTools({
+            requestPermission(request) {
+              return input.requestPermission(request)
+            },
+            skillObserver: config.skillObserver,
+            sessionId: input.sessionId,
+            runId: input.runId,
           }),
           createAgentTool({
             sessionId: input.sessionId,
@@ -596,6 +611,42 @@ function createToolPortFactory(config: {
   }
 }
 
+function createPermissionObserver(
+  observer: Pick<ObservabilityRuntimeApi, "permissionObserver">["permissionObserver"] | undefined,
+): PermissionObserverPort | undefined {
+  if (!observer) {
+    return undefined
+  }
+
+  return {
+    recordPermissionEvent(event) {
+      if (!("sessionId" in event) || !("runId" in event)) {
+        return
+      }
+
+      observer.recordPermissionEvent({
+        ...event,
+        sessionId: event.sessionId,
+        runId: event.runId,
+      })
+    },
+  }
+}
+
+function createSkillObserver(
+  observer: Pick<ObservabilityRuntimeApi, "skillObserver">["skillObserver"] | undefined,
+): SkillObserverPort | undefined {
+  if (!observer) {
+    return undefined
+  }
+
+  return {
+    recordSkillEvent(event) {
+      observer.recordSkillEvent(event)
+    },
+  }
+}
+
 const SkillToolArgsSchema = z.object({
   action: z.enum(["activate", "list"]).optional(),
   name: z.string().trim().min(1).optional(),
@@ -610,6 +661,46 @@ const SkillToolArgsSchema = z.object({
     })
   }
 })
+
+const SkillCategorySchema = z.string().trim().min(1).optional().describe(
+  "Optional skill category segment. Use lowercase filesystem-safe names such as `quality` when you want the skill stored under a category directory.",
+)
+
+const SkillNameSchema = z.string().trim().min(1).describe(
+  "Skill name segment. Use the intended lowercase skill identifier without file extensions or path separators, for example `reviewer`.",
+)
+
+const SkillFrontmatterSchema = z.record(z.unknown()).describe(
+  "Skill frontmatter record. It must include a non-empty `description` string. Additional metadata keys are allowed and will be preserved in sorted order.",
+)
+
+const CreateSkillToolArgsSchema = z.object({
+  category: SkillCategorySchema,
+  name: SkillNameSchema,
+  frontmatter: SkillFrontmatterSchema,
+  content: z.string().describe(
+    "Instruction body for the skill. Pass the full skill content without YAML frontmatter; the runtime derives and writes the document wrapper for you.",
+  ),
+}).describe(
+  "Create a workspace skill stored under `.ncoworker/skills`. Use this to add a new reusable skill with YAML frontmatter and instruction content. Skill content is security-scanned before it is persisted.",
+)
+
+const PatchSkillToolArgsSchema = z.object({
+  category: SkillCategorySchema,
+  name: SkillNameSchema,
+  patch: z.string().describe(
+    "Replacement instruction body for the existing skill. The current frontmatter is preserved while the body is replaced. Skill content is security-scanned before it is persisted.",
+  ),
+}).describe(
+  "Replace the instruction body of an existing workspace skill while preserving its frontmatter. Use this when you want to update guidance without rewriting metadata. Patched content is security-scanned before it is persisted.",
+)
+
+const DeleteSkillToolArgsSchema = z.object({
+  category: SkillCategorySchema,
+  name: SkillNameSchema,
+}).describe(
+  "Delete an existing workspace skill by category/name. Use this to remove a skill directory after you have confirmed it is no longer needed.",
+)
 
 function createSkillTool(input: {
   repository: StorageRepository
@@ -709,6 +800,155 @@ function createSkillTool(input: {
       }
     },
   }
+}
+
+function createSkillWriteTools(input: {
+  requestPermission: RequestToolPermission
+  skillObserver?: SkillObserverPort
+  sessionId: string
+  runId: string
+}): ToolDefinition[] {
+  const writeService = createSkillWriteService({
+    store: createWorkspaceSkillStore(),
+    skillObserver: input.skillObserver,
+    observerContext: {
+      sessionId: input.sessionId,
+      runId: input.runId,
+    },
+  })
+
+  return [
+    {
+      name: "create_skill",
+      description:
+        "Create a new workspace skill under `.ncoworker/skills` with YAML frontmatter and instruction content. Use this for reusable project-specific guidance. Skill content is security-scanned before it is persisted.",
+      inputSchema: CreateSkillToolArgsSchema,
+      concurrency: "mutating",
+      isCompressible: false,
+      usageGuidance:
+        "Use this only when a reusable skill should persist beyond the current run. Provide a concise `description` in frontmatter and pass only the instruction body in `content`.",
+      async execute(toolInput) {
+        throwIfToolAborted(toolInput.signal)
+        const parsed = CreateSkillToolArgsSchema.parse(toolInput.args)
+        await requestSkillWritePermission({
+          requestPermission: input.requestPermission,
+          category: parsed.category,
+          name: parsed.name,
+        })
+        throwIfToolAborted(toolInput.signal)
+        await writeService.createSkill({
+          workspaceRoot: toolInput.workspaceRoot,
+          category: parsed.category,
+          name: parsed.name,
+          content: parsed.content,
+          frontmatter: parsed.frontmatter,
+        })
+
+        return {
+          output: `Created skill ${formatSkillIdentifier(parsed.category, parsed.name)}.`,
+          metadata: {
+            operation: "create",
+            category: parsed.category ?? null,
+            name: parsed.name,
+          },
+        }
+      },
+    },
+    {
+      name: "patch_skill",
+      description:
+        "Replace the instruction body of an existing workspace skill while preserving its frontmatter. Use this to update reusable guidance. Patched content is security-scanned before it is persisted.",
+      inputSchema: PatchSkillToolArgsSchema,
+      concurrency: "mutating",
+      isCompressible: false,
+      usageGuidance:
+        "Use this after confirming the skill already exists. Pass the full new body in `patch`; frontmatter stays intact and the updated content is security-scanned before write.",
+      async execute(toolInput) {
+        throwIfToolAborted(toolInput.signal)
+        const parsed = PatchSkillToolArgsSchema.parse(toolInput.args)
+        await requestSkillWritePermission({
+          requestPermission: input.requestPermission,
+          category: parsed.category,
+          name: parsed.name,
+        })
+        throwIfToolAborted(toolInput.signal)
+        await writeService.patchSkill({
+          workspaceRoot: toolInput.workspaceRoot,
+          category: parsed.category,
+          name: parsed.name,
+          patch: parsed.patch,
+        })
+
+        return {
+          output: `Patched skill ${formatSkillIdentifier(parsed.category, parsed.name)}.`,
+          metadata: {
+            operation: "patch",
+            category: parsed.category ?? null,
+            name: parsed.name,
+          },
+        }
+      },
+    },
+    {
+      name: "delete_skill",
+      description:
+        "Delete an existing workspace skill directory. Use this when a reusable skill should be removed from the workspace catalog.",
+      inputSchema: DeleteSkillToolArgsSchema,
+      concurrency: "mutating",
+      isCompressible: false,
+      usageGuidance:
+        "Only delete a skill after confirming it is no longer needed. Pass the exact category/name pair for categorized skills.",
+      async execute(toolInput) {
+        throwIfToolAborted(toolInput.signal)
+        const parsed = DeleteSkillToolArgsSchema.parse(toolInput.args)
+        await requestSkillWritePermission({
+          requestPermission: input.requestPermission,
+          category: parsed.category,
+          name: parsed.name,
+        })
+        throwIfToolAborted(toolInput.signal)
+        await writeService.deleteSkill({
+          workspaceRoot: toolInput.workspaceRoot,
+          category: parsed.category,
+          name: parsed.name,
+        })
+
+        return {
+          output: `Deleted skill ${formatSkillIdentifier(parsed.category, parsed.name)}.`,
+          metadata: {
+            operation: "delete",
+            category: parsed.category ?? null,
+            name: parsed.name,
+          },
+        }
+      },
+    },
+  ]
+}
+
+async function requestSkillWritePermission(input: {
+  requestPermission: RequestToolPermission
+  category?: string
+  name: string
+}) {
+  const decision = await input.requestPermission({
+    toolName: "write",
+    reason: `write skill ${formatSkillIdentifier(input.category, input.name)}`,
+  })
+
+  if (decision.decision !== "allow") {
+    throw createToolPermissionDeniedError()
+  }
+}
+
+function formatSkillIdentifier(category: string | undefined, name: string) {
+  return category ? `${category}/${name}` : name
+}
+
+function createToolPermissionDeniedError() {
+  const error = new Error("Permission denied")
+  error.name = "ToolPermissionDeniedError"
+  return error
 }
 
 function createSkillPort(input: {
