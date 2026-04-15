@@ -28,6 +28,12 @@ export {
   type CreatePermissionRespondServiceInput,
 } from "./respond-service"
 export {
+  RiskAssessmentService,
+  type RiskAssessmentContext,
+  type RiskAssessmentObserver,
+  type RiskAssessmentObserverEvent,
+} from "./risk-assessment-service"
+export {
   assessCommandRisk,
   DANGEROUS_PATTERNS,
   RiskLevel,
