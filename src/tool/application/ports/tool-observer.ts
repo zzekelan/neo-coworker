@@ -29,6 +29,32 @@ export type ToolObserverEvent =
       path: string
       deduplicated: boolean
     }
+  | {
+      type: "checkpoint.created"
+      sessionId: string
+      runId: string
+      payload: {
+        description: string
+        stashRef: string
+      }
+    }
+  | {
+      type: "checkpoint.restored"
+      sessionId: string
+      runId: string
+      payload: {
+        stashRef: string
+      }
+    }
+  | {
+      type: "checkpoint.pruned"
+      sessionId: string
+      runId: string
+      payload: {
+        prunedCount: number
+        remainingCount: number
+      }
+    }
 
 export type ToolObserverPort = {
   recordToolEvent?(event: ToolObserverEvent): void
