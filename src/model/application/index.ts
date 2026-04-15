@@ -18,6 +18,14 @@ export {
   projectModelTurn,
 } from "./projection"
 export {
+  FallbackChain,
+  type FallbackChainOptions,
+  type FallbackChainTelemetryContext,
+  type FallbackProvider,
+  type ModelProviderAdapter,
+  type ProviderFallbackTriggeredEvent,
+} from "./fallback-chain"
+export {
   createModelProvider,
   createModelRuntimeApi,
   type CreateModelRuntimeApiInput,
