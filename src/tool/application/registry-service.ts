@@ -15,13 +15,14 @@ export function createToolRegistryService(tools: ToolDefinition[]) {
 
   return {
     listTools(): ToolCatalogEntry[] {
-      return [...byName.values()].map(({ 
-        name, 
-        description, 
+      return [...byName.values()].map(({
+        name,
+        description,
         inputSchema,
         concurrency,
         isConcurrencySafe,
         usageGuidance,
+        resultSizeLimit,
         isCompressible,
       }) => ({
         name,
@@ -30,6 +31,7 @@ export function createToolRegistryService(tools: ToolDefinition[]) {
         concurrency,
         isConcurrencySafe,
         usageGuidance,
+        resultSizeLimit,
         isCompressible,
       }))
     },

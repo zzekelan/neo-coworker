@@ -23,6 +23,7 @@ export type ToolCatalogEntry = {
   concurrency?: "read-only" | "mutating"
   isConcurrencySafe?: (input: unknown) => boolean
   usageGuidance?: string
+  resultSizeLimit?: number
   isCompressible?: boolean
 }
 

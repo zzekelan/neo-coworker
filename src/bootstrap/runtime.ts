@@ -492,14 +492,7 @@ function createToolPortFactory(config: {
                       signal: batchInput.signal,
                     })
 
-                    return results.map((result) => ({
-                      ...result,
-                      ...manageResultSize({
-                        output: result.output,
-                        isError: result.isError,
-                        metadata: result.metadata,
-                      }),
-                    }))
+                    return results.map(manageBatchResult)
                   },
                 },
                 signal,
@@ -542,6 +535,37 @@ function createToolPortFactory(config: {
         ],
       })
 
+      function manageBatchResult<
+        T extends {
+          callId?: string
+          toolName: string
+          output: string
+          isError?: boolean
+          metadata?: Record<string, unknown>
+        },
+      >(result: T): T {
+        const tool = runtime.list().find((candidate) => candidate.name === result.toolName)
+
+        return {
+          ...result,
+          ...manageResultSize(
+            {
+              output: result.output,
+              isError: result.isError,
+              metadata: result.metadata,
+            },
+            {
+              tool,
+              toolName: result.toolName,
+              workspaceRoot,
+              observer: config.observer,
+              sessionId: input.sessionId,
+              runId: input.runId,
+            },
+          ),
+        } satisfies T
+      }
+
       const provider = createToolProvider({
         runtime,
         observer: config.observer,
@@ -565,14 +589,7 @@ function createToolPortFactory(config: {
             signal: batchInput.signal,
           })
 
-          return results.map((result) => ({
-            ...result,
-            ...manageResultSize({
-              output: result.output,
-              isError: result.isError,
-              metadata: result.metadata,
-            }),
-          }))
+          return results.map(manageBatchResult)
         },
       }
     },

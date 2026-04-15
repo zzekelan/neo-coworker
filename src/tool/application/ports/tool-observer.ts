@@ -10,6 +10,16 @@ export type ToolObserverEvent =
       runId: string
       toolName: string
     }
+  | {
+      type: "budget.result_truncated"
+      sessionId: string
+      runId: string
+      toolName: string
+      originalSize: number
+      truncatedSize: number
+      limit: number
+      savedPath: string
+    }
 
 export type ToolObserverPort = {
   recordToolEvent?(event: ToolObserverEvent): void
