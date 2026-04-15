@@ -3,6 +3,12 @@ import {
   SKILLS_DIRECTORY,
   SKILL_FILENAME,
 } from "../domain"
+import {
+  scanSkillContent,
+  type ScanResult,
+  type SkillThreat,
+  type SkillThreatSeverity,
+} from "../domain/security-scanner"
 import type { LoadedSkill, SkillStore } from "./ports/store"
 
 const MAX_SKILL_SEGMENT_LENGTH = 64
@@ -11,6 +17,15 @@ const VALID_SKILL_SEGMENT_RE = /^[a-z0-9][a-z0-9._-]*$/
 const SKILL_METADATA_LINE_RE = /^[a-zA-Z0-9_-]+\s*:\s*.*$/
 
 type SkillOperation = "create" | "patch"
+
+type SkillScanSeverity = SkillThreatSeverity | "none"
+
+const SKILL_THREAT_SEVERITY_RANK: Record<SkillThreatSeverity, number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+}
 
 export class SkillWriteError extends Error {
   constructor(message: string) {
@@ -26,6 +41,23 @@ export class SkillPathTraversalError extends SkillValidationError {}
 export class SkillAlreadyExistsError extends SkillWriteError {}
 
 export class SkillNotFoundError extends SkillWriteError {}
+
+export class SkillSecurityError extends SkillWriteError {
+  readonly threats: SkillThreat[]
+
+  constructor(threats: SkillThreat[]) {
+    super(`Skill content blocked by security scan: ${formatThreatList(threats)}`)
+    this.name = new.target.name
+    this.threats = threats.map((threat) => ({ ...threat }))
+  }
+}
+
+export type SkillSecurityScanSummary = {
+  safe: boolean
+  threatCount: number
+  threatTypes: SkillThreat["type"][]
+  severity: SkillScanSeverity
+}
 
 export type SkillObserverEvent = {
   sessionId: string
@@ -389,23 +421,18 @@ async function runSecurityScan(
   input: CreateSkillWriteServiceInput,
   scanInput: SkillSecurityScanInput,
 ) {
-  const scanBeforeWrite = input.securityScan?.scanBeforeWrite
-  if (!scanBeforeWrite) {
-    return
-  }
+  const result = scanSkillContent(scanInput.content)
 
   await observeSkillEvent(input, {
     type: "skill.security_scan",
-    payload: {
-      category: scanInput.category ?? null,
-      name: scanInput.name,
-      operation: scanInput.operation,
-      skillPath: scanInput.skillPath,
-      contentLength: scanInput.content.length,
-    },
+    payload: summarizeScanResult(result),
   })
 
-  await scanBeforeWrite(scanInput)
+  if (hasBlockingThreat(result.threats)) {
+    throw new SkillSecurityError(result.threats)
+  }
+
+  await input.securityScan?.scanBeforeWrite?.(scanInput)
 }
 
 async function observeSkillEvent(
@@ -428,4 +455,36 @@ async function observeSkillEvent(
 
 function isMissingSkillError(error: unknown) {
   return (error as NodeJS.ErrnoException)?.code === "ENOENT"
+}
+
+function summarizeScanResult(result: ScanResult): SkillSecurityScanSummary {
+  return {
+    safe: result.safe,
+    threatCount: result.threats.length,
+    threatTypes: [...new Set(result.threats.map((threat) => threat.type))],
+    severity: getHighestThreatSeverity(result.threats),
+  }
+}
+
+function getHighestThreatSeverity(threats: SkillThreat[]): SkillScanSeverity {
+  let highest: SkillThreatSeverity | null = null
+
+  for (const threat of threats) {
+    if (
+      highest === null ||
+      SKILL_THREAT_SEVERITY_RANK[threat.severity] > SKILL_THREAT_SEVERITY_RANK[highest]
+    ) {
+      highest = threat.severity
+    }
+  }
+
+  return highest ?? "none"
+}
+
+function hasBlockingThreat(threats: SkillThreat[]) {
+  return threats.some((threat) => threat.severity === "high" || threat.severity === "critical")
+}
+
+function formatThreatList(threats: SkillThreat[]) {
+  return threats.map((threat) => `${threat.type}:${threat.pattern}`).join(", ")
 }

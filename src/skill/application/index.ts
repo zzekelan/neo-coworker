@@ -4,6 +4,7 @@ export {
   SkillAlreadyExistsError,
   SkillNotFoundError,
   SkillPathTraversalError,
+  SkillSecurityError,
   SkillValidationError,
   SkillWriteError,
   type CreateSkillWriteServiceInput,
@@ -11,8 +12,16 @@ export {
   type SkillObserverPort,
   type SkillSecurityScanInput,
   type SkillSecurityScanPort,
+  type SkillSecurityScanSummary,
   type SkillWriteService,
 } from "./write-service"
+export {
+  scanSkillContent,
+  type ScanResult,
+  type SkillThreat,
+  type SkillThreatSeverity,
+  type SkillThreatType,
+} from "../domain/security-scanner"
 export {
   type LoadedSkill,
   type SkillCatalogEntry,
