@@ -12,4 +12,6 @@ export type SkillStore = {
   listCatalog(workspaceRoot: string): Promise<SkillCatalogEntry[]>
   loadByPath(workspaceRoot: string, skillPath: string): Promise<LoadedSkill>
   loadByName(workspaceRoot: string, skillName: string): Promise<LoadedSkill>
+  writeSkill(workspaceRoot: string, skillPath: string, content: string): Promise<void>
+  deleteSkill(workspaceRoot: string, skillPath: string): Promise<void>
 }
