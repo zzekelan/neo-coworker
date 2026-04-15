@@ -96,6 +96,27 @@ describe("skill write service", () => {
       {
         sessionId: "session_1",
         runId: "run_1",
+        type: "skill.security_scan",
+        payload: {
+          category: null,
+          name: "reviewer",
+          operation: "create",
+          skillPath: ".ncoworker/skills/reviewer/SKILL.md",
+          contentLength: [
+            "---",
+            "name: reviewer",
+            "description: Review code changes for regressions",
+            "owner: qa",
+            "---",
+            "",
+            "Focus on bugs first.",
+            "",
+          ].join("\n").length,
+        },
+      },
+      {
+        sessionId: "session_1",
+        runId: "run_1",
         type: "skill.created",
         payload: {
           category: null,
@@ -169,6 +190,24 @@ describe("skill write service", () => {
       "",
     ].join("\n"))
     expect(events).toEqual([
+      {
+        sessionId: "session_1",
+        runId: "run_1",
+        type: "skill.security_scan",
+        payload: {
+          category: null,
+          name: "reviewer",
+          operation: "patch",
+          skillPath: ".agents/skills/reviewer/SKILL.md",
+          contentLength: [
+            "name: reviewer",
+            "description: Review code carefully",
+            "",
+            "Check behavior before style.",
+            "",
+          ].join("\n").length,
+        },
+      },
       {
         sessionId: "session_1",
         runId: "run_1",

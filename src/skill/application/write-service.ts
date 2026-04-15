@@ -389,7 +389,23 @@ async function runSecurityScan(
   input: CreateSkillWriteServiceInput,
   scanInput: SkillSecurityScanInput,
 ) {
-  await input.securityScan?.scanBeforeWrite?.(scanInput)
+  const scanBeforeWrite = input.securityScan?.scanBeforeWrite
+  if (!scanBeforeWrite) {
+    return
+  }
+
+  await observeSkillEvent(input, {
+    type: "skill.security_scan",
+    payload: {
+      category: scanInput.category ?? null,
+      name: scanInput.name,
+      operation: scanInput.operation,
+      skillPath: scanInput.skillPath,
+      contentLength: scanInput.content.length,
+    },
+  })
+
+  await scanBeforeWrite(scanInput)
 }
 
 async function observeSkillEvent(
