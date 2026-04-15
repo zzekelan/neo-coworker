@@ -20,6 +20,15 @@ export type ToolObserverEvent =
       limit: number
       savedPath: string
     }
+  | {
+      type: "budget.persisted_to_disk"
+      sessionId: string
+      runId: string
+      toolName: string
+      contentSize: number
+      path: string
+      deduplicated: boolean
+    }
 
 export type ToolObserverPort = {
   recordToolEvent?(event: ToolObserverEvent): void

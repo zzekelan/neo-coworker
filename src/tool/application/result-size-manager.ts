@@ -1,13 +1,18 @@
-import { createHash } from "node:crypto"
-import { mkdirSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
 import type { ToolCatalogEntry, ToolExecutionResult } from "../domain"
 import type { ToolObserverPort } from "./ports/tool-observer"
 
 const DEFAULT_LIMIT = 50_000
-const TOOL_RESULTS_DIRECTORY = ".ncoworker/tool-results"
 
-type ManageResultSizeOptions = {
+type ResultStoreSaveResult = {
+  path: string
+  deduplicated: boolean
+}
+
+type ResultStorePort = {
+  save(content: string, toolName: string): ResultStoreSaveResult | undefined
+}
+
+export type ManageResultSizeOptions = {
   limit?: number
   tool?: Pick<ToolCatalogEntry, "name" | "resultSizeLimit">
   toolName?: string
@@ -15,6 +20,7 @@ type ManageResultSizeOptions = {
   observer?: ToolObserverPort
   sessionId?: string
   runId?: string
+  resultStore?: ResultStorePort
 }
 
 export function manageResultSize(
@@ -35,16 +41,19 @@ export function manageResultSize(
 
   const truncated = Buffer.from(result.output, "utf8").subarray(0, limit).toString("utf8")
   const truncatedSize = Buffer.byteLength(truncated, "utf8")
-  const savedPath = persistOversizedResult({
-    workspaceRoot: options.workspaceRoot,
+  const toolName = options.tool?.name ?? options.toolName
+  const savedResult = persistOversizedResult({
+    resultStore: options.resultStore,
+    toolName,
     output: result.output,
   })
+  const savedPath = savedResult?.path
 
   emitTruncationEvent({
     observer: options.observer,
     sessionId: options.sessionId,
     runId: options.runId,
-    toolName: options.tool?.name ?? options.toolName,
+    toolName,
     originalSize,
     truncatedSize,
     limit,
@@ -78,23 +87,16 @@ function buildTruncationSuffix(input: {
 }
 
 function persistOversizedResult(input: {
-  workspaceRoot?: string
+  resultStore?: ResultStorePort
+  toolName?: string
   output: string
-}): string | undefined {
-  if (!input.workspaceRoot) {
+}): ResultStoreSaveResult | undefined {
+  if (!input.resultStore || !input.toolName) {
     return undefined
   }
 
   try {
-    const hash = createHash("sha256").update(input.output).digest("hex")
-    const savedPath = `${TOOL_RESULTS_DIRECTORY}/${hash}.txt`
-    const absoluteDirectory = join(input.workspaceRoot, TOOL_RESULTS_DIRECTORY)
-    const absolutePath = join(input.workspaceRoot, savedPath)
-
-    mkdirSync(absoluteDirectory, { recursive: true })
-    writeFileSync(absolutePath, input.output, "utf8")
-
-    return savedPath
+    return input.resultStore.save(input.output, input.toolName)
   } catch {
     return undefined
   }

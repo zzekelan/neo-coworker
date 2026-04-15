@@ -50,7 +50,7 @@ describe("manageResultSize", () => {
     const savedPath = managed.metadata?.savedPath
 
     expect(typeof savedPath).toBe("string")
-    expect(savedPath).toMatch(/^\.ncoworker\/tool-results\/[a-f0-9]{64}\.txt$/)
+    expect(savedPath).toMatch(/^\.ncoworker\/tool-results\/read\/[a-f0-9]{64}\.txt$/)
     expect(managed.output).toContain(`[Result truncated: 75000B → 50000B. Full result saved to ${savedPath}]`)
     expect(managed.metadata).toMatchObject({
       truncated: true,
@@ -127,7 +127,7 @@ describe("manageResultSize", () => {
         tool: { name: "read", resultSizeLimit: 50_000 },
         workspaceRoot,
         observer: {
-          recordToolEvent(event) {
+          recordToolEvent(event: ToolObserverEvent) {
             events.push(event)
           },
         },
@@ -136,9 +136,21 @@ describe("manageResultSize", () => {
       },
     )
 
-    const event = events[0]
+    const persistedEvent = events.find((event) => event.type === "budget.persisted_to_disk")
+    const event = events.find((entry) => entry.type === "budget.result_truncated")
 
-    expect(events).toHaveLength(1)
+    expect(events).toHaveLength(2)
+    expect(persistedEvent).toBeDefined()
+    expect(persistedEvent?.type).toBe("budget.persisted_to_disk")
+    if (persistedEvent?.type !== "budget.persisted_to_disk") {
+      throw new Error("Expected budget.persisted_to_disk event")
+    }
+    expect(persistedEvent.sessionId).toBe("session-1")
+    expect(persistedEvent.runId).toBe("run-1")
+    expect(persistedEvent.toolName).toBe("read")
+    expect(persistedEvent.contentSize).toBe(75_000)
+    expect(persistedEvent.path).toBe(managed.metadata?.savedPath)
+    expect(persistedEvent.deduplicated).toBe(false)
     expect(event).toBeDefined()
     expect(event?.type).toBe("budget.result_truncated")
     if (event?.type !== "budget.result_truncated") {
