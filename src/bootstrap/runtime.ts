@@ -6,6 +6,7 @@ import {
   createSessionRepository as createStorageRepository,
   createSessionRuntimeApi,
   openSessionDatabase as openStorageDatabase,
+  type SessionDatabase,
   type SessionProvider,
   type SessionRepository as StorageRepository,
 } from "../session"
@@ -230,6 +231,7 @@ export function createCliStorageComposition(input: {
       : undefined)
 
   return {
+    database,
     repository,
     permissionRepository,
     observabilityRepository,
@@ -237,6 +239,7 @@ export function createCliStorageComposition(input: {
       database?.close(false)
     },
   } satisfies {
+    database: SessionDatabase | null
     repository: StorageRepository
     permissionRepository: PermissionRepository
     observabilityRepository?: ObservabilityRepository

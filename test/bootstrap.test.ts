@@ -48,6 +48,13 @@ describe("bootstrap", () => {
     })
   })
 
+  test("parses the insights command", () => {
+    const cli = buildCli()
+    expect(cli.parse(["insights"])).toEqual({
+      command: "insights",
+    })
+  })
+
   test("parses an existing session target for the chat command", () => {
     const cli = buildCli()
     expect(cli.parse(["chat", "--session", "session_123"])).toEqual({
@@ -59,7 +66,9 @@ describe("bootstrap", () => {
   test("validates argv before requiring default provider configuration", async () => {
     const cli = buildCli()
 
-    await expect(cli.run(["status"])).rejects.toThrow("Only `run` and `chat` are supported")
+    await expect(cli.run(["status"])).rejects.toThrow(
+      "Only `run`, `chat`, and `insights` are supported",
+    )
   })
 
   test("reads default provider configuration from LLM_* variables", () => {

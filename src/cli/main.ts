@@ -31,14 +31,45 @@ type BuildCliInput = {
 
 export { createDefaultProvider, resolveAgentServerOrigin, resolveDefaultProviderConfig }
 
+function isMainModule() {
+  if (!process.argv[1]) {
+    return false
+  }
+
+  return import.meta.url === new URL(process.argv[1], "file:").href
+}
+
 export function buildCli(input: BuildCliInput = {}) {
   return {
     parse(argv: string[]) {
       return parseCliCommand(argv)
     },
     async run(argv: string[]) {
-      parseCliCommand(argv)
+      const command = parseCliCommand(argv)
       const runCliImpl = input.runCliImpl ?? runCli
+
+      if (command.command === "insights") {
+        await runCliImpl({
+          argv,
+          io: input.createIo?.() ?? createStdioCliIo(),
+          createLocalStorageImpl(workspaceRoot) {
+            const storage = createCliStorageComposition({
+              workspaceRoot,
+            })
+
+            return {
+              database: storage.database,
+              repository: storage.repository,
+              permissionRepository: storage.permissionRepository,
+              closeImpl() {
+                storage.close()
+              },
+            }
+          },
+        })
+        return
+      }
+
       const serverOrigin = resolveAgentServerOrigin(input.env)
 
       if (serverOrigin) {
@@ -121,6 +152,7 @@ export function buildCli(input: BuildCliInput = {}) {
             const storage = getLocalStorage(workspaceRoot)
 
             return {
+              database: storage.database,
               repository: storage.repository,
               permissionRepository: storage.permissionRepository,
               closeImpl() {
@@ -136,11 +168,11 @@ export function buildCli(input: BuildCliInput = {}) {
   }
 }
 
-if (import.meta.main) {
+if (isMainModule()) {
   const cli = buildCli()
 
   try {
-    await cli.run(Bun.argv.slice(2))
+    await cli.run(process.argv.slice(2))
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 1

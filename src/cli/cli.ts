@@ -1,15 +1,19 @@
 import {
+  createSessionInsightsAdapter,
+  type InsightsPort,
   isTerminalRunStatus,
   type OrchestrationModelPort,
   type PermissionDecision,
   SessionAlreadyCompactingError,
   SessionBusyError,
+  type SessionDatabase,
   type ServerEvent,
   type StoredPermissionRequest,
   type StoredSession,
 } from "../bootstrap"
 import type { CliIO } from "./cli-io"
 import { createCliChatRenderer } from "./chat-render"
+import { DEFAULT_CLI_INSIGHTS_LIMIT, formatSessionInsightsReport } from "./insights"
 import { createCliRenderState, renderServerEvent } from "./cli-render"
 import {
   AgentServerClientError,
@@ -32,7 +36,12 @@ export type ChatCommand = {
   sessionId?: string
 }
 
-export type CliCommand = RunCommand | ChatCommand
+export type InsightsCommand = {
+  command: "insights"
+  sessionId?: string
+}
+
+export type CliCommand = RunCommand | ChatCommand | InsightsCommand
 
 export function parseCliCommand(argv: string[]): CliCommand {
   const [command, ...rest] = argv
@@ -53,6 +62,7 @@ export function parseCliCommand(argv: string[]): CliCommand {
   if (command === "chat") {
     const parsed = parseCommandOptions(rest, {
       allowPayload: false,
+      commandName: "chat",
     })
 
     if (parsed.positionals.length > 0) {
@@ -65,7 +75,23 @@ export function parseCliCommand(argv: string[]): CliCommand {
     }
   }
 
-  throw new Error("Only `run` and `chat` are supported")
+  if (command === "insights") {
+    const parsed = parseCommandOptions(rest, {
+      allowPayload: false,
+      commandName: "insights",
+    })
+
+    if (parsed.positionals.length > 0) {
+      throw new Error("`insights` does not accept extra arguments")
+    }
+
+    return {
+      command,
+      sessionId: parsed.sessionId,
+    }
+  }
+
+  throw new Error("Only `run`, `chat`, and `insights` are supported")
 }
 
 export function parseRunCommand(argv: string[]): RunCommand {
@@ -82,9 +108,11 @@ function parseCommandOptions(
   argv: string[],
   options: {
     allowPayload?: boolean
+    commandName?: string
   } = {},
 ) {
   const allowPayload = options.allowPayload ?? true
+  const commandName = options.commandName ?? "command"
   let sessionId: string | undefined
   const positionals: string[] = []
   let parsingOptions = true
@@ -98,7 +126,7 @@ function parseCommandOptions(
 
     if (parsingOptions && argument === "--") {
       if (!allowPayload) {
-        throw new Error("`chat` does not accept `--`")
+        throw new Error(`\`${commandName}\` does not accept \`--\``)
       }
 
       parsingOptions = false
@@ -140,6 +168,14 @@ function parseCommandOptions(
   }
 }
 
+type LocalCliStorageHandle = Omit<
+  Pick<Parameters<typeof createLocalCliServerClient>[0], "repository" | "permissionRepository" | "closeImpl">,
+  "closeImpl"
+> & {
+  closeImpl: NonNullable<Parameters<typeof createLocalCliServerClient>[0]["closeImpl"]>
+  database?: SessionDatabase | null
+}
+
 type RunCliClientInput = {
   client: AgentServerClient
   provider?: never
@@ -153,17 +189,15 @@ type RunCliProviderInput = {
   provider: OrchestrationModelPort
   createLocalCliServerClientImpl?: typeof createLocalCliServerClient
   createLocalRuntimeImpl: Parameters<typeof createLocalCliServerClient>[0]["createRuntimeImpl"]
-  createLocalStorageImpl: (workspaceRoot: string) =>
-    | Pick<
-        Parameters<typeof createLocalCliServerClient>[0],
-        "repository" | "permissionRepository" | "closeImpl"
-      >
-    | Promise<
-        Pick<
-          Parameters<typeof createLocalCliServerClient>[0],
-          "repository" | "permissionRepository" | "closeImpl"
-        >
-      >
+  createLocalStorageImpl: (workspaceRoot: string) => LocalCliStorageHandle | Promise<LocalCliStorageHandle>
+}
+
+type RunCliInsightsInput = {
+  client?: never
+  provider?: never
+  createLocalCliServerClientImpl?: never
+  createLocalRuntimeImpl?: never
+  createLocalStorageImpl: (workspaceRoot: string) => LocalCliStorageHandle | Promise<LocalCliStorageHandle>
 }
 
 export type RunCliInput = {
@@ -171,7 +205,7 @@ export type RunCliInput = {
   io: CliIO
   cwd?: string
   workspaceRoot?: string
-} & (RunCliClientInput | RunCliProviderInput)
+} & (RunCliClientInput | RunCliProviderInput | RunCliInsightsInput)
 
 type PendingPermissionReply = {
   requestId: string
@@ -182,6 +216,16 @@ type PendingPermissionReply = {
     sent: boolean
   }>
 }
+
+type NextCliRunLoopResult =
+  | {
+      type: "event"
+      result: IteratorResult<ServerEvent>
+    }
+  | {
+      type: "permission"
+      result: Awaited<PendingPermissionReply["completion"]>
+    }
 
 type WatchChatRunResult = {
   terminalStatus: ReturnType<typeof extractTerminalRunStatus>["status"]
@@ -267,10 +311,56 @@ async function resolveClient(input: RunCliInput, workspaceRoot: string): Promise
   throw new Error("runCli requires either a server client or provider")
 }
 
+async function resolveInsightsPort(
+  input: RunCliInput,
+  workspaceRoot: string,
+): Promise<{
+  insights: InsightsPort
+  close(): Promise<void> | void
+}> {
+  if (!("createLocalStorageImpl" in input) || !input.createLocalStorageImpl) {
+    throw new Error("Insights requires local storage composition")
+  }
+
+  const localStorage = await input.createLocalStorageImpl(workspaceRoot)
+
+  if (!localStorage.database) {
+    await localStorage.closeImpl()
+    throw new Error("Insights requires a local session database")
+  }
+
+  return {
+    insights: createSessionInsightsAdapter({
+      database: localStorage.database,
+    }),
+    close() {
+      return localStorage.closeImpl()
+    },
+  }
+}
+
 export async function runCli(input: RunCliInput) {
   const command = parseCliCommand(input.argv)
   const cwd = input.cwd ?? process.cwd()
   const workspaceRoot = input.workspaceRoot ?? cwd
+
+  if (command.command === "insights") {
+    const insightsHandle = await resolveInsightsPort(input, workspaceRoot)
+
+    try {
+      await runInsightsCli({
+        command,
+        io: input.io,
+        insights: insightsHandle.insights,
+      })
+    } finally {
+      await insightsHandle.close()
+      input.io.close?.()
+    }
+
+    return
+  }
+
   const clientHandle = await resolveClient(input, workspaceRoot)
 
   try {
@@ -296,6 +386,31 @@ export async function runCli(input: RunCliInput) {
     await clientHandle.close()
     input.io.close?.()
   }
+}
+
+async function runInsightsCli(input: {
+  command: InsightsCommand
+  io: CliIO
+  insights: InsightsPort
+}) {
+  const insights = await input.insights.querySessions(
+    input.command.sessionId
+      ? {
+          sessionIds: [input.command.sessionId],
+          limit: 1,
+        }
+      : {
+          limit: DEFAULT_CLI_INSIGHTS_LIMIT,
+        },
+  )
+
+  const summary = input.insights.summarize(insights)
+  input.io.write(
+    formatSessionInsightsReport({
+      insights,
+      summary,
+    }),
+  )
 }
 
 async function runSinglePromptCli(input: {
@@ -389,7 +504,7 @@ async function runSinglePromptCli(input: {
       }
 
       while (true) {
-        const next =
+        const next: NextCliRunLoopResult =
           pendingPermission == null
             ? ({ type: "event", result: await readNextEvent() } as const)
             : await Promise.race([
