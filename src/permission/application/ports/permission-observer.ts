@@ -31,6 +31,23 @@ export type PermissionObserverEvent =
       pattern: string
       scope: "workspace"
     }
+  | {
+      type: "risk.assessed"
+      sessionId: string
+      runId: string
+      toolName: string
+      riskLevel: string
+      patterns: string[]
+      reasonSnippet: string
+    }
+  | {
+      type: "permission.dangerous_override"
+      sessionId: string
+      runId: string
+      toolName: string
+      originalMode: "allow" | "deny" | "ask"
+      riskLevel: string
+    }
 
 export type PermissionObserverPort = {
   recordPermissionEvent?(event: PermissionObserverEvent): void

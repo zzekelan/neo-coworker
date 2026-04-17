@@ -31,6 +31,12 @@ const RISK_RULES: Array<{
     explanation: "Deletes from the filesystem root recursively.",
   },
   {
+    level: RiskLevel.DANGEROUS,
+    label: "recursive delete",
+    pattern: /\brm\s+-[^\s;|&]*[rf][^\s;|&]*\s+(?:~\/|\.\.?\/|\/)[^\s;|&]+/i,
+    explanation: "Deletes a filesystem path recursively.",
+  },
+  {
     level: RiskLevel.CRITICAL,
     label: "filesystem formatting",
     pattern: /\bmkfs(?:\.[^\s;|&]+)?\b/i,

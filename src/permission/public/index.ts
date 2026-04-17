@@ -6,16 +6,9 @@ import {
   type PermissionDatabase,
 } from "../infrastructure/sqlite"
 import {
-  createPermissionCoordinator,
   createPermissionProvider,
   createPermissionRuntimeApi,
-  type CreatePermissionRuntimeApiInput,
-  type PermissionCoordinator,
-  type PermissionCoordinatorOptions,
-  type PermissionProvider,
-  type PermissionRuntimeApi,
 } from "../infrastructure/runtime"
-
 export * from "../application"
 export {
   createPermissionRepository,
@@ -31,6 +24,15 @@ export {
   type PermissionProvider,
   type PermissionRuntimeApi,
 } from "../infrastructure/runtime"
+export {
+  createPermissionAllowlistStore,
+  type AddAllowlistEntryInput,
+  type AllowlistEntry,
+  type AllowlistRequest,
+  type AllowlistScope,
+  type AllowlistStore,
+  type CreatePermissionAllowlistStoreInput,
+} from "../infrastructure/allowlist"
 
 export function createPermissionStorage(input: {
   database: PermissionDatabase
