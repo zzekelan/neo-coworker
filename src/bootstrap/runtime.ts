@@ -20,10 +20,12 @@ import {
 } from "../permission"
 import {
   createBuiltinToolRuntime,
+  createResultStore,
   createToolProviderFromRuntime,
   createToolProvider,
   createToolRuntimeApi,
   manageResultSize,
+  TurnBudget,
   throwIfToolAborted,
   type RequestToolPermission,
   type SearchToolBackend,
@@ -464,6 +466,13 @@ function createToolPortFactory(config: {
     create(input) {
       const workspaceRoot = config.repository.sessions.get(input.sessionId).workspaceRoot
       const agentProfileService = config.agentProfileService(workspaceRoot)
+      const resultStore = createResultStore({
+        workspaceRoot,
+        basePath: ".ncoworker/tool-results",
+        observer: config.observer,
+        sessionId: input.sessionId,
+        runId: input.runId,
+      })
       let runtime!: ReturnType<typeof createBuiltinToolRuntime>
       runtime = createBuiltinToolRuntime({
         requestPermission(request) {
@@ -510,7 +519,7 @@ function createToolPortFactory(config: {
                       signal: batchInput.signal,
                     })
 
-                    return results.map(manageBatchResult)
+                    return applyTurnBudget(results, results.map(manageBatchResult))
                   },
                 },
                 signal,
@@ -579,9 +588,63 @@ function createToolPortFactory(config: {
               observer: config.observer,
               sessionId: input.sessionId,
               runId: input.runId,
+              resultStore,
             },
           ),
         } satisfies T
+      }
+
+      function applyTurnBudget<T extends {
+        toolName: string
+        output: string
+        isError?: boolean
+        metadata?: Record<string, unknown>
+      }>(rawResults: T[], managedResults: T[]): T[] {
+        const turnBudget = new TurnBudget({
+          observer: config.observer,
+          observerContext: {
+            sessionId: input.sessionId,
+            runId: input.runId,
+          },
+        })
+
+        for (const result of rawResults) {
+          if (result.isError) {
+            continue
+          }
+
+          turnBudget.track(result.toolName, result.output)
+        }
+
+        if (!turnBudget.isOverBudget()) {
+          return managedResults
+        }
+
+        const spilledResults = turnBudget.spillLargest(resultStore)
+        if (spilledResults.length === 0) {
+          return managedResults
+        }
+
+        const spilledByPosition = new Map(spilledResults.map((entry) => [entry.position, entry]))
+
+        return managedResults.map((result, index) => {
+          const spilled = spilledByPosition.get(index)
+          if (!spilled) {
+            return result
+          }
+
+          return {
+            ...result,
+            output: spilled.output,
+            metadata: {
+              ...result.metadata,
+              spilledToDisk: true,
+              savedPath: spilled.path,
+              originalSize: spilled.originalSize,
+              truncatedSize: spilled.previewSize,
+            },
+          }
+        })
       }
 
       const provider = createToolProvider({
@@ -607,7 +670,7 @@ function createToolPortFactory(config: {
             signal: batchInput.signal,
           })
 
-          return results.map(manageBatchResult)
+          return applyTurnBudget(results, results.map(manageBatchResult))
         },
       }
     },
