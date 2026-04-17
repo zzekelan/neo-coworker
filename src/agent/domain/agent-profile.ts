@@ -9,5 +9,7 @@ export interface AgentProfile {
   systemPromptOverride?: string
   instructions?: string
   parallel?: boolean
+  temperature?: number
+  isPrimary?: boolean
   skills?: string[]
 }

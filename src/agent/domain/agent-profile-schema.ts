@@ -11,6 +11,8 @@ export const AgentProfileSchema = z.object({
   systemPromptOverride: z.string().optional(),
   instructions: z.string().optional(),
   parallel: z.boolean().optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  isPrimary: z.boolean().optional(),
   skills: z.array(z.string()).default([]),
 })
 
