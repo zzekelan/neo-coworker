@@ -87,6 +87,34 @@ export function ChatArea({
   const [skillErrorMessage, setSkillErrorMessage] = useState<string | null>(null)
   const [optimisticSessionSkills, setOptimisticSessionSkills] = useState<string[] | null>(null)
   const scrollToBottomRef = useRef<(() => void) | null>(null)
+  const bottomOverlayObserverRef = useRef<ResizeObserver | null>(null)
+  const [bottomOverlayHeight, setBottomOverlayHeight] = useState(128)
+
+  const bottomOverlayRef = useCallback((element: HTMLDivElement | null) => {
+    bottomOverlayObserverRef.current?.disconnect()
+    bottomOverlayObserverRef.current = null
+    if (!element) return
+    setBottomOverlayHeight(element.offsetHeight)
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const box = entry.borderBoxSize?.[0]
+        const height = box
+          ? box.blockSize
+          : entry.target instanceof HTMLElement
+            ? entry.target.offsetHeight
+            : entry.contentRect.height
+        setBottomOverlayHeight(Math.ceil(height))
+      }
+    })
+    observer.observe(element)
+    bottomOverlayObserverRef.current = observer
+  }, [])
+
+  useEffect(() => () => {
+    bottomOverlayObserverRef.current?.disconnect()
+    bottomOverlayObserverRef.current = null
+  }, [])
 
   const skillPanelShellRef = useRef<HTMLDivElement>(null)
   const sessionSkillQueueRef = useRef<{
@@ -312,7 +340,10 @@ export function ChatArea({
       </div>
 
       {transcript.length === 0 ? (
-        <div className="flex-1 overflow-y-auto px-4 pb-32 md:px-8">
+        <div
+          className="flex-1 overflow-y-auto px-4 md:px-8"
+          style={{ paddingBottom: bottomOverlayHeight + 16 }}
+        >
           <EmptyChatState
             icon={<MessageSquare className="h-6 w-6 text-accent" />}
             title={text.chat.startConversation}
@@ -326,7 +357,8 @@ export function ChatArea({
           scrollToBottomRef={scrollToBottomRef}
           estimatedItemHeight={100}
           overscan={5}
-          className="px-4 pb-32 md:px-8"
+          className="px-4 md:px-8"
+          bottomInset={bottomOverlayHeight + 16}
           renderItem={(message, index) => {
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
             const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined
@@ -382,7 +414,10 @@ export function ChatArea({
         />
       )}
 
-      <div className="content-fade-top absolute right-0 bottom-0 left-0 bg-paper/95 p-4 backdrop-blur-sm">
+      <div
+        ref={bottomOverlayRef}
+        className="content-fade-top absolute right-0 bottom-0 left-0 bg-paper/95 p-4 backdrop-blur-sm"
+      >
         <motion.div layout transition={SKILL_DRAWER_TRANSITION} className="relative mx-auto max-w-4xl">
           <div ref={skillPanelShellRef}>
             {skills.length > 0 ? (

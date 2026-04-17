@@ -5,8 +5,22 @@ describe("desktop chat area", () => {
   test("uses a normal transcript viewport without smooth-scroll styling", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
-    expect(source).toContain("overflow-y-auto px-4 pb-32 md:px-8")
+    expect(source).toContain("overflow-y-auto px-4 md:px-8")
     expect(source).not.toContain("scroll-smooth")
+  })
+
+  test("sizes the transcript bottom inset to match the composer overlay height", () => {
+    const chatSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
+
+    expect(chatSource).toContain("bottomOverlayRef")
+    expect(chatSource).toContain("ResizeObserver")
+    expect(chatSource).toContain("bottomInset={bottomOverlayHeight + 16}")
+    expect(chatSource).toContain("paddingBottom: bottomOverlayHeight + 16")
+    expect(chatSource).not.toContain("pb-32")
+
+    expect(vtSource).toContain("bottomInset")
+    expect(vtSource).toContain("paddingBottom: bottomInset")
   })
 
   test("delegates sticky-bottom scrolling to VirtualTranscript instead of inlining it", () => {

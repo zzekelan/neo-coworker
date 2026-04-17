@@ -15,6 +15,7 @@ interface VirtualTranscriptProps<T extends VirtualTranscriptItem> {
   className?: string
   footer?: React.ReactNode
   scrollToBottomRef?: { current: ((() => void) | null) }
+  bottomInset?: number
 }
 
 export function VirtualTranscript<T extends VirtualTranscriptItem>({
@@ -25,6 +26,7 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
   className,
   footer,
   scrollToBottomRef: externalScrollRef,
+  bottomInset,
 }: VirtualTranscriptProps<T>) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
@@ -101,7 +103,10 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
   )
 
   return (
-    <div className={cn("relative min-h-0 flex-1", className)}>
+    <div
+      className={cn("relative min-h-0 flex-1", className)}
+      style={bottomInset !== undefined ? { paddingBottom: bottomInset } : undefined}
+    >
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
@@ -143,6 +148,7 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
       <ScrollToBottomButton
         visible={!isAtBottom && messages.length > 0}
         onClick={scrollToBottom}
+        offset={bottomInset !== undefined ? bottomInset + 16 : undefined}
       />
     </div>
   )
@@ -151,17 +157,21 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
 const ScrollToBottomButton = React.memo(function ScrollToBottomButton({
   visible,
   onClick,
+  offset,
 }: {
   visible: boolean
   onClick: () => void
+  offset?: number
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label="Scroll to bottom"
+      style={offset !== undefined ? { bottom: offset } : undefined}
       className={cn(
-        "absolute bottom-36 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center",
+        "absolute left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center",
+        offset === undefined ? "bottom-36" : undefined,
         "rounded-full border border-border bg-surface text-ink shadow-lg",
         "transition-all duration-200 ease-out hover:bg-surface-hover hover:shadow-xl",
         visible ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0",
