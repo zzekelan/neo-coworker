@@ -24,7 +24,6 @@ describe("desktop performance optimizations", () => {
 
     expect(source).toContain("useCallback(")
     expect(source).toMatch(/const handlePermissionReply\s*=\s*useCallback\(/)
-    expect(source).toMatch(/const setDefaultSkill\s*=\s*useCallback\(/)
     expect(source).toMatch(/const handleStartSkill\s*=\s*useCallback\(/)
   })
 })

@@ -2,10 +2,7 @@ import type { DesktopRun, DesktopSession, DesktopSkillCatalogEntry } from "../vi
 
 export type SkillActionState = {
   canStart: boolean
-  canStop: boolean
-  canSetDefault: boolean
   isActive: boolean
-  isDefault: boolean
 }
 
 export function filterSkillCatalog(
@@ -39,21 +36,14 @@ export function getSkillActionState(input: {
   skillName: string
   session: DesktopSession | null
   activeRun?: DesktopRun
-}) {
+}): SkillActionState {
   const effectiveActiveSkills = getEffectiveActiveSkills(input)
-  const defaultSkills = input.session?.activeSkills ?? []
   const isActive = effectiveActiveSkills.includes(input.skillName)
-  const isDefault = defaultSkills.includes(input.skillName)
 
-  const state: SkillActionState = {
+  return {
     canStart: !isActive,
-    canStop: isActive,
-    canSetDefault: Boolean(input.activeRun) && isActive && !isDefault,
     isActive,
-    isDefault,
   }
-
-  return state
 }
 
 export function toggleSkill(input: {

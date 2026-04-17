@@ -55,10 +55,9 @@ type DesktopText = {
     noWorkspaceSkills: string
     noFilteredSkills: string
     active: string
-    default: string
     start: string
-    stop: string
-    setDefault: string
+    cancel: string
+    cancelPending: string
   }
   permission: {
     title: string
@@ -247,10 +246,9 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       noWorkspaceSkills: "No `.ncoworker/skills` were found in this workspace.",
       noFilteredSkills: "No skills match this filter.",
       active: "Active",
-      default: "Default",
       start: "Start",
-      stop: "Stop",
-      setDefault: "Set Default",
+      cancel: "Cancel",
+      cancelPending: "Skill instructions haven't been sent yet. Cancel to remove it.",
     },
     permission: {
       title: "Permission Required",
@@ -461,10 +459,9 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       noWorkspaceSkills: "这个工作区下没有找到 `.ncoworker/skills`。",
       noFilteredSkills: "没有匹配当前筛选条件的技能。",
       active: "已启用",
-      default: "默认",
       start: "启用",
-      stop: "停用",
-      setDefault: "设为默认",
+      cancel: "撤销",
+      cancelPending: "尚未发送，可撤销此技能的启用",
     },
     permission: {
       title: "需要权限",

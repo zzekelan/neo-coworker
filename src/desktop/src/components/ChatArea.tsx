@@ -86,6 +86,7 @@ export function ChatArea({
   const [busySkillName, setBusySkillName] = useState<string | null>(null)
   const [skillErrorMessage, setSkillErrorMessage] = useState<string | null>(null)
   const [optimisticSessionSkills, setOptimisticSessionSkills] = useState<string[] | null>(null)
+  const [pendingSkills, setPendingSkills] = useState<string[]>([])
   const scrollToBottomRef = useRef<(() => void) | null>(null)
   const bottomOverlayObserverRef = useRef<ResizeObserver | null>(null)
   const [bottomOverlayHeight, setBottomOverlayHeight] = useState(128)
@@ -152,6 +153,10 @@ export function ChatArea({
   }, [sessionSummary?.id, session?.activeRun?.id])
 
   useEffect(() => {
+    setPendingSkills([])
+  }, [sessionSummary?.id])
+
+  useEffect(() => {
     setIsSkillPanelOpen(false)
     setSkillFilter("")
   }, [sessionSummary?.id])
@@ -196,6 +201,7 @@ export function ChatArea({
       }
 
       setInput("")
+      setPendingSkills([])
     } catch {
       return
     } finally {
@@ -255,29 +261,20 @@ export function ChatArea({
     getSessionSkillQueue(sessionSummary.id).enqueue(nextSkills)
   }, [sessionSummary, isRunSkillEditingLocked, sessionSummaryWithOptimisticSkills, getSessionSkillQueue])
 
-  const setDefaultSkill = useCallback(async (skillName: string) => {
-    if (!sessionSummary || isRunSkillEditingLocked) {
-      return
-    }
-
-    setBusySkillName(skillName)
-    setSkillErrorMessage(null)
-
-    const nextSkills = toggleSkill({
-      skills: sessionSummaryWithOptimisticSkills?.activeSkills ?? [],
-      skillName,
-      enabled: true,
-    })
-    getSessionSkillQueue(sessionSummary.id).enqueue(nextSkills)
-  }, [sessionSummary, isRunSkillEditingLocked, sessionSummaryWithOptimisticSkills, getSessionSkillQueue])
-
   const handlePermissionReply = useCallback((requestId: string, decision: "allow" | "deny") => {
     scrollToBottomRef.current?.()
     return onReplyPermission(requestId, decision)
   }, [onReplyPermission])
 
-  const handleStartSkill = useCallback((skillName: string) => updateSkillSet(skillName, true), [updateSkillSet])
-  const handleStopSkill = useCallback((skillName: string) => updateSkillSet(skillName, false), [updateSkillSet])
+  const handleStartSkill = useCallback(async (skillName: string) => {
+    setPendingSkills((prev) => (prev.includes(skillName) ? prev : [...prev, skillName]))
+    await updateSkillSet(skillName, true)
+  }, [updateSkillSet])
+
+  const handleCancelPendingSkill = useCallback(async (skillName: string) => {
+    setPendingSkills((prev) => prev.filter((name) => name !== skillName))
+    await updateSkillSet(skillName, false)
+  }, [updateSkillSet])
 
   const isInputLocked = isBusy || isSubmittingMessage
 
@@ -463,7 +460,7 @@ export function ChatArea({
                   transition={SKILL_DRAWER_TRANSITION}
                   className="overflow-hidden"
                 >
-                  <motion.div layout transition={SKILL_DRAWER_TRANSITION}>
+                  <motion.div layout transition={SKILL_DRAWER_TRANSITION} className="w-1/4 min-w-[200px]">
                       <SkillPanel
                         skills={skills}
                         query={skillFilter}
@@ -473,9 +470,9 @@ export function ChatArea({
                         busySkillName={busySkillName}
                         errorMessage={skillErrorMessage}
                         warningMessage={skillWarningMessage}
+                        pendingSkills={pendingSkills}
                         onStartSkill={handleStartSkill}
-                        onStopSkill={handleStopSkill}
-                        onSetDefaultSkill={setDefaultSkill}
+                        onCancelPendingSkill={handleCancelPendingSkill}
                       />
                     <div className="mb-3">
                       <input
@@ -551,17 +548,15 @@ export function ChatArea({
             </div>
           </motion.form>
 
-          {/* Status bar — context · run status · model · keyboard hints */}
+          {/* Status bar — context · model · run status · keyboard hints */}
           <div className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent">
             <div className="flex min-w-0 items-center gap-1.5">
+              <ContextBudgetBar usage={contextUsage} />
               {modelName ? (
                 <>
+                  <span className="text-muted/40">·</span>
                   <span className="shrink-0 text-accent" title={modelName}>{modelName}</span>
-                  {contextUsage ? <span className="text-muted/40">·</span> : null}
                 </>
-              ) : null}
-              {contextUsage ? (
-                <ContextBudgetBar usage={contextUsage} />
               ) : null}
             </div>
 
@@ -578,16 +573,22 @@ export function ChatArea({
   )
 }
 
-function ContextBudgetBar(input: { usage: DesktopContextUsage }) {
+function ContextBudgetBar(input: { usage: DesktopContextUsage | null }) {
   const text = useDesktopText()
-  const percent = Math.max(0, Math.min(100, Math.round(input.usage.utilizationPercent)))
+  const { usage } = input
+  const percent = usage
+    ? Math.max(0, Math.min(100, Math.round(usage.utilizationPercent)))
+    : 0
   const isHigh = percent >= 80
   const isCritical = percent >= 95
+  const title = usage
+    ? `${usage.contextTokens.toLocaleString()} / ${usage.contextWindow.toLocaleString()} tokens`
+    : text.chat.contextUsed(0)
 
   return (
     <div
       className="flex items-center gap-1.5"
-      title={`${input.usage.contextTokens.toLocaleString()} / ${input.usage.contextWindow.toLocaleString()} tokens`}
+      title={title}
     >
       <div className="relative h-1 w-16 overflow-hidden rounded-full bg-surface">
         <div

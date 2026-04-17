@@ -96,8 +96,9 @@ describe("desktop chat area", () => {
 
     expect(source).toContain("contextUsage: DesktopContextUsage | null")
     expect(source).toContain("ContextBudgetBar")
-    expect(source).toContain("{contextUsage ? (")
-    expect(source).toContain("const percent = Math.max(0, Math.min(100, Math.round(input.usage.utilizationPercent)))")
+    expect(source).toContain("<ContextBudgetBar usage={contextUsage} />")
+    expect(source).toContain("usage: DesktopContextUsage | null")
+    expect(source).toContain("const percent = usage")
     expect(source).toContain("const isHigh = percent >= 80")
     expect(source).toContain("const isCritical = percent >= 95")
     expect(source).toContain("bg-danger")

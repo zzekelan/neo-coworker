@@ -56,7 +56,7 @@ describe("desktop skill state", () => {
     ).toEqual(["reviewer"])
   })
 
-  test("computes start, stop, and default affordances from session and run state", () => {
+  test("computes start affordance from session and run state", () => {
     const session = {
       id: "session-1",
       title: "Demo",
@@ -74,10 +74,7 @@ describe("desktop skill state", () => {
       }),
     ).toEqual({
       canStart: false,
-      canStop: true,
-      canSetDefault: false,
       isActive: true,
-      isDefault: true,
     })
 
     expect(
@@ -94,10 +91,17 @@ describe("desktop skill state", () => {
       }),
     ).toEqual({
       canStart: false,
-      canStop: true,
-      canSetDefault: true,
       isActive: true,
-      isDefault: false,
+    })
+
+    expect(
+      getSkillActionState({
+        skillName: "reviewer",
+        session,
+      }),
+    ).toEqual({
+      canStart: true,
+      isActive: false,
     })
   })
 
