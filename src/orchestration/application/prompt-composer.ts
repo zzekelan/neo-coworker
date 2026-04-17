@@ -31,6 +31,23 @@ export type ToolGuidanceEntry = {
   isReadOnly: boolean
 }
 
+export type StaticPromptOptions = {
+  memorySnapshot?: string | null
+}
+
+export type PromptAssemblySection = {
+  name: string
+  charCount: number
+}
+
+export type StaticPromptAssembly = {
+  prompt: string
+  sections: PromptAssemblySection[]
+  totalChars: number
+  hasMemorySnapshot: boolean
+  hasSkillReminders: boolean
+}
+
 function normalizePromptItems(items?: readonly string[]) {
   return items?.filter((item) => item.trim().length > 0) ?? []
 }
@@ -192,6 +209,59 @@ function formatToolGuidances(toolGuidances?: ToolGuidanceEntry[]): string {
     .join("\n\n")
 }
 
+function createMemorySnapshotSection(memorySnapshot?: string | null): PromptSection | null {
+  const snapshot = memorySnapshot?.trim()
+
+  if (!snapshot) {
+    return null
+  }
+
+  return {
+    id: "memory_snapshot",
+    isStatic: true,
+    content: snapshot,
+  }
+}
+
+function createStaticPromptSections(
+  toolGuidances?: ToolGuidanceEntry[],
+  options: StaticPromptOptions = {},
+): PromptSection[] {
+  const resolvedStaticSections = createResolvedStaticSections(toolGuidances)
+  const memorySection = createMemorySnapshotSection(options.memorySnapshot)
+
+  if (!memorySection) {
+    return resolvedStaticSections
+  }
+
+  return [
+    resolvedStaticSections[0]!,
+    memorySection,
+    ...resolvedStaticSections.slice(1),
+  ]
+}
+
+export function buildStaticPromptAssembly(input: {
+  toolGuidances?: ToolGuidanceEntry[]
+  memorySnapshot?: string | null
+}): StaticPromptAssembly {
+  const sections = createStaticPromptSections(input.toolGuidances, {
+    memorySnapshot: input.memorySnapshot,
+  })
+  const prompt = composeSystemPrompt(sections)
+
+  return {
+    prompt,
+    sections: sections.map((section) => ({
+      name: section.id,
+      charCount: section.content.trim().length,
+    })),
+    totalChars: prompt.length,
+    hasMemorySnapshot: sections.some((section) => section.id === "memory_snapshot"),
+    hasSkillReminders: false,
+  }
+}
+
 function createResolvedStaticSections(toolGuidances?: ToolGuidanceEntry[]): PromptSection[] {
   const formattedToolGuidances = formatToolGuidances(toolGuidances)
 
@@ -224,8 +294,14 @@ const staticSections = createStaticSections()
 
 export const defaultSections: PromptSection[] = [...staticSections]
 
-export function getStaticPrompt(toolGuidances?: ToolGuidanceEntry[]) {
-  return composeSystemPrompt(createResolvedStaticSections(toolGuidances))
+export function getStaticPrompt(
+  toolGuidances?: ToolGuidanceEntry[],
+  options: StaticPromptOptions = {},
+) {
+  return buildStaticPromptAssembly({
+    toolGuidances,
+    memorySnapshot: options.memorySnapshot,
+  }).prompt
 }
 
 export function getDynamicPrompt(context: DynamicPromptContext) {
@@ -236,21 +312,26 @@ export function buildLateContextMessage(context: DynamicPromptContext) {
   return ["<system-reminder>", ...buildDynamicContextLines(context), "</system-reminder>"].join("\n")
 }
 
-export function composeFullPrompt(_context: DynamicPromptContext, toolGuidances?: ToolGuidanceEntry[]) {
-  return getStaticPrompt(toolGuidances)
+export function composeFullPrompt(
+  _context: DynamicPromptContext,
+  toolGuidances?: ToolGuidanceEntry[],
+  options: StaticPromptOptions = {},
+) {
+  return getStaticPrompt(toolGuidances, options)
 }
 
 export function composeAgentAwarePrompt(
   context: DynamicPromptContext,
   profile?: PromptAgentProfile,
   toolGuidances?: ToolGuidanceEntry[],
+  options: StaticPromptOptions = {},
 ) {
   const override = profile?.systemPromptOverride?.trim()
   if (override) {
     return override
   }
 
-  const basePrompt = composeFullPrompt(context, toolGuidances)
+  const basePrompt = composeFullPrompt(context, toolGuidances, options)
   const instructions = profile?.instructions?.trim()
   if (!instructions) {
     return basePrompt

@@ -7,6 +7,7 @@ export type OrchestrationLoopInput = {
   runId: string
   signal: AbortSignal
   emit: (event: RuntimeEvent) => void
+  afterInitialize?: () => void | Promise<void>
   tools: OrchestrationToolPort
   workspaceRoot: string
   systemPrompt: string
@@ -24,6 +25,7 @@ export async function runOrchestrationLoop(input: OrchestrationLoopInput) {
       runId: input.runId,
       emit: input.emit,
     })
+    await input.afterInitialize?.()
 
     while (true) {
       if (input.signal.aborted) {

@@ -1,7 +1,10 @@
 import { createOrchestrationStepService } from "../../application/step-service"
 import { DEFAULT_CONTEXT_WINDOW_SIZE } from "../../application/context-usage"
-import { getStaticPrompt } from "../../application/system-prompt"
-import type { ToolGuidanceEntry } from "../../application/prompt-composer"
+import {
+  buildStaticPromptAssembly,
+  type StaticPromptAssembly,
+  type ToolGuidanceEntry,
+} from "../../application/prompt-composer"
 import type { RuntimeEvent } from "../../application/event"
 import type { OrchestrationRunHandle } from "../../application/handle"
 import type { OrchestrationContextWindowPort } from "../../application/ports/context-window"
@@ -39,9 +42,26 @@ export type CreateOrchestrationRuntimeApiInput = {
   activeRuns: OrchestrationActiveRunRegistry
   permissionPolicy: OrchestrationPermissionPolicy
   systemPrompt?: string
+  buildSystemPrompt?: (input: {
+    sessionId: string
+    runId: string
+    session: OrchestrationSessionPort["getSession"] extends (sessionId: string) => infer T ? T : never
+    now: () => number
+    tools: ReturnType<OrchestrationToolPort["list"]>
+  }) =>
+    | Promise<BuildSystemPromptResult>
+    | BuildSystemPromptResult
   now?: () => number
   runtimeObserver?: OrchestrationRuntimeObserverPort
 }
+
+type BuildSystemPromptResult =
+  | string
+  | StaticPromptAssembly
+  | {
+      assembly: string | StaticPromptAssembly
+      afterInitialize?: () => void | Promise<void>
+    }
 
 export type OrchestrationRunInput = {
   sessionId: string
@@ -79,7 +99,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     }
   }
 
-  function createActiveRunExecution(inputValue: {
+  async function createActiveRunExecution(inputValue: {
     sessionId: string
     runId: string
     replayPermission?: {
@@ -149,13 +169,24 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       sessionId: session.id,
       runId: inputValue.runId,
     })
-    const defaultSystemPrompt =
-      input.systemPrompt ??
-      buildDefaultSystemPrompt({
-        session,
-        now,
-        tools: tools.listCatalog?.() ?? tools.list(),
-      })
+    const promptBuildResult =
+      input.systemPrompt
+        ? input.systemPrompt
+        : await (input.buildSystemPrompt?.({
+            sessionId: session.id,
+            runId: inputValue.runId,
+            session,
+            now,
+            tools: tools.listCatalog?.() ?? tools.list(),
+          }) ??
+          buildDefaultSystemPrompt({
+            session,
+            now,
+            tools: tools.listCatalog?.() ?? tools.list(),
+          }))
+    const resolvedPromptBuild = resolvePromptBuildResult(promptBuildResult)
+    const promptAssembly = resolvePromptAssembly(resolvedPromptBuild.assembly)
+    const defaultSystemPrompt = promptAssembly.prompt
 
     return {
       activeRunKey,
@@ -166,6 +197,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       session,
       suspend,
       tools,
+      afterInitialize: resolvedPromptBuild.afterInitialize,
       wasReplayPermissionConsumed() {
         return replayPermissionConsumed
       },
@@ -333,7 +365,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     }
   }
 
-  function resumeDetachedPermission(response: OrchestrationPermissionResponse) {
+  async function resumeDetachedPermission(response: OrchestrationPermissionResponse) {
     const permissionRequest = input.permission.getPermissionRequest(response.requestId)
     const run = input.session.getRun(permissionRequest.runId)
     const activeRunKey = buildActiveRunKey(permissionRequest.sessionId, permissionRequest.runId)
@@ -368,7 +400,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       resolvedAt: now(),
     })
 
-    const execution = createActiveRunExecution({
+    const execution = await createActiveRunExecution({
       sessionId: permissionRequest.sessionId,
       runId: permissionRequest.runId,
       replayPermission: {
@@ -391,6 +423,8 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
           pendingToolCall,
           wasReplayPermissionConsumed: execution.wasReplayPermissionConsumed,
         })
+
+        await execution.afterInitialize?.()
 
         if (recoveredOutcome === "cancelled") {
           stepService.cancelRun({
@@ -485,7 +519,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
 
   return {
     async run(runInput: OrchestrationRunInput): Promise<OrchestrationRunHandle> {
-      const execution = createActiveRunExecution({
+      const execution = await createActiveRunExecution({
         sessionId: runInput.sessionId,
         runId: runInput.runId,
       })
@@ -495,6 +529,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         runId: runInput.runId,
         stepService,
         emit: execution.emit,
+        afterInitialize: execution.afterInitialize,
         signal: execution.controller.signal,
         tools: execution.tools,
         workspaceRoot: execution.session.workspaceRoot,
@@ -514,7 +549,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       }
     },
     async compactSession(runInput: OrchestrationRunInput): Promise<OrchestrationRunHandle> {
-      const execution = createActiveRunExecution({
+      const execution = await createActiveRunExecution({
         sessionId: runInput.sessionId,
         runId: runInput.runId,
       })
@@ -526,6 +561,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
             runId: runInput.runId,
             emit: execution.emit,
           })
+          await execution.afterInitialize?.()
           const outcome = await stepService.compactSession({
             sessionId: execution.session.id,
             runId: runInput.runId,
@@ -600,7 +636,33 @@ function buildDefaultSystemPrompt(input: {
 }) {
   void input.session
   void input.now
-  return getStaticPrompt(deriveToolGuidanceEntries(input.tools))
+  return buildStaticPromptAssembly({
+    toolGuidances: deriveToolGuidanceEntries(input.tools),
+  })
+}
+
+function resolvePromptAssembly(input: string | StaticPromptAssembly): StaticPromptAssembly {
+  if (typeof input === "string") {
+    return {
+      prompt: input,
+      sections: [],
+      totalChars: input.length,
+      hasMemorySnapshot: false,
+      hasSkillReminders: false,
+    }
+  }
+
+  return input
+}
+
+function resolvePromptBuildResult(input: BuildSystemPromptResult) {
+  if (typeof input === "string" || "prompt" in input) {
+    return {
+      assembly: input,
+    }
+  }
+
+  return input
 }
 
 function deriveToolGuidanceEntries(tools: ReturnType<OrchestrationToolPort["list"]>): ToolGuidanceEntry[] {

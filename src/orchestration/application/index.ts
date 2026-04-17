@@ -70,5 +70,10 @@ export {
   DEFAULT_CONTEXT_WINDOW_SIZE,
 } from "./context-usage"
 export type { ContextUsageSnapshot, ContextUsageSource } from "./context-usage"
-export { DEFAULT_SYSTEM_PROMPT, buildAgentAwarePrompt } from "./system-prompt"
-export type { PromptAgentProfile, PromptSection } from "./system-prompt"
+export {
+  DEFAULT_SYSTEM_PROMPT,
+  buildAgentAwarePrompt,
+  buildStaticPromptAssembly,
+  getStaticPrompt,
+} from "./system-prompt"
+export type { PromptAgentProfile, PromptSection, ToolGuidanceEntry } from "./system-prompt"
