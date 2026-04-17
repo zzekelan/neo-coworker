@@ -48,7 +48,7 @@ export function buildCli(input: BuildCliInput = {}) {
       const command = parseCliCommand(argv)
       const runCliImpl = input.runCliImpl ?? runCli
 
-      if (command.command === "insights") {
+      if (command.command === "insights" || command.command === "permissions") {
         await runCliImpl({
           argv,
           io: input.createIo?.() ?? createStdioCliIo(),

@@ -1,5 +1,8 @@
 import {
+  createPermissionAllowlistStore,
   createSessionInsightsAdapter,
+  type AddAllowlistEntryInput,
+  type AllowlistEntry,
   type InsightsPort,
   isTerminalRunStatus,
   type OrchestrationModelPort,
@@ -41,7 +44,16 @@ export type InsightsCommand = {
   sessionId?: string
 }
 
-export type CliCommand = RunCommand | ChatCommand | InsightsCommand
+export type PermissionsAllowlistCommand = {
+  command: "permissions"
+  scope: "allowlist"
+  action: "add" | "remove" | "list"
+  toolName?: string
+  pattern?: string
+  reason?: string
+}
+
+export type CliCommand = RunCommand | ChatCommand | InsightsCommand | PermissionsAllowlistCommand
 
 export function parseCliCommand(argv: string[]): CliCommand {
   const [command, ...rest] = argv
@@ -91,7 +103,52 @@ export function parseCliCommand(argv: string[]): CliCommand {
     }
   }
 
-  throw new Error("Only `run`, `chat`, and `insights` are supported")
+  if (command === "permissions") {
+    return parsePermissionsCommand(rest)
+  }
+
+  throw new Error("Only `run`, `chat`, `insights`, and `permissions` are supported")
+}
+
+function parsePermissionsCommand(argv: string[]): PermissionsAllowlistCommand {
+  const [scope, action, ...rest] = argv
+
+  if (scope !== "allowlist") {
+    throw new Error("`permissions` only supports the `allowlist` scope")
+  }
+
+  if (action !== "add" && action !== "remove" && action !== "list") {
+    throw new Error("`permissions allowlist` requires `add`, `remove`, or `list`")
+  }
+
+  if (action === "list") {
+    if (rest.length > 0) {
+      throw new Error("`permissions allowlist list` does not accept extra arguments")
+    }
+
+    return { command: "permissions", scope, action }
+  }
+
+  if (action === "remove") {
+    if (rest.length !== 1) {
+      throw new Error("`permissions allowlist remove` requires exactly one pattern")
+    }
+
+    return { command: "permissions", scope, action, pattern: rest[0] }
+  }
+
+  if (rest.length < 2) {
+    throw new Error("`permissions allowlist add` requires <toolName> <pattern> [reason]")
+  }
+
+  return {
+    command: "permissions",
+    scope,
+    action,
+    toolName: rest[0],
+    pattern: rest[1],
+    reason: rest.slice(2).join(" ") || undefined,
+  }
 }
 
 export function parseRunCommand(argv: string[]): RunCommand {
@@ -339,6 +396,29 @@ async function resolveInsightsPort(
   }
 }
 
+async function resolvePermissionAllowlistHandle(input: RunCliInput, workspaceRoot: string) {
+  if (!("createLocalStorageImpl" in input) || !input.createLocalStorageImpl) {
+    throw new Error("Permission allowlist commands require local storage composition")
+  }
+
+  const localStorage = await input.createLocalStorageImpl(workspaceRoot)
+
+  if (!localStorage.database) {
+    await localStorage.closeImpl()
+    throw new Error("Permission allowlist commands require a local session database")
+  }
+
+  return {
+    allowlist: createPermissionAllowlistStore({
+      database: localStorage.database,
+      workspaceRoot,
+    }),
+    close() {
+      return localStorage.closeImpl()
+    },
+  }
+}
+
 export async function runCli(input: RunCliInput) {
   const command = parseCliCommand(input.argv)
   const cwd = input.cwd ?? process.cwd()
@@ -355,6 +435,23 @@ export async function runCli(input: RunCliInput) {
       })
     } finally {
       await insightsHandle.close()
+      input.io.close?.()
+    }
+
+    return
+  }
+
+  if (command.command === "permissions") {
+    const allowlistHandle = await resolvePermissionAllowlistHandle(input, workspaceRoot)
+
+    try {
+      await runPermissionAllowlistCli({
+        command,
+        io: input.io,
+        allowlist: allowlistHandle.allowlist,
+      })
+    } finally {
+      await allowlistHandle.close()
       input.io.close?.()
     }
 
@@ -411,6 +508,43 @@ async function runInsightsCli(input: {
       summary,
     }),
   )
+}
+
+async function runPermissionAllowlistCli(input: {
+  command: PermissionsAllowlistCommand
+  io: CliIO
+  allowlist: {
+    add(entry: AddAllowlistEntryInput): Promise<AllowlistEntry>
+    remove(pattern: string): Promise<number>
+    list(): Promise<AllowlistEntry[]>
+  }
+}) {
+  if (input.command.action === "list") {
+    const entries = await input.allowlist.list()
+    if (entries.length === 0) {
+      input.io.write("No allowlist entries configured.\n")
+      return
+    }
+
+    input.io.write(entries.map((entry) => {
+      const reason = entry.reason ? ` (${entry.reason})` : ""
+      return `${entry.toolName} ${entry.pattern}${reason}`
+    }).join("\n") + "\n")
+    return
+  }
+
+  if (input.command.action === "remove") {
+    const removed = await input.allowlist.remove(input.command.pattern!)
+    input.io.write(`Removed ${removed} allowlist entr${removed === 1 ? "y" : "ies"}.\n`)
+    return
+  }
+
+  const entry = await input.allowlist.add({
+    toolName: input.command.toolName!,
+    pattern: input.command.pattern!,
+    reason: input.command.reason,
+  })
+  input.io.write(`Added allowlist entry for ${entry.toolName} ${entry.pattern}.\n`)
 }
 
 async function runSinglePromptCli(input: {

@@ -67,8 +67,25 @@ describe("bootstrap", () => {
     const cli = buildCli()
 
     await expect(cli.run(["status"])).rejects.toThrow(
-      "Only `run`, `chat`, and `insights` are supported",
+      "Only `run`, `chat`, `insights`, and `permissions` are supported",
     )
+  })
+
+  test("runs permissions commands without requiring default provider configuration", async () => {
+    const runCliCalls: Array<Parameters<typeof import("../src/cli").runCli>[0]> = []
+    const cli = buildCli({
+      runCliImpl: async (input) => {
+        runCliCalls.push(input)
+      },
+    })
+
+    await expect(cli.run(["permissions", "allowlist", "list"])).resolves.toBeUndefined()
+    expect(runCliCalls).toHaveLength(1)
+    expect(runCliCalls[0]).toMatchObject({
+      argv: ["permissions", "allowlist", "list"],
+    })
+    expect("createLocalStorageImpl" in runCliCalls[0]).toBe(true)
+    expect("provider" in runCliCalls[0]).toBe(false)
   })
 
   test("reads default provider configuration from LLM_* variables", () => {
