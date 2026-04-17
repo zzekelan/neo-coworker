@@ -3,6 +3,26 @@ import type OpenAI from "openai"
 import { z } from "zod"
 import { createOpenAICompatibleProvider } from "../../src/model"
 
+type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming
+type OpenAIRequestOptions = OpenAI.RequestOptions
+type OpenAICompatibleChunkStream =
+  | AsyncIterable<OpenAI.Chat.ChatCompletionChunk>
+  | Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>>
+type OpenAICompatibleCreate = (
+  body: OpenAICompatibleRequest,
+  options?: OpenAIRequestOptions,
+) => OpenAICompatibleChunkStream
+
+function createMockOpenAICompatibleClient(create: OpenAICompatibleCreate): OpenAI {
+  return {
+    chat: {
+      completions: {
+        create: create as unknown as OpenAI["chat"]["completions"]["create"],
+      },
+    },
+  } as OpenAI
+}
+
 describe("openai-compatible provider", () => {
   test("streams text, assembles one tool call, and forwards the abort signal", async () => {
     const signal = new AbortController().signal
@@ -102,22 +122,16 @@ describe("openai-compatible provider", () => {
 
     const provider = createOpenAICompatibleProvider({
       model: "kimi-k2.5",
-      client: {
-        chat: {
-          completions: {
-            async create(body, options) {
-              receivedBody = body
-              receivedOptions = options
+      client: createMockOpenAICompatibleClient(async (body, options) => {
+        receivedBody = body
+        receivedOptions = options
 
-              return (async function* () {
-                for (const chunk of streamChunks) {
-                  yield chunk
-                }
-              })()
-            },
-          },
-        },
-      },
+        return (async function* () {
+          for (const chunk of streamChunks) {
+            yield chunk
+          }
+        })()
+      }),
     })
 
     const events = []
@@ -192,93 +206,87 @@ describe("openai-compatible provider", () => {
   test("emits each streamed tool call exactly once when multiple tool calls are present", async () => {
     const provider = createOpenAICompatibleProvider({
       model: "kimi-k2.5",
-      client: {
-        chat: {
-          completions: {
-            async create() {
-              return (async function* () {
-                yield {
-                  id: "chatcmpl_2",
-                  object: "chat.completion.chunk",
-                  created: 1,
-                  model: "kimi-k2.5",
-                  choices: [
+      client: createMockOpenAICompatibleClient(async () => {
+        return (async function* () {
+          yield {
+            id: "chatcmpl_2",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "kimi-k2.5",
+            choices: [
+              {
+                index: 0,
+                finish_reason: null,
+                delta: {
+                  tool_calls: [
                     {
                       index: 0,
-                      finish_reason: null,
-                      delta: {
-                        tool_calls: [
-                          {
-                            index: 0,
-                            id: "call_1",
-                            type: "function",
-                            function: {
-                              name: "read",
-                              arguments: '{"path":"README',
-                            },
-                          },
-                          {
-                            index: 1,
-                            id: "call_2",
-                            type: "function",
-                            function: {
-                              name: "search",
-                              arguments: '{"query":"fix',
-                            },
-                          },
-                        ],
+                      id: "call_1",
+                      type: "function",
+                      function: {
+                        name: "read",
+                        arguments: '{"path":"README',
+                      },
+                    },
+                    {
+                      index: 1,
+                      id: "call_2",
+                      type: "function",
+                      function: {
+                        name: "search",
+                        arguments: '{"query":"fix',
                       },
                     },
                   ],
-                } satisfies OpenAI.Chat.ChatCompletionChunk
+                },
+              },
+            ],
+          } satisfies OpenAI.Chat.ChatCompletionChunk
 
-                yield {
-                  id: "chatcmpl_2",
-                  object: "chat.completion.chunk",
-                  created: 1,
-                  model: "kimi-k2.5",
-                  choices: [
+          yield {
+            id: "chatcmpl_2",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "kimi-k2.5",
+            choices: [
+              {
+                index: 0,
+                finish_reason: null,
+                delta: {
+                  tool_calls: [
                     {
                       index: 0,
-                      finish_reason: null,
-                      delta: {
-                        tool_calls: [
-                          {
-                            index: 0,
-                            function: {
-                              arguments: '.md"}',
-                            },
-                          },
-                          {
-                            index: 1,
-                            function: {
-                              arguments: 'bug"}',
-                            },
-                          },
-                        ],
+                      function: {
+                        arguments: '.md"}',
+                      },
+                    },
+                    {
+                      index: 1,
+                      function: {
+                        arguments: 'bug"}',
                       },
                     },
                   ],
-                } satisfies OpenAI.Chat.ChatCompletionChunk
+                },
+              },
+            ],
+          } satisfies OpenAI.Chat.ChatCompletionChunk
 
-                yield {
-                  id: "chatcmpl_2",
-                  object: "chat.completion.chunk",
-                  created: 1,
-                  model: "kimi-k2.5",
-                  choices: [
-                    {
-                      index: 0,
-                      finish_reason: "tool_calls",
-                      delta: {},
-                    },
-                  ],
-                } satisfies OpenAI.Chat.ChatCompletionChunk
-              })()
-            },
-          },
-        },
-      },
+          yield {
+            id: "chatcmpl_2",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "kimi-k2.5",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                delta: {},
+              },
+            ],
+          } satisfies OpenAI.Chat.ChatCompletionChunk
+        })()
+      }),
     })
 
     const events = []
@@ -312,16 +320,10 @@ describe("openai-compatible provider", () => {
 
     const provider = createOpenAICompatibleProvider({
       model: "kimi-k2.5",
-      client: {
-        chat: {
-          completions: {
-            async create(body) {
-              receivedBody = body
-              return (async function* () {})()
-            },
-          },
-        },
-      },
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
     })
 
     const events = []
@@ -401,15 +403,9 @@ describe("openai-compatible provider", () => {
   test("fails fast when a tool schema cannot be converted to chat-completions JSON schema", async () => {
     const provider = createOpenAICompatibleProvider({
       model: "kimi-k2.5",
-      client: {
-        chat: {
-          completions: {
-            async create() {
-              throw new Error("should not reach client.create for unsupported schemas")
-            },
-          },
-        },
-      },
+      client: createMockOpenAICompatibleClient(async () => {
+        throw new Error("should not reach client.create for unsupported schemas")
+      }),
     })
 
     await expect(
@@ -432,21 +428,84 @@ describe("openai-compatible provider", () => {
     ).rejects.toThrow("Unsupported Zod schema type for openai-compatible tools: ZodUnion")
   })
 
+  test("serializes record-valued tool properties into chat-completions JSON schema", async () => {
+    let receivedBody: unknown
+
+    const provider = createOpenAICompatibleProvider({
+      model: "kimi-k2.5",
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
+    })
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [
+        {
+          name: "create_skill",
+          description: "Create a skill with free-form frontmatter metadata",
+          inputSchema: z.object({
+            metadata: z.record(z.string()).optional().describe("Flat string metadata"),
+            frontmatter: z.record(z.unknown()).describe("Free-form frontmatter values"),
+          }),
+        },
+      ],
+      signal: new AbortController().signal,
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.5",
+      messages: [{ role: "system", content: "system" }],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      parallel_tool_calls: true,
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "create_skill",
+            description: "Create a skill with free-form frontmatter metadata",
+            parameters: {
+              type: "object",
+              properties: {
+                metadata: {
+                  type: "object",
+                  additionalProperties: {
+                    type: "string",
+                  },
+                  description: "Flat string metadata",
+                },
+                frontmatter: {
+                  type: "object",
+                  additionalProperties: true,
+                  description: "Free-form frontmatter values",
+                },
+              },
+              required: ["frontmatter"],
+              additionalProperties: false,
+            },
+          },
+        },
+      ],
+    })
+  })
+
   test("serializes effect-wrapped tool schemas by unwrapping to the underlying object shape", async () => {
     let receivedBody: unknown
 
     const provider = createOpenAICompatibleProvider({
       model: "kimi-k2.5",
-      client: {
-        chat: {
-          completions: {
-            async create(body) {
-              receivedBody = body
-              return (async function* () {})()
-            },
-          },
-        },
-      },
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
     })
 
     const skillToolSchema = z.object({

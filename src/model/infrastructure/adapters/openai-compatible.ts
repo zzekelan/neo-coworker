@@ -29,6 +29,12 @@ function unsupportedSchema(schema: ZodTypeAny): never {
   )
 }
 
+function unsupportedRecordKeySchema(schema: ZodTypeAny): never {
+  throw new Error(
+    `Unsupported ZodRecord key schema for openai-compatible tools: ${schema._def.typeName as string}`,
+  )
+}
+
 function readMessageText(message: ModelMessage) {
   return message.parts
     .filter((part) => part.type === "text")
@@ -145,6 +151,16 @@ function withDescription(
   return description ? { ...schema, description } : schema
 }
 
+function toRecordAdditionalProperties(schema: ZodTypeAny): boolean | Record<string, unknown> {
+  const unwrapped = unwrapSchema(schema)
+
+  if ((unwrapped._def.typeName as string) === "ZodUnknown") {
+    return true
+  }
+
+  return toJsonSchema(schema)
+}
+
 export function toJsonSchema(schema: ZodTypeAny): Record<string, unknown> {
   const unwrapped = unwrapSchema(schema)
   const typeName = unwrapped._def.typeName as string
@@ -173,6 +189,24 @@ export function toJsonSchema(schema: ZodTypeAny): Record<string, unknown> {
           (unwrapped as ZodTypeAny & { _def: { type: ZodTypeAny } })._def.type,
         ),
       }, schema)
+    case "ZodRecord": {
+      const recordSchema = unwrapped as ZodTypeAny & {
+        _def: {
+          keyType: ZodTypeAny
+          valueType: ZodTypeAny
+        }
+      }
+      const keySchema = unwrapSchema(recordSchema._def.keyType)
+
+      if ((keySchema._def.typeName as string) !== "ZodString") {
+        return unsupportedRecordKeySchema(keySchema)
+      }
+
+      return withDescription({
+        type: "object",
+        additionalProperties: toRecordAdditionalProperties(recordSchema._def.valueType),
+      }, schema)
+    }
     case "ZodObject": {
       const objectSchema = unwrapped as ZodTypeAny & {
         shape: Record<string, ZodTypeAny>
