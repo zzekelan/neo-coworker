@@ -557,13 +557,14 @@ export function createServerApp(input: {
   const activeCompactions = new Map<string, string>()
   let closing: Promise<void> | null = null
 
-  async function startRun(runInput: {
-    sessionId: string
-    prompt: string
-    trigger?: RunTrigger
-    runId?: string
-    messageId?: string
-  }) {
+async function startRun(runInput: {
+  sessionId: string
+  prompt: string
+  trigger?: RunTrigger
+  runId?: string
+  messageId?: string
+  agent?: string
+}) {
     if (closing) {
       throw new ServerShuttingDownError()
     }

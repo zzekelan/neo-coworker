@@ -26,18 +26,46 @@ import { serializeSseEvent } from "./events"
 
 export { PermissionRequestNotAwaitingActiveRuntimeError } from "../bootstrap"
 
+type ServerInstance = {
+  port: number
+  stop(): void
+  timeout(request: Request, seconds: number): void
+}
+
+declare const Bun: {
+  serve(options: {
+    hostname: string
+    port: number
+    fetch: (request: Request, server: ServerInstance) => Response | Promise<Response>
+  }): ServerInstance
+}
+
 const createSessionBodySchema = z.object({
   directory: z.string().min(1),
   workspaceRoot: z.string().min(1).optional(),
   title: z.string().trim().min(1).max(60).optional(),
 })
 
-const startRunBodySchema = z.object({
+export const startRunBodySchema = z.object({
   prompt: z.string().min(1),
   trigger: z.enum(RUN_TRIGGERS).optional(),
   runId: z.string().min(1).optional(),
   messageId: z.string().min(1).optional(),
+  agent: z.string().min(1).optional(),
 })
+
+export type StartRunBody = z.infer<typeof startRunBodySchema>
+
+export function buildStartRunInput(sessionId: string, body: StartRunBody) {
+  return {
+    sessionId,
+    prompt: body.prompt,
+    trigger: body.trigger,
+    runId: body.runId,
+    messageId: body.messageId,
+    agent: body.agent,
+  }
+}
 
 const replyPermissionBodySchema = z.object({
   decision: z.enum(["allow", "deny"]),
@@ -61,7 +89,6 @@ const workspaceRootQuerySchema = z.object({
   workspaceRoot: z.string().trim().min(1),
 })
 
-type ServerInstance = ReturnType<typeof Bun.serve>
 const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 5_000
 
 type SessionSummary = {
@@ -263,13 +290,7 @@ export function createAgentServer(input: {
 
       if (request.method === "POST" && sessionRunsMatch) {
         const body = await readJsonBody(request, startRunBodySchema)
-        const started = await app.runs.start({
-          sessionId: sessionRunsMatch.sessionId,
-          prompt: body.prompt,
-          trigger: body.trigger,
-          runId: body.runId,
-          messageId: body.messageId,
-        })
+        const started = await app.runs.start(buildStartRunInput(sessionRunsMatch.sessionId, body))
 
         return jsonResponse(201, {
           data: started,
