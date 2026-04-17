@@ -32,6 +32,13 @@ function makeInMemoryProfileService(profiles: AgentProfile[]): AgentProfileServi
     async listProfiles() {
       return profiles.map((p) => p.name)
     },
+    async getResolvedProfile(name: string) {
+      return profiles.find((p) => p.name === name)
+    },
+    async listPrimaryAgents() {
+      return profiles.filter((profile) => profile.isPrimary === true)
+    },
+    reload() {},
   }
 }
 

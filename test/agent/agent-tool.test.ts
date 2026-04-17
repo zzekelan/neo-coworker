@@ -17,6 +17,13 @@ function createAgentProfileServiceStub(profiles: AgentProfile[] = []): AgentProf
     async listProfiles() {
       return profiles.map((profile) => profile.name)
     },
+    getResolvedProfile(name: string) {
+      return profiles.find((profile) => profile.name === name) as AgentProfile | undefined
+    },
+    async listPrimaryAgents() {
+      return profiles.filter((profile) => profile.isPrimary === true)
+    },
+    reload() {},
   } as unknown as AgentProfileService
 }
 
@@ -45,12 +52,10 @@ describe("createAgentTool", () => {
     })
 
     const result = await tool.execute({
-      toolName: "agent",
       args: {
         agent: "unknown",
         prompt: "Investigate the codebase",
       },
-      workspaceRoot: process.cwd(),
     })
 
     expect(result.output).toContain("unknown")
@@ -69,12 +74,10 @@ describe("createAgentTool", () => {
     })
 
     const result = await tool.execute({
-      toolName: "agent",
       args: {
         agent: "explore",
         prompt: "Investigate the codebase",
       },
-      workspaceRoot: process.cwd(),
     })
 
     expect(result.output).toMatch(/depth|maximum/i)

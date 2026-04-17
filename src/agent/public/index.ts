@@ -10,8 +10,15 @@ export { loadAgentProfiles, loadMergedAgentProfiles } from "../infrastructure/ag
 export { clearYamlAgentConfigCache, loadYamlAgentConfig } from "../infrastructure/yaml-config-loader"
 
 import { createAgentProfileService as makeService } from "../application/agent-profile-service"
-import { loadMergedAgentProfiles } from "../infrastructure/agent-profile-loader"
+import { BUILTIN_AGENTS } from "../domain/builtin-agents"
+import { loadAgentProfiles } from "../infrastructure/agent-profile-loader"
+import { clearYamlAgentConfigCache, loadYamlAgentConfig } from "../infrastructure/yaml-config-loader"
 
 export function createAgentProfileService(workspaceRoot: string) {
-  return makeService(() => loadMergedAgentProfiles(workspaceRoot))
+  return makeService({
+    builtinAgents: BUILTIN_AGENTS,
+    loadYamlProfiles: () => loadYamlAgentConfig(workspaceRoot),
+    loadMarkdownProfiles: () => loadAgentProfiles(workspaceRoot),
+    reloadSources: () => clearYamlAgentConfigCache(workspaceRoot),
+  })
 }
