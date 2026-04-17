@@ -454,13 +454,13 @@ export function ChatArea({
               {isSkillPanelOpen ? (
                 <motion.div
                   key="skill-panel-shell"
-                  initial={{ height: 0, opacity: 0, y: 12 }}
-                  animate={{ height: "auto", opacity: 1, y: 0 }}
-                  exit={{ height: 0, opacity: 0, y: 12 }}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 12 }}
                   transition={SKILL_DRAWER_TRANSITION}
-                  className="overflow-hidden"
+                  className="pointer-events-none absolute bottom-full left-0 right-0 mb-2"
                 >
-                  <motion.div layout transition={SKILL_DRAWER_TRANSITION} className="w-1/4 min-w-[200px]">
+                  <div className="pointer-events-auto w-1/4 min-w-[200px]">
                       <SkillPanel
                         skills={skills}
                         query={skillFilter}
@@ -474,15 +474,15 @@ export function ChatArea({
                         onStartSkill={handleStartSkill}
                         onCancelPendingSkill={handleCancelPendingSkill}
                       />
-                    <div className="mb-3">
+                    <div className="mb-1">
                       <input
                         value={skillFilter}
                         onChange={(event) => setSkillFilter(event.target.value)}
                         placeholder={text.chat.filterSkills}
-                        className="h-11 w-full rounded-lg border border-border bg-paper px-4 text-sm text-ink shadow-sm outline-none transition-colors placeholder:text-accent focus:border-border"
+                        className="h-9 w-full rounded-lg border border-border bg-paper px-3 text-[12px] text-ink shadow-sm outline-none transition-colors placeholder:text-accent focus:border-border"
                       />
                     </div>
-                  </motion.div>
+                  </div>
                 </motion.div>
               ) : null}
             </AnimatePresence>
