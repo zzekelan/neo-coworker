@@ -79,6 +79,8 @@ describe("runtime observability", () => {
     expect(readEventTypes(harness.observabilityRepository.runEvents.listByRun(started.run.id))).toEqual([
       "run.started",
       "skill.run.snapshot.applied",
+      "memory.loaded",
+      "prompt.assembled",
       "tool.listed",
       "model.turn.requested",
       "model.prompt.assembled",
@@ -204,6 +206,8 @@ describe("runtime observability", () => {
     expect(initialTrace?.events.map((event) => event.eventType)).toEqual([
       "run.started",
       "skill.run.snapshot.applied",
+      "memory.loaded",
+      "prompt.assembled",
       "tool.listed",
       "model.turn.requested",
       "model.prompt.assembled",

@@ -1,3 +1,4 @@
+import { join } from "node:path"
 import { z } from "zod"
 import { getStoragePath } from "./paths"
 import {
@@ -60,6 +61,7 @@ import {
   type ObservabilityRepository,
   type ObservabilityRuntimeApi,
 } from "../observability"
+import { createMemoryRuntime } from "../memory"
 import type {
   OrchestrationModelPort,
   OrchestrationPermissionPort,
@@ -81,6 +83,8 @@ import {
   PermissionRequestNotAwaitingActiveRuntimeError,
 } from "../orchestration"
 
+import { buildStaticPromptAssembly, type ToolGuidanceEntry } from "../orchestration"
+
 type RuntimeInput = {
   provider: OrchestrationModelPort
   repository: StorageRepository
@@ -89,7 +93,12 @@ type RuntimeInput = {
   skillRuntime?: SkillRuntimeApi
   observability?: Pick<
     ObservabilityRuntimeApi,
-    "runtimeObserver" | "modelObserver" | "toolObserver" | "permissionObserver" | "skillObserver"
+    | "runtimeObserver"
+    | "modelObserver"
+    | "toolObserver"
+    | "permissionObserver"
+    | "memoryObserver"
+    | "skillObserver"
   >
   searchBackend?: SearchToolBackend
   permissionPolicy?: Partial<
@@ -166,6 +175,7 @@ export function createRuntime(input: RuntimeInput) {
       contextWindow,
       sessionPort,
       runtimeObserver: observability?.runtimeObserver,
+      memoryObserver: observability?.memoryObserver,
       skillObserver: createSkillObserver(observability?.skillObserver),
       searchBackend: input.searchBackend,
       agentProfileService(workspaceRoot) {
@@ -194,6 +204,48 @@ export function createRuntime(input: RuntimeInput) {
     activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
     permissionPolicy: forceAskPermissionPolicy(basePermissionPolicy),
     systemPrompt: input.systemPrompt,
+    async buildSystemPrompt(promptInput) {
+      const memory = createMemoryRuntime(join(promptInput.session.workspaceRoot, ".ncoworker", "memory"))
+      const [agentEntries, userEntries, memorySnapshot] = await Promise.all([
+        memory.load("agent"),
+        memory.load("user"),
+        memory.getSnapshot(),
+      ])
+      const assembly = buildStaticPromptAssembly({
+        toolGuidances: deriveToolGuidanceEntries(promptInput.tools),
+        memorySnapshot,
+      })
+
+      return {
+        assembly,
+        afterInitialize: () => {
+          observability?.memoryObserver?.recordMemoryEvent?.({
+            sessionId: promptInput.sessionId,
+            runId: promptInput.runId,
+            type: "memory.loaded",
+            payload: {
+              target: "all",
+              entryCount: agentEntries.length + userEntries.length,
+              snapshotLength: memorySnapshot.length,
+            },
+          })
+
+          observability?.runtimeObserver?.recordRuntimeEvent?.({
+            sessionId: promptInput.sessionId,
+            runId: promptInput.runId,
+            event: {
+              type: "prompt.assembled",
+              fullPromptText: assembly.prompt,
+              sections: assembly.sections,
+              totalChars: assembly.totalChars,
+              hasMemorySnapshot: assembly.hasMemorySnapshot,
+              hasSkillReminders: assembly.hasSkillReminders,
+            },
+            occurredAt: now(),
+          })
+        },
+      }
+    },
     now,
     runtimeObserver: observability?.runtimeObserver,
   })
@@ -451,6 +503,7 @@ function createToolPortFactory(config: {
   contextWindow: { getContextWindow(): number }
   sessionPort: OrchestrationSessionPort
   runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
+  memoryObserver?: Pick<ObservabilityRuntimeApi, "memoryObserver">["memoryObserver"]
   skillObserver?: SkillObserverPort
   searchBackend?: SearchToolBackend
   agentProfileService: (workspaceRoot: string) => AgentProfileService
@@ -504,6 +557,13 @@ function createToolPortFactory(config: {
           runId: input.runId,
         },
       )
+      const memory = createMemoryRuntime(join(workspaceRoot, ".ncoworker", "memory"), {
+        memoryObserver: createMemoryObserver(config.memoryObserver),
+        observerContext: {
+          sessionId: input.sessionId,
+          runId: input.runId,
+        },
+      })
       const resultStore = createResultStore({
         workspaceRoot,
         basePath: ".ncoworker/tool-results",
@@ -524,6 +584,7 @@ function createToolPortFactory(config: {
           return requestPermission(request)
         },
         searchBackend: config.searchBackend,
+        memory,
         extraTools: [
           createSkillTool({
             repository: config.repository,
@@ -985,6 +1046,36 @@ function createSkillObserver(
       observer.recordSkillEvent(event)
     },
   }
+}
+
+function createMemoryObserver(
+  observer: Pick<ObservabilityRuntimeApi, "memoryObserver">["memoryObserver"] | undefined,
+) {
+  if (!observer) {
+    return undefined
+  }
+
+  return {
+    recordMemoryEvent(event: Parameters<typeof observer.recordMemoryEvent>[0]) {
+      observer.recordMemoryEvent(event)
+    },
+  }
+}
+
+function deriveToolGuidanceEntries(tools: ReturnType<OrchestrationToolPort["list"]>): ToolGuidanceEntry[] {
+  return tools.flatMap((tool) => {
+    const guidance = tool.usageGuidance?.trim()
+
+    if (!guidance) {
+      return []
+    }
+
+    return [{
+      name: tool.name,
+      guidance,
+      isReadOnly: tool.concurrency === "read-only",
+    } satisfies ToolGuidanceEntry]
+  })
 }
 
 type PermissionDecoratorContext = {
