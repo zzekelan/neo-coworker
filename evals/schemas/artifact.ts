@@ -7,7 +7,7 @@ import {
 
 export const EvalRunTraceEventSchema = z.object({
   sequence: z.number().int().nonnegative(),
-  source: z.enum(["model", "orchestration", "permission", "tool"]),
+  source: z.enum(["model", "orchestration", "permission", "tool", "memory", "skill"]),
   eventType: z.string(),
   createdAt: z.number().int(),
   data: z.record(z.string(), z.unknown()),

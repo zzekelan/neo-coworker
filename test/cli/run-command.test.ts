@@ -3,6 +3,11 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
+declare const Bun: {
+  sleep(ms: number): Promise<void>
+  write(path: string, data: string): Promise<number>
+}
+
 import {
   createModelRuntimeApi,
   type ProviderEvent,
@@ -233,7 +238,7 @@ describe("run command", () => {
         }
 
         if (attempts < 4) {
-          throw new Error("request timed out")
+          throw createRetryableProviderError("request timed out")
         }
 
         yield { type: "text.delta", text: "Recovered after retry." }
@@ -279,7 +284,7 @@ describe("run command", () => {
           return
         }
 
-        throw new Error("request timed out")
+        throw createRetryableProviderError("request timed out")
       },
     }, {
       permissionPolicy: {
@@ -2263,4 +2268,26 @@ async function waitForAbort(signal: AbortSignal) {
 
 function countOccurrences(text: string, token: string) {
   return text.split(token).length - 1
+}
+
+function createRetryableProviderError(message: string) {
+  const error = new Error(message) as Error & {
+    classified?: {
+      reason: string
+      original: Error
+      retryable: boolean
+      shouldCompress: boolean
+      shouldRotateCredential: boolean
+      shouldFallback: boolean
+    }
+  }
+  error.classified = {
+    reason: "timeout",
+    original: error,
+    retryable: true,
+    shouldCompress: false,
+    shouldRotateCredential: false,
+    shouldFallback: false,
+  }
+  return error
 }

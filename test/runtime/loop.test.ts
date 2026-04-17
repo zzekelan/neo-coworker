@@ -1378,6 +1378,7 @@ describe("agent loop", () => {
     const harness = await createHarness("provider-retry", false)
     const started = startPromptRun({
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       service: harness.service,
       sessionId: harness.session.id,
       runId: "run_provider_retry",
@@ -1391,7 +1392,7 @@ describe("agent loop", () => {
           attempts += 1
 
           if (attempts < 3) {
-            throw new Error("provider exploded")
+            throw createRetryableProviderError("provider exploded")
           }
 
           yield { type: "text.delta", text: "Recovered after retry." }
@@ -1429,6 +1430,7 @@ describe("agent loop", () => {
     const harness = await createHarness("provider-failure", false)
     const started = startPromptRun({
       repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
       service: harness.service,
       sessionId: harness.session.id,
       runId: "run_provider_failure",
@@ -1440,7 +1442,7 @@ describe("agent loop", () => {
       provider: {
         async *streamTurn() {
           attempts += 1
-          throw new Error("provider exploded")
+          throw createRetryableProviderError("provider exploded")
         },
       },
       repository: harness.repository,
@@ -2010,6 +2012,28 @@ function createMonotonicClock(start = 1) {
     current += 1
     return value
   }
+}
+
+function createRetryableProviderError(message: string) {
+  const error = new Error(message) as Error & {
+    classified?: {
+      reason: string
+      original: Error
+      retryable: boolean
+      shouldCompress: boolean
+      shouldRotateCredential: boolean
+      shouldFallback: boolean
+    }
+  }
+  error.classified = {
+    reason: "timeout",
+    original: error,
+    retryable: true,
+    shouldCompress: false,
+    shouldRotateCredential: false,
+    shouldFallback: false,
+  }
+  return error
 }
 
 function trackDatabase<T extends { close: (throwOnError: boolean) => void }>(database: T) {

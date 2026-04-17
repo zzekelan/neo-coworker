@@ -178,8 +178,11 @@ function buildScenarioTurns(scenario: string): ScriptedTurn[] {
       ]
     case "retry-recovery":
       return [
-        async function* () {
-          throw new Error("transient eval provider failure")
+        async function* (_request) {
+          if (_request.signal.aborted) {
+            yield { type: "text.delta", text: "unreachable" } as ProviderEvent
+          }
+          throw createRetryableProviderError("transient eval provider failure")
         },
         async function* () {
           yield { type: "text.delta", text: "Recovered after retry." }
@@ -207,4 +210,26 @@ async function waitForAbort(signal: AbortSignal) {
       once: true,
     })
   })
+}
+
+function createRetryableProviderError(message: string) {
+  const error = new Error(message) as Error & {
+    classified?: {
+      reason: string
+      original: Error
+      retryable: boolean
+      shouldCompress: boolean
+      shouldRotateCredential: boolean
+      shouldFallback: boolean
+    }
+  }
+  error.classified = {
+    reason: "timeout",
+    original: error,
+    retryable: true,
+    shouldCompress: false,
+    shouldRotateCredential: false,
+    shouldFallback: false,
+  }
+  return error
 }
