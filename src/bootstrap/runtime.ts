@@ -11,8 +11,11 @@ import {
   type SessionRepository as StorageRepository,
 } from "../session"
 import {
+  createPermissionAllowlistStore,
   createPermissionRepository,
   createPermissionRuntimeApi,
+  RiskLevel,
+  RiskAssessmentService,
   type PermissionMode,
   type PermissionObserverPort,
   type PermissionResponse,
@@ -116,6 +119,8 @@ export { PermissionRequestNotAwaitingActiveRuntimeError }
 export function createRuntime(input: RuntimeInput) {
   const now = input.now ?? Date.now
   const observability = input.observability
+  const permissionObserver = createPermissionObserver(observability?.permissionObserver)
+  const basePermissionPolicy = resolvePermissionPolicy(input.permissionPolicy)
   const skillPort = input.skill ?? createSkillPort({ runtime: input.skillRuntime })
   const contextWindow = {
     getContextWindow() {
@@ -136,7 +141,7 @@ export function createRuntime(input: RuntimeInput) {
       repository: input.repository,
       session: sessionProvider.runs,
     }),
-    observer: createPermissionObserver(observability?.permissionObserver),
+    observer: permissionObserver,
     now,
   })
 
@@ -147,6 +152,8 @@ export function createRuntime(input: RuntimeInput) {
     skill: skillPort,
     permission: permissionPort,
     tools: createToolPortFactory({
+      permissionObserver,
+      permissionPolicy: basePermissionPolicy,
       observer: observability?.toolObserver,
       repository: input.repository,
       model: input.provider,
@@ -179,7 +186,7 @@ export function createRuntime(input: RuntimeInput) {
       now,
     }),
     activeRuns: input.activeRuns ?? createOrchestrationActiveRunRegistry(),
-    permissionPolicy: resolvePermissionPolicy(input.permissionPolicy),
+    permissionPolicy: forceAskPermissionPolicy(basePermissionPolicy),
     systemPrompt: input.systemPrompt,
     now,
     runtimeObserver: observability?.runtimeObserver,
@@ -431,6 +438,8 @@ function createPermissionPort(input: {
 
 function createToolPortFactory(config: {
   observer?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
+  permissionObserver?: PermissionObserverPort
+  permissionPolicy: ReturnType<typeof resolvePermissionPolicy>
   repository: StorageRepository
   model: OrchestrationModelPort
   contextWindow: { getContextWindow(): number }
@@ -466,6 +475,29 @@ function createToolPortFactory(config: {
     create(input) {
       const workspaceRoot = config.repository.sessions.get(input.sessionId).workspaceRoot
       const agentProfileService = config.agentProfileService(workspaceRoot)
+      const riskService = new RiskAssessmentService(undefined, config.permissionObserver)
+      const allowlist = createPermissionAllowlistLookup({
+        storageIdentity: config.repository.storageIdentity,
+        workspaceRoot,
+        now: config.now,
+        observer: config.permissionObserver,
+        sessionId: input.sessionId,
+        runId: input.runId,
+      })
+      const requestPermission = createAllowlistAwarePermission(
+        createRiskAwarePermission(input.requestPermission, riskService, {
+          permissionPolicy: config.permissionPolicy,
+          sessionId: input.sessionId,
+          runId: input.runId,
+        }),
+        allowlist,
+        riskService,
+        {
+          permissionPolicy: config.permissionPolicy,
+          sessionId: input.sessionId,
+          runId: input.runId,
+        },
+      )
       const resultStore = createResultStore({
         workspaceRoot,
         basePath: ".ncoworker/tool-results",
@@ -476,7 +508,7 @@ function createToolPortFactory(config: {
       let runtime!: ReturnType<typeof createBuiltinToolRuntime>
       runtime = createBuiltinToolRuntime({
         requestPermission(request) {
-          return input.requestPermission(request)
+          return requestPermission(request)
         },
         searchBackend: config.searchBackend,
         extraTools: [
@@ -491,7 +523,7 @@ function createToolPortFactory(config: {
           }),
           ...createSkillWriteTools({
             requestPermission(request) {
-              return input.requestPermission(request)
+              return requestPermission(request)
             },
             skillObserver: config.skillObserver,
             sessionId: input.sessionId,
@@ -709,6 +741,133 @@ function createSkillObserver(
   return {
     recordSkillEvent(event) {
       observer.recordSkillEvent(event)
+    },
+  }
+}
+
+type PermissionDecoratorContext = {
+  sessionId: string
+  runId: string
+  permissionPolicy: ReturnType<typeof resolvePermissionPolicy>
+}
+
+type PermissionAllowlistLookup = {
+  isAllowed(request: { toolName: string; reason: string }): Promise<boolean>
+}
+
+function forceAskPermissionPolicy(policy: ReturnType<typeof resolvePermissionPolicy>) {
+  return Object.fromEntries(
+    Object.keys(policy).map((toolName) => [toolName, "ask"]),
+  ) as ReturnType<typeof resolvePermissionPolicy>
+}
+
+function createRiskAwarePermission(
+  inner: RequestToolPermission,
+  riskService: RiskAssessmentService,
+  context: PermissionDecoratorContext,
+): RequestToolPermission {
+  return async (request) => {
+    const resolvedMode = riskService.resolveModeForRequest({
+      request,
+      originalMode: context.permissionPolicy[request.toolName as keyof typeof context.permissionPolicy] ?? "deny",
+      sessionId: context.sessionId,
+      runId: context.runId,
+    })
+
+    if (resolvedMode === "deny") {
+      return {
+        requestId: "permission_auto",
+        decision: "deny",
+      }
+    }
+
+    if (resolvedMode === "allow") {
+      return {
+        requestId: "permission_auto",
+        decision: "allow",
+      }
+    }
+
+    return inner(request)
+  }
+}
+
+function createAllowlistAwarePermission(
+  inner: RequestToolPermission,
+  allowlist: PermissionAllowlistLookup,
+  riskService: RiskAssessmentService,
+  context: PermissionDecoratorContext,
+): RequestToolPermission {
+  return async (request) => {
+    const mode = context.permissionPolicy[request.toolName as keyof typeof context.permissionPolicy] ?? "deny"
+    if (mode === "deny") {
+      return {
+        requestId: "permission_auto",
+        decision: "deny",
+      }
+    }
+
+    const assessment = riskService.assessFromPermissionRequest(request, {
+      sessionId: context.sessionId,
+      runId: context.runId,
+    })
+    if (assessment.level !== RiskLevel.SAFE) {
+      return inner(request)
+    }
+
+    if (mode === "ask" && await allowlist.isAllowed(request)) {
+      return {
+        requestId: "permission_auto",
+        decision: "allow",
+      }
+    }
+
+    return inner(request)
+  }
+}
+
+function createPermissionAllowlistLookup(input: {
+  storageIdentity: string
+  workspaceRoot: string
+  now: () => number
+  observer?: PermissionObserverPort
+  sessionId: string
+  runId: string
+}): PermissionAllowlistLookup {
+  if (input.storageIdentity.startsWith("memory:")) {
+    return {
+      async isAllowed() {
+        return false
+      },
+    }
+  }
+
+  return {
+    async isAllowed(request) {
+      const database = openStorageDatabase(input.storageIdentity)
+
+      try {
+        const store = createPermissionAllowlistStore({
+          database,
+          workspaceRoot: input.workspaceRoot,
+          now: input.now,
+          observer: input.observer
+            ? {
+                recordPermissionEvent(event) {
+                  input.observer?.recordPermissionEvent?.({
+                    ...event,
+                    sessionId: input.sessionId,
+                    runId: input.runId,
+                  } as PermissionObserverPort extends { recordPermissionEvent(event: infer T): void } ? T : never)
+                },
+              }
+            : undefined,
+        })
+
+        return await store.isAllowed(request)
+      } finally {
+        database.close(false)
+      }
     },
   }
 }
