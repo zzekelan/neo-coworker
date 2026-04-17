@@ -42,4 +42,5 @@ export type ModelTurnRequest = {
   messages: ModelMessage[]
   tools: ModelTool[]
   signal: AbortSignal
+  temperature?: number
 }

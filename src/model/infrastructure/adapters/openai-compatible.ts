@@ -259,6 +259,7 @@ export function createOpenAICompatibleProvider(input: {
             include_usage: true,
           },
           max_completion_tokens: 16000,
+          ...(request.temperature !== undefined && { temperature: request.temperature }),
           parallel_tool_calls: true,
           tools: request.tools.map(toChatCompletionTool) as OpenAICompatibleTools,
         },

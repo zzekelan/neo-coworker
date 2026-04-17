@@ -92,6 +92,7 @@ export function createOpenAIProvider(input: {
           input: toResponseInputs(request.messages),
           instructions: request.system,
           parallel_tool_calls: true,
+          ...(request.temperature !== undefined && { temperature: request.temperature }),
           tools: request.tools as OpenAITools,
         },
         { signal: request.signal },
