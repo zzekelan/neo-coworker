@@ -571,7 +571,7 @@ describe("storage schema", () => {
       run_id: string
     }
 
-    expect(version.user_version).toBe(10)
+    expect(version.user_version).toBe(CURRENT_STORAGE_SCHEMA_VERSION)
     expect(columns.find((column) => column.name === 'parent_session_id')).toMatchObject({
       name: 'parent_session_id',
       type: 'TEXT',

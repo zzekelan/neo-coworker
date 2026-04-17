@@ -1,3 +1,5 @@
+// @ts-expect-error Bun runtime module is provided by Bun.
+import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -252,12 +254,7 @@ describe("permission allowlist", () => {
 
   test("migrates schema-9 databases by creating the allowlist table", async () => {
     const databasePath = createDatabasePath("allowlist-backfill")
-    const seeded = trackDatabase(openSessionDatabase(databasePath))
-
-    seeded.exec("DROP TABLE permission_allowlist")
-    seeded.exec("PRAGMA user_version = 9")
-    seeded.close(false)
-    openDatabases.pop()
+    createSchema9Database(databasePath)
 
     const reopened = trackDatabase(openSessionDatabase(databasePath))
     const store = createPermissionAllowlistStore({
@@ -288,4 +285,117 @@ function createDatabasePath(prefix: string) {
 function trackDatabase<T extends { close: (throwOnError: boolean) => void }>(database: T) {
   openDatabases.push(database)
   return database
+}
+
+function createSchema9Database(filePath: string) {
+  const database = new Database(filePath, { create: true, strict: true })
+
+  try {
+    database.exec("PRAGMA foreign_keys = ON")
+    database.exec("PRAGMA journal_mode = WAL")
+    database.exec(`
+      CREATE TABLE session (
+        id TEXT PRIMARY KEY,
+        directory TEXT NOT NULL,
+        workspace_root TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        title TEXT NOT NULL DEFAULT 'New session',
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        latest_user_message_preview TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]',
+        parent_session_id TEXT REFERENCES session(id) ON DELETE CASCADE
+      )
+    `)
+    database.exec(`
+      CREATE TABLE run (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        trigger TEXT NOT NULL CHECK (trigger IN ('cli', 'prompt', 'command', 'shell', 'retry', 'summarize', 'init')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'waiting_permission', 'completed', 'failed', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        session_sequence INTEGER NOT NULL DEFAULT -1,
+        started_at INTEGER,
+        finished_at INTEGER,
+        error_text TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]',
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        token_usage_source TEXT CHECK (token_usage_source IN ('provider', 'estimated')),
+        parent_run_id TEXT,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        UNIQUE (id, session_id)
+      )
+    `)
+    database.exec(`
+      CREATE UNIQUE INDEX run_session_sequence_idx
+      ON run (session_id, session_sequence)
+      WHERE session_sequence >= 0
+    `)
+    database.exec(`
+      CREATE TRIGGER run_assign_session_sequence_after_insert
+      AFTER INSERT ON run
+      FOR EACH ROW
+      WHEN NEW.session_sequence < 0
+      BEGIN
+        UPDATE run
+        SET session_sequence = (
+          SELECT COALESCE(MAX(session_sequence), -1) + 1
+          FROM run
+          WHERE session_id = NEW.session_id
+            AND id <> NEW.id
+            AND session_sequence >= 0
+        )
+        WHERE id = NEW.id;
+      END
+    `)
+    database.exec(`
+      CREATE TABLE message (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'synthetic')),
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, run_id, session_id),
+        UNIQUE (run_id, sequence)
+      )
+    `)
+    database.exec(`
+      CREATE TABLE part (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('text', 'reasoning', 'tool_call', 'tool_result', 'step_start', 'step_finish', 'error', 'patch', 'compaction_boundary')),
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        text_value TEXT,
+        data_json TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, message_id, run_id, session_id),
+        UNIQUE (message_id, sequence)
+      )
+    `)
+    database.exec(`
+      CREATE TABLE permission_request (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied', 'cancelled')),
+        created_at INTEGER NOT NULL,
+        resolved_at INTEGER,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE
+      )
+    `)
+    database.exec("PRAGMA user_version = 9")
+  } finally {
+    database.close(false)
+  }
 }

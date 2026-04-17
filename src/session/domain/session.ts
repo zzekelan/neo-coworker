@@ -9,6 +9,7 @@ export type StoredSession = {
   directory: string
   workspaceRoot: string
   createdAt: number
+  currentAgent?: string
   title: string
   updatedAt: number
   latestUserMessagePreview: string | null

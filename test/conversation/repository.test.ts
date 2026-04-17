@@ -1,9 +1,12 @@
+// @ts-expect-error Bun runtime module is provided by Bun.
+import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
+  CURRENT_SESSION_SCHEMA_VERSION,
   SessionConflictError,
   SessionNotFoundError as StorageNotFoundError,
   SessionOwnershipError as StorageOwnershipError,
@@ -25,6 +28,125 @@ afterEach(() => {
 })
 
 describe("storage repository", () => {
+  test("uses schema version 11 for agent tracking columns", () => {
+    expect(CURRENT_SESSION_SCHEMA_VERSION).toBe(11)
+  })
+
+  test("creates fresh databases with nullable agent tracking columns and maps persisted values", () => {
+    const databasePath = createDatabasePath("schema-v11-fresh")
+    const database = openStorageDatabase(databasePath)
+    trackDatabase(database)
+
+    expect(listTableColumns(database, "session")).toContain("current_agent")
+    expect(listTableColumns(database, "message")).toContain("agent")
+
+    const repository = createStorageRepository({ database })
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    const run = repository.runs.create({
+      id: "run_1",
+      sessionId: session.id,
+      trigger: "cli",
+      status: "completed",
+      createdAt: 2,
+    })
+    const message = repository.messages.create({
+      id: "message_1",
+      sessionId: session.id,
+      runId: run.id,
+      role: "user",
+      sequence: 0,
+      createdAt: 3,
+    })
+
+    const rawSession = database
+      .query("SELECT current_agent FROM session WHERE id = ?")
+      .get(session.id) as { current_agent: string | null }
+    const rawMessage = database
+      .query("SELECT agent FROM message WHERE id = ?")
+      .get(message.id) as { agent: string | null }
+
+    expect(rawSession.current_agent).toBeNull()
+    expect(rawMessage.agent).toBeNull()
+    expect(repository.sessions.get(session.id).currentAgent).toBeUndefined()
+    expect(repository.messages.get(message.id).agent).toBeUndefined()
+
+    database.query("UPDATE session SET current_agent = ? WHERE id = ?").run("plan", session.id)
+    database.query("UPDATE message SET agent = ? WHERE id = ?").run("plan", message.id)
+
+    expect(repository.sessions.get(session.id).currentAgent).toBe("plan")
+    expect(repository.messages.get(message.id).agent).toBe("plan")
+  })
+
+  test("migrates existing v10 databases to v11 without data loss", () => {
+    const databasePath = createDatabasePath("schema-v10-migration")
+    createVersion10Database(databasePath)
+
+    const database = openStorageDatabase(databasePath)
+    trackDatabase(database)
+    const repository = createStorageRepository({ database })
+
+    expect(listTableColumns(database, "session")).toContain("current_agent")
+    expect(listTableColumns(database, "message")).toContain("agent")
+    expect(getUserVersion(database)).toBe(11)
+
+    const rawSession = database.query("SELECT * FROM session WHERE id = ?").get("session_1") as {
+      directory: string
+      workspace_root: string
+      created_at: number
+      current_agent: string | null
+      title: string
+      updated_at: number
+      latest_user_message_preview: string | null
+      active_skills_json: string
+      parent_session_id: string | null
+    }
+    const rawMessage = database.query("SELECT * FROM message WHERE id = ?").get("message_1") as {
+      session_id: string
+      run_id: string
+      role: string
+      sequence: number
+      created_at: number
+      agent: string | null
+    }
+
+    expect(rawSession).toMatchObject({
+      directory: "/workspace",
+      workspace_root: "/workspace",
+      created_at: 1,
+      current_agent: null,
+      title: "Migrated session",
+      updated_at: 2,
+      latest_user_message_preview: "existing preview",
+      active_skills_json: '["reviewer"]',
+      parent_session_id: null,
+    })
+    expect(rawMessage).toMatchObject({
+      session_id: "session_1",
+      run_id: "run_1",
+      role: "user",
+      sequence: 0,
+      created_at: 4,
+      agent: null,
+    })
+    expect(repository.sessions.get("session_1")).toMatchObject({
+      id: "session_1",
+      currentAgent: undefined,
+      title: "Migrated session",
+      activeSkills: ["reviewer"],
+    })
+    expect(repository.messages.get("message_1")).toMatchObject({
+      id: "message_1",
+      agent: undefined,
+      runId: "run_1",
+      role: "user",
+    })
+  })
+
   test("rolls back createQueuedRunWithInitiatingMessage when the message insert fails", () => {
     const { database, repository } = createTestRepository("run-message-rollback")
 
@@ -1222,4 +1344,164 @@ function trackDatabase<T extends { close: (throwOnError: boolean) => void }>(dat
 function countRows(database: { query: (sql: string) => { get: () => unknown } }, table: string) {
   const row = database.query(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }
   return row.count
+}
+
+function listTableColumns(database: Database, table: string) {
+  return (database.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(
+    (column) => column.name,
+  )
+}
+
+function getUserVersion(database: Database) {
+  const row = database.query("PRAGMA user_version").get() as { user_version: number }
+  return row.user_version
+}
+
+function createVersion10Database(filePath: string) {
+  const database = new Database(filePath, { create: true, strict: true })
+
+  try {
+    database.exec("PRAGMA foreign_keys = ON")
+    database.exec("PRAGMA journal_mode = WAL")
+    database.exec(`
+      CREATE TABLE session (
+        id TEXT PRIMARY KEY,
+        directory TEXT NOT NULL,
+        workspace_root TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        latest_user_message_preview TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]',
+        parent_session_id TEXT REFERENCES session(id) ON DELETE CASCADE
+      )
+    `)
+    database.exec(`
+      CREATE TABLE run (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        session_sequence INTEGER NOT NULL,
+        started_at INTEGER,
+        finished_at INTEGER,
+        error_text TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]',
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        token_usage_source TEXT,
+        parent_run_id TEXT,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        UNIQUE (id, session_id),
+        UNIQUE (session_id, session_sequence)
+      )
+    `)
+    database.exec(`
+      CREATE TABLE message (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, run_id, session_id),
+        UNIQUE (run_id, sequence)
+      )
+    `)
+    database.exec(`
+      CREATE TABLE permission_allowlist (
+        workspace_root TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        reason TEXT,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (workspace_root, tool_name, pattern)
+      )
+    `)
+
+    database
+      .query(
+        `
+          INSERT INTO session (
+            id,
+            directory,
+            workspace_root,
+            created_at,
+            title,
+            updated_at,
+            latest_user_message_preview,
+            active_skills_json,
+            parent_session_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        "session_1",
+        "/workspace",
+        "/workspace",
+        1,
+        "Migrated session",
+        2,
+        "existing preview",
+        '["reviewer"]',
+        null,
+      )
+    database
+      .query(
+        `
+          INSERT INTO run (
+            id,
+            session_id,
+            trigger,
+            status,
+            created_at,
+            session_sequence,
+            started_at,
+            finished_at,
+            error_text,
+            active_skills_json,
+            input_tokens,
+            output_tokens,
+            token_usage_source,
+            parent_run_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        "run_1",
+        "session_1",
+        "cli",
+        "completed",
+        3,
+        0,
+        null,
+        null,
+        null,
+        "[]",
+        0,
+        0,
+        null,
+        null,
+      )
+    database
+      .query(
+        `
+          INSERT INTO message (
+            id,
+            session_id,
+            run_id,
+            role,
+            sequence,
+            created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run("message_1", "session_1", "run_1", "user", 0, 4)
+    database.exec("PRAGMA user_version = 10")
+  } finally {
+    database.close(false)
+  }
 }

@@ -30,6 +30,7 @@ export type StoredSession = {
   directory: string
   workspaceRoot: string
   createdAt: number
+  currentAgent?: string
   title: string
   updatedAt: number
   latestUserMessagePreview: string | null
@@ -57,6 +58,7 @@ export type StoredMessage = {
   id: string
   sessionId: string
   runId: string
+  agent?: string
   role: MessageRole
   sequence: number
   createdAt: number

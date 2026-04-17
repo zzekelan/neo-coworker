@@ -15,6 +15,7 @@ export type SessionRow = {
   directory: string
   workspace_root: string
   created_at: number
+  current_agent: string | null
   title: string
   updated_at: number
   latest_user_message_preview: string | null
@@ -43,6 +44,7 @@ export type MessageRow = {
   id: string
   session_id: string
   run_id: string
+  agent: string | null
   role: MessageRole
   sequence: number
   created_at: number
@@ -84,6 +86,7 @@ export function mapSessionRow(row: SessionRow): StoredSession {
     directory: row.directory,
     workspaceRoot: row.workspace_root,
     createdAt: row.created_at,
+    currentAgent: row.current_agent ?? undefined,
     title: row.title,
     updatedAt: row.updated_at,
     latestUserMessagePreview: row.latest_user_message_preview,
@@ -115,6 +118,7 @@ export function mapMessageRow(row: MessageRow): StoredMessage {
     id: row.id,
     sessionId: row.session_id,
     runId: row.run_id,
+    agent: row.agent ?? undefined,
     role: row.role,
     sequence: row.sequence,
     createdAt: row.created_at,

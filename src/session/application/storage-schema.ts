@@ -1,4 +1,4 @@
-export const CURRENT_SESSION_SCHEMA_VERSION = 10
+export const CURRENT_SESSION_SCHEMA_VERSION = 11
 
 export const SESSION_TABLES = [
   "session",

@@ -344,6 +344,19 @@ const sessionMigrations = [
     version: 10,
     statements: [permissionAllowlistTableStatement],
   },
+  {
+    version: 11,
+    statements: [
+      `
+        ALTER TABLE session
+        ADD COLUMN current_agent TEXT
+      `,
+      `
+        ALTER TABLE message
+        ADD COLUMN agent TEXT
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {
@@ -396,6 +409,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             directory,
             workspace_root,
             created_at,
+            current_agent,
             title,
             updated_at,
             latest_user_message_preview,
@@ -417,6 +431,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             directory,
             workspace_root,
             created_at,
+            current_agent,
             title,
             updated_at,
             latest_user_message_preview,
@@ -438,6 +453,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             directory,
             workspace_root,
             created_at,
+            current_agent,
             title,
             updated_at,
             latest_user_message_preview,
@@ -460,6 +476,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             directory,
             workspace_root,
             created_at,
+            current_agent,
             title,
             updated_at,
             latest_user_message_preview,
@@ -528,7 +545,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
   function getMessageRow(messageId: string) {
     return database
       .query(
-        "SELECT id, session_id, run_id, role, sequence, created_at FROM message WHERE id = ?",
+        "SELECT id, session_id, run_id, agent, role, sequence, created_at FROM message WHERE id = ?",
       )
       .get(messageId) as MessageRow | null
   }

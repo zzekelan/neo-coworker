@@ -8,6 +8,7 @@ export type StoredMessage = {
   id: string
   sessionId: string
   runId: string
+  agent?: string
   role: MessageRole
   sequence: number
   createdAt: number
