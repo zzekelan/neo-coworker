@@ -45,3 +45,16 @@ export {
   type ToolProvider,
   type ToolRuntimeApi,
 } from "./runtime-api"
+export {
+  DEFAULT_TURN_BUDGET_MAX_CHARS,
+  TURN_BUDGET_PREVIEW_LENGTH,
+  TurnBudget,
+  type TurnBudgetSpillResult,
+} from "./turn-budget"
+export {
+  MAX_PARALLEL_BATCH_SIZE,
+  ParallelExecutor,
+  type ParallelExecutorBatchRunner,
+  type ParallelExecutorOptions,
+  type ParallelExecutorToolCall,
+} from "./parallel-executor"

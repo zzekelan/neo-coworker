@@ -30,6 +30,28 @@ export type ToolObserverEvent =
       deduplicated: boolean
     }
   | {
+      type: "budget.turn_over_budget"
+      sessionId: string
+      runId: string
+      payload: {
+        turnCumulativeSize: number
+        maxChars: number
+        trackedToolCount: number
+      }
+    }
+  | {
+      type: "budget.spill_largest"
+      sessionId: string
+      runId: string
+      payload: {
+        toolName: string
+        spilledSize: number
+        previewLength: number
+        diskPath: string
+        remainingBudget: number
+      }
+    }
+  | {
       type: "parallel.plan_generated"
       sessionId: string
       runId: string
