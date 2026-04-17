@@ -28,11 +28,14 @@ import {
   createToolProvider,
   createToolRuntimeApi,
   manageResultSize,
+  ParallelExecutor,
+  ParallelizationClass,
   TurnBudget,
   throwIfToolAborted,
   type RequestToolPermission,
   type SearchToolBackend,
   type ToolDefinition,
+  type ToolParallelConfig,
 } from "../tool"
 import {
   createSkillWriteService,
@@ -543,12 +546,13 @@ function createToolPortFactory(config: {
                 parentTools: {
                   ...createToolProviderFromRuntime({ runtime }),
                   async executeBatch(batchInput) {
-                    const results = await batchExecutor.execute({
+                    const results = await executeParallelizedBatch({
                       calls: batchInput.calls,
-                      tools: createToolProviderFromRuntime({ runtime }),
-                      availableTools: runtime.list(),
                       workspaceRoot: batchInput.workspaceRoot,
                       signal: batchInput.signal,
+                      tools: {
+                        execute: createToolProviderFromRuntime({ runtime }).execute,
+                      },
                     })
 
                     return applyTurnBudget(results, results.map(manageBatchResult))
@@ -626,6 +630,81 @@ function createToolPortFactory(config: {
         } satisfies T
       }
 
+      async function executeParallelizedBatch(batchInput: {
+        calls: Array<{
+          callId: string
+          toolName: string
+          args: unknown
+          onProgress?: (message: string) => void
+        }>
+        workspaceRoot: string
+        signal: AbortSignal
+        tools: Pick<ReturnType<typeof createToolProvider>, "execute">
+      }) {
+        if (batchInput.calls.length <= 1) {
+          return batchExecutor.execute({
+            calls: batchInput.calls,
+            tools: batchInput.tools,
+            availableTools: runtime.list(),
+            workspaceRoot: batchInput.workspaceRoot,
+            signal: batchInput.signal,
+          })
+        }
+
+        const orderedResults = new Map<string, Awaited<ReturnType<typeof batchExecutor.execute>>[number]>()
+        const availableTools = runtime.list()
+        const parallelExecutor = new ParallelExecutor(buildParallelExecutorConfig(availableTools, batchInput.calls), {
+          observer: config.observer,
+          observerContext: {
+            sessionId: input.sessionId,
+            runId: input.runId,
+          },
+          now: config.now,
+        })
+
+        await parallelExecutor.schedule(
+          batchInput.calls.map((call) => ({
+            name: call.toolName,
+            args: toParallelExecutorArgs(call.callId, call.args),
+          })),
+          async (plannedBatch) => {
+            const plannedCalls = plannedBatch.map((plannedCall) => {
+              const callId = readParallelExecutorCallId(plannedCall.args)
+              const nextCall = batchInput.calls.find((call) => call.callId === callId)
+
+              if (!nextCall) {
+                throw new Error(`Missing tool call for planned batch entry ${plannedCall.name}`)
+              }
+
+              return nextCall
+            })
+
+            const batchResults = await batchExecutor.execute({
+              calls: plannedCalls,
+              tools: batchInput.tools,
+              availableTools,
+              workspaceRoot: batchInput.workspaceRoot,
+              signal: batchInput.signal,
+            })
+
+            for (const result of batchResults) {
+              orderedResults.set(result.callId, result)
+            }
+
+            return undefined
+          },
+        )
+
+        return batchInput.calls.map((call) => {
+          const result = orderedResults.get(call.callId)
+          if (!result) {
+            throw new Error(`Missing tool result for call ${call.callId}`)
+          }
+
+          return result
+        })
+      }
+
       function applyTurnBudget<T extends {
         toolName: string
         output: string
@@ -694,12 +773,13 @@ function createToolPortFactory(config: {
           return runtime.list()
         },
         async executeBatch(batchInput) {
-          const results = await batchExecutor.execute({
+          const results = await executeParallelizedBatch({
             calls: batchInput.calls,
-            tools: provider,
-            availableTools: runtime.list(),
             workspaceRoot: batchInput.workspaceRoot,
             signal: batchInput.signal,
+            tools: {
+              execute: provider.execute,
+            },
           })
 
           return applyTurnBudget(results, results.map(manageBatchResult))
@@ -707,6 +787,101 @@ function createToolPortFactory(config: {
       }
     },
   }
+}
+
+function toParallelExecutorArgs(callId: string, args: unknown): Record<string, unknown> {
+  return {
+    ...((args && typeof args === "object" ? args : {}) as Record<string, unknown>),
+    __parallelExecutorCallId: callId,
+  }
+}
+
+function readParallelExecutorCallId(args: unknown) {
+  const callId = (args as { __parallelExecutorCallId?: unknown } | null | undefined)?.__parallelExecutorCallId
+  if (typeof callId !== "string" || callId.length === 0) {
+    throw new Error("Parallel executor batch entry missing call id")
+  }
+
+  return callId
+}
+
+function buildParallelExecutorConfig(
+  availableTools: Array<{
+    name: string
+    concurrency?: "read-only" | "mutating"
+    isConcurrencySafe?: (input: unknown) => boolean
+  }>,
+  calls: Array<{
+    toolName: string
+    args: unknown
+  }>,
+) {
+  const toolsByName = new Map(availableTools.map((tool) => [tool.name, tool]))
+  const config = new Map<string, ToolParallelConfig>()
+
+  for (const call of calls) {
+    const tool = toolsByName.get(call.toolName)
+    if (!tool) {
+      continue
+    }
+
+    const nextClassification = resolveParallelizationClass(tool, call.args)
+    const previous = config.get(call.toolName)?.classification
+    config.set(call.toolName, {
+      classification:
+        previous === undefined
+          ? nextClassification
+          : mergeParallelizationClasses(previous, nextClassification),
+    })
+  }
+
+  return config
+
+  function resolveParallelizationClass(
+    tool: {
+      name: string
+      concurrency?: "read-only" | "mutating"
+      isConcurrencySafe?: (input: unknown) => boolean
+    },
+    args: unknown,
+  ): ParallelizationClass {
+    if (tool.isConcurrencySafe) {
+      try {
+        return tool.isConcurrencySafe(args)
+          ? ParallelizationClass.PARALLEL_SAFE
+          : ParallelizationClass.NEVER_PARALLEL
+      } catch {
+        return ParallelizationClass.NEVER_PARALLEL
+      }
+    }
+
+    if (tool.name === "write" || tool.name === "edit") {
+      return ParallelizationClass.PATH_SCOPED
+    }
+
+    return tool.concurrency === "read-only"
+      ? ParallelizationClass.PARALLEL_SAFE
+      : ParallelizationClass.NEVER_PARALLEL
+  }
+}
+
+function mergeParallelizationClasses(
+  left: ParallelizationClass,
+  right: ParallelizationClass,
+): ParallelizationClass {
+  if (left === right) {
+    return left
+  }
+
+  if (left === ParallelizationClass.NEVER_PARALLEL || right === ParallelizationClass.NEVER_PARALLEL) {
+    return ParallelizationClass.NEVER_PARALLEL
+  }
+
+  if (left === ParallelizationClass.PATH_SCOPED || right === ParallelizationClass.PATH_SCOPED) {
+    return ParallelizationClass.PATH_SCOPED
+  }
+
+  return ParallelizationClass.PARALLEL_SAFE
 }
 
 function createPermissionObserver(
