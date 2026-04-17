@@ -6,11 +6,12 @@ export { createSubAgentContext, createSubAgentRun, filterToolsForAgent, loadSkil
 export type { CreateSubAgentRunInput } from "../application"
 export type { AgentProfileService } from "../application/agent-profile-service"
 export { createAgentTool } from "../infrastructure/agent-tool"
-export { loadAgentProfiles } from "../infrastructure/agent-profile-loader"
+export { loadAgentProfiles, loadMergedAgentProfiles } from "../infrastructure/agent-profile-loader"
+export { clearYamlAgentConfigCache, loadYamlAgentConfig } from "../infrastructure/yaml-config-loader"
 
 import { createAgentProfileService as makeService } from "../application/agent-profile-service"
-import { loadAgentProfiles } from "../infrastructure/agent-profile-loader"
+import { loadMergedAgentProfiles } from "../infrastructure/agent-profile-loader"
 
 export function createAgentProfileService(workspaceRoot: string) {
-  return makeService(() => loadAgentProfiles(workspaceRoot))
+  return makeService(() => loadMergedAgentProfiles(workspaceRoot))
 }

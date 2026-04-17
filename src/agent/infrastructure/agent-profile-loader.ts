@@ -1,9 +1,25 @@
 import { readdir } from "node:fs/promises"
 import { join } from "node:path"
 import { AgentProfileSchema } from "../domain"
+import { BUILTIN_AGENTS } from "../domain/builtin-agents"
 import type { AgentProfile } from "../domain"
+import { loadYamlAgentConfig } from "./yaml-config-loader"
+
+const bunRuntime = globalThis as typeof globalThis & {
+  Bun: {
+    file(path: string): {
+      text(): Promise<string>
+    }
+  }
+}
 
 const AGENTS_DIRECTORY = ".ncoworker/agents"
+
+type MergeableAgentProfile = Partial<AgentProfile> & {
+  name: string
+  temperature?: number
+  isPrimary?: boolean
+}
 
 function parseFrontmatter(content: string): Record<string, unknown> | null {
   const match = content.match(/^---\n([\s\S]*?)\n---/)
@@ -84,7 +100,7 @@ export async function loadAgentProfiles(workspaceRoot: string): Promise<AgentPro
     const filePath = join(agentsDir, entry.name)
     let content: string
     try {
-      content = await Bun.file(filePath).text()
+      content = await bunRuntime.Bun.file(filePath).text()
     } catch {
       console.warn(`[agent-profile-loader] Could not read file: ${filePath}`)
       continue
@@ -108,4 +124,50 @@ export async function loadAgentProfiles(workspaceRoot: string): Promise<AgentPro
   }
 
   return profiles
+}
+
+export async function loadMergedAgentProfiles(workspaceRoot: string): Promise<AgentProfile[]> {
+  const [yamlProfiles, markdownProfiles] = await Promise.all([
+    loadYamlAgentConfig(workspaceRoot),
+    loadAgentProfiles(workspaceRoot),
+  ])
+
+  return mergeAgentProfileLayers(
+    Object.values(BUILTIN_AGENTS) as MergeableAgentProfile[],
+    yamlProfiles as MergeableAgentProfile[],
+    markdownProfiles as MergeableAgentProfile[],
+  )
+}
+
+function mergeAgentProfileLayers(
+  ...layers: ReadonlyArray<ReadonlyArray<MergeableAgentProfile>>
+): AgentProfile[] {
+  const mergedProfiles = new Map<string, MergeableAgentProfile>()
+
+  for (const layer of layers) {
+    for (const profile of layer) {
+      const merged = sanitizePrimaryAgentTools({
+        ...(mergedProfiles.get(profile.name) ?? {}),
+        ...profile,
+        name: profile.name,
+      })
+
+      mergedProfiles.set(profile.name, merged)
+    }
+  }
+
+  return [...mergedProfiles.values()] as AgentProfile[]
+}
+
+function sanitizePrimaryAgentTools(profile: MergeableAgentProfile): MergeableAgentProfile {
+  if (profile.isPrimary !== true || profile.tools === undefined) {
+    return profile
+  }
+
+  console.warn(
+    `[agent-profile-loader] Ignoring tools override for primary agent '${profile.name}'.`,
+  )
+
+  const { tools: _tools, ...rest } = profile
+  return rest
 }

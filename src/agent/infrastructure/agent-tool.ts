@@ -51,7 +51,7 @@ async function resolveAgentProfile(
   service: AgentProfileService,
   name: string,
 ): Promise<AgentProfile | undefined> {
-  return getBuiltinAgent(name) ?? (await service.getProfile(name))
+  return (await service.getProfile(name)) ?? getBuiltinAgent(name)
 }
 
 async function listAvailableAgents(service: AgentProfileService): Promise<string[]> {
