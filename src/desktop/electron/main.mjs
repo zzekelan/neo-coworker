@@ -266,8 +266,14 @@ async function startManagedLocalServer(settings) {
     assignHandle(handle) {
       appServerHandle = handle
     },
-    waitUntilReady() {
-      return waitForServerStarted(child, `http://127.0.0.1:${port}`)
+    async waitUntilReady() {
+      const startedOrigin = await waitForServerStarted(child, `http://127.0.0.1:${port}`)
+      await waitForChildReady(
+        child,
+        `managed local app-server (${startedOrigin})`,
+        waitForHttpReady(new URL("/sessions", startedOrigin).href),
+      )
+      return startedOrigin
     },
   })
   unavailableServerMessage = null
