@@ -199,11 +199,12 @@ async function drainAlreadyProducedModelEvent<T>(nextValue: Promise<IteratorResu
   return null
 }
 
-function shouldRetryModelRequest(input: {
-  attempt: number
-  sawProviderOutput: boolean
-}) {
-  return !input.sawProviderOutput && input.attempt < MODEL_REQUEST_MAX_ATTEMPTS
+function shouldRetryModelRequest(input: { attempt: number; error: unknown }) {
+  return input.attempt < MODEL_REQUEST_MAX_ATTEMPTS
+    && !!(
+      input.error && typeof input.error === "object"
+      && (input.error as { classified?: { retryable?: unknown } }).classified?.retryable === true
+    )
 }
 
 export function createOrchestrationStepService(input: CreateOrchestrationStepServiceInput) {
@@ -409,7 +410,6 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       let requestedTool = false
 
       for (let attempt = 1; attempt <= MODEL_REQUEST_MAX_ATTEMPTS; attempt += 1) {
-        let sawProviderOutput = false
         let iterator: AsyncIterator<
           Awaited<ReturnType<OrchestrationModelPort["streamTurn"]>> extends AsyncIterable<infer T>
             ? T
@@ -450,7 +450,6 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
               break
             }
 
-            sawProviderOutput = true
             const item = next.value
             if (item.type === "text.delta") {
               assistantTurn.appendText(item.text)
@@ -524,7 +523,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
           void iterator?.return?.()
 
-          if (shouldRetryModelRequest({ attempt, sawProviderOutput })) {
+          if (shouldRetryModelRequest({ attempt, error })) {
             stepInput.emit({
               type: "model.turn.retrying",
               attempt,

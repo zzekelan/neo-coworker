@@ -1,7 +1,14 @@
 import OpenAI from "openai"
 import {
-  createOpenAICompatibleModelProvider,
-  createOpenAIModelProvider,
+  CredentialPool,
+  PoolStrategy,
+  RateLimitTracker,
+  classifyError,
+  createModelProvider,
+  createModelRuntimeApi,
+  createOpenAIAdapter,
+  createOpenAICompatibleAdapter,
+  type ClassifiedError,
   type ModelObserverPort,
   type ModelProvider,
 } from "../model"
@@ -35,7 +42,15 @@ export type DefaultProviderInput = {
   createClient?: (config: OpenAIClientConfig) => OpenAI
   createOpenAIProviderImpl?: ModelProviderFactory
   createOpenAICompatibleProviderImpl?: ModelProviderFactory
+  randomImpl?: () => number
+  sleepImpl?: (delayMs: number) => Promise<void>
+  retryAttempts?: number
 }
+
+const DEFAULT_PROVIDER_RETRY_ATTEMPTS = 3
+const DEFAULT_PROVIDER_RETRY_BASE_DELAY_MS = 250
+const DEFAULT_PROVIDER_RETRY_MAX_DELAY_MS = 2_000
+const DEFAULT_PROVIDER_RETRY_JITTER_RATIO = 0.25
 
 function readEnvValue(
   env: Record<string, string | undefined>,
@@ -117,7 +132,7 @@ export function resolveDefaultProviderConfig(
   env: Record<string, string | undefined> = process.env,
 ): ProviderConfig {
   const provider = parseProviderKind(readEnvValue(env, "LLM_PROVIDER"))
-  const apiKey = readEnvValue(env, "LLM_API_KEY")
+  const apiKey = parseApiKeys(readEnvValue(env, "LLM_API_KEY"))[0]
 
   if (!apiKey) {
     throw new Error("LLM_API_KEY is required to run the CLI without an injected provider")
@@ -190,38 +205,337 @@ export async function resolveContextWindowSize(input: {
 export async function createDefaultProvider(
   input: DefaultProviderInput = {},
 ): Promise<ModelProvider> {
-  const config = resolveDefaultProviderConfig(input.env)
+  const env = input.env ?? process.env
+  const config = resolveDefaultProviderConfig(env)
+  const apiKeys = parseApiKeys(readEnvValue(env, "LLM_API_KEY"))
   const createClient =
     input.createClient ??
     ((clientConfig: OpenAIClientConfig) =>
       new OpenAI({
         apiKey: clientConfig.apiKey,
         baseURL: clientConfig.baseURL,
-        timeout: clientConfig.timeout,
-      }))
-  const client = createClient({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL,
-    timeout: config.timeout,
+          timeout: clientConfig.timeout,
+        }))
+  const createProviderForKey = createProviderFactory({
+    config,
+    createClient,
+    createOpenAIProviderImpl: input.createOpenAIProviderImpl,
+    createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
+    observer: input.modelObserver,
   })
+  const primaryProvider = createProviderForKey({ apiKey: config.apiKey })
+  const credentialPool =
+    apiKeys.length > 1 ? new CredentialPool(apiKeys, PoolStrategy.round_robin) : null
 
-  if (config.provider === "openai-compatible") {
-    const createProvider =
-      input.createOpenAICompatibleProviderImpl ?? createOpenAICompatibleModelProvider
+  return createResilientProvider({
+    baseProvider: primaryProvider,
+    primaryApiKey: config.apiKey,
+    createProviderForKey,
+    credentialPool,
+    observer: input.modelObserver,
+    random: input.randomImpl ?? Math.random,
+    sleep: input.sleepImpl ?? sleep,
+    retryAttempts: input.retryAttempts ?? DEFAULT_PROVIDER_RETRY_ATTEMPTS,
+  })
+}
 
-    return createProvider({
-      model: config.model,
-      client,
-      observer: input.modelObserver,
+function createProviderFactory(input: {
+  config: ProviderConfig
+  createClient: (config: OpenAIClientConfig) => OpenAI
+  createOpenAIProviderImpl?: ModelProviderFactory
+  createOpenAICompatibleProviderImpl?: ModelProviderFactory
+  observer?: ModelObserverPort
+}) {
+  return (runtimeInput: {
+    apiKey: string
+    rateLimitTracker?: RateLimitTracker
+  }) => {
+    const client = input.createClient({
+      apiKey: runtimeInput.apiKey,
+      baseURL: input.config.baseURL,
+      timeout: input.config.timeout,
+    })
+
+    if (input.config.provider === "openai-compatible") {
+      if (input.createOpenAICompatibleProviderImpl) {
+        return input.createOpenAICompatibleProviderImpl({
+          model: input.config.model,
+          client,
+          observer: input.observer,
+        })
+      }
+
+      return createModelProvider({
+        runtime: createModelRuntimeApi({
+          provider: createOpenAICompatibleAdapter({
+            model: input.config.model,
+            client,
+          }),
+          rateLimitTracker: runtimeInput.rateLimitTracker,
+        }),
+        observer: input.observer,
+      })
+    }
+
+    if (input.createOpenAIProviderImpl) {
+      return input.createOpenAIProviderImpl({
+        model: input.config.model,
+        client,
+        observer: input.observer,
+      })
+    }
+
+    return createModelProvider({
+      runtime: createModelRuntimeApi({
+        provider: createOpenAIAdapter({
+          model: input.config.model,
+          client,
+        }),
+        rateLimitTracker: runtimeInput.rateLimitTracker,
+      }),
+      observer: input.observer,
     })
   }
+}
 
-  const createProvider = input.createOpenAIProviderImpl ?? createOpenAIModelProvider
+function createResilientProvider(input: {
+  baseProvider: ModelProvider
+  primaryApiKey: string
+  createProviderForKey(input: {
+    apiKey: string
+    rateLimitTracker?: RateLimitTracker
+  }): ModelProvider
+  credentialPool: CredentialPool | null
+  observer?: ModelObserverPort
+  random: () => number
+  sleep: (delayMs: number) => Promise<void>
+  retryAttempts: number
+}): ModelProvider {
+  return {
+    projectTurn(request) {
+      return input.baseProvider.projectTurn(request)
+    },
+    async *streamTurn(request) {
+      let apiKey = selectCredentialKey(input.credentialPool, input.primaryApiKey)
+      let pendingRotation: { failedKey: string; reason: ClassifiedError["reason"] } | null = null
+      const rateLimitTracker = createRateLimitTracker(input.observer, request)
 
-  return createProvider({
-    model: config.model,
-    client,
-    observer: input.modelObserver,
+      for (let attempt = 1; attempt <= input.retryAttempts; attempt += 1) {
+        const provider = apiKey === input.primaryApiKey
+          ? input.baseProvider
+          : input.createProviderForKey({
+              apiKey,
+              rateLimitTracker,
+            })
+        let sawProviderOutput = false
+
+        emitCredentialRotation(input.observer, request, pendingRotation, apiKey, input.credentialPool)
+        pendingRotation = null
+
+        try {
+          for await (const event of provider.streamTurn(request)) {
+            sawProviderOutput = true
+            yield event
+          }
+
+          input.credentialPool?.markSuccess(apiKey)
+          return
+        } catch (error) {
+          const classified = normalizeClassifiedError(error)
+
+          if (!shouldRetryProviderRequest({
+            attempt,
+            sawProviderOutput,
+            classified,
+            retryAttempts: input.retryAttempts,
+          })) {
+            throw attachClassifiedError(classified)
+          }
+
+          if (input.credentialPool && classified.shouldRotateCredential) {
+            input.credentialPool.markFailed(
+              apiKey,
+              classified.reason,
+              classified.retryAfterMs ?? 0,
+            )
+            pendingRotation = {
+              failedKey: apiKey,
+              reason: classified.reason,
+            }
+            apiKey = selectCredentialKey(input.credentialPool, input.primaryApiKey)
+          }
+
+          await input.sleep(calculateRetryDelayMs({
+            attempt,
+            retryAfterMs: classified.retryAfterMs,
+            random: input.random,
+          }))
+        }
+      }
+    },
+  }
+}
+
+function createRateLimitTracker(
+  observer: ModelObserverPort | undefined,
+  request: Parameters<ModelProvider["streamTurn"]>[0],
+) {
+  return new RateLimitTracker({
+    observer,
+    telemetry: request.sessionId && request.runId
+      ? {
+          sessionId: request.sessionId,
+          runId: request.runId,
+          turnKey: request.turnKey,
+        }
+      : undefined,
+  })
+}
+
+function shouldRetryProviderRequest(input: {
+  attempt: number
+  sawProviderOutput: boolean
+  classified: ClassifiedError
+  retryAttempts: number
+}) {
+  return !input.sawProviderOutput
+    && input.classified.retryable
+    && input.attempt < input.retryAttempts
+}
+
+function calculateRetryDelayMs(input: {
+  attempt: number
+  retryAfterMs?: number
+  random: () => number
+}) {
+  const exponentialDelay = Math.min(
+    DEFAULT_PROVIDER_RETRY_BASE_DELAY_MS * 2 ** (input.attempt - 1),
+    DEFAULT_PROVIDER_RETRY_MAX_DELAY_MS,
+  )
+  const jitterWindow = Math.max(1, Math.floor(exponentialDelay * DEFAULT_PROVIDER_RETRY_JITTER_RATIO))
+  const jitter = Math.floor(Math.max(0, input.random()) * jitterWindow)
+
+  return Math.max(input.retryAfterMs ?? 0, Math.min(exponentialDelay + jitter, DEFAULT_PROVIDER_RETRY_MAX_DELAY_MS))
+}
+
+function selectCredentialKey(pool: CredentialPool | null, fallbackKey: string) {
+  return pool?.next()?.key ?? fallbackKey
+}
+
+function emitCredentialRotation(
+  observer: ModelObserverPort | undefined,
+  request: Parameters<ModelProvider["streamTurn"]>[0],
+  pendingRotation: { failedKey: string; reason: ClassifiedError["reason"] } | null,
+  nextKey: string,
+  credentialPool: CredentialPool | null,
+) {
+  if (!pendingRotation || pendingRotation.failedKey === nextKey || !request.sessionId || !request.runId) {
+    return
+  }
+
+  try {
+    observer?.recordModelEvent?.({
+      type: "credential.rotated",
+      sessionId: request.sessionId,
+      runId: request.runId,
+      turnKey: request.turnKey,
+      failedKey: pendingRotation.failedKey,
+      nextKey,
+      reason: pendingRotation.reason,
+      remainingCredentials: credentialPool?.available() ?? 1,
+    })
+  } catch {}
+}
+
+function parseApiKeys(value: string | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+}
+
+function normalizeClassifiedError(error: unknown): ClassifiedError {
+  const attached = readAttachedClassification(error)
+  if (attached) {
+    return attached
+  }
+
+  return classifyError(coerceError(error))
+}
+
+function readAttachedClassification(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null
+  }
+
+  const classified = (error as { classified?: unknown }).classified
+  return isClassifiedError(classified) ? classified : null
+}
+
+function isClassifiedError(error: unknown): error is ClassifiedError {
+  if (!error || typeof error !== "object") {
+    return false
+  }
+
+  const record = error as Record<string, unknown>
+  return record.original instanceof Error
+    && typeof record.reason === "string"
+    && typeof record.retryable === "boolean"
+    && typeof record.shouldCompress === "boolean"
+    && typeof record.shouldRotateCredential === "boolean"
+    && typeof record.shouldFallback === "boolean"
+}
+
+function attachClassifiedError(classified: ClassifiedError) {
+  const error = classified.original as Error & { classified?: ClassifiedError }
+  error.classified = classified
+  return error
+}
+
+function coerceError(error: unknown) {
+  if (error instanceof Error) {
+    return error
+  }
+
+  const wrapped = new Error(
+    typeof error === "object"
+      && error !== null
+      && "message" in error
+      && typeof error.message === "string"
+      ? error.message
+      : String(error),
+  )
+
+  if (typeof error === "object" && error !== null) {
+    const record = error as Record<string, unknown>
+
+    if (typeof record.name === "string" && record.name.length > 0) {
+      wrapped.name = record.name
+    }
+
+    if ("status" in record) {
+      ;(wrapped as Error & { status?: unknown }).status = record.status
+    }
+
+    if ("statusCode" in record) {
+      ;(wrapped as Error & { statusCode?: unknown }).statusCode = record.statusCode
+    }
+
+    if ("body" in record) {
+      ;(wrapped as Error & { body?: unknown }).body = record.body
+    }
+  }
+
+  return wrapped
+}
+
+async function sleep(delayMs: number) {
+  if (delayMs <= 0) {
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, delayMs)
   })
 }
 

@@ -13,20 +13,39 @@ import type {
   ModelEvent,
   ModelProjectionInput,
 } from "../domain"
+import type { ClassifiedError } from "../domain/error-classification"
 import type {
   Provider,
   ProviderTurnRequest,
 } from "./ports/provider"
 
-export type CreateModelRuntimeApiInput = Provider
+export type CreateModelRuntimeApiInput = Provider | {
+  provider: Provider
+  rateLimitTracker?: {
+    update(headers: Record<string, string>): void
+    isNearLimit(threshold?: number): boolean
+  }
+}
 
 export function createModelRuntimeApi(input: CreateModelRuntimeApiInput) {
+  const providerInput = resolveProviderInput(input)
+
   return {
     projectTurn(request: ModelProjectionInput & Pick<ProviderTurnRequest, "signal">) {
       return projectModelTurn(request)
     },
-    streamTurn(request: ProviderTurnRequest) {
-      return input.streamTurn(request)
+    async *streamTurn(request: ProviderTurnRequest) {
+      const stream = providerInput.provider.streamTurn(request)
+      updateRateLimitsFromMetadata(providerInput.rateLimitTracker, stream)
+
+      try {
+        for await (const event of stream) {
+          yield event
+        }
+      } catch (error) {
+        updateRateLimitsFromMetadata(providerInput.rateLimitTracker, error)
+        throw attachClassifiedError(normalizeClassifiedError(error))
+      }
     },
   }
 }
@@ -237,7 +256,109 @@ function observeClassifiedError(input: {
   }
 }
 
+function resolveProviderInput(input: CreateModelRuntimeApiInput) {
+  return "provider" in input
+    ? input
+    : {
+        provider: input,
+      }
+}
+
+function normalizeClassifiedError(error: unknown): ClassifiedError {
+  const attached = readAttachedClassification(error)
+  if (attached) {
+    return attached
+  }
+
+  return classifyError(coerceError(error))
+}
+
+function isClassifiedError(error: unknown): error is ClassifiedError {
+  if (!error || typeof error !== "object") {
+    return false
+  }
+
+  const record = error as Record<string, unknown>
+  return record.original instanceof Error
+    && typeof record.reason === "string"
+    && typeof record.retryable === "boolean"
+    && typeof record.shouldCompress === "boolean"
+    && typeof record.shouldRotateCredential === "boolean"
+    && typeof record.shouldFallback === "boolean"
+}
+
+function readAttachedClassification(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null
+  }
+
+  const classified = (error as { classified?: unknown }).classified
+  return isClassifiedError(classified) ? classified : null
+}
+
+function attachClassifiedError(classified: ClassifiedError) {
+  const error = classified.original as Error & { classified?: ClassifiedError }
+  error.classified = classified
+  return error
+}
+
+function updateRateLimitsFromMetadata(
+  tracker:
+    | {
+        update(headers: Record<string, string>): void
+        isNearLimit(threshold?: number): boolean
+      }
+    | undefined,
+  value: unknown,
+) {
+  const headers = readHeaderRecord(value)
+  if (!tracker || !headers) {
+    return
+  }
+
+  tracker.update(headers)
+  tracker.isNearLimit()
+}
+
+function readHeaderRecord(value: unknown): Record<string, string> | undefined {
+  const directHeaders = readHeadersContainer(value)
+  if (directHeaders) {
+    return directHeaders
+  }
+
+  if (!value || typeof value !== "object") {
+    return undefined
+  }
+
+  const response = (value as Record<string, unknown>).response
+  return readHeadersContainer(response)
+}
+
+function readHeadersContainer(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined
+  }
+
+  const headers = (value as Record<string, unknown>).headers
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries())
+  }
+
+  if (!headers || typeof headers !== "object") {
+    return undefined
+  }
+
+  return Object.fromEntries(
+    Object.entries(headers as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  )
+}
+
 function coerceError(error: unknown) {
+  if (isClassifiedError(error)) {
+    return error.original
+  }
+
   if (error instanceof Error) {
     return error
   }
