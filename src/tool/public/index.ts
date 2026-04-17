@@ -17,13 +17,20 @@ import {
   createBuiltinToolRuntime,
   type CreateBuiltinToolRuntimeInput,
 } from "../infrastructure/runtime/create-builtin-runtime"
-
+import {
+  createShadowGitCheckpointStore as createShadowGitCheckpointStoreImpl,
+} from "../infrastructure/shadow-git"
 export * from "../application"
 export type { ManageResultSizeOptions } from "../application/result-size-manager"
 export {
   DEFAULT_RESULT_STORE_TTL_MS,
   createResultStore,
 } from "../infrastructure/result-store"
+export {
+  ShadowGitCheckpointError,
+  type CreateShadowGitCheckpointStoreInput,
+  type ShadowGitCheckpointErrorCode,
+} from "../infrastructure/shadow-git"
 export type {
   CreateResultStoreInput,
   ResultStore,
@@ -50,6 +57,8 @@ export { createShellTool } from "../infrastructure/builtins/shell"
 export { createWebfetchTool } from "../infrastructure/builtins/webfetch"
 export { createWebsearchTool } from "../infrastructure/builtins/websearch"
 export { createWriteTool } from "../infrastructure/builtins/write"
+
+export const createShadowGitCheckpointStore = createShadowGitCheckpointStoreImpl
 
 export function manageResultSize(
   result: ToolExecutionResult,

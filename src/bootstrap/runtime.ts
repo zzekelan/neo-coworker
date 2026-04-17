@@ -24,12 +24,15 @@ import {
 import {
   createBuiltinToolRuntime,
   createResultStore,
+  createShadowGitCheckpointStore,
   createToolProviderFromRuntime,
   createToolProvider,
   createToolRuntimeApi,
   manageResultSize,
   ParallelExecutor,
   ParallelizationClass,
+  ShadowGitCheckpointError,
+  shouldCheckpoint,
   TurnBudget,
   throwIfToolAborted,
   type RequestToolPermission,
@@ -508,6 +511,13 @@ function createToolPortFactory(config: {
         sessionId: input.sessionId,
         runId: input.runId,
       })
+      const checkpointStore = createShadowGitCheckpointStore({
+        observer: config.observer,
+        observerContext: {
+          sessionId: input.sessionId,
+          runId: input.runId,
+        },
+      })
       let runtime!: ReturnType<typeof createBuiltinToolRuntime>
       runtime = createBuiltinToolRuntime({
         requestPermission(request) {
@@ -628,6 +638,29 @@ function createToolPortFactory(config: {
             },
           ),
         } satisfies T
+      }
+
+      async function executeWithCheckpoint(value: {
+        toolName: string
+        args: unknown
+        workspaceRoot: string
+        signal?: AbortSignal
+        onProgress?: (message: string) => void
+      }) {
+        if (shouldCheckpoint(value.toolName, asCheckpointArgs(value.args))) {
+          try {
+            await checkpointStore.create(
+              value.workspaceRoot,
+              buildCheckpointDescription(value.toolName, value.args),
+            )
+          } catch (error) {
+            if (!(error instanceof ShadowGitCheckpointError)) {
+              throw error
+            }
+          }
+        }
+
+        return provider.execute(value)
       }
 
       async function executeParallelizedBatch(batchInput: {
@@ -772,13 +805,16 @@ function createToolPortFactory(config: {
         listCatalog() {
           return runtime.list()
         },
+        async execute(executeInput) {
+          return executeWithCheckpoint(executeInput)
+        },
         async executeBatch(batchInput) {
           const results = await executeParallelizedBatch({
             calls: batchInput.calls,
             workspaceRoot: batchInput.workspaceRoot,
             signal: batchInput.signal,
             tools: {
-              execute: provider.execute,
+              execute: executeWithCheckpoint,
             },
           })
 
@@ -882,6 +918,37 @@ function mergeParallelizationClasses(
   }
 
   return ParallelizationClass.PARALLEL_SAFE
+}
+
+function asCheckpointArgs(args: unknown) {
+  return args && typeof args === "object" ? args as Record<string, unknown> : {}
+}
+
+function buildCheckpointDescription(toolName: string, args: unknown) {
+  switch (toolName) {
+    case "write": {
+      const path = typeof (args as { path?: unknown })?.path === "string"
+        ? (args as { path: string }).path
+        : "file"
+      return `before write ${path}`
+    }
+    case "edit": {
+      const path = typeof (args as { path?: unknown })?.path === "string"
+        ? (args as { path: string }).path
+        : "file"
+      return `before edit ${path}`
+    }
+    case "patch":
+      return "before patch"
+    case "shell": {
+      const command = typeof (args as { command?: unknown })?.command === "string"
+        ? (args as { command: string }).command.trim()
+        : "shell command"
+      return `before shell ${command.slice(0, 120)}`
+    }
+    default:
+      return `before ${toolName}`
+  }
 }
 
 function createPermissionObserver(
