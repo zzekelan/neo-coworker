@@ -213,7 +213,7 @@ export function useDesktopApp() {
         }))
       })
 
-      void loadPrimaryAgents()
+      void loadPrimaryAgents(refreshData.resolvedWorkspaceRoot ?? undefined)
         .then((data) => {
           if (currentToken !== refreshTokenRef.current) {
             return

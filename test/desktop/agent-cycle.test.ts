@@ -62,7 +62,7 @@ describe("desktop agent cycling integration", () => {
   test("api.ts exports loadPrimaryAgents and updateSessionAgent", () => {
     const source = readFileSync("src/desktop/src/api.ts", "utf8")
 
-    expect(source).toContain("export async function loadPrimaryAgents()")
+    expect(source).toContain("export async function loadPrimaryAgents(workspaceRoot?: string)")
     expect(source).toContain("export async function updateSessionAgent(")
     expect(source).toContain("/agents/primary")
     expect(source).toContain("/agent")

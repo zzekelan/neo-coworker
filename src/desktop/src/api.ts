@@ -301,8 +301,10 @@ export async function replyPermission(input: { requestId: string; decision: "all
   )
 }
 
-export async function loadPrimaryAgents() {
-  return requestApi<{ agents: Array<{ name: string; description: string }> }>("/agents/primary")
+export async function loadPrimaryAgents(workspaceRoot?: string) {
+  return requestApi<{ agents: Array<{ name: string; description: string }> }>(
+    workspaceRoot ? `/agents/primary?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : "/agents/primary",
+  )
 }
 
 export async function updateSessionAgent(input: { sessionId: string; agent: string }) {
