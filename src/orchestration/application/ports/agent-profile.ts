@@ -1,6 +1,7 @@
 export type OrchestrationAgentProfile = {
   instructions?: string
   skills?: string[]
+  temperature?: number
 }
 
 export type OrchestrationAgentToolAccess = {

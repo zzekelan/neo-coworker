@@ -17,6 +17,7 @@ export type OrchestrationModelTurnRequest = {
     recoveryFilePaths: string[]
   }
   contextWindow?: number
+  temperature?: number
   tools: OrchestrationTool[]
   transcript: OrchestrationTranscriptMessage[]
   compressibleToolNames?: ReadonlySet<string>

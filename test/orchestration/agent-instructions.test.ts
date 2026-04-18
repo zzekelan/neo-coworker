@@ -251,6 +251,63 @@ describe("agent instruction late-context injection", () => {
     expect(session.getSession(session.sessionId).activeSkills).toEqual(["reviewer"])
     expect(loadedSkillNames).toEqual(["reviewer"])
   })
+
+  test("passes resolved agent temperature through to the provider-facing request", async () => {
+    const requests: ProviderTurnRequest[] = []
+    const model = createModelProvider({
+      runtime: createFakeProvider({
+        onRequest(request) {
+          requests.push(request)
+        },
+        events: [
+          {
+            type: "usage",
+            inputTokens: 64,
+            outputTokens: 0,
+            source: "estimated",
+          },
+        ],
+      }),
+    })
+    const session = createMemorySession({
+      currentAgent: "plan",
+      activeSkills: ["reviewer"],
+      userText: "Inspect README.md",
+    })
+    const stepService = createOrchestrationStepService({
+      session,
+      model,
+      agentProfiles: {
+        async getResolvedProfile() {
+          return {
+            instructions: "Plan mode active.",
+            temperature: 0,
+          }
+        },
+      },
+      contextWindow: {
+        getContextWindow() {
+          return 128_000
+        },
+      } satisfies OrchestrationContextWindowPort,
+      skill: createSkillPortStub(),
+      now: createMonotonicClock(),
+    })
+
+    const outcome = await stepService.executeStep({
+      sessionId: session.sessionId,
+      runId: session.runId,
+      tools: createToolPortStub(),
+      workspaceRoot: "/workspace/project",
+      systemPrompt: "static system prompt",
+      signal: new AbortController().signal,
+      emit() {},
+    })
+
+    expect(outcome).toEqual({ status: "complete" })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.temperature).toBe(0)
+  })
 })
 
 function createMemorySession(input: {

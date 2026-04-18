@@ -72,6 +72,7 @@ type PendingToolCall = ToolCallEvent & {
 type AgentLateContext = {
   instructions?: string
   recommendedSkills?: string[]
+  temperature?: number
 }
 
 const MODEL_REQUEST_MAX_ATTEMPTS = 3
@@ -165,6 +166,7 @@ async function resolveAgentLateContext(input: {
   return {
     instructions: instructions && instructions.length > 0 ? instructions : undefined,
     recommendedSkills: recommendedSkills.length > 0 ? recommendedSkills : undefined,
+    temperature: typeof profile?.temperature === "number" ? profile.temperature : undefined,
   }
 }
 
@@ -503,6 +505,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
               recoveryFilePaths: systemReminderBatch.recoveryFilePaths,
             },
             contextWindow,
+            temperature: agentLateContext?.temperature,
             tools: availableTools,
             transcript,
             compressibleToolNames,
