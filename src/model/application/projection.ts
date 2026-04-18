@@ -45,15 +45,19 @@ export type ModelMicrocompactSummary = {
 }
 
 export type ModelTurnProjection = {
-  request: Pick<ModelTurnRequest, "system" | "messages" | "tools">
+  request: Pick<ModelTurnRequest, "system" | "messages" | "tools" | "temperature">
   microcompact: ModelMicrocompactSummary | null
 }
 
-export function buildModelTurnInput(input: ModelProjectionInput) {
+export function buildModelTurnInput(
+  input: ModelProjectionInput & Pick<ModelTurnRequest, "temperature">,
+) {
   return buildModelTurnProjection(input).request
 }
 
-export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurnProjection {
+export function buildModelTurnProjection(
+  input: ModelProjectionInput & Pick<ModelTurnRequest, "temperature">,
+): ModelTurnProjection {
   const replayTranscript = sliceTranscriptFromLatestCompactionBoundary(input.transcript)
   const sections = buildModelPromptSections(input)
   const reminderMessages = buildSystemReminderMessages(sections.systemReminderMessages)
@@ -66,8 +70,9 @@ export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurn
   const unmodifiedRequest = {
     system,
     messages: [...transcriptMessages, ...reminderMessages],
+    ...(input.temperature !== undefined && { temperature: input.temperature }),
     tools: input.tools,
-  } satisfies Pick<ModelTurnRequest, "system" | "messages" | "tools">
+  } satisfies Pick<ModelTurnRequest, "system" | "messages" | "tools" | "temperature">
 
   const microcompact = buildMicrocompactSummary({
     transcript: replayTranscript,
@@ -86,18 +91,19 @@ export function buildModelTurnProjection(input: ModelProjectionInput): ModelTurn
     }
   }
 
-    return {
-      request: {
-        system,
-        messages: [
-          ...injectLateContextBeforeLastUser({
-            messages: buildTranscriptMessages(replayTranscript, {
-              clearedToolResults: microcompact.clearedToolResults,
-            }),
-            lateContextMessages,
+  return {
+    request: {
+      system,
+      messages: [
+        ...injectLateContextBeforeLastUser({
+          messages: buildTranscriptMessages(replayTranscript, {
+            clearedToolResults: microcompact.clearedToolResults,
           }),
-          ...reminderMessages,
-        ],
+          lateContextMessages,
+        }),
+        ...reminderMessages,
+      ],
+      ...(input.temperature !== undefined && { temperature: input.temperature }),
       tools: input.tools,
     },
     microcompact: {
@@ -131,7 +137,7 @@ export function buildStaticSystemPrompt(
 }
 
 export function projectModelTurn(
-  input: ModelProjectionInput & Pick<ModelTurnRequest, "signal">,
+  input: ModelProjectionInput & Pick<ModelTurnRequest, "signal" | "temperature">,
 ): ModelTurnRequest {
   return {
     ...buildModelTurnProjection(input).request,

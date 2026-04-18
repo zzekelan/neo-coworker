@@ -53,14 +53,14 @@ export function createModelRuntimeApi(input: CreateModelRuntimeApiInput) {
 export type ModelRuntimeApi = ReturnType<typeof createModelRuntimeApi>
 
 export type ModelProviderRequest = ModelProjectionInput &
-  Pick<ProviderTurnRequest, "signal"> & {
+  Pick<ProviderTurnRequest, "signal" | "temperature"> & {
     sessionId?: string
     runId?: string
     turnKey?: string
   }
 
 export type ModelProvider = {
-  projectTurn(request: ModelProjectionInput): {
+  projectTurn(request: ModelProjectionInput & Pick<ProviderTurnRequest, "temperature">): {
     inputTokens: number
   }
   streamTurn(request: ModelProviderRequest): AsyncIterable<ModelEvent>

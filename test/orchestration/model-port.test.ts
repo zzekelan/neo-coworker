@@ -42,7 +42,9 @@ describe("orchestration model port", () => {
       tools: [{ name: "read", description: "Read a file" }],
       transcript: [
         {
+          runId: "run_1",
           role: "user",
+          sequence: 0,
           parts: [{ kind: "text", text: "inspect README" }],
         },
       ],
@@ -92,12 +94,49 @@ describe("orchestration model port", () => {
     ])
   })
 
+  test("passes orchestration temperature through to the provider-facing request", async () => {
+    const requests: Array<{
+      temperature?: number
+    }> = []
+    const model: OrchestrationModelPort = createModelProvider({
+      runtime: createFakeProvider({
+        onRequest(request) {
+          requests.push({
+            temperature: request.temperature,
+          })
+        },
+      }),
+    })
+
+    for await (const _event of model.streamTurn({
+      systemPrompt: basePrompt,
+      skillCatalog: [],
+      activeSkills: [],
+      temperature: 0,
+      tools: [],
+      transcript: [
+        {
+          runId: "run_1",
+          role: "user",
+          sequence: 0,
+          parts: [{ kind: "text", text: "inspect README" }],
+        },
+      ],
+      signal: new AbortController().signal,
+    })) {
+      void _event
+    }
+
+    expect(requests).toEqual([{ temperature: 0 }])
+  })
+
   test("microcompacts older compressible tool results and records telemetry", async () => {
     const requests: Array<{
       messages: Array<{
         role: string
         parts: Array<Record<string, unknown>>
       }>
+      temperature?: number
     }> = []
     const observedEvents: unknown[] = []
     const model: OrchestrationModelPort = createModelProvider({
@@ -113,6 +152,7 @@ describe("orchestration model port", () => {
               role: string
               parts: Array<Record<string, unknown>>
             }>,
+            temperature: request.temperature,
           })
         },
       }),
@@ -149,6 +189,7 @@ describe("orchestration model port", () => {
       skillCatalog: [],
       activeSkills: [],
       contextWindow: 200,
+      temperature: 0,
       tools: [],
       transcript,
       sessionId: "session_1",
@@ -187,6 +228,7 @@ describe("orchestration model port", () => {
     expect(toolOutputs?.slice(-5)).toEqual(
       Array.from({ length: 5 }, (_, index) => expect.stringContaining(`grep result ${index + 2}`)),
     )
+    expect(requests[0]?.temperature).toBe(0)
     expect(transcript[0]?.parts[0]?.text).toContain("grep result 0")
   })
 })
