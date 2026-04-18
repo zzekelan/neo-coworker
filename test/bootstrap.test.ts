@@ -25,6 +25,42 @@ describe("bootstrap", () => {
     })
   })
 
+  test("parses an agent target for the run command", () => {
+    const cli = buildCli()
+    expect(cli.parse(["run", "--agent", "plan", "hello again"])).toEqual({
+      command: "run",
+      prompt: "hello again",
+      agent: "plan",
+    })
+  })
+
+  test("parses an agent target for the chat command", () => {
+    const cli = buildCli()
+    expect(cli.parse(["chat", "--agent", "plan"])).toEqual({
+      command: "chat",
+      agent: "plan",
+    })
+  })
+
+  test("prints CLI help text including --agent", async () => {
+    const output: string[] = []
+    const cli = buildCli({
+      createIo() {
+        return {
+          write(text: string) {
+            output.push(text)
+          },
+          async prompt() {
+            throw new Error("prompt should not be called")
+          },
+        }
+      },
+    })
+
+    await expect(cli.run(["--help"])).rejects.toThrow(/--agent <name>/)
+    expect(output).toEqual([])
+  })
+
   test("allows prompt tokens that start with -- after prompt text begins", () => {
     const cli = buildCli()
     expect(cli.parse(["run", "Explain", "--help", "output"])).toEqual({

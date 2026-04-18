@@ -2,6 +2,7 @@ import {
   createAgentServerClient,
   createLocalCliServerClient,
   createStdioCliIo,
+  getCliUsage,
   parseCliCommand,
   runCli,
 } from "./cli"
@@ -174,7 +175,15 @@ if (isMainModule()) {
   try {
     await cli.run(process.argv.slice(2))
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 1
+    const message = error instanceof Error ? error.message : String(error)
+    const usage = getCliUsage().trimEnd()
+
+    if (message === usage) {
+      console.log(message)
+      process.exitCode = 0
+    } else {
+      console.error(message)
+      process.exitCode = 1
+    }
   }
 }

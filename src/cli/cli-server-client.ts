@@ -39,6 +39,7 @@ export type AgentServerClient = {
     sessionId: string
     prompt: string
     trigger?: StoredRun["trigger"]
+    agent?: string
   }): Promise<{
     run: StoredRun
     message: StoredMessage
@@ -158,6 +159,7 @@ export function createAgentServerClient(input: {
         body: JSON.stringify({
           prompt: inputValue.prompt,
           trigger: inputValue.trigger,
+          ...(inputValue.agent === undefined ? {} : { agent: inputValue.agent }),
         }),
       })
     },
@@ -336,6 +338,7 @@ export async function createLocalCliServerClient(input: {
           sessionId: runInput.sessionId,
           prompt: runInput.prompt,
           trigger: runInput.trigger,
+          ...(runInput.agent === undefined ? {} : { agent: runInput.agent }),
         })
       },
       async compactSession(sessionId) {

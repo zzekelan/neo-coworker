@@ -32,11 +32,13 @@ export type RunCommand = {
   command: "run"
   prompt: string
   sessionId?: string
+  agent?: string
 }
 
 export type ChatCommand = {
   command: "chat"
   sessionId?: string
+  agent?: string
 }
 
 export type InsightsCommand = {
@@ -55,11 +57,33 @@ export type PermissionsAllowlistCommand = {
 
 export type CliCommand = RunCommand | ChatCommand | InsightsCommand | PermissionsAllowlistCommand
 
+const CLI_USAGE = [
+  "Usage:",
+  "  ncoworker run [--session <id>] [--agent <name>] <prompt>",
+  "  ncoworker chat [--session <id>] [--agent <name>]",
+  "  ncoworker insights [--session <id>]",
+  "  ncoworker permissions allowlist <add|remove|list> ...",
+  "",
+  "Options:",
+  "  --session <id>  Reuse an existing session",
+  "  --agent <name>  Start runs with the specified agent",
+].join("\n")
+
+export function getCliUsage() {
+  return `${CLI_USAGE}\n`
+}
+
 export function parseCliCommand(argv: string[]): CliCommand {
   const [command, ...rest] = argv
 
+  if (command === "help" || command === "--help" || command === "-h") {
+    throw new Error(getCliUsage().trimEnd())
+  }
+
   if (command === "run") {
-    const parsed = parseCommandOptions(rest)
+    const parsed = parseCommandOptions(rest, {
+      allowAgent: true,
+    })
     if (parsed.positionals.length === 0) {
       throw new Error("A prompt is required")
     }
@@ -68,6 +92,7 @@ export function parseCliCommand(argv: string[]): CliCommand {
       command,
       prompt: parsed.positionals.join(" "),
       sessionId: parsed.sessionId,
+      agent: parsed.agent,
     }
   }
 
@@ -75,6 +100,7 @@ export function parseCliCommand(argv: string[]): CliCommand {
     const parsed = parseCommandOptions(rest, {
       allowPayload: false,
       commandName: "chat",
+      allowAgent: true,
     })
 
     if (parsed.positionals.length > 0) {
@@ -84,6 +110,7 @@ export function parseCliCommand(argv: string[]): CliCommand {
     return {
       command,
       sessionId: parsed.sessionId,
+      agent: parsed.agent,
     }
   }
 
@@ -166,11 +193,14 @@ function parseCommandOptions(
   options: {
     allowPayload?: boolean
     commandName?: string
+    allowAgent?: boolean
   } = {},
 ) {
   const allowPayload = options.allowPayload ?? true
   const commandName = options.commandName ?? "command"
+  const allowAgent = options.allowAgent ?? false
   let sessionId: string | undefined
+  let agent: string | undefined
   const positionals: string[] = []
   let parsingOptions = true
 
@@ -211,6 +241,35 @@ function parseCommandOptions(
       continue
     }
 
+    if (parsingOptions && argument === "--agent") {
+      if (!allowAgent) {
+        throw new Error(`\`${commandName}\` does not accept \`--agent\``)
+      }
+
+      const value = argv[index + 1]
+      if (!value) {
+        throw new Error("--agent requires a value")
+      }
+
+      agent = value
+      index += 1
+      continue
+    }
+
+    if (parsingOptions && argument.startsWith("--agent=")) {
+      if (!allowAgent) {
+        throw new Error(`\`${commandName}\` does not accept \`--agent\``)
+      }
+
+      const value = argument.slice("--agent=".length)
+      if (!value) {
+        throw new Error("--agent requires a value")
+      }
+
+      agent = value
+      continue
+    }
+
     if (parsingOptions && argument.startsWith("--")) {
       throw new Error(`Unknown option: ${argument}`)
     }
@@ -221,6 +280,7 @@ function parseCommandOptions(
 
   return {
     sessionId,
+    agent,
     positionals,
   }
 }
@@ -607,6 +667,7 @@ async function runSinglePromptCli(input: {
         sessionId,
         prompt: input.command.prompt,
         trigger: "cli",
+        ...(input.command.agent === undefined ? {} : { agent: input.command.agent }),
       })
       activeRunId = started.run.id
       cancelDispatched = false
@@ -920,6 +981,7 @@ async function runChatCli(input: {
         workspaceRoot: input.workspaceRoot,
         sessionId: currentSessionId,
         prompt: promptText,
+        agent: input.command.agent,
         getExitRequested() {
           return exitRequested
         },
@@ -957,6 +1019,7 @@ async function runChatTurn(input: {
   workspaceRoot: string
   sessionId: string
   prompt: string
+  agent?: string
   getExitRequested(): boolean
   setActivePermissionPrompt(value: PendingPermissionReply | null): void
   setActiveRunId(value: string | null): void
@@ -973,6 +1036,7 @@ async function runChatTurn(input: {
       sessionId: input.sessionId,
       prompt: input.prompt,
       trigger: "cli",
+      ...(input.agent === undefined ? {} : { agent: input.agent }),
     })
     input.setActiveRunId(started.run.id)
 
