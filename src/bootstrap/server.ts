@@ -17,7 +17,7 @@ import { createDefaultSearchBackend } from "./search"
 import { createRuntime } from "./runtime"
 import { getServerStoragePath } from "./paths"
 import { readEnvWithFallback } from "./env"
-import { BUILTIN_AGENTS } from "../agent"
+import { createAgentProfileService, type AgentProfileService } from "../agent"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
 const DEFAULT_SERVER_PORT = 3100
@@ -57,8 +57,9 @@ export async function createStandaloneServerComposition(input: {
   createRuntimeImpl?: typeof createRuntime
 } = {}) {
   const env = input.env ?? process.env
+  const cwd = input.cwd ?? process.cwd()
   const now = input.now ?? Date.now
-  const config = resolveStandaloneServerConfig(env, input.cwd)
+  const config = resolveStandaloneServerConfig(env, cwd)
   const database = (input.openSessionDatabaseImpl ?? openSessionDatabase)(config.databasePath)
 
   try {
@@ -91,11 +92,22 @@ export async function createStandaloneServerComposition(input: {
       env,
     })
     const skillRuntime = createWorkspaceSkillRuntime()
+    const agentProfileServices = new Map<string, AgentProfileService>()
     const createRuntimeImpl = input.createRuntimeImpl ?? createRuntime
     const sessionDeletion = createSessionDeletionCoordinator({
       database,
       repository,
     })
+    const getAgentProfileService = (workspaceRoot: string) => {
+      const cached = agentProfileServices.get(workspaceRoot)
+      if (cached) {
+        return cached
+      }
+
+      const service = createAgentProfileService(workspaceRoot)
+      agentProfileServices.set(workspaceRoot, service)
+      return service
+    }
 
     return {
       config,
@@ -109,10 +121,9 @@ export async function createStandaloneServerComposition(input: {
       listSkillCatalog(workspaceRoot: string) {
         return skillRuntime.listCatalog(workspaceRoot)
       },
-      listPrimaryAgents() {
-        return Object.values(BUILTIN_AGENTS)
-          .filter((agent) => agent.isPrimary === true)
-          .map((agent) => ({ name: agent.name, description: agent.description ?? "" }))
+      async listPrimaryAgents(workspaceRoot?: string) {
+        const agents = await getAgentProfileService(workspaceRoot ?? cwd).listPrimaryAgents()
+        return agents.map((agent) => ({ name: agent.name, description: agent.description ?? "" }))
       },
       createRuntimeImpl(runtimeInput: {
         repository: SessionRepository
@@ -143,7 +154,7 @@ export async function createStandaloneServerComposition(input: {
       observabilityRepository: ObservabilityRepository
       exportRunTrace(runId: string): ReturnType<typeof observability.exportRunTrace>
       listSkillCatalog(workspaceRoot: string): ReturnType<typeof skillRuntime.listCatalog>
-      listPrimaryAgents(): Array<{ name: string; description: string }>
+      listPrimaryAgents(workspaceRoot?: string): Promise<Array<{ name: string; description: string }>>
       createRuntimeImpl(input: {
         repository: SessionRepository
         permissionRepository: PermissionRepository
@@ -186,11 +197,6 @@ export function createSessionDeletionCoordinator(input: {
       deleteSessionTransaction(sessionId)
     },
   }
-}
-
-function readEnvValue(env: Record<string, string | undefined>, key: string) {
-  const value = env[key]?.trim()
-  return value ? value : undefined
 }
 
 function parseServerPort(value: string | undefined) {
