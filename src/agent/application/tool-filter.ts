@@ -5,7 +5,7 @@ import type {
   AgentToolDefinition,
 } from "./ports/sub-agent-runtime"
 
-const ALWAYS_EXCLUDED_TOOLS = new Set(["agent", "skill"])
+const ALWAYS_EXCLUDED_TOOLS = new Set(["agent", "skill", "plan_exit"])
 
 export function filterToolsForAgent(
   parentTools: AgentToolDefinition[],

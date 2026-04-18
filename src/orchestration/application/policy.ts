@@ -10,6 +10,7 @@ export const DEFAULT_ORCHESTRATION_PERMISSION_POLICY: OrchestrationPermissionPol
   webfetch: "ask",
   websearch: "allow",
   codesearch: "ask",
+  plan_exit: "ask",
 }
 
 export type ResolvedPermissionPolicy = OrchestrationPermissionPolicy

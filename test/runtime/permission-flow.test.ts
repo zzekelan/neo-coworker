@@ -9,12 +9,11 @@ import {
   type ProviderTurnRequest,
   createModelProvider,
 } from "../../src/model"
-import type { OrchestrationModelPort } from "../../src/orchestration"
+import type { OrchestrationModelPort, OrchestrationRuntimeEvent } from "../../src/orchestration"
 import { createRuntime } from "../../src/bootstrap"
 import {
   PermissionNotFoundError,
   createPermissionRepository,
-  type PermissionRepository,
   type PermissionResponse,
 } from "../../src/permission"
 import {
@@ -25,6 +24,15 @@ import {
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
+
+declare global {
+  const Bun: {
+    write(path: string | URL, data: string): Promise<number>
+    sleep(milliseconds: number): Promise<void>
+  }
+}
+
+type PermissionRequestedEvent = Extract<OrchestrationRuntimeEvent, { type: "permission.requested" }>
 
 type RuntimeController = ReturnType<typeof createRuntime> & {
   respondPermission(input: PermissionResponse): void
@@ -44,6 +52,259 @@ afterEach(async () => {
 })
 
 describe("runtime permission flow", () => {
+  test("lists the plan_exit tool for main-agent runs", async () => {
+    const harness = await createHarness("plan-exit-listed", false)
+    const requests: ProviderTurnRequest[] = []
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_plan_exit_listed",
+      messageId: "message_plan_exit_listed_user",
+      prompt: "List tools",
+    })
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider(requests, [
+        async function* (request) {
+          expect(request.tools.map((tool) => tool.name)).toContain("plan_exit")
+          yield { type: "text.delta", text: "Tool list checked." }
+        },
+      ]),
+      harness,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+
+    await collectEvents(handle.events[Symbol.asyncIterator]())
+
+    expect(requests).toHaveLength(1)
+  })
+
+  test("plan_exit returns an immediate tool error when not in plan mode", async () => {
+    const harness = await createHarness("plan-exit-wrong-mode", false)
+    const requests: ProviderTurnRequest[] = []
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_plan_exit_wrong_mode",
+      messageId: "message_plan_exit_wrong_mode_user",
+      prompt: "Exit plan mode",
+    })
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_plan_exit_wrong_mode",
+            name: "plan_exit",
+            inputText: '{"reason":"done planning"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Still on default agent." }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        plan_exit: "ask",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+
+    await collectEvents(handle.events[Symbol.asyncIterator]())
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(harness.permissionRepository.requests.listByRun(started.run.id)).toEqual([])
+    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("default")
+    expect(activeRunMessages[1]?.parts).toMatchObject([
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_plan_exit_wrong_mode",
+          toolName: "plan_exit",
+        },
+      },
+      {
+        kind: "tool_result",
+        text: "Not in plan mode.",
+        data: {
+          callId: "call_plan_exit_wrong_mode",
+          toolName: "plan_exit",
+          output: "Not in plan mode.",
+          isError: true,
+        },
+      },
+    ])
+    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Still on default agent." }])
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+    expect(requests).toHaveLength(2)
+  })
+
+  test("approval switches the session from plan mode back to default", async () => {
+    const harness = await createHarness("plan-exit-approve", false)
+    harness.service.setSessionCurrentAgent(harness.session.id, "plan")
+    const requests: ProviderTurnRequest[] = []
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_plan_exit_approve",
+      messageId: "message_plan_exit_approve_user",
+      prompt: "Leave plan mode",
+    })
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_plan_exit_approve",
+            name: "plan_exit",
+            inputText: '{"reason":"implementation is ready"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Returned to default." }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        plan_exit: "ask",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const permissionEvent = await waitForPermissionRequest(iterator)
+
+    expect(permissionEvent.reason).toBe("exit plan mode: implementation is ready")
+    expect(harness.repository.runs.get(started.run.id).status).toBe("waiting_permission")
+    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("plan")
+
+    runtime.respondPermission({
+      requestId: permissionEvent.requestId,
+      decision: "allow",
+    })
+
+    const remainingEvents = await collectEvents(iterator)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("default")
+    expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
+      id: permissionEvent.requestId,
+      toolName: "plan_exit",
+      status: "approved",
+    })
+    expect(activeRunMessages[1]?.parts).toMatchObject([
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_plan_exit_approve",
+          toolName: "plan_exit",
+        },
+      },
+      {
+        kind: "tool_result",
+        text: "Switched back to default mode.",
+        data: {
+          callId: "call_plan_exit_approve",
+          toolName: "plan_exit",
+          output: "Switched back to default mode.",
+        },
+      },
+    ])
+    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Returned to default." }])
+    expect(remainingEvents.at(-1)).toMatchObject({
+      type: "run.completed",
+      runId: started.run.id,
+    })
+  })
+
+  test("denial leaves the session in plan mode and cancels the run", async () => {
+    const harness = await createHarness("plan-exit-deny", false)
+    harness.service.setSessionCurrentAgent(harness.session.id, "plan")
+    const requests: ProviderTurnRequest[] = []
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_plan_exit_deny",
+      messageId: "message_plan_exit_deny_user",
+      prompt: "Try to leave plan mode",
+    })
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_plan_exit_deny",
+            name: "plan_exit",
+            inputText: '{}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "This should not run." }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        plan_exit: "ask",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const permissionEvent = await waitForPermissionRequest(iterator)
+
+    runtime.respondPermission({
+      requestId: permissionEvent.requestId,
+      decision: "deny",
+    })
+
+    const remainingEvents = await collectEvents(iterator)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("plan")
+    expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
+      id: permissionEvent.requestId,
+      toolName: "plan_exit",
+      status: "denied",
+    })
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "error"])
+    expect(activeRunMessages[1]?.parts[1]).toMatchObject({
+      kind: "error",
+      text: "Tool plan_exit failed: Permission denied",
+      data: {
+        source: "tool",
+        callId: "call_plan_exit_deny",
+        toolName: "plan_exit",
+      },
+    })
+    expect(remainingEvents.at(-1)).toMatchObject({
+      type: "run.cancelled",
+      runId: started.run.id,
+    })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
+    expect(requests).toHaveLength(1)
+  })
+
   test("approval resumes the same run for webfetch after waiting permission", async () => {
     const harness = await createHarness("permission-webfetch", false)
     const started = startPromptRun({
@@ -726,7 +987,7 @@ function createPermissionRuntime(input: {
   harness: Awaited<ReturnType<typeof createHarness>>
   permissionPolicy?: Partial<
     Record<
-      "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch",
+      "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch" | "plan_exit",
       "allow" | "ask" | "deny"
     >
   >
@@ -742,7 +1003,6 @@ function createPermissionRuntime(input: {
 
 function startPromptRun(input: {
   repository: StorageRepository
-  permissionRepository: PermissionRepository
   service: ReturnType<typeof createSessionRunService>
   sessionId: string
   runId: string
@@ -792,7 +1052,11 @@ function createTurnProvider(
   })
 }
 
-async function waitForPermissionRequest(iterator: AsyncIterator<unknown>) {
+async function waitForPermissionRequest(
+  events: AsyncIterable<OrchestrationRuntimeEvent> | AsyncIterator<OrchestrationRuntimeEvent>,
+): Promise<PermissionRequestedEvent> {
+  const iterator = toAsyncIterator(events)
+
   while (true) {
     const next = await iterator.next()
     if (next.done) {
@@ -801,26 +1065,36 @@ async function waitForPermissionRequest(iterator: AsyncIterator<unknown>) {
 
     const event = next.value
     if (event != null && typeof event === "object" && "type" in event && event.type === "permission.requested") {
-      return event as Extract<
-        Awaited<ReturnType<typeof collectEvents>>[number],
-        { type: "permission.requested" }
-      >
+      return event
     }
   }
 
   throw new Error("Expected permission.requested before the event stream closed")
 }
 
-async function collectEvents(events: AsyncIterator<unknown>) {
-  const collected = []
+async function collectEvents(
+  events: AsyncIterable<OrchestrationRuntimeEvent> | AsyncIterator<OrchestrationRuntimeEvent>,
+) {
+  const iterator = toAsyncIterator(events)
+  const collected: OrchestrationRuntimeEvent[] = []
   while (true) {
-    const next = await events.next()
+    const next = await iterator.next()
     if (next.done) {
       break
     }
     collected.push(next.value)
   }
   return collected
+}
+
+function toAsyncIterator(
+  events: AsyncIterable<OrchestrationRuntimeEvent> | AsyncIterator<OrchestrationRuntimeEvent>,
+): AsyncIterator<OrchestrationRuntimeEvent> {
+  if ("next" in events) {
+    return events
+  }
+
+  return events[Symbol.asyncIterator]()
 }
 
 async function fileExists(path: string) {

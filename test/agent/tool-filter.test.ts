@@ -73,6 +73,14 @@ describe("tool filter", () => {
     expect(result.map((tool) => tool.name)).toEqual(["read"])
   })
 
+  test("always excludes the plan_exit tool from subagent inheritance", () => {
+    const toolsWithPlanExit = [...parentTools, makeTool("plan_exit")]
+
+    const result = filterToolsForAgent(toolsWithPlanExit, makeProfile({ tools: ["*"] }))
+
+    expect(result.map((tool) => tool.name)).toEqual(["read", "grep", "write", "edit", "shell"])
+  })
+
   test("returns no injected tools when the agent skill list is empty", async () => {
     const calls: string[] = []
     const skillService: OrchestrationSkillPort = {

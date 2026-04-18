@@ -105,7 +105,7 @@ type RuntimeInput = {
   searchBackend?: SearchToolBackend
   permissionPolicy?: Partial<
     Record<
-      "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch",
+      "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch" | "plan_exit",
       PermissionMode
     >
   >
@@ -627,6 +627,11 @@ function createToolPortFactory(config: {
             sessionId: input.sessionId,
             runId: input.runId,
             now: config.now,
+          }),
+          createPlanExitTool({
+            repository: config.repository,
+            requestPermission,
+            sessionId: input.sessionId,
           }),
           ...createSkillWriteTools({
             requestPermission(request) {
@@ -1293,6 +1298,14 @@ const DeleteSkillToolArgsSchema = z.object({
   "Delete an existing workspace skill by category/name. Use this to remove a skill directory after you have confirmed it is no longer needed.",
 )
 
+const PlanExitToolArgsSchema = z.object({
+  reason: z.string().trim().min(1).optional().describe(
+    "Optional reason for exiting plan mode and returning to the default agent.",
+  ),
+}).describe(
+  "Exit plan mode and return to default mode. Use this when planning is complete and the main agent should switch back to default.",
+)
+
 function createSkillTool(input: {
   repository: StorageRepository
   runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
@@ -1515,6 +1528,55 @@ function createSkillWriteTools(input: {
       },
     },
   ]
+}
+
+function createPlanExitTool(input: {
+  repository: StorageRepository
+  requestPermission: RequestToolPermission
+  sessionId: string
+}): ToolDefinition {
+  return {
+    name: "plan_exit",
+    description:
+      "Exit plan mode and return to default mode. Use this when you've completed planning and the user should switch back to the default agent.",
+    inputSchema: PlanExitToolArgsSchema,
+    concurrency: "mutating",
+    isCompressible: false,
+    usageGuidance:
+      "Use this only when the current session is in plan mode and planning is complete. It requires user approval before switching back to the default agent.",
+    async execute(toolInput) {
+      throwIfToolAborted(toolInput.signal)
+      const parsed = PlanExitToolArgsSchema.parse(toolInput.args)
+      const currentAgent = input.repository.sessions.getCurrentAgent(input.sessionId)
+
+      if (currentAgent !== "plan") {
+        return {
+          output: "Not in plan mode.",
+          isError: true,
+        }
+      }
+
+      const decision = await input.requestPermission({
+        toolName: "plan_exit",
+        reason: parsed.reason ? `exit plan mode: ${parsed.reason}` : "exit plan mode",
+      })
+
+      if (decision.decision !== "allow") {
+        throw createToolPermissionDeniedError()
+      }
+
+      input.repository.sessions.setCurrentAgent(input.sessionId, "default")
+
+      return {
+        output: "Switched back to default mode.",
+        metadata: {
+          fromAgent: "plan",
+          toAgent: "default",
+          reason: parsed.reason ?? null,
+        },
+      }
+    },
+  }
 }
 
 async function requestSkillWritePermission(input: {
