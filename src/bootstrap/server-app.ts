@@ -728,6 +728,14 @@ async function startRun(runInput: {
         })
       },
       setCurrentAgent(inputValue: { sessionId: string; agent: string }) {
+        const activeRun = repository.runs.getActiveBySession(inputValue.sessionId)
+        if (activeRun) {
+          throw new SessionBusyError({
+            sessionId: inputValue.sessionId,
+            activeRunId: activeRun.id,
+          })
+        }
+
         const updated = repository.sessions.setCurrentAgent(inputValue.sessionId, inputValue.agent)
         return {
           ...updated,

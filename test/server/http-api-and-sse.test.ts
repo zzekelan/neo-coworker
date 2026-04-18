@@ -205,6 +205,54 @@ describe("server HTTP API and SSE", () => {
     expect(sessionState.body.data.session.currentAgent).toBe("plan")
   })
 
+  test("updates the session current agent while idle and rejects external changes during an active run", async () => {
+    let releasePrompt!: () => void
+    const continuePrompt = new Promise<void>((resolve) => {
+      releasePrompt = resolve
+    })
+    const harness = await createHarness("server-http-agent-update-state", createTurnProvider([
+      async function* () {
+        await continuePrompt
+        yield { type: "text.delta", text: "Still answering." }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const idleUpdate = await requestJson(harness.server, "POST", `/sessions/${sessionId}/agent`, {
+      agent: "plan",
+    })
+
+    expect(idleUpdate.status).toBe(200)
+    expect(idleUpdate.body.data.session.currentAgent).toBe("plan")
+    expect(harness.repository.sessions.getCurrentAgent(sessionId)).toBe("plan")
+
+    const startedRun = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "Keep working",
+    })
+    const runId = startedRun.body.data.run.id as string
+    await waitForRunStatus(harness.server, runId, "running")
+
+    const busyUpdate = await requestJson(harness.server, "POST", `/sessions/${sessionId}/agent`, {
+      agent: "default",
+    })
+
+    expect(busyUpdate.status).toBe(409)
+    expect(busyUpdate.body).toMatchObject({
+      error: {
+        code: "invalid_state",
+        message: expect.stringContaining(`Session ${sessionId} already has active run ${runId}`),
+      },
+    })
+    expect(harness.repository.sessions.getCurrentAgent(sessionId)).toBe("plan")
+
+    releasePrompt()
+    await waitForRunStatus(harness.server, runId, "completed")
+  })
+
   test("hides summarize runs from session snapshots and run listings", async () => {
     const harness = await createHarness("server-hide-summarize", createTurnProvider([]))
     const session = harness.repository.sessions.create({
