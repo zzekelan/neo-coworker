@@ -69,6 +69,11 @@ export function useAgent() {
     },
     currentAgent: desktop.sessionSnapshot?.session.currentAgent ?? "default",
     primaryAgents: desktop.primaryAgents.map(mapPrimaryAgent),
+    setAgent(agentName: string) {
+      const sessionId = desktop.activeSessionId
+      if (!sessionId) return
+      void desktop.setSessionAgent(sessionId, agentName)
+    },
     cycleAgent() {
       const sessionId = desktop.activeSessionId
       if (!sessionId) return

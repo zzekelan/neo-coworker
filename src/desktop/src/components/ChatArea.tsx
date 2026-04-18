@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import type {
   DesktopContextUsage,
   DesktopPermissionRequest,
+  DesktopPrimaryAgent,
   DesktopSession,
   DesktopSessionSnapshot,
   DesktopSkillCatalogEntry,
@@ -30,6 +31,8 @@ import { PermissionRequest } from "./PermissionRequest"
 import { SkillPanel } from "./SkillPanel"
 import { getEffectiveActiveSkills, toggleSkill } from "./skill-state"
 import { VirtualTranscript } from "./VirtualTranscript"
+import { AgentBadge } from "./AgentBadge"
+import { AgentSelector } from "./AgentSelector"
 import { useDesktopText } from "../i18n"
 import { useTheme } from "../providers/ThemeProvider"
 
@@ -56,6 +59,9 @@ interface ChatAreaProps {
   errorMessage: string | null
   skillWarningMessage: string | null
   modelName?: string
+  currentAgent: string
+  primaryAgents: DesktopPrimaryAgent[]
+  onSetAgent: (agentName: string) => void
 }
 
 export function ChatArea({
@@ -76,6 +82,9 @@ export function ChatArea({
   errorMessage,
   skillWarningMessage,
   modelName,
+  currentAgent,
+  primaryAgents,
+  onSetAgent,
 }: ChatAreaProps) {
   const text = useDesktopText()
   const [input, setInput] = useState("")
@@ -87,6 +96,8 @@ export function ChatArea({
   const [skillErrorMessage, setSkillErrorMessage] = useState<string | null>(null)
   const [optimisticSessionSkills, setOptimisticSessionSkills] = useState<string[] | null>(null)
   const [pendingSkills, setPendingSkills] = useState<string[]>([])
+  const [isAgentSelectorOpen, setIsAgentSelectorOpen] = useState(false)
+  const agentSelectorShellRef = useRef<HTMLDivElement>(null)
   const scrollToBottomRef = useRef<(() => void) | null>(null)
   const bottomOverlayObserverRef = useRef<ResizeObserver | null>(null)
   const [bottomOverlayHeight, setBottomOverlayHeight] = useState(128)
@@ -159,6 +170,7 @@ export function ChatArea({
   useEffect(() => {
     setIsSkillPanelOpen(false)
     setSkillFilter("")
+    setIsAgentSelectorOpen(false)
   }, [sessionSummary?.id])
 
   useEffect(() => {
@@ -183,6 +195,34 @@ export function ChatArea({
       window.removeEventListener("close-overlays", handleCloseOverlays)
     }
   }, [isSkillPanelOpen])
+
+  useEffect(() => {
+    if (!isAgentSelectorOpen) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!agentSelectorShellRef.current?.contains(event.target as Node)) {
+        setIsAgentSelectorOpen(false)
+      }
+    }
+
+    const handleCloseOverlays = () => {
+      setIsAgentSelectorOpen(false)
+    }
+
+    window.addEventListener("mousedown", handlePointerDown)
+    window.addEventListener("close-overlays", handleCloseOverlays)
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown)
+      window.removeEventListener("close-overlays", handleCloseOverlays)
+    }
+  }, [isAgentSelectorOpen])
+
+  const handleAgentSelect = useCallback((agentName: string) => {
+    onSetAgent(agentName)
+    setIsAgentSelectorOpen(false)
+  }, [onSetAgent])
 
   const submitMessage = async () => {
     const nextInput = input
@@ -488,6 +528,7 @@ export function ChatArea({
             </AnimatePresence>
           </div>
 
+          <div className="relative">
           <motion.form
             layout
             transition={SKILL_DRAWER_TRANSITION}
@@ -511,7 +552,7 @@ export function ChatArea({
               }
               disabled={isInputLocked}
               aria-label={text.chat.askPlaceholder}
-              className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent py-4 pr-14 pl-4 text-[15px] leading-relaxed text-ink placeholder:text-accent outline-none focus:ring-0"
+              className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent pt-4 pb-8 pr-14 pl-4 text-[15px] leading-relaxed text-ink placeholder:text-accent outline-none focus:ring-0"
               rows={1}
               onKeyDown={(event) => {
                 if (
@@ -547,6 +588,23 @@ export function ChatArea({
               )}
             </div>
           </motion.form>
+
+          <div ref={agentSelectorShellRef} className="absolute left-2 bottom-2 z-10">
+            <div className="relative">
+              <AgentBadge
+                agentName={currentAgent}
+                isOpen={isAgentSelectorOpen}
+                onClick={() => setIsAgentSelectorOpen((prev) => !prev)}
+              />
+              <AgentSelector
+                isOpen={isAgentSelectorOpen}
+                agents={primaryAgents}
+                currentAgent={currentAgent}
+                onSelect={handleAgentSelect}
+              />
+            </div>
+          </div>
+          </div>
 
           {/* Status bar — context · model · run status · keyboard hints */}
           <div className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent">

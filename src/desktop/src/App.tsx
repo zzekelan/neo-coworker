@@ -35,6 +35,9 @@ export default function App() {
     contextUsage,
     refreshAppState,
     cycleAgent,
+    currentAgent,
+    primaryAgents,
+    setAgent,
   } = useAgent()
   const desktopSettings = useDesktopSettings()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -138,6 +141,9 @@ export default function App() {
             errorMessage={errorMessage}
             skillWarningMessage={skillWarningMessage}
             modelName={desktopSettings.settings.model || undefined}
+            currentAgent={currentAgent}
+            primaryAgents={primaryAgents}
+            onSetAgent={setAgent}
           />
         </div>
         <CommandPalette />
