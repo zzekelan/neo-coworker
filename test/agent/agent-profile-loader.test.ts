@@ -1,128 +1,179 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test"
+import { describe, test, expect } from "bun:test"
 import { mkdtemp, mkdir, writeFile, rm } from "fs/promises"
 import { tmpdir } from "os"
 import { join } from "path"
-import { loadAgentProfiles } from "../../src/agent/infrastructure/agent-profile-loader"
+import {
+  loadAgentProfiles,
+  loadMergedAgentProfiles,
+} from "../../src/agent/infrastructure/agent-profile-loader"
 import { createAgentProfileService } from "../../src/agent/public/index"
 
 describe("loadAgentProfiles", () => {
-  let tmpDir: string
+  test("loads profiles from valid directory", async () => {
+    await withWorkspace("agent-test-", async (workspaceRoot) => {
+      await writeAgentFile(workspaceRoot, "researcher.md", researcherAgentFrontmatter)
 
-  beforeAll(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), "agent-test-"))
-    await mkdir(join(tmpDir, ".ncoworker", "agents"), { recursive: true })
-    await writeFile(
-      join(tmpDir, ".ncoworker", "agents", "researcher.md"),
-      [
-        "---",
-        "name: researcher",
-        "tools:",
-        "  - read",
-        "  - grep",
-        "parallel: true",
-        "skills: []",
-        "---",
-        "# Researcher Agent",
-        "This agent researches code.",
-      ].join("\n"),
-    )
+      const profiles = await loadAgentProfiles(workspaceRoot)
+
+      expect(profiles).toHaveLength(1)
+      expect(profiles[0].name).toBe("researcher")
+      expect(profiles[0].parallel).toBe(true)
+    })
   })
 
-  afterAll(async () => {
-    await rm(tmpDir, { recursive: true, force: true })
-  })
-
-  it("loads profiles from valid directory", async () => {
-    const profiles = await loadAgentProfiles(tmpDir)
-    expect(profiles).toHaveLength(1)
-    expect(profiles[0].name).toBe("researcher")
-    expect(profiles[0].parallel).toBe(true)
-  })
-
-  it("returns empty array when directory missing", async () => {
+  test("returns empty array when directory missing", async () => {
     const profiles = await loadAgentProfiles("/nonexistent/path/xyz")
     expect(profiles).toEqual([])
   })
 
-  it("skips files with invalid frontmatter without crashing", async () => {
-    const badDir = await mkdtemp(join(tmpdir(), "agent-bad-"))
-    try {
-      await mkdir(join(badDir, ".ncoworker", "agents"), { recursive: true })
+  test("skips files with invalid frontmatter without crashing", async () => {
+    await withWorkspace("agent-bad-", async (workspaceRoot) => {
       // Missing required 'name' field
-      await writeFile(
-        join(badDir, ".ncoworker", "agents", "invalid.md"),
-        ["---", "description: no name here", "---", "content"].join("\n"),
-      )
-      await writeFile(
-        join(badDir, ".ncoworker", "agents", "valid.md"),
-        ["---", "name: valid-agent", "---"].join("\n"),
-      )
-      const profiles = await loadAgentProfiles(badDir)
+      await writeAgentFile(workspaceRoot, "invalid.md", [
+        "---",
+        "description: no name here",
+        "---",
+        "content",
+      ])
+      await writeAgentFile(workspaceRoot, "valid.md", ["---", "name: valid-agent", "---"])
+
+      const profiles = await loadAgentProfiles(workspaceRoot)
+
       expect(profiles).toHaveLength(1)
       expect(profiles[0].name).toBe("valid-agent")
-    } finally {
-      await rm(badDir, { recursive: true, force: true })
-    }
+    })
   })
 
-  it("parses tools array from frontmatter", async () => {
-    const profiles = await loadAgentProfiles(tmpDir)
-    expect(profiles[0].tools).toEqual(["read", "grep"])
+  test("parses tools array from frontmatter", async () => {
+    await withWorkspace("agent-test-", async (workspaceRoot) => {
+      await writeAgentFile(workspaceRoot, "researcher.md", researcherAgentFrontmatter)
+
+      const profiles = await loadAgentProfiles(workspaceRoot)
+
+      expect(profiles[0].tools).toEqual(["read", "grep"])
+    })
   })
 
-  it("parses skills array from frontmatter", async () => {
-    const profiles = await loadAgentProfiles(tmpDir)
-    expect(profiles[0].skills).toEqual([])
+  test("parses skills array from frontmatter", async () => {
+    await withWorkspace("agent-test-", async (workspaceRoot) => {
+      await writeAgentFile(workspaceRoot, "researcher.md", researcherAgentFrontmatter)
+
+      const profiles = await loadAgentProfiles(workspaceRoot)
+
+      expect(profiles[0].skills).toEqual([])
+    })
+  })
+
+  test("uses multiline markdown instructions when merging builtin, YAML, and markdown layers", async () => {
+    await withWorkspace("agent-merge-", async (workspaceRoot) => {
+      await writeFile(
+        join(workspaceRoot, ".ncoworker", "agents.yaml"),
+        ["agents:", "  default:", "    temperature: 0.2"].join("\n"),
+      )
+      await writeAgentFile(workspaceRoot, "default.md", [
+        "---",
+        "name: default",
+        "instructions: |",
+        "  Focus on review output.",
+        "  Keep feedback concise.",
+        "---",
+        "# Default Agent",
+      ])
+
+      const profiles = await loadMergedAgentProfiles(workspaceRoot)
+      const profile = profiles.find((candidate) => candidate.name === "default")
+
+      expect(profile).toMatchObject({
+        name: "default",
+        temperature: 0.2,
+        instructions: "Focus on review output.\nKeep feedback concise.",
+      })
+    })
   })
 })
 
 describe("createAgentProfileService", () => {
-  let tmpDir: string
+  test("getProfile finds profile by name", async () => {
+    await withWorkspace("agent-svc-test-", async (workspaceRoot) => {
+      await writeAgentFile(workspaceRoot, "coder.md", coderAgentFrontmatter)
 
-  beforeAll(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), "agent-svc-test-"))
-    await mkdir(join(tmpDir, ".ncoworker", "agents"), { recursive: true })
-    await writeFile(
-      join(tmpDir, ".ncoworker", "agents", "coder.md"),
-      [
-        "---",
-        "name: coder",
-        "tools:",
-        "  - read",
-        "  - write",
-        "parallel: false",
-        "---",
-      ].join("\n"),
-    )
+      const service = createAgentProfileService(workspaceRoot)
+      const profile = await service.getProfile("coder")
+
+      expect(profile?.name).toBe("coder")
+      expect(profile?.parallel).toBe(false)
+    })
   })
 
-  afterAll(async () => {
-    await rm(tmpDir, { recursive: true, force: true })
+  test("getProfile returns undefined for unknown name", async () => {
+    await withWorkspace("agent-svc-test-", async (workspaceRoot) => {
+      await writeAgentFile(workspaceRoot, "coder.md", coderAgentFrontmatter)
+
+      const service = createAgentProfileService(workspaceRoot)
+      const profile = await service.getProfile("unknown")
+
+      expect(profile).toBeUndefined()
+    })
   })
 
-  it("getProfile finds profile by name", async () => {
-    const service = createAgentProfileService(tmpDir)
-    const profile = await service.getProfile("coder")
-    expect(profile?.name).toBe("coder")
-    expect(profile?.parallel).toBe(false)
+  test("listProfiles returns available names", async () => {
+    await withWorkspace("agent-svc-test-", async (workspaceRoot) => {
+      await writeAgentFile(workspaceRoot, "coder.md", coderAgentFrontmatter)
+
+      const service = createAgentProfileService(workspaceRoot)
+      const names = await service.listProfiles()
+
+      expect(names).toContain("coder")
+    })
   })
 
-  it("getProfile returns undefined for unknown name", async () => {
-    const service = createAgentProfileService(tmpDir)
-    const profile = await service.getProfile("unknown")
-    expect(profile).toBeUndefined()
-  })
+  test("caches results: only loads once per service instance", async () => {
+    await withWorkspace("agent-svc-test-", async (workspaceRoot) => {
+      await writeAgentFile(workspaceRoot, "coder.md", coderAgentFrontmatter)
 
-  it("listProfiles returns available names", async () => {
-    const service = createAgentProfileService(tmpDir)
-    const names = await service.listProfiles()
-    expect(names).toContain("coder")
-  })
+      const service = createAgentProfileService(workspaceRoot)
+      const first = await service.loadProfiles()
+      const second = await service.loadProfiles()
 
-  it("caches results: only loads once per service instance", async () => {
-    const service = createAgentProfileService(tmpDir)
-    const first = await service.loadProfiles()
-    const second = await service.loadProfiles()
-    expect(first).toBe(second)
+      expect(first).toBe(second)
+    })
   })
 })
+
+const researcherAgentFrontmatter = [
+  "---",
+  "name: researcher",
+  "tools:",
+  "  - read",
+  "  - grep",
+  "parallel: true",
+  "skills: []",
+  "---",
+  "# Researcher Agent",
+  "This agent researches code.",
+]
+
+const coderAgentFrontmatter = [
+  "---",
+  "name: coder",
+  "tools:",
+  "  - read",
+  "  - write",
+  "parallel: false",
+  "---",
+]
+
+async function withWorkspace(prefix: string, run: (workspaceRoot: string) => Promise<void>) {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), prefix))
+
+  try {
+    await mkdir(join(workspaceRoot, ".ncoworker", "agents"), { recursive: true })
+    await run(workspaceRoot)
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true })
+  }
+}
+
+async function writeAgentFile(workspaceRoot: string, fileName: string, lines: string[]) {
+  await writeFile(join(workspaceRoot, ".ncoworker", "agents", fileName), lines.join("\n"))
+}

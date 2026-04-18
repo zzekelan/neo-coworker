@@ -43,6 +43,13 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
     const key = keyMatch[1]
     const rawValue = keyMatch[2].trim()
 
+    if (rawValue === "|") {
+      const { value, nextIndex } = parseLiteralBlockScalar(lines, i + 1)
+      result[key] = value
+      i = nextIndex
+      continue
+    }
+
     if (rawValue === "") {
       const items: string[] = []
       i++
@@ -59,6 +66,50 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
   }
 
   return result
+}
+
+function parseLiteralBlockScalar(
+  lines: string[],
+  startIndex: number,
+): { value: string; nextIndex: number } {
+  const blockLines: string[] = []
+  let blockIndent: number | null = null
+  let i = startIndex
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (line.trim() === "") {
+      blockLines.push("")
+      i++
+      continue
+    }
+
+    const indent = getLeadingSpaceCount(line)
+    if (blockIndent === null) {
+      if (indent === 0) {
+        break
+      }
+
+      blockIndent = indent
+    }
+
+    if (indent < blockIndent) {
+      break
+    }
+
+    blockLines.push(line.slice(blockIndent))
+    i++
+  }
+
+  return {
+    value: blockLines.join("\n"),
+    nextIndex: i,
+  }
+}
+
+function getLeadingSpaceCount(value: string): number {
+  return value.length - value.trimStart().length
 }
 
 function parseScalarValue(raw: string): unknown {
