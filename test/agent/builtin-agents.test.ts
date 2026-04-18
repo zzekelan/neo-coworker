@@ -30,7 +30,14 @@ describe("builtin agents", () => {
     expect(agent.isPrimary).toBe(true)
     expect(agent.temperature).toBe(1)
     expect(agent.skills).toEqual([])
-    expect(agent.disallowedTools).toEqual(["shell", "edit", "write"])
+    expect(agent.disallowedTools).toEqual([
+      "shell",
+      "edit",
+      "write",
+      "create_skill",
+      "patch_skill",
+      "delete_skill",
+    ])
     expect(agent.instructions).toContain("strategic planning mode")
     expect(agent.instructions).toContain("Do not make code changes")
     expect(agent.instructions?.trim().length).toBeGreaterThan(0)

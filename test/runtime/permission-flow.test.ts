@@ -16,6 +16,7 @@ import {
   createPermissionRepository,
   type PermissionResponse,
 } from "../../src/permission"
+import { buildToolDeniedMessage } from "../../src/agent/application/tool-permission-check"
 import {
   createSessionRepository as createStorageRepository,
   openSessionDatabase as openStorageDatabase,
@@ -81,6 +82,93 @@ describe("runtime permission flow", () => {
     await collectEvents(handle.events[Symbol.asyncIterator]())
 
     expect(requests).toHaveLength(1)
+  })
+
+  test("plan mode keeps skill write tools visible but denies create_skill before execution", async () => {
+    const harness = await createHarness("plan-skill-write-denied", false)
+    harness.service.setSessionCurrentAgent(harness.session.id, "plan")
+    const requests: ProviderTurnRequest[] = []
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_plan_skill_write_denied",
+      messageId: "message_plan_skill_write_denied_user",
+      prompt: "Create a reusable skill",
+    })
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider(requests, [
+        async function* (request) {
+          expect(request.tools.map((tool) => tool.name)).toEqual(
+            expect.arrayContaining(["create_skill", "patch_skill", "delete_skill", "plan_exit"]),
+          )
+          yield {
+            type: "tool.call",
+            callId: "call_plan_create_skill_denied",
+            name: "create_skill",
+            inputText: JSON.stringify({
+              name: "reviewer",
+              frontmatter: {
+                description: "Review changes",
+              },
+              content: "Focus on regressions first.",
+            }),
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Stayed read-only." }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        write: "allow",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+
+    await collectEvents(handle.events[Symbol.asyncIterator]())
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(requests).toHaveLength(2)
+    expect(harness.permissionRepository.requests.listByRun(started.run.id)).toEqual([])
+    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("plan")
+    expect(activeRunMessages[1]?.parts).toMatchObject([
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_plan_create_skill_denied",
+          toolName: "create_skill",
+        },
+      },
+      {
+        kind: "tool_result",
+        text: buildToolDeniedMessage("create_skill", "plan"),
+        data: {
+          callId: "call_plan_create_skill_denied",
+          toolName: "create_skill",
+          output: buildToolDeniedMessage("create_skill", "plan"),
+          isError: true,
+        },
+      },
+    ])
+    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Stayed read-only." }])
+    expect(readToolResultParts(requests[1]!)).toEqual([
+      expect.objectContaining({
+        toolName: "create_skill",
+        isError: true,
+        output: buildToolDeniedMessage("create_skill", "plan"),
+      }),
+    ])
+    expect(await fileExists(join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer", "SKILL.md"))).toBe(
+      false,
+    )
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
   test("plan_exit returns an immediate tool error when not in plan mode", async () => {
@@ -1050,6 +1138,17 @@ function createTurnProvider(
       },
     }),
   })
+}
+
+function readToolResultParts(request: ProviderTurnRequest) {
+  return request.messages.flatMap((message) =>
+    message.role !== "tool"
+      ? []
+      : message.parts.filter(
+          (part): part is Extract<(typeof message.parts)[number], { type: "tool_result" }> =>
+            part.type === "tool_result",
+        ),
+  )
 }
 
 async function waitForPermissionRequest(

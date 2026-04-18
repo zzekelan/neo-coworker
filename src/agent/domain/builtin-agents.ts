@@ -25,7 +25,7 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
     description: "Strategic planning mode — read-only, no code modifications",
     isPrimary: true,
     temperature: 1,
-    disallowedTools: ["shell", "edit", "write"],
+    disallowedTools: ["shell", "edit", "write", "create_skill", "patch_skill", "delete_skill"],
     instructions: PLAN_MODE_INSTRUCTIONS,
     skills: [],
   },
