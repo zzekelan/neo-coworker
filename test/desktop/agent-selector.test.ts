@@ -160,7 +160,7 @@ describe("useAgent hook exposes setAgent", () => {
   })
 
   test("exposes currentAgent from session snapshot", () => {
-    expect(source).toContain("currentAgent: desktop.sessionSnapshot?.session.currentAgent")
+    expect(source).toContain("currentAgent: desktop.currentAgent")
   })
 
   test("exposes primaryAgents mapped from desktop state", () => {

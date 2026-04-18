@@ -881,12 +881,21 @@ export function useDesktopApp() {
     },
   }
 
+  const currentAgent = resolveCurrentAgent({
+    activeSessionId: state.activeSessionId,
+    sessions: state.sessions,
+    sessionSnapshot: state.sessionSnapshot,
+  })
+
   return {
     bridge,
     ...state,
+    currentAgent,
     ...actions,
   }
 }
+
+export const DEFAULT_AGENT_NAME = "default"
 
 function createInitialState(input: {
   defaultWorkspaceRoot?: string | null
@@ -1007,6 +1016,29 @@ export function pickNextSessionIdAfterDelete(
   deletedSessionId: string,
 ) {
   return sessions.find((candidate) => candidate.id !== deletedSessionId)?.id ?? null
+}
+
+export function resolveCurrentAgent(input: {
+  activeSessionId: string | null
+  sessions: DesktopSessionSummary[]
+  sessionSnapshot: DesktopSessionSnapshot | null
+}) {
+  if (
+    input.activeSessionId &&
+    input.sessionSnapshot?.session.id === input.activeSessionId &&
+    input.sessionSnapshot.session.currentAgent
+  ) {
+    return input.sessionSnapshot.session.currentAgent
+  }
+
+  if (input.activeSessionId) {
+    const activeSession = input.sessions.find((session) => session.id === input.activeSessionId)
+    if (activeSession?.currentAgent) {
+      return activeSession.currentAgent
+    }
+  }
+
+  return DEFAULT_AGENT_NAME
 }
 
 function upsertSession(

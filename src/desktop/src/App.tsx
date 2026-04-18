@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useAgent } from "./hooks/useAgent"
 import { useDesktopSettings } from "./useDesktopSettings"
 import { DesktopTextProvider } from "./i18n"

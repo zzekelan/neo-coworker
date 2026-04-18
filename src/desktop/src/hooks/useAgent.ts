@@ -20,6 +20,12 @@ export function useAgent() {
     desktop.sessionRuns.filter((run) => run.parentRunId != null).map((run) => run.id),
   )
 
+  const setCurrentAgent = (agentName: string) => {
+    const sessionId = desktop.activeSessionId
+    if (!sessionId) return
+    void desktop.setSessionAgent(sessionId, agentName)
+  }
+
   return {
     workspaces: desktop.workspaces.map(mapWorkspace),
     activeWorkspaceRoot: desktop.activeWorkspaceRoot,
@@ -67,20 +73,17 @@ export function useAgent() {
     setSessionActiveSkills(sessionId: string, activeSkills: string[]) {
       return desktop.setSessionActiveSkills(sessionId, activeSkills)
     },
-    currentAgent: desktop.sessionSnapshot?.session.currentAgent ?? "default",
+    currentAgent: desktop.currentAgent,
     primaryAgents: desktop.primaryAgents.map(mapPrimaryAgent),
+    setCurrentAgent,
     setAgent(agentName: string) {
-      const sessionId = desktop.activeSessionId
-      if (!sessionId) return
-      void desktop.setSessionAgent(sessionId, agentName)
+      setCurrentAgent(agentName)
     },
     cycleAgent() {
-      const sessionId = desktop.activeSessionId
-      if (!sessionId) return
-      const current = desktop.sessionSnapshot?.session.currentAgent ?? "default"
-      const next = getNextPrimaryAgent(current, desktop.primaryAgents)
-      if (next !== current) {
-        void desktop.setSessionAgent(sessionId, next)
+      const next = getNextPrimaryAgent(desktop.currentAgent, desktop.primaryAgents)
+      if (!desktop.activeSessionId) return
+      if (next !== desktop.currentAgent) {
+        setCurrentAgent(next)
       }
     },
     errorMessage: desktop.actionError,
