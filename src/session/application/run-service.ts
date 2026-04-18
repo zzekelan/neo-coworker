@@ -29,6 +29,7 @@ export type StartRunInput = {
   messageCreatedAt?: number
   promptText?: string
   promptPartCreatedAt?: number
+  agent?: string
 }
 
 export type RetryRunInput = StartRunInput & {
@@ -144,6 +145,14 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
     }
   }
 
+  function getSessionCurrentAgent(sessionId: string) {
+    return repository.sessions.getCurrentAgent(sessionId)
+  }
+
+  function setSessionCurrentAgent(sessionId: string, agent: string) {
+    return repository.sessions.setCurrentAgent(sessionId, agent)
+  }
+
   function startRun(run: StartRunInput) {
     const activeRun = repository.runs.getActiveBySession(run.sessionId)
     if (activeRun) {
@@ -153,9 +162,13 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
       })
     }
 
-    const session = repository.sessions.get(run.sessionId)
+    let session = repository.sessions.get(run.sessionId)
 
     assertStartRunIdentityAvailable(repository, run)
+
+    if (run.agent !== undefined) {
+      session = repository.sessions.setCurrentAgent(run.sessionId, run.agent)
+    }
 
     try {
       if (run.promptText !== undefined) {
@@ -320,6 +333,8 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
 
   return {
     getSessionState,
+    getSessionCurrentAgent,
+    setSessionCurrentAgent,
     startRun,
     startCommandRun,
     retryRun,

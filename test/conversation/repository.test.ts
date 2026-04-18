@@ -32,7 +32,7 @@ describe("storage repository", () => {
     expect(CURRENT_SESSION_SCHEMA_VERSION).toBe(11)
   })
 
-  test("creates fresh databases with nullable agent tracking columns and maps persisted values", () => {
+  test("creates fresh databases with default top-level current agent and persists agent updates", () => {
     const databasePath = createDatabasePath("schema-v11-fresh")
     const database = openStorageDatabase(databasePath)
     trackDatabase(database)
@@ -70,15 +70,18 @@ describe("storage repository", () => {
       .query("SELECT agent FROM message WHERE id = ?")
       .get(message.id) as { agent: string | null }
 
-    expect(rawSession.current_agent).toBeNull()
+    expect(rawSession.current_agent).toBe("default")
     expect(rawMessage.agent).toBeNull()
-    expect(repository.sessions.get(session.id).currentAgent).toBeUndefined()
+    expect(repository.sessions.get(session.id).currentAgent).toBe("default")
+    expect(repository.sessions.getCurrentAgent(session.id)).toBe("default")
     expect(repository.messages.get(message.id).agent).toBeUndefined()
 
-    database.query("UPDATE session SET current_agent = ? WHERE id = ?").run("plan", session.id)
+    repository.sessions.setCurrentAgent(session.id, "plan")
     database.query("UPDATE message SET agent = ? WHERE id = ?").run("plan", message.id)
 
+    expect(rawSessionValue(database, session.id)).toBe("plan")
     expect(repository.sessions.get(session.id).currentAgent).toBe("plan")
+    expect(repository.sessions.getCurrentAgent(session.id)).toBe("plan")
     expect(repository.messages.get(message.id).agent).toBe("plan")
   })
 
@@ -135,16 +138,43 @@ describe("storage repository", () => {
     })
     expect(repository.sessions.get("session_1")).toMatchObject({
       id: "session_1",
-      currentAgent: undefined,
+      currentAgent: "default",
       title: "Migrated session",
       activeSkills: ["reviewer"],
     })
+    expect(repository.sessions.getCurrentAgent("session_1")).toBe("default")
     expect(repository.messages.get("message_1")).toMatchObject({
       id: "message_1",
       agent: undefined,
       runId: "run_1",
       role: "user",
     })
+  })
+
+  test("restores persisted current agent from reopened storage", () => {
+    const databasePath = createDatabasePath("session-current-agent-restore")
+    const initialDatabase = openStorageDatabase(databasePath)
+    trackDatabase(initialDatabase)
+
+    const initialRepository = createStorageRepository({ database: initialDatabase })
+    const session = initialRepository.sessions.create({
+      id: "session_restore",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    initialRepository.sessions.setCurrentAgent(session.id, "plan")
+
+    openDatabases.pop()?.close(false)
+
+    const reopenedDatabase = openStorageDatabase(databasePath)
+    trackDatabase(reopenedDatabase)
+
+    const reopenedRepository = createStorageRepository({ database: reopenedDatabase })
+
+    expect(reopenedRepository.sessions.get(session.id).currentAgent).toBe("plan")
+    expect(reopenedRepository.sessions.getCurrentAgent(session.id)).toBe("plan")
   })
 
   test("rolls back createQueuedRunWithInitiatingMessage when the message insert fails", () => {
@@ -459,7 +489,7 @@ describe("storage repository", () => {
   })
 
   test("creates a sub-session with its queued run and initiating transcript atomically", () => {
-    const { repository } = createTestRepository("sub-session-atomic-create")
+    const { database, repository } = createTestRepository("sub-session-atomic-create")
 
     const parent = repository.sessions.create({
       id: "session_parent",
@@ -500,6 +530,7 @@ describe("storage repository", () => {
     expect(created.session).toMatchObject({
       id: "session_child",
       parentSessionId: parent.id,
+      currentAgent: undefined,
     })
     expect(created.run).toMatchObject({
       id: "run_child",
@@ -510,7 +541,10 @@ describe("storage repository", () => {
     })
     expect(repository.sessions.get("session_child")).toMatchObject({
       parentSessionId: parent.id,
+      currentAgent: undefined,
     })
+    expect(repository.sessions.getCurrentAgent("session_child")).toBeUndefined()
+    expect(rawSessionValue(database, "session_child")).toBeNull()
     expect(repository.runs.get("run_child")).toMatchObject({
       sessionId: "session_child",
       status: "queued",
@@ -1355,6 +1389,14 @@ function listTableColumns(database: Database, table: string) {
 function getUserVersion(database: Database) {
   const row = database.query("PRAGMA user_version").get() as { user_version: number }
   return row.user_version
+}
+
+function rawSessionValue(database: Database, sessionId: string) {
+  const row = database
+    .query("SELECT current_agent FROM session WHERE id = ?")
+    .get(sessionId) as { current_agent: string | null }
+
+  return row.current_agent
 }
 
 function createVersion10Database(filePath: string) {

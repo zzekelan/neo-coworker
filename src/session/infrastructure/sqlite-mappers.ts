@@ -86,7 +86,7 @@ export function mapSessionRow(row: SessionRow): StoredSession {
     directory: row.directory,
     workspaceRoot: row.workspace_root,
     createdAt: row.created_at,
-    currentAgent: row.current_agent ?? undefined,
+    currentAgent: mapCurrentAgent(row),
     title: row.title,
     updatedAt: row.updated_at,
     latestUserMessagePreview: row.latest_user_message_preview,
@@ -145,6 +145,14 @@ export function serializeJson(value: unknown) {
   }
 
   return JSON.stringify(value)
+}
+
+function mapCurrentAgent(row: Pick<SessionRow, "current_agent" | "parent_session_id">) {
+  if (row.parent_session_id != null) {
+    return undefined
+  }
+
+  return row.current_agent ?? "default"
 }
 
 function parseJson(value: string | null) {

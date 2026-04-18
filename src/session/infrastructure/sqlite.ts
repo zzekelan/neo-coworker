@@ -633,6 +633,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         directory: session.directory,
         workspaceRoot: session.workspaceRoot,
         createdAt,
+        currentAgent: session.parentSessionId == null ? "default" : undefined,
         title: session.title ?? buildDefaultSessionTitle(),
         updatedAt: session.updatedAt ?? createdAt,
         latestUserMessagePreview: session.latestUserMessagePreview ?? null,
@@ -648,12 +649,13 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
               directory,
               workspace_root,
               created_at,
+              current_agent,
               title,
               updated_at,
               latest_user_message_preview,
               active_skills_json,
               parent_session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -661,6 +663,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
           record.directory,
           record.workspaceRoot,
           record.createdAt,
+          record.currentAgent ?? null,
           record.title,
           record.updatedAt,
           record.latestUserMessagePreview,
@@ -682,6 +685,24 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     },
     get(sessionId: string) {
       return requireSession(sessionId)
+    },
+    getCurrentAgent(sessionId: string) {
+      return requireSession(sessionId).currentAgent
+    },
+    setCurrentAgent(sessionId: string, agent: string) {
+      const current = requireSession(sessionId)
+      if (current.parentSessionId != null) {
+        return current
+      }
+
+      const record: StoredSession = {
+        ...current,
+        currentAgent: agent,
+      }
+
+      database.query("UPDATE session SET current_agent = ? WHERE id = ?").run(record.currentAgent, record.id)
+
+      return record
     },
     update(session: UpdateSessionInput) {
       const current = requireSession(session.sessionId)

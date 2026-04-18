@@ -322,6 +322,50 @@ describe("session run service", () => {
     expect(second.run.activeSkills).toEqual(["writer"])
   })
 
+  test("exposes get/set session current agent through the run service", () => {
+    const { repository, service } = createTestSubject("session-current-agent-service", [11])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    expect(service.getSessionCurrentAgent(session.id)).toBe("default")
+
+    const updated = service.setSessionCurrentAgent(session.id, "plan")
+
+    expect(updated.currentAgent).toBe("plan")
+    expect(service.getSessionCurrentAgent(session.id)).toBe("plan")
+    expect(repository.sessions.get(session.id).currentAgent).toBe("plan")
+  })
+
+  test("updates the session current agent when a run starts with an explicit agent", () => {
+    const { repository, service } = createTestSubject("start-run-agent-override", [11])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    const started = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+      agent: "plan",
+    })
+
+    expect(started.run).toMatchObject({
+      id: "run_1",
+      status: "queued",
+    })
+    expect(repository.sessions.getCurrentAgent(session.id)).toBe("plan")
+    expect(service.getSessionCurrentAgent(session.id)).toBe("plan")
+  })
+
   test("only allows run active skill updates while the run is active", () => {
     const { repository, service } = createTestSubject("run-skill-update-state", [11, 22, 33])
     const session = repository.sessions.create({

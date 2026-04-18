@@ -246,6 +246,8 @@ export type SessionRepository = {
     listTopLevel(): StoredSession[]
     listSubSessions(parentSessionId: string): StoredSession[]
     get(sessionId: string): StoredSession
+    getCurrentAgent(sessionId: string): string | undefined
+    setCurrentAgent(sessionId: string, agent: string): StoredSession
     update(session: UpdateSessionInput): StoredSession
   }
   runs: {

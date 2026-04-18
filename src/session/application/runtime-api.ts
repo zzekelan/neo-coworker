@@ -11,6 +11,10 @@ export function createSessionRuntimeApi(input: SessionRuntimeApiInput) {
   const transcriptService = createSessionTranscriptService(input)
 
   return {
+    sessions: {
+      getCurrentAgent: runService.getSessionCurrentAgent,
+      setCurrentAgent: runService.setSessionCurrentAgent,
+    },
     runs: {
       getSessionState: runService.getSessionState,
       start: runService.startRun,

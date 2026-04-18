@@ -174,6 +174,37 @@ describe("server HTTP API and SSE", () => {
     ])
   })
 
+  test("starting a run with an explicit agent persists the session current agent", async () => {
+    const harness = await createHarness("server-http-agent-start", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "Plan mode active." }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Switch to planning",
+        agent: "plan",
+      },
+    )
+
+    expect(startedRun.status).toBe(201)
+    expect(harness.repository.sessions.getCurrentAgent(sessionId)).toBe("plan")
+
+    const sessionState = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+
+    expect(sessionState.status).toBe(200)
+    expect(sessionState.body.data.session.currentAgent).toBe("plan")
+  })
+
   test("hides summarize runs from session snapshots and run listings", async () => {
     const harness = await createHarness("server-hide-summarize", createTurnProvider([]))
     const session = harness.repository.sessions.create({
@@ -2160,6 +2191,7 @@ const desktopWorkspaceKeys = [
 const desktopSessionKeys = [
   "activeSkills",
   "createdAt",
+  "currentAgent",
   "directory",
   "id",
   "latestRunStatus",
@@ -2192,6 +2224,7 @@ function expectSessionContract(
   expect(typeof session.directory).toBe("string")
   expect(typeof session.workspaceRoot).toBe("string")
   expect(typeof session.createdAt).toBe("number")
+  expect(typeof session.currentAgent).toBe("string")
   expect(typeof session.title).toBe("string")
   expect(typeof session.updatedAt).toBe("number")
   expect(

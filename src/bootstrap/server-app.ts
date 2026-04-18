@@ -580,6 +580,7 @@ async function startRun(runInput: {
       messageCreatedAt,
       promptText: runInput.prompt,
       promptPartCreatedAt: now(),
+      agent: runInput.agent,
     })
 
     const handle = await runtime.run({
