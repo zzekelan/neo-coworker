@@ -8,6 +8,7 @@ import type { OrchestrationAgentProfilePort } from "./ports/agent-profile"
 import type { OrchestrationContextWindowPort } from "./ports/context-window"
 import type { OrchestrationSkillPort } from "./ports/skill"
 import {
+  type OrchestrationBatchExecutionResult,
   TOOL_FAILURE_MESSAGE_METADATA_KEY,
   TOOL_PERMISSION_DENIED_METADATA_KEY,
   type OrchestrationToolPort,
@@ -122,13 +123,23 @@ function isTerminalRunStatus(status: string) {
   return status === "completed" || status === "failed" || status === "cancelled"
 }
 
+function resolveCurrentAgentName(input: {
+  session: OrchestrationSessionPort
+  sessionId: string
+}) {
+  return input.session.getSession(input.sessionId).currentAgent?.trim() || undefined
+}
+
 async function resolveAgentInstructions(input: {
   session: OrchestrationSessionPort
   agentProfiles?: OrchestrationAgentProfilePort
   sessionId: string
   workspaceRoot: string
 }) {
-  const currentAgent = input.session.getSession(input.sessionId).currentAgent?.trim()
+  const currentAgent = resolveCurrentAgentName({
+    session: input.session,
+    sessionId: input.sessionId,
+  })
   if (!currentAgent || !input.agentProfiles) {
     return undefined
   }
@@ -416,6 +427,10 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, sessionActiveSkills)
       const systemReminderBatch = skillReminders.consumeSystemReminderBatch(stepInput.sessionId)
       const systemReminders = systemReminderBatch?.messages ?? []
+      const currentAgentName = resolveCurrentAgentName({
+        session: input.session,
+        sessionId: stepInput.sessionId,
+      })
       const agentInstructions = await resolveAgentInstructions({
         session: input.session,
         agentProfiles: input.agentProfiles,
@@ -534,6 +549,8 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             recentFiles,
             tools: stepInput.tools,
             workspaceRoot: stepInput.workspaceRoot,
+            currentAgentName,
+            agentProfiles: input.agentProfiles,
           })
 
           if (outcome === "cancel") {
@@ -626,6 +643,8 @@ async function executePendingToolCalls(input: {
   recentFiles: ReturnType<typeof createRecentFileTracker>
   tools: OrchestrationToolPort
   workspaceRoot: string
+  currentAgentName?: string
+  agentProfiles?: OrchestrationAgentProfilePort
 }): Promise<ToolCallOutcome> {
   const pendingToolCalls = collectPendingToolCalls({
     items: input.items,
@@ -635,22 +654,36 @@ async function executePendingToolCalls(input: {
     return "continue"
   }
 
-  const results = await input.tools.executeBatch({
-    calls: pendingToolCalls.map((item) => ({
-      callId: item.callId,
-      toolName: item.name,
-      args: item.args,
-      onProgress: (message: string) => {
-        input.emit({
-          type: "tool.progress",
-          toolCallId: item.callId,
-          message,
-          timestamp: Date.now(),
-        })
-      },
-    })),
+  const { executableCalls, deniedResultsByIndex } = await partitionToolCallsForCurrentAgent({
+    pendingToolCalls,
+    currentAgentName: input.currentAgentName,
+    agentProfiles: input.agentProfiles,
     workspaceRoot: input.workspaceRoot,
-    signal: input.signal,
+  })
+  const executedResults = executableCalls.length === 0
+    ? []
+    : await input.tools.executeBatch({
+        calls: executableCalls.map((item) => ({
+          callId: item.callId,
+          toolName: item.name,
+          args: item.args,
+          onProgress: (message: string) => {
+            input.emit({
+              type: "tool.progress",
+              toolCallId: item.callId,
+              message,
+              timestamp: Date.now(),
+            })
+          },
+        })),
+        workspaceRoot: input.workspaceRoot,
+        signal: input.signal,
+      })
+  const results = mergeToolExecutionResults({
+    pendingToolCalls,
+    executableCalls,
+    deniedResultsByIndex,
+    executedResults,
   })
 
   for (const result of results) {
@@ -884,4 +917,82 @@ function readMetadataString(metadata: Record<string, unknown> | undefined, key: 
 
 function readMetadataBoolean(metadata: Record<string, unknown> | undefined, key: string) {
   return metadata?.[key] === true
+}
+
+async function partitionToolCallsForCurrentAgent(input: {
+  pendingToolCalls: PendingToolCall[]
+  currentAgentName?: string
+  agentProfiles?: OrchestrationAgentProfilePort
+  workspaceRoot: string
+}) {
+  const executableCalls: PendingToolCall[] = []
+  const deniedResultsByIndex = new Map<number, OrchestrationBatchExecutionResult>()
+
+  for (const [index, toolCall] of input.pendingToolCalls.entries()) {
+    if (!input.currentAgentName || !input.agentProfiles?.checkToolAccess) {
+      executableCalls.push(toolCall)
+      continue
+    }
+
+    const access = await input.agentProfiles.checkToolAccess({
+      workspaceRoot: input.workspaceRoot,
+      agentName: input.currentAgentName,
+      toolName: toolCall.name,
+    })
+    if (access.allowed) {
+      executableCalls.push(toolCall)
+      continue
+    }
+
+    deniedResultsByIndex.set(index, {
+      callId: toolCall.callId,
+      toolName: toolCall.name,
+      output: "",
+      isError: true,
+      metadata: {
+        [TOOL_FAILURE_MESSAGE_METADATA_KEY]: access.deniedMessage
+          ?? `Tool '${toolCall.name}' is not available for the current agent.`,
+      },
+    })
+  }
+
+  return {
+    executableCalls,
+    deniedResultsByIndex,
+  }
+}
+
+function mergeToolExecutionResults(input: {
+  pendingToolCalls: PendingToolCall[]
+  executableCalls: PendingToolCall[]
+  deniedResultsByIndex: Map<number, OrchestrationBatchExecutionResult>
+  executedResults: OrchestrationBatchExecutionResult[]
+}) {
+  const orderedResults = new Array<OrchestrationBatchExecutionResult>(input.pendingToolCalls.length)
+
+  input.deniedResultsByIndex.forEach((result, index) => {
+    orderedResults[index] = result
+  })
+
+  input.executableCalls.forEach((toolCall, index) => {
+    const executionResult = input.executedResults[index]
+    if (!executionResult) {
+      throw new Error(`Missing tool result for call '${toolCall.callId}'`)
+    }
+
+    const originalIndex = input.pendingToolCalls.findIndex((pendingToolCall) => pendingToolCall.callId === toolCall.callId)
+    if (originalIndex < 0) {
+      throw new Error(`Missing pending tool call for '${toolCall.callId}'`)
+    }
+
+    orderedResults[originalIndex] = executionResult
+  })
+
+  return orderedResults.map((result, index) => {
+    if (!result) {
+      throw new Error(`Missing tool result for call index ${index}`)
+    }
+
+    return result
+  })
 }

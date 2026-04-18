@@ -52,6 +52,8 @@ import {
   createAgentProfileService,
   createAgentTool,
   createSubAgentRun as createAgentSubRun,
+  buildToolDeniedMessage,
+  isToolAllowedForAgent,
   type AgentProfile,
   type AgentProfileService,
 } from "../agent"
@@ -178,6 +180,17 @@ export function createRuntime(input: RuntimeInput) {
     agentProfiles: {
       async getResolvedProfile({ workspaceRoot, name }) {
         return getAgentProfileService(workspaceRoot).getResolvedProfile(name)
+      },
+      async checkToolAccess({ workspaceRoot, agentName, toolName }) {
+        const profile = await getAgentProfileService(workspaceRoot).getResolvedProfile(agentName)
+        if (!profile || isToolAllowedForAgent(toolName, profile)) {
+          return { allowed: true }
+        }
+
+        return {
+          allowed: false,
+          deniedMessage: buildToolDeniedMessage(toolName, agentName),
+        }
       },
     },
     skill: skillPort,
