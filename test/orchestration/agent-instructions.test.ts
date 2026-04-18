@@ -93,9 +93,9 @@ describe("agent instruction late-context injection", () => {
       [
         "<system-reminder>",
         "- Active skills: reviewer",
-        "- Recommended skills:",
-        "  - planner",
-        "  - researcher",
+        "- Recommended skills for current agent:",
+        "planner, researcher",
+        "Use the skill tool to activate any of these when needed.",
         "- Environment:",
         "- Working directory: /workspace/project",
         "- Platform: linux",
@@ -162,8 +162,8 @@ describe("agent instruction late-context injection", () => {
     const request = requests[0]!
     const joinedTexts = readMessageTexts(request).join("\n\n")
 
-    expect(request.system).not.toContain("- Recommended skills:")
-    expect(joinedTexts).not.toContain("- Recommended skills:")
+    expect(request.system).not.toContain("- Recommended skills for current agent:")
+    expect(joinedTexts).not.toContain("- Recommended skills for current agent:")
     expect(joinedTexts).toContain("- Agent instructions:")
     expect(joinedTexts).toContain("Plan mode active.")
   })
@@ -237,14 +237,14 @@ describe("agent instruction late-context injection", () => {
     expect(lateContextText).toContain("<system-reminder>")
     expect(lateContextText).toContain("- Agent instructions:")
     expect(lateContextText).toContain("Plan mode active.")
-    expect(lateContextText).toContain("- Recommended skills:")
-    expect(lateContextText).toContain("  - planner")
-    expect(lateContextText).toContain("  - researcher")
+    expect(lateContextText).toContain("- Recommended skills for current agent:")
+    expect(lateContextText).toContain("planner, researcher")
+    expect(lateContextText).toContain("Use the skill tool to activate any of these when needed.")
     expect(lateContextText).toContain("- Active reminders:")
     expect(nonLateContextTexts.join("\n\n")).toContain("Skill catalog:")
     expect(nonLateContextTexts.join("\n\n")).toContain("Active skill instructions:")
     expect(nonLateContextTexts.join("\n\n")).not.toContain("Plan mode active.")
-    expect(nonLateContextTexts.join("\n\n")).not.toContain("- Recommended skills:")
+    expect(nonLateContextTexts.join("\n\n")).not.toContain("- Recommended skills for current agent:")
     expect(nonLateContextTexts.join("\n\n")).not.toContain("planner")
     expect(messageTexts.join("\n\n").match(/Plan mode active\./g)?.length ?? 0).toBe(1)
     expect(messageTexts.join("\n\n").match(/planner/g)?.length ?? 0).toBe(1)

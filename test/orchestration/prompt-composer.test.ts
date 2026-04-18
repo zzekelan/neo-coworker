@@ -194,9 +194,9 @@ describe("orchestration prompt composer", () => {
       [
         "<system-reminder>",
         "- Active skills: reviewer",
-        "- Recommended skills:",
-        "  - planner",
-        "  - researcher",
+        "- Recommended skills for current agent:",
+        "planner, researcher",
+        "Use the skill tool to activate any of these when needed.",
         "- Environment:",
         "- Working directory: /workspace/project",
         "- Platform: linux",
@@ -225,8 +225,14 @@ describe("orchestration prompt composer", () => {
       },
     })
 
-    expect(absentMessage).not.toContain("- Recommended skills:")
-    expect(emptyMessage).not.toContain("- Recommended skills:")
+    expect(absentMessage).not.toContain("- Recommended skills for current agent:")
+    expect(emptyMessage).not.toContain("- Recommended skills for current agent:")
+  })
+
+  test("static prompt excludes the unrelated websearch news URL contamination", () => {
+    const prompt = getStaticPrompt()
+
+    expect(prompt).not.toContain("especially with news")
   })
 
   describe("per-tool guidance injection", () => {

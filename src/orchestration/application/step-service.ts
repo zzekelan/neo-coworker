@@ -977,12 +977,9 @@ async function partitionToolCallsForCurrentAgent(input: {
     deniedResultsByIndex.set(index, {
       callId: toolCall.callId,
       toolName: toolCall.name,
-      output: "",
+      output: access.deniedMessage
+        ?? `Tool '${toolCall.name}' is not available for the current agent.`,
       isError: true,
-      metadata: {
-        [TOOL_FAILURE_MESSAGE_METADATA_KEY]: access.deniedMessage
-          ?? `Tool '${toolCall.name}' is not available for the current agent.`,
-      },
     })
   }
 

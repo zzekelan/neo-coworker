@@ -61,6 +61,25 @@ describe("orchestration step service tool permission interception", () => {
     expect(requests).toHaveLength(2)
     expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(["read", "shell", "lsp_symbols"])
     expect(tools.executedBatches).toEqual([])
+    expect(session.listTranscript(session.sessionId)[1]?.parts).toMatchObject([
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_shell",
+          toolName: "shell",
+        },
+      },
+      {
+        kind: "tool_result",
+        text: buildToolDeniedMessage("shell", "plan"),
+        data: {
+          callId: "call_shell",
+          toolName: "shell",
+          output: buildToolDeniedMessage("shell", "plan"),
+          isError: true,
+        },
+      },
+    ])
     expect(readToolResultParts(requests[1]!)).toEqual([
       expect.objectContaining({
         toolName: "shell",

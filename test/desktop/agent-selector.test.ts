@@ -59,10 +59,12 @@ describe("agent selector component", () => {
     expect(source).toContain("onClick={() => onSelect(agent.name)}")
   })
 
-  test("uses AnimatePresence for open/close transitions", () => {
-    expect(source).toContain("AnimatePresence")
-    expect(source).toContain('initial={{ opacity: 0, y: 8 }}')
-    expect(source).toContain('animate={{ opacity: 1, y: 0 }}')
+  test("keeps the selector as a plain compact popup without animation helpers", () => {
+    expect(source).not.toContain("framer-motion")
+    expect(source).not.toContain("AnimatePresence")
+    expect(source).not.toContain("motion.")
+    expect(source).not.toContain("transition=")
+    expect(source).not.toContain("transition-colors")
   })
 
   test("uses React.memo for performance", () => {

@@ -65,6 +65,7 @@ function buildDynamicContextLines(context: DynamicPromptContext) {
       ?.map((skill) => skill.trim())
       .filter((skill) => skill.length > 0)
     ?? []
+  const recommendedSkillsLine = recommendedSkills.join(", ")
   const guidance = normalizePromptItems(context.sessionGuidance)
   const reminders = normalizePromptItems(context.systemReminders)
   const environmentLines = [
@@ -83,8 +84,10 @@ function buildDynamicContextLines(context: DynamicPromptContext) {
     ...(guidance.length > 0 ? guidance.map((item) => `  - ${item}`) : []),
     agentInstructions ? "- Agent instructions:" : null,
     ...(agentInstructions ? [agentInstructions] : []),
-    recommendedSkills.length > 0 ? "- Recommended skills:" : null,
-    ...(recommendedSkills.length > 0 ? recommendedSkills.map((skill) => `  - ${skill}`) : []),
+    recommendedSkills.length > 0 ? "- Recommended skills for current agent:" : null,
+    ...(recommendedSkills.length > 0
+      ? [recommendedSkillsLine, "Use the skill tool to activate any of these when needed."]
+      : []),
     "- Environment:",
     ...environmentLines,
     reminders.length > 0 ? "- Active reminders:" : null,
@@ -119,7 +122,6 @@ function createStaticSections(): PromptSection[] {
         "- Report outcomes faithfully. If something failed or was only partially done, state it plainly with the relevant details. Do not suppress errors, manufacture success, or characterize incomplete work as finished. Equally, when work is genuinely done, say so clearly without unnecessary hedging.",
         "",
         "## Research & Information",
-        "- if you are doing a websearch task, especially with news, MUST Provide URLs.",
         "- When gathering information, cross-check from multiple sources when feasible. Distinguish between facts you have verified and claims you are relaying.",
         "- Cite sources when they add credibility or when the user may want to follow up. Provide URLs, file paths, or document references as appropriate.",
         "- If you are unsure about a fact, say so. A clear disclaimer is always better than a confident hallucination.",

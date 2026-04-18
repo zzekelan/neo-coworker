@@ -354,6 +354,7 @@ function renderToolResultPart(
   } = {},
 ) {
   const data = readObject(part.data)
+  const isError = readBoolean(data, "isError")
   return {
     type: "tool_result" as const,
     toolName: readString(data, "toolName") ?? "unknown",
@@ -361,6 +362,7 @@ function renderToolResultPart(
     output: options.clearedToolResults?.has(part)
       ? MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT
       : part.text ?? readString(data, "output") ?? "",
+    isError,
   }
 }
 
@@ -389,6 +391,10 @@ function readObject(value: unknown) {
 
 function readString(value: Record<string, unknown> | null, key: string) {
   return typeof value?.[key] === "string" ? (value[key] as string) : null
+}
+
+function readBoolean(value: Record<string, unknown> | null, key: string) {
+  return value?.[key] === true ? true : undefined
 }
 
 export function buildSystemReminderPayloadText(messages: string[]) {
