@@ -89,6 +89,72 @@ describe("orchestration step service tool permission interception", () => {
     ])
   })
 
+  test("plan mode keeps memory tools visible while denying mutating memory calls", async () => {
+    const session = createMemorySession({
+      currentAgent: "plan",
+      userText: "Inspect memory",
+    })
+    const { model, requests } = createSequencedModelProvider([
+      async function* () {
+        yield {
+          type: "tool.call" as const,
+          callId: "call_memory_view",
+          name: "memory_view",
+          inputText: '{"target":"agent"}',
+        }
+        yield {
+          type: "tool.call" as const,
+          callId: "call_memory_add",
+          name: "memory_add",
+          inputText: '{"target":"agent","content":"keep this"}',
+        }
+      },
+      async function* () {
+        yield {
+          type: "text.delta" as const,
+          text: "Memory inspection complete.",
+        }
+      },
+    ])
+    const tools = createToolPortStub({
+      memory_view: "MEMORY_VIEW_OUTPUT",
+      memory_add: "SHOULD_NOT_RUN",
+    }, true)
+    const stepService = createOrchestrationStepService({
+      session,
+      model,
+      agentProfiles: createAgentProfilesStub({
+        memory_add: false,
+      }),
+      contextWindow: createContextWindowStub(),
+      skill: createSkillPortStub(),
+      now: createMonotonicClock(),
+    })
+
+    await expect(executeStep({ stepService, session, tools })).resolves.toEqual({ status: "repeat" })
+    await expect(executeStep({ stepService, session, tools })).resolves.toEqual({ status: "complete" })
+
+    expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(["memory_add", "memory_view"]),
+    )
+    expect(tools.executedBatches).toEqual([["memory_view"]])
+    expect(readToolResultParts(requests[1]!).map((part) => part.toolName)).toEqual([
+      "memory_view",
+      "memory_add",
+    ])
+    expect(readToolResultParts(requests[1]!)).toEqual([
+      expect.objectContaining({
+        toolName: "memory_view",
+        output: "MEMORY_VIEW_OUTPUT",
+      }),
+      expect.objectContaining({
+        toolName: "memory_add",
+        isError: true,
+        output: expect.stringContaining("Tool 'memory_add' is not available in plan mode"),
+      }),
+    ])
+  })
+
   test("executes allowed tools while denying wildcard-matched main-agent tools", async () => {
     const session = createMemorySession({
       currentAgent: "plan",
@@ -229,12 +295,12 @@ function createAgentProfilesStub(accessByToolName: Record<string, boolean>): Orc
   }
 }
 
-function createToolPortStub(outputs: Record<string, string>) {
+function createToolPortStub(outputs: Record<string, string>, includeMemoryTools = false) {
   const executedBatches: string[][] = []
 
   const toolPort: OrchestrationToolPort & { executedBatches: string[][] } = {
     executedBatches,
-    list() {
+    list(): ReturnType<OrchestrationToolPort["list"]> {
       return [
         {
           name: "read",
@@ -251,6 +317,20 @@ function createToolPortStub(outputs: Record<string, string>) {
           description: "Inspect symbols",
           concurrency: "read-only",
         },
+        ...(includeMemoryTools
+          ? [
+              {
+                name: "memory_add",
+                description: "Save memory",
+                concurrency: "mutating" as const,
+              },
+              {
+                name: "memory_view",
+                description: "View memory",
+                concurrency: "read-only" as const,
+              },
+            ]
+          : []),
       ]
     },
     async execute() {
