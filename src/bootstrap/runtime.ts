@@ -136,6 +136,17 @@ export function createRuntime(input: RuntimeInput) {
   const observability = input.observability
   const permissionObserver = createPermissionObserver(observability?.permissionObserver)
   const basePermissionPolicy = resolvePermissionPolicy(input.permissionPolicy)
+  const agentProfileServices = new Map<string, AgentProfileService>()
+  const getAgentProfileService = (workspaceRoot: string) => {
+    const cached = agentProfileServices.get(workspaceRoot)
+    if (cached) {
+      return cached
+    }
+
+    const service = createAgentProfileService(workspaceRoot)
+    agentProfileServices.set(workspaceRoot, service)
+    return service
+  }
   const skillPort = input.skill ?? createSkillPort({ runtime: input.skillRuntime })
   const contextWindow = {
     getContextWindow() {
@@ -164,6 +175,11 @@ export function createRuntime(input: RuntimeInput) {
     model: input.provider,
     contextWindow,
     session: sessionPort,
+    agentProfiles: {
+      async getResolvedProfile({ workspaceRoot, name }) {
+        return getAgentProfileService(workspaceRoot).getResolvedProfile(name)
+      },
+    },
     skill: skillPort,
     permission: permissionPort,
     tools: createToolPortFactory({
@@ -179,7 +195,7 @@ export function createRuntime(input: RuntimeInput) {
       skillObserver: createSkillObserver(observability?.skillObserver),
       searchBackend: input.searchBackend,
       agentProfileService(workspaceRoot) {
-        return createAgentProfileService(workspaceRoot)
+        return getAgentProfileService(workspaceRoot)
       },
       async createSubAgentRun(subAgentInput) {
         return createAgentSubRun({

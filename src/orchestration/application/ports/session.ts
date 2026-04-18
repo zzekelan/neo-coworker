@@ -24,6 +24,7 @@ export type OrchestrationTranscriptMessage = {
 export type OrchestrationSessionRecord = {
   id: string
   workspaceRoot: string
+  currentAgent?: string
   activeSkills: string[]
 }
 

@@ -20,6 +20,7 @@ export type PromptEnvironmentContext = {
 
 export type DynamicPromptContext = {
   activeSkillNames?: readonly string[]
+  agentInstructions?: string
   environment: PromptEnvironmentContext
   sessionGuidance?: readonly string[]
   systemReminders?: readonly string[]
@@ -57,6 +58,7 @@ function buildDynamicContextLines(context: DynamicPromptContext) {
     context.activeSkillNames && context.activeSkillNames.length > 0
       ? context.activeSkillNames.join(", ")
       : "none"
+  const agentInstructions = context.agentInstructions?.trim()
   const guidance = normalizePromptItems(context.sessionGuidance)
   const reminders = normalizePromptItems(context.systemReminders)
   const environmentLines = [
@@ -73,6 +75,8 @@ function buildDynamicContextLines(context: DynamicPromptContext) {
     `- Active skills: ${skillLine}`,
     guidance.length > 0 ? "- Session-specific guidance:" : null,
     ...(guidance.length > 0 ? guidance.map((item) => `  - ${item}`) : []),
+    agentInstructions ? "- Agent instructions:" : null,
+    ...(agentInstructions ? [agentInstructions] : []),
     "- Environment:",
     ...environmentLines,
     reminders.length > 0 ? "- Active reminders:" : null,
@@ -339,14 +343,4 @@ export function composeAgentAwarePrompt(
   }
 
   return [basePrompt, instructions].join("\n\n")
-}
-
-function getDefaultDynamicContext(): DynamicPromptContext {
-  return {
-    environment: {
-      workingDirectory: "",
-      platform: "unknown",
-      date: "",
-    },
-  }
 }

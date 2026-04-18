@@ -7,6 +7,7 @@ import {
 } from "../../application/prompt-composer"
 import type { RuntimeEvent } from "../../application/event"
 import type { OrchestrationRunHandle } from "../../application/handle"
+import type { OrchestrationAgentProfilePort } from "../../application/ports/agent-profile"
 import type { OrchestrationContextWindowPort } from "../../application/ports/context-window"
 import type { OrchestrationModelPort } from "../../application/ports/model"
 import type {
@@ -35,6 +36,7 @@ import {
 export type CreateOrchestrationRuntimeApiInput = {
   model: OrchestrationModelPort
   session: OrchestrationSessionPort
+  agentProfiles?: OrchestrationAgentProfilePort
   skill: OrchestrationSkillPort
   contextWindow?: OrchestrationContextWindowPort
   permission: OrchestrationPermissionPort
@@ -85,6 +87,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
   const stepService = createOrchestrationStepService({
     session: input.session,
     model: input.model,
+    agentProfiles: input.agentProfiles,
     contextWindow,
     skill: input.skill,
     runtimeObserver: input.runtimeObserver,

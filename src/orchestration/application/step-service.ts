@@ -4,6 +4,7 @@ import type {
   OrchestrationTranscriptMessage,
 } from "./ports/session"
 import type { OrchestrationModelPort } from "./ports/model"
+import type { OrchestrationAgentProfilePort } from "./ports/agent-profile"
 import type { OrchestrationContextWindowPort } from "./ports/context-window"
 import type { OrchestrationSkillPort } from "./ports/skill"
 import {
@@ -29,6 +30,7 @@ type OrchestrationEventEmitter = (event: RuntimeEvent) => void
 type CreateOrchestrationStepServiceInput = {
   session: OrchestrationSessionPort
   model: OrchestrationModelPort
+  agentProfiles?: OrchestrationAgentProfilePort
   contextWindow: OrchestrationContextWindowPort
   skill: OrchestrationSkillPort
   runtimeObserver?: OrchestrationRuntimeObserverPort
@@ -71,11 +73,13 @@ const MODEL_REQUEST_MAX_ATTEMPTS = 3
 function buildTurnLateContextMessage(input: {
   workspaceRoot: string
   activeSkillNames: readonly string[]
+  agentInstructions?: string
   systemReminders: readonly string[]
   now: () => number
 }) {
   return buildLateContextMessage({
     activeSkillNames: input.activeSkillNames,
+    agentInstructions: input.agentInstructions,
     environment: {
       workingDirectory: input.workspaceRoot,
       platform: process.platform,
@@ -116,6 +120,25 @@ function createAbortError(message = "Operation aborted") {
 
 function isTerminalRunStatus(status: string) {
   return status === "completed" || status === "failed" || status === "cancelled"
+}
+
+async function resolveAgentInstructions(input: {
+  session: OrchestrationSessionPort
+  agentProfiles?: OrchestrationAgentProfilePort
+  sessionId: string
+  workspaceRoot: string
+}) {
+  const currentAgent = input.session.getSession(input.sessionId).currentAgent?.trim()
+  if (!currentAgent || !input.agentProfiles) {
+    return undefined
+  }
+
+  const profile = await input.agentProfiles.getResolvedProfile({
+    workspaceRoot: input.workspaceRoot,
+    name: currentAgent,
+  })
+  const instructions = profile?.instructions?.trim()
+  return instructions && instructions.length > 0 ? instructions : undefined
 }
 
 async function readNextModelEvent<T>(input: {
@@ -356,7 +379,8 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           catalogSkillCount: exposedCatalogSkillNames.length,
         })
       }
-      const sessionActiveSkills = input.session.getSession(stepInput.sessionId).activeSkills
+      const sessionRecord = input.session.getSession(stepInput.sessionId)
+      const sessionActiveSkills = sessionRecord.activeSkills
       await loadPendingActiveSkills({
         sessionId: stepInput.sessionId,
         activeSkillNames: sessionActiveSkills,
@@ -392,9 +416,16 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, sessionActiveSkills)
       const systemReminderBatch = skillReminders.consumeSystemReminderBatch(stepInput.sessionId)
       const systemReminders = systemReminderBatch?.messages ?? []
+      const agentInstructions = await resolveAgentInstructions({
+        session: input.session,
+        agentProfiles: input.agentProfiles,
+        sessionId: stepInput.sessionId,
+        workspaceRoot: stepInput.workspaceRoot,
+      })
       const lateContextMessage = buildTurnLateContextMessage({
         workspaceRoot: stepInput.workspaceRoot,
         activeSkillNames: activeSkills.map((skill) => skill.name),
+        agentInstructions,
         systemReminders,
         now,
       })
