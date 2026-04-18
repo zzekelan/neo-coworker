@@ -301,6 +301,22 @@ export async function replyPermission(input: { requestId: string; decision: "all
   )
 }
 
+export async function loadPrimaryAgents() {
+  return requestApi<{ agents: Array<{ name: string; description: string }> }>("/agents/primary")
+}
+
+export async function updateSessionAgent(input: { sessionId: string; agent: string }) {
+  return requestApi<{ session: DesktopSessionSummary }>(
+    `/sessions/${encodeURIComponent(input.sessionId)}/agent`,
+    {
+      method: "POST",
+      body: {
+        agent: input.agent,
+      },
+    },
+  )
+}
+
 function unwrapEnvelope<T>(value: unknown): T {
   if (!value || typeof value !== "object" || !("data" in value)) {
     throw new Error("app-server returned an invalid response payload")

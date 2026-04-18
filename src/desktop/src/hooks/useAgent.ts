@@ -8,8 +8,10 @@ import type {
   DesktopWorkspace,
   DesktopTranscriptMessage,
   DesktopContextUsage,
+  DesktopPrimaryAgent,
 } from "../view-types"
 import { mapTranscriptMessage } from "../transcript-mapper"
+import { getNextPrimaryAgent } from "../agent-cycle"
 
 export function useAgent() {
   const desktop = useDesktopApp()
@@ -65,6 +67,17 @@ export function useAgent() {
     setSessionActiveSkills(sessionId: string, activeSkills: string[]) {
       return desktop.setSessionActiveSkills(sessionId, activeSkills)
     },
+    currentAgent: desktop.sessionSnapshot?.session.currentAgent ?? "default",
+    primaryAgents: desktop.primaryAgents.map(mapPrimaryAgent),
+    cycleAgent() {
+      const sessionId = desktop.activeSessionId
+      if (!sessionId) return
+      const current = desktop.sessionSnapshot?.session.currentAgent ?? "default"
+      const next = getNextPrimaryAgent(current, desktop.primaryAgents)
+      if (next !== current) {
+        void desktop.setSessionAgent(sessionId, next)
+      }
+    },
     errorMessage: desktop.actionError,
     skillWarningMessage: desktop.skillWarningMessage,
     contextUsage: desktop.contextUsage ? mapContextUsage(desktop.contextUsage) : null,
@@ -96,6 +109,7 @@ function mapSession(
     createdAt: toIsoString(session.createdAt),
     updatedAt: toIsoString(session.updatedAt),
     activeSkills: session.activeSkills,
+    currentAgent: session.currentAgent,
     latestRunStatus: session.latestRunStatus,
   }
 }
@@ -105,6 +119,7 @@ function mapSessionSnapshot(snapshot: import("../types").DesktopSessionSnapshot)
     session: {
       id: snapshot.session.id,
       activeSkills: snapshot.session.activeSkills,
+      currentAgent: snapshot.session.currentAgent,
     },
     latestRun: snapshot.latestRun ? mapRun(snapshot.latestRun) : undefined,
     activeRun: snapshot.activeRun ? mapRun(snapshot.activeRun) : undefined,
@@ -160,6 +175,15 @@ function mapContextUsage(
     contextWindow: usage.contextWindow,
     utilizationPercent: usage.utilizationPercent,
     source: usage.source,
+  }
+}
+
+function mapPrimaryAgent(
+  agent: { name: string; description: string },
+): DesktopPrimaryAgent {
+  return {
+    name: agent.name,
+    description: agent.description,
   }
 }
 

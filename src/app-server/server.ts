@@ -85,6 +85,10 @@ const addActiveSkillsBodySchema = z.object({
   activeSkills: z.array(z.string().trim().min(1)).max(100),
 })
 
+const setCurrentAgentBodySchema = z.object({
+  agent: z.string().trim().min(1),
+})
+
 const workspaceRootQuerySchema = z.object({
   workspaceRoot: z.string().trim().min(1),
 })
@@ -107,6 +111,7 @@ export function createAgentServer(input: {
   permissionRepository: PermissionRepository
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
   listSkillCatalogImpl?: Parameters<typeof createServerApp>[0]["listSkillCatalogImpl"]
+  listPrimaryAgentsImpl?: () => Promise<Array<{ name: string; description: string }>>
   deleteSessionImpl?: (sessionId: string) => void
   now?: () => number
   heartbeatIntervalMs?: number
@@ -237,6 +242,15 @@ export function createAgentServer(input: {
         })
       }
 
+      if (request.method === "GET" && path === "agents/primary") {
+        const agents = await (input.listPrimaryAgentsImpl?.() ?? Promise.resolve([]))
+        return jsonResponse(200, {
+          data: {
+            agents,
+          },
+        })
+      }
+
       const sessionStateMatch = matchPath(path, ["sessions", ":sessionId"])
       if (request.method === "DELETE" && sessionStateMatch) {
         if (!input.deleteSessionImpl) {
@@ -274,6 +288,19 @@ export function createAgentServer(input: {
             session: app.sessions.addActiveSkills({
               sessionId: sessionActiveSkillsMatch.sessionId,
               activeSkills: body.activeSkills,
+            }),
+          },
+        })
+      }
+
+      const sessionAgentMatch = matchPath(path, ["sessions", ":sessionId", "agent"])
+      if (request.method === "POST" && sessionAgentMatch) {
+        const body = await readJsonBody(request, setCurrentAgentBodySchema)
+        return jsonResponse(200, {
+          data: {
+            session: app.sessions.setCurrentAgent({
+              sessionId: sessionAgentMatch.sessionId,
+              agent: body.agent,
             }),
           },
         })

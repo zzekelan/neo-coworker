@@ -19,6 +19,8 @@ import {
   startRun,
   subscribeToEvents,
   updateSessionActiveSkills,
+  loadPrimaryAgents,
+  updateSessionAgent,
 } from "./api"
 import {
   upsertTranscriptMessage,
@@ -42,6 +44,7 @@ type AppState = {
   workspaces: DesktopWorkspaceSummary[]
   skills: DesktopSkillCatalogEntry[]
   sessions: DesktopSessionSummary[]
+  primaryAgents: Array<{ name: string; description: string }>
   activeWorkspaceRoot: string | null
   activeSessionId: string | null
   sessionSnapshot: DesktopSessionSnapshot | null
@@ -209,6 +212,19 @@ export function useDesktopApp() {
           skillWarningMessage: skillData.warningMessage,
         }))
       })
+
+      void loadPrimaryAgents()
+        .then((data) => {
+          if (currentToken !== refreshTokenRef.current) {
+            return
+          }
+
+          setState((previous) => ({
+            ...previous,
+            primaryAgents: data.agents,
+          }))
+        })
+        .catch(() => {})
     } catch (error) {
       if (currentToken !== refreshTokenRef.current) {
         return
@@ -785,6 +801,33 @@ export function useDesktopApp() {
       }
     },
 
+    async setSessionAgent(sessionId: string, agent: string) {
+      try {
+        const updated = await updateSessionAgent({ sessionId, agent })
+
+        setState((previous) => ({
+          ...previous,
+          sessions:
+            previous.activeWorkspaceRoot === updated.session.workspaceRoot
+              ? upsertSession(previous.sessions, updated.session)
+              : previous.sessions,
+          sessionSnapshot:
+            previous.activeSessionId === updated.session.id && previous.sessionSnapshot
+              ? {
+                  ...previous.sessionSnapshot,
+                  session: updated.session,
+                }
+              : previous.sessionSnapshot,
+          actionError: null,
+        }))
+      } catch (error) {
+        setState((previous) => ({
+          ...previous,
+          actionError: toErrorMessage(error),
+        }))
+      }
+    },
+
     async deleteSession(sessionId: string) {
       const nextActiveSessionId =
         selectionRef.current.activeSessionId === sessionId
@@ -859,6 +902,7 @@ function createInitialState(input: {
       workspaces,
       skills: [],
       sessions: [],
+      primaryAgents: [],
       activeWorkspaceRoot,
       activeSessionId,
       sessionSnapshot: null,
@@ -884,6 +928,7 @@ function createInitialState(input: {
     workspaces,
     skills: [],
     sessions: [],
+    primaryAgents: [],
     activeWorkspaceRoot,
     activeSessionId,
     sessionSnapshot: null,

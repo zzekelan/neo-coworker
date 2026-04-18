@@ -17,6 +17,7 @@ import { createDefaultSearchBackend } from "./search"
 import { createRuntime } from "./runtime"
 import { getServerStoragePath } from "./paths"
 import { readEnvWithFallback } from "./env"
+import { BUILTIN_AGENTS } from "../agent"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
 const DEFAULT_SERVER_PORT = 3100
@@ -108,6 +109,11 @@ export async function createStandaloneServerComposition(input: {
       listSkillCatalog(workspaceRoot: string) {
         return skillRuntime.listCatalog(workspaceRoot)
       },
+      listPrimaryAgents() {
+        return Object.values(BUILTIN_AGENTS)
+          .filter((agent) => agent.isPrimary === true)
+          .map((agent) => ({ name: agent.name, description: agent.description ?? "" }))
+      },
       createRuntimeImpl(runtimeInput: {
         repository: SessionRepository
         permissionRepository: PermissionRepository
@@ -137,6 +143,7 @@ export async function createStandaloneServerComposition(input: {
       observabilityRepository: ObservabilityRepository
       exportRunTrace(runId: string): ReturnType<typeof observability.exportRunTrace>
       listSkillCatalog(workspaceRoot: string): ReturnType<typeof skillRuntime.listCatalog>
+      listPrimaryAgents(): Array<{ name: string; description: string }>
       createRuntimeImpl(input: {
         repository: SessionRepository
         permissionRepository: PermissionRepository

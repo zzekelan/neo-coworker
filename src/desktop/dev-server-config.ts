@@ -6,6 +6,7 @@ const API_PROXY_PATTERNS = [
   "^/workspace(?:/.*)?$",
   "^/runs(?:/.*)?$",
   "^/permissions(?:/.*)?$",
+  "^/agents(?:/.*)?$",
 ]
 
 export const DEFAULT_DESKTOP_APP_SERVER_ORIGIN = "http://127.0.0.1:3100"

@@ -34,6 +34,7 @@ export default function App() {
     skillWarningMessage,
     contextUsage,
     refreshAppState,
+    cycleAgent,
   } = useAgent()
   const desktopSettings = useDesktopSettings()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
@@ -70,6 +71,7 @@ export default function App() {
     <KeyboardShortcutProvider
       onNewSession={() => void createSession()}
       onClearTranscript={handleClearTranscriptDisplay}
+      onCycleAgent={cycleAgent}
     >
       <DesktopTextProvider language={desktopSettings.appliedSettings.language}>
         <div className="flex h-screen w-full overflow-hidden bg-paper font-sans text-ink selection:bg-accent/20 selection:text-ink">

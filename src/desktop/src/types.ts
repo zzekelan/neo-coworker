@@ -16,6 +16,7 @@ export type DesktopSessionSummary = {
   updatedAt: number
   latestUserMessagePreview: string | null
   activeSkills: string[]
+  currentAgent?: string
   latestRunStatus: RunStatus | null
 }
 

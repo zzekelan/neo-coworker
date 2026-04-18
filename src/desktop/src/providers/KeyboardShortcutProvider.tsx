@@ -29,9 +29,10 @@ interface KeyboardShortcutProviderProps {
   children: React.ReactNode
   onNewSession?: () => void
   onClearTranscript?: () => void
+  onCycleAgent?: () => void
 }
 
-export function KeyboardShortcutProvider({ children, onNewSession, onClearTranscript }: KeyboardShortcutProviderProps) {
+export function KeyboardShortcutProvider({ children, onNewSession, onClearTranscript, onCycleAgent }: KeyboardShortcutProviderProps) {
   const { toggleTheme } = useTheme()
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const registryRef = useRef<Map<string, ShortcutHandler>>(new Map())
@@ -90,10 +91,19 @@ export function KeyboardShortcutProvider({ children, onNewSession, onClearTransc
       })
     )
 
+    unregisters.push(
+      registerShortcut("shift+tab", {
+        label: "Cycle Agent",
+        handler: () => {
+          if (onCycleAgent) onCycleAgent()
+        },
+      })
+    )
+
     return () => {
       unregisters.forEach((unreg) => unreg())
     }
-  }, [registerShortcut, onNewSession, toggleTheme, onClearTranscript])
+  }, [registerShortcut, onNewSession, toggleTheme, onClearTranscript, onCycleAgent])
 
   // Global keydown listener
   useEffect(() => {
@@ -108,7 +118,9 @@ export function KeyboardShortcutProvider({ children, onNewSession, onClearTransc
       const hasModifier = event.metaKey || event.ctrlKey
       
       // If user is typing in an input, ignore alpha keys without modifiers
-      if (isInputFocused && !hasModifier && event.key !== "Escape") {
+      // Allow shift+tab through for agent cycling
+      const isShiftTab = event.shiftKey && event.key === "Tab"
+      if (isInputFocused && !hasModifier && event.key !== "Escape" && !isShiftTab) {
         return
       }
 

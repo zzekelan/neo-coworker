@@ -727,6 +727,13 @@ async function startRun(runInput: {
           workspaceRoot: session.workspaceRoot,
         })
       },
+      setCurrentAgent(inputValue: { sessionId: string; agent: string }) {
+        const updated = repository.sessions.setCurrentAgent(inputValue.sessionId, inputValue.agent)
+        return {
+          ...updated,
+          latestRunStatus: getLatestVisibleRunBySession(repository, updated.id)?.status ?? null,
+        }
+      },
     },
     workspaces: {
       async skills(workspaceRoot: string) {

@@ -13,6 +13,7 @@ export interface DesktopSession {
   createdAt: string
   updatedAt: string
   activeSkills: string[]
+  currentAgent?: string
   latestRunStatus: DesktopRunStatus | null
 }
 
@@ -37,6 +38,7 @@ export interface DesktopSessionSnapshot {
   session: {
     id: string
     activeSkills: string[]
+    currentAgent?: string
   }
   latestRun?: DesktopRun
   activeRun?: DesktopRun
@@ -94,4 +96,9 @@ export interface DesktopContextUsage {
   contextWindow: number
   utilizationPercent: number
   source: "provider" | "estimated" | null
+}
+
+export interface DesktopPrimaryAgent {
+  name: string
+  description: string
 }
