@@ -22,6 +22,7 @@ export type DynamicPromptContext = {
   activeSkillNames?: readonly string[]
   agentInstructions?: string
   environment: PromptEnvironmentContext
+  recommendedSkills?: string[]
   sessionGuidance?: readonly string[]
   systemReminders?: readonly string[]
 }
@@ -59,6 +60,11 @@ function buildDynamicContextLines(context: DynamicPromptContext) {
       ? context.activeSkillNames.join(", ")
       : "none"
   const agentInstructions = context.agentInstructions?.trim()
+  const recommendedSkills =
+    context.recommendedSkills
+      ?.map((skill) => skill.trim())
+      .filter((skill) => skill.length > 0)
+    ?? []
   const guidance = normalizePromptItems(context.sessionGuidance)
   const reminders = normalizePromptItems(context.systemReminders)
   const environmentLines = [
@@ -77,6 +83,8 @@ function buildDynamicContextLines(context: DynamicPromptContext) {
     ...(guidance.length > 0 ? guidance.map((item) => `  - ${item}`) : []),
     agentInstructions ? "- Agent instructions:" : null,
     ...(agentInstructions ? [agentInstructions] : []),
+    recommendedSkills.length > 0 ? "- Recommended skills:" : null,
+    ...(recommendedSkills.length > 0 ? recommendedSkills.map((skill) => `  - ${skill}`) : []),
     "- Environment:",
     ...environmentLines,
     reminders.length > 0 ? "- Active reminders:" : null,

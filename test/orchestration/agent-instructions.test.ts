@@ -78,8 +78,99 @@ describe("agent instruction late-context injection", () => {
     )
   })
 
-  test("injects current agent instructions only into late-context and not the system prompt", async () => {
+  test("includes recommended skills in late-context only when provided", () => {
+    const message = buildLateContextMessage({
+      activeSkillNames: ["reviewer"],
+      recommendedSkills: ["planner", "researcher"],
+      environment: {
+        workingDirectory: "/workspace/project",
+        platform: "linux",
+        date: "2026-04-18",
+      },
+    })
+
+    expect(message).toBe(
+      [
+        "<system-reminder>",
+        "- Active skills: reviewer",
+        "- Recommended skills:",
+        "  - planner",
+        "  - researcher",
+        "- Environment:",
+        "- Working directory: /workspace/project",
+        "- Platform: linux",
+        "- Date: 2026-04-18",
+        "</system-reminder>",
+      ].join("\n"),
+    )
+  })
+
+  test("does not inject recommended skills when the current agent profile has none", async () => {
     const requests: ProviderTurnRequest[] = []
+    const model = createModelProvider({
+      runtime: createFakeProvider({
+        onRequest(request) {
+          requests.push(request)
+        },
+        events: [
+          {
+            type: "usage",
+            inputTokens: 64,
+            outputTokens: 0,
+            source: "estimated",
+          },
+        ],
+      }),
+    })
+    const session = createMemorySession({
+      currentAgent: "plan",
+      activeSkills: ["reviewer"],
+      userText: "Inspect README.md",
+    })
+    const stepService = createOrchestrationStepService({
+      session,
+      model,
+      agentProfiles: {
+        async getResolvedProfile() {
+          return {
+            instructions: "Plan mode active.",
+          }
+        },
+      },
+      contextWindow: {
+        getContextWindow() {
+          return 128_000
+        },
+      } satisfies OrchestrationContextWindowPort,
+      skill: createSkillPortStub(),
+      now: createMonotonicClock(),
+    })
+
+    const outcome = await stepService.executeStep({
+      sessionId: session.sessionId,
+      runId: session.runId,
+      tools: createToolPortStub(),
+      workspaceRoot: "/workspace/project",
+      systemPrompt: "static system prompt",
+      signal: new AbortController().signal,
+      emit() {},
+    })
+
+    expect(outcome).toEqual({ status: "complete" })
+    expect(requests).toHaveLength(1)
+
+    const request = requests[0]!
+    const joinedTexts = readMessageTexts(request).join("\n\n")
+
+    expect(request.system).not.toContain("- Recommended skills:")
+    expect(joinedTexts).not.toContain("- Recommended skills:")
+    expect(joinedTexts).toContain("- Agent instructions:")
+    expect(joinedTexts).toContain("Plan mode active.")
+  })
+
+  test("injects current agent instructions and recommended skills only into late-context", async () => {
+    const requests: ProviderTurnRequest[] = []
+    const loadedSkillNames: string[] = []
     const model = createModelProvider({
       runtime: createFakeProvider({
         onRequest(request) {
@@ -109,6 +200,7 @@ describe("agent instruction late-context injection", () => {
           expect(input.name).toBe("plan")
           return {
             instructions: "Plan mode active.",
+            skills: ["planner", "researcher"],
           }
         },
       },
@@ -117,7 +209,7 @@ describe("agent instruction late-context injection", () => {
           return 128_000
         },
       } satisfies OrchestrationContextWindowPort,
-      skill: createSkillPortStub(),
+      skill: createSkillPortStub(loadedSkillNames),
       now: createMonotonicClock(),
     })
 
@@ -141,14 +233,23 @@ describe("agent instruction late-context injection", () => {
 
     expect(request.system).toBe(["static system prompt", SYSTEM_REMINDER_NOTICE].join("\n\n"))
     expect(request.system).not.toContain("Plan mode active.")
+    expect(request.system).not.toContain("planner")
     expect(lateContextText).toContain("<system-reminder>")
     expect(lateContextText).toContain("- Agent instructions:")
     expect(lateContextText).toContain("Plan mode active.")
+    expect(lateContextText).toContain("- Recommended skills:")
+    expect(lateContextText).toContain("  - planner")
+    expect(lateContextText).toContain("  - researcher")
     expect(lateContextText).toContain("- Active reminders:")
     expect(nonLateContextTexts.join("\n\n")).toContain("Skill catalog:")
     expect(nonLateContextTexts.join("\n\n")).toContain("Active skill instructions:")
     expect(nonLateContextTexts.join("\n\n")).not.toContain("Plan mode active.")
+    expect(nonLateContextTexts.join("\n\n")).not.toContain("- Recommended skills:")
+    expect(nonLateContextTexts.join("\n\n")).not.toContain("planner")
     expect(messageTexts.join("\n\n").match(/Plan mode active\./g)?.length ?? 0).toBe(1)
+    expect(messageTexts.join("\n\n").match(/planner/g)?.length ?? 0).toBe(1)
+    expect(session.getSession(session.sessionId).activeSkills).toEqual(["reviewer"])
+    expect(loadedSkillNames).toEqual(["reviewer"])
   })
 })
 
@@ -301,7 +402,7 @@ function createMemorySession(input: {
   return session
 }
 
-function createSkillPortStub(): OrchestrationSkillPort {
+function createSkillPortStub(loadedSkillNames: string[] = []): OrchestrationSkillPort {
   return {
     async listCatalog() {
       return [
@@ -312,11 +413,12 @@ function createSkillPortStub(): OrchestrationSkillPort {
         },
       ]
     },
-    async loadSkill() {
+    async loadSkill(input) {
+      loadedSkillNames.push(input.name)
       return {
-        name: "reviewer",
+        name: input.name,
         instructions: "Focus on bugs first.",
-        path: ".agents/skills/reviewer/SKILL.md",
+        path: `.agents/skills/${input.name}/SKILL.md`,
       }
     },
   }

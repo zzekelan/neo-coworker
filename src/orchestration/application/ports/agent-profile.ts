@@ -1,5 +1,6 @@
 export type OrchestrationAgentProfile = {
   instructions?: string
+  skills?: string[]
 }
 
 export type OrchestrationAgentToolAccess = {

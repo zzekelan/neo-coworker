@@ -69,12 +69,18 @@ type PendingToolCall = ToolCallEvent & {
   args: unknown
 }
 
+type AgentLateContext = {
+  instructions?: string
+  recommendedSkills?: string[]
+}
+
 const MODEL_REQUEST_MAX_ATTEMPTS = 3
 
 function buildTurnLateContextMessage(input: {
   workspaceRoot: string
   activeSkillNames: readonly string[]
   agentInstructions?: string
+  recommendedSkills?: string[]
   systemReminders: readonly string[]
   now: () => number
 }) {
@@ -87,6 +93,7 @@ function buildTurnLateContextMessage(input: {
       shell: process.env.SHELL,
       date: new Date(input.now()).toISOString().slice(0, 10),
     },
+    recommendedSkills: input.recommendedSkills,
     systemReminders: input.systemReminders,
   })
 }
@@ -130,12 +137,12 @@ function resolveCurrentAgentName(input: {
   return input.session.getSession(input.sessionId).currentAgent?.trim() || undefined
 }
 
-async function resolveAgentInstructions(input: {
+async function resolveAgentLateContext(input: {
   session: OrchestrationSessionPort
   agentProfiles?: OrchestrationAgentProfilePort
   sessionId: string
   workspaceRoot: string
-}) {
+}): Promise<AgentLateContext | undefined> {
   const currentAgent = resolveCurrentAgentName({
     session: input.session,
     sessionId: input.sessionId,
@@ -149,7 +156,26 @@ async function resolveAgentInstructions(input: {
     name: currentAgent,
   })
   const instructions = profile?.instructions?.trim()
-  return instructions && instructions.length > 0 ? instructions : undefined
+  const recommendedSkills =
+    readAgentProfileSkills(profile)
+      ?.map((skill) => skill.trim())
+      .filter((skill) => skill.length > 0)
+    ?? []
+
+  return {
+    instructions: instructions && instructions.length > 0 ? instructions : undefined,
+    recommendedSkills: recommendedSkills.length > 0 ? recommendedSkills : undefined,
+  }
+}
+
+function readAgentProfileSkills(profile: Awaited<ReturnType<OrchestrationAgentProfilePort["getResolvedProfile"]>>) {
+  if (!profile || !("skills" in profile)) {
+    return undefined
+  }
+
+  return Array.isArray(profile.skills)
+    ? profile.skills.filter((skill): skill is string => typeof skill === "string")
+    : undefined
 }
 
 async function readNextModelEvent<T>(input: {
@@ -431,7 +457,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         session: input.session,
         sessionId: stepInput.sessionId,
       })
-      const agentInstructions = await resolveAgentInstructions({
+      const agentLateContext: AgentLateContext | undefined = await resolveAgentLateContext({
         session: input.session,
         agentProfiles: input.agentProfiles,
         sessionId: stepInput.sessionId,
@@ -440,7 +466,8 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       const lateContextMessage = buildTurnLateContextMessage({
         workspaceRoot: stepInput.workspaceRoot,
         activeSkillNames: activeSkills.map((skill) => skill.name),
-        agentInstructions,
+        agentInstructions: agentLateContext?.instructions,
+        recommendedSkills: agentLateContext?.recommendedSkills,
         systemReminders,
         now,
       })

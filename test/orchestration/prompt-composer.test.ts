@@ -179,6 +179,56 @@ describe("orchestration prompt composer", () => {
     )
   })
 
+  test("buildLateContextMessage includes recommended skills when provided", () => {
+    const message = buildLateContextMessage({
+      activeSkillNames: ["reviewer"],
+      recommendedSkills: [" planner ", "researcher"],
+      environment: {
+        workingDirectory: "/workspace/project",
+        platform: "linux",
+        date: "2026-04-18",
+      },
+    })
+
+    expect(message).toBe(
+      [
+        "<system-reminder>",
+        "- Active skills: reviewer",
+        "- Recommended skills:",
+        "  - planner",
+        "  - researcher",
+        "- Environment:",
+        "- Working directory: /workspace/project",
+        "- Platform: linux",
+        "- Date: 2026-04-18",
+        "</system-reminder>",
+      ].join("\n"),
+    )
+  })
+
+  test("buildLateContextMessage omits recommended skills when absent or empty", () => {
+    const absentMessage = buildLateContextMessage({
+      activeSkillNames: ["reviewer"],
+      environment: {
+        workingDirectory: "/workspace/project",
+        platform: "linux",
+        date: "2026-04-18",
+      },
+    })
+    const emptyMessage = buildLateContextMessage({
+      activeSkillNames: ["reviewer"],
+      recommendedSkills: [" ", ""],
+      environment: {
+        workingDirectory: "/workspace/project",
+        platform: "linux",
+        date: "2026-04-18",
+      },
+    })
+
+    expect(absentMessage).not.toContain("- Recommended skills:")
+    expect(emptyMessage).not.toContain("- Recommended skills:")
+  })
+
   describe("per-tool guidance injection", () => {
     const readOnlyGuidance: ToolGuidanceEntry = {
       name: "read",
@@ -437,6 +487,7 @@ const allowAllPermissionPolicy: OrchestrationPermissionPolicy = {
   webfetch: "allow",
   websearch: "allow",
   codesearch: "allow",
+  plan_exit: "allow",
 }
 
 function createSessionPortStub(): OrchestrationSessionPort {
