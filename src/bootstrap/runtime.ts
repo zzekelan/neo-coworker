@@ -451,18 +451,22 @@ function createSessionPort(input: {
       })
     },
     createAssistantMessage(message) {
+      const session = input.repository.sessions.get(message.sessionId)
       return input.repository.messages.create({
         sessionId: message.sessionId,
         runId: message.runId,
+        agent: session.currentAgent,
         role: "assistant",
         sequence: message.sequence,
         createdAt: message.createdAt,
       })
     },
     createSyntheticMessage(message) {
+      const session = input.repository.sessions.get(message.sessionId)
       return input.repository.messages.create({
         sessionId: message.sessionId,
         runId: message.runId,
+        agent: session.currentAgent,
         role: "synthetic",
         sequence: message.sequence,
         createdAt: message.createdAt,

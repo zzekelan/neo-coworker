@@ -66,6 +66,7 @@ export type TranscriptRow = {
   message_id: string
   message_session_id: string
   message_run_id: string
+  message_agent: string | null
   message_role: MessageRole
   message_sequence: number
   message_created_at: number

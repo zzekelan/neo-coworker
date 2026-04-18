@@ -364,6 +364,46 @@ describe("session run service", () => {
     })
     expect(repository.sessions.getCurrentAgent(session.id)).toBe("plan")
     expect(service.getSessionCurrentAgent(session.id)).toBe("plan")
+    expect(repository.messages.get("message_1").agent).toBe("plan")
+  })
+
+  test("retains different message agents across turns when the session agent changes", () => {
+    const { repository, service } = createTestSubject("turn-level-agent-persistence", [11, 22])
+    const session = repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    const first = service.startRun({
+      sessionId: session.id,
+      runId: "run_1",
+      messageId: "message_1",
+      createdAt: 2,
+      messageCreatedAt: 3,
+    })
+
+    service.transitionRunToRunning(first.run.id)
+    service.completeRun(first.run.id)
+
+    const second = service.startRun({
+      sessionId: session.id,
+      runId: "run_2",
+      messageId: "message_2",
+      createdAt: 4,
+      messageCreatedAt: 5,
+      agent: "plan",
+    })
+
+    expect(first.message.agent).toBe("default")
+    expect(second.message.agent).toBe("plan")
+    expect(repository.messages.get(first.message.id).agent).toBe("default")
+    expect(repository.messages.get(second.message.id).agent).toBe("plan")
+    expect(repository.messages.listSessionTranscript(session.id).map((message) => message.agent)).toEqual([
+      "default",
+      "plan",
+    ])
   })
 
   test("only allows run active skill updates while the run is active", () => {

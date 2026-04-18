@@ -903,6 +903,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         id: buildId("message", message.id),
         sessionId: message.sessionId,
         runId: message.runId,
+        agent: message.agent,
         role: message.role,
         sequence: message.sequence,
         createdAt: message.createdAt ?? now(),
@@ -910,12 +911,13 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
 
       database
         .query(
-          "INSERT INTO message (id, session_id, run_id, role, sequence, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT INTO message (id, session_id, run_id, agent, role, sequence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           record.id,
           record.sessionId,
           record.runId,
+          record.agent ?? null,
           record.role,
           record.sequence,
           record.createdAt,
@@ -936,6 +938,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
               message.id AS message_id,
               message.session_id AS message_session_id,
               message.run_id AS message_run_id,
+              message.agent AS message_agent,
               message.role AS message_role,
               message.sequence AS message_sequence,
               message.created_at AS message_created_at,
@@ -974,6 +977,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             id: row.message_id,
             sessionId: row.message_session_id,
             runId: row.message_run_id,
+            agent: row.message_agent ?? undefined,
             role: row.message_role,
             sequence: row.message_sequence,
             createdAt: row.message_created_at,
@@ -1096,6 +1100,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         id: value.message.id,
         sessionId: run.sessionId,
         runId: run.id,
+        agent: value.message.agent,
         role: "user",
         sequence: value.message.sequence ?? 0,
         createdAt: value.message.createdAt,

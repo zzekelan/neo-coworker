@@ -182,6 +182,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
           },
           message: {
             id: run.messageId,
+            agent: session.currentAgent,
             sequence: 0,
             createdAt: run.messageCreatedAt,
           },
@@ -204,6 +205,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
         },
         message: {
           id: run.messageId,
+          agent: session.currentAgent,
           sequence: 0,
           createdAt: run.messageCreatedAt,
         },

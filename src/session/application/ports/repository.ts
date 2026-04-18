@@ -146,6 +146,7 @@ export type CreateMessageInput = {
   id?: string
   sessionId: string
   runId: string
+  agent?: string
   role: MessageRole
   sequence: number
   createdAt?: number
@@ -173,6 +174,7 @@ export type CreateQueuedRunWithInitiatingMessageInput = {
   run: Omit<CreateRunInput, "status">
   message: {
     id?: string
+    agent?: string
     sequence?: number
     createdAt?: number
   }
@@ -199,6 +201,7 @@ export type CreateSubSessionWithRunInput = {
   run: Omit<CreateRunInput, "sessionId">
   message: {
     id?: string
+    agent?: string
     sequence?: number
     createdAt?: number
   }

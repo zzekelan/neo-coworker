@@ -32,7 +32,7 @@ describe("storage repository", () => {
     expect(CURRENT_SESSION_SCHEMA_VERSION).toBe(11)
   })
 
-  test("creates fresh databases with default top-level current agent and persists agent updates", () => {
+  test("creates fresh databases with default top-level current agent and persists message agents", () => {
     const databasePath = createDatabasePath("schema-v11-fresh")
     const database = openStorageDatabase(databasePath)
     trackDatabase(database)
@@ -58,6 +58,7 @@ describe("storage repository", () => {
       id: "message_1",
       sessionId: session.id,
       runId: run.id,
+      agent: session.currentAgent,
       role: "user",
       sequence: 0,
       createdAt: 3,
@@ -71,18 +72,31 @@ describe("storage repository", () => {
       .get(message.id) as { agent: string | null }
 
     expect(rawSession.current_agent).toBe("default")
-    expect(rawMessage.agent).toBeNull()
+    expect(rawMessage.agent).toBe("default")
     expect(repository.sessions.get(session.id).currentAgent).toBe("default")
     expect(repository.sessions.getCurrentAgent(session.id)).toBe("default")
-    expect(repository.messages.get(message.id).agent).toBeUndefined()
+    expect(repository.messages.get(message.id).agent).toBe("default")
 
     repository.sessions.setCurrentAgent(session.id, "plan")
-    database.query("UPDATE message SET agent = ? WHERE id = ?").run("plan", message.id)
+    const secondMessage = repository.messages.create({
+      id: "message_2",
+      sessionId: session.id,
+      runId: run.id,
+      agent: repository.sessions.getCurrentAgent(session.id),
+      role: "assistant",
+      sequence: 1,
+      createdAt: 4,
+    })
 
     expect(rawSessionValue(database, session.id)).toBe("plan")
     expect(repository.sessions.get(session.id).currentAgent).toBe("plan")
     expect(repository.sessions.getCurrentAgent(session.id)).toBe("plan")
-    expect(repository.messages.get(message.id).agent).toBe("plan")
+    expect(repository.messages.get(message.id).agent).toBe("default")
+    expect(repository.messages.get(secondMessage.id).agent).toBe("plan")
+    expect(repository.messages.listSessionTranscript(session.id)).toEqual([
+      expect.objectContaining({ id: message.id, agent: "default" }),
+      expect.objectContaining({ id: secondMessage.id, agent: "plan" }),
+    ])
   })
 
   test("migrates existing v10 databases to v11 without data loss", () => {
@@ -149,6 +163,41 @@ describe("storage repository", () => {
       runId: "run_1",
       role: "user",
     })
+  })
+
+  test("surfaces undefined transcript agents for legacy null message rows", () => {
+    const { database, repository } = createTestRepository("legacy-null-message-agent")
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "completed",
+      createdAt: 2,
+    })
+
+    database
+      .query(
+        "INSERT INTO message (id, session_id, run_id, agent, role, sequence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("message_legacy", "session_1", "run_1", null, "user", 0, 3)
+
+    expect(repository.messages.get("message_legacy")).toMatchObject({
+      id: "message_legacy",
+      agent: undefined,
+    })
+    expect(repository.messages.listSessionTranscript("session_1")).toEqual([
+      expect.objectContaining({
+        id: "message_legacy",
+        agent: undefined,
+      }),
+    ])
   })
 
   test("restores persisted current agent from reopened storage", () => {
@@ -786,6 +835,7 @@ describe("storage repository", () => {
       id: "message_2",
       sessionId: "session_1",
       runId: "run_1",
+      agent: "plan",
       role: "assistant",
       sequence: 1,
       createdAt: 13,
@@ -794,6 +844,7 @@ describe("storage repository", () => {
       id: "message_0",
       sessionId: "session_1",
       runId: "run_1",
+      agent: "default",
       role: "user",
       sequence: 0,
       createdAt: 12,
@@ -802,6 +853,7 @@ describe("storage repository", () => {
       id: "message_3",
       sessionId: "session_1",
       runId: "run_2",
+      agent: "review",
       role: "user",
       sequence: 0,
       createdAt: 21,
@@ -841,6 +893,7 @@ describe("storage repository", () => {
     const transcript = repository.messages.listSessionTranscript("session_1")
 
     expect(transcript.map((message) => message.id)).toEqual(["message_0", "message_2", "message_3"])
+    expect(transcript.map((message) => message.agent)).toEqual(["default", "plan", "review"])
     expect(transcript[1]?.parts.map((part) => part.id)).toEqual(["part_0", "part_1", "part_2"])
   })
 
@@ -1300,6 +1353,7 @@ describe("storage repository", () => {
       workspaceRoot: "/workspace",
       createdAt: 1,
     })
+    repository.sessions.setCurrentAgent("session_1", "plan")
     repository.runs.create({
       id: "run_1",
       sessionId: "session_1",
@@ -1309,13 +1363,14 @@ describe("storage repository", () => {
     })
 
     const { message, part } = repository.createAssistantMessageWithFirstPart({
-      message: {
-        id: "message_1",
-        sessionId: "session_1",
-        runId: "run_1",
-        sequence: 0,
-        createdAt: 3,
-      },
+        message: {
+          id: "message_1",
+          sessionId: "session_1",
+          runId: "run_1",
+          agent: "plan",
+          sequence: 0,
+          createdAt: 3,
+        },
       part: {
         id: "part_1",
         kind: "text",
@@ -1333,6 +1388,7 @@ describe("storage repository", () => {
     const transcript = repository.messages.listSessionTranscript("session_1")
 
     expect(message.role).toBe("assistant")
+    expect(message.agent).toBe("plan")
     expect(updatedPart).toMatchObject({
       id: "part_1",
       text: "Hello",
