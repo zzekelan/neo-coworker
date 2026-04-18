@@ -93,6 +93,10 @@ const workspaceRootQuerySchema = z.object({
   workspaceRoot: z.string().trim().min(1),
 })
 
+const primaryAgentsQuerySchema = z.object({
+  workspaceRoot: z.string().trim().min(1).optional(),
+})
+
 const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 5_000
 
 type SessionSummary = {
@@ -111,7 +115,7 @@ export function createAgentServer(input: {
   permissionRepository: PermissionRepository
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
   listSkillCatalogImpl?: Parameters<typeof createServerApp>[0]["listSkillCatalogImpl"]
-  listPrimaryAgentsImpl?: () => Promise<Array<{ name: string; description: string }>>
+  listPrimaryAgentsImpl?: (workspaceRoot?: string) => Promise<Array<{ name: string; description: string }>>
   deleteSessionImpl?: (sessionId: string) => void
   now?: () => number
   heartbeatIntervalMs?: number
@@ -243,7 +247,8 @@ export function createAgentServer(input: {
       }
 
       if (request.method === "GET" && path === "agents/primary") {
-        const agents = await (input.listPrimaryAgentsImpl?.() ?? Promise.resolve([]))
+        const query = primaryAgentsQuerySchema.parse(readQuery(url))
+        const agents = await (input.listPrimaryAgentsImpl?.(query.workspaceRoot) ?? Promise.resolve([]))
         return jsonResponse(200, {
           data: {
             agents,

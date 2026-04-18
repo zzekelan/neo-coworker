@@ -23,7 +23,7 @@ export async function startStandaloneServer(input: {
     permissionRepository: composition.permissionRepository,
     exportRunTraceImpl: composition.exportRunTrace,
     listSkillCatalogImpl: composition.listSkillCatalog,
-    listPrimaryAgentsImpl: async () => composition.listPrimaryAgents(),
+    listPrimaryAgentsImpl: (workspaceRoot) => composition.listPrimaryAgents(workspaceRoot),
     deleteSessionImpl: composition.deleteSession,
   })
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createServer as createNetServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,6 +7,7 @@ import { resolveAgentServerOrigin } from "../../src/bootstrap"
 import {
   getDefaultStandaloneServerStoragePath,
   resolveStandaloneServerConfig,
+  startStandaloneServer,
 } from "../../src/app-server"
 import {
   CURRENT_SESSION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
@@ -119,6 +120,71 @@ describe("agent server origin", () => {
 })
 
 describe("server main entrypoint", () => {
+  test("serves merged workspace primary agents through /agents/primary", async () => {
+    try {
+      const directory = await mkdtemp(join(tmpdir(), "server-main-primary-agents-"))
+      tempDirectories.push(directory)
+
+      const workspaceRoot = join(directory, "workspace")
+      await mkdir(join(workspaceRoot, ".ncoworker", "agents"), { recursive: true })
+      await writeFile(
+        join(workspaceRoot, ".ncoworker", "agents.yaml"),
+        ["agents:", "  reviewer:", "    isPrimary: true", "    description: YAML primary agent"].join(
+          "\n",
+        ),
+      )
+      await writeFile(
+        join(workspaceRoot, ".ncoworker", "agents", "reviewer.md"),
+        [
+          "---",
+          "name: reviewer",
+          "description: Markdown primary agent",
+          "---",
+          "# Reviewer",
+        ].join("\n"),
+      )
+
+      const standaloneServer = await startStandaloneServer({
+        cwd: directory,
+        env: buildLoopbackEnv({
+          AGENT_SERVER_DB_PATH: join(directory, "server.sqlite"),
+          AGENT_SERVER_HOST: "127.0.0.1",
+          AGENT_SERVER_PORT: String(await allocateLoopbackPort()),
+          LLM_PROVIDER: "openai-compatible",
+          LLM_API_KEY: "test-key",
+          LLM_MODEL: "fake-model",
+          LLM_BASE_URL: "https://example.invalid/v1",
+        }),
+      })
+
+      try {
+        const response = await fetch(
+          `${standaloneServer.server.baseUrl}/agents/primary?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
+        )
+
+        expect(response.status).toBe(200)
+
+        const body = (await response.json()) as {
+          data: {
+            agents: Array<{ name: string; description: string }>
+          }
+        }
+
+        expect(body.data.agents).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: "default" }),
+            expect.objectContaining({ name: "plan" }),
+            { name: "reviewer", description: "Markdown primary agent" },
+          ]),
+        )
+      } finally {
+        await standaloneServer.stop()
+      }
+    } finally {
+      await cleanupState()
+    }
+  })
+
   test("starts through the public entrypoint and serves /health on loopback", async () => {
     try {
       const directory = await mkdtemp(join(tmpdir(), "server-main-success-"))
