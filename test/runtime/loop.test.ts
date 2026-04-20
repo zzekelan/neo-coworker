@@ -1374,6 +1374,143 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
   })
 
+  test("records approved sibling tool results before cancelling a multi-pending batch", async () => {
+    const harness = await createHarness("permission-partial-denied-batch", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_permission_partial_denied_batch",
+      messageId: "message_permission_partial_denied_batch_user",
+      prompt: "Fetch two notes and deny the first request after approving the second",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const firstUrl = "data:text/plain,Hello%20from%20the%20denied%20fetch."
+    const secondUrl = "data:text/plain,Hello%20from%20the%20approved%20fetch."
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_webfetch_denied",
+            name: "webfetch",
+            inputText: `{"url":"${firstUrl}"}`,
+          }
+          yield {
+            type: "tool.call",
+            callId: "call_webfetch_approved",
+            name: "webfetch",
+            inputText: `{"url":"${secondUrl}"}`,
+          }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+      permissionPolicy: {
+        webfetch: "ask",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = []
+    let firstPermissionRequestId: string | null = null
+    let secondPermissionRequestId: string | null = null
+    let approvedSecondRequest = false
+    let deniedFirstRequest = false
+
+    for await (const event of handle.events) {
+      events.push(event)
+
+      if (event.type !== "permission.requested") {
+        continue
+      }
+
+      if (event.reason === `webfetch ${firstUrl}`) {
+        firstPermissionRequestId = event.requestId
+      }
+
+      if (event.reason === `webfetch ${secondUrl}`) {
+        secondPermissionRequestId = event.requestId
+      }
+
+      if (!approvedSecondRequest && secondPermissionRequestId) {
+        approvedSecondRequest = true
+        await handle.respondPermission({
+          requestId: secondPermissionRequestId,
+          decision: "allow",
+        })
+      }
+
+      if (approvedSecondRequest && !deniedFirstRequest && firstPermissionRequestId) {
+        deniedFirstRequest = true
+        await handle.respondPermission({
+          requestId: firstPermissionRequestId,
+          decision: "deny",
+        })
+      }
+    }
+
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const completedEventIndex = events.findIndex((event) => event.type === "tool.call.completed")
+    const cancelledEventIndex = events.findIndex((event) => event.type === "run.cancelled")
+
+    expect(requests).toHaveLength(1)
+    expect(firstPermissionRequestId).not.toBeNull()
+    expect(secondPermissionRequestId).not.toBeNull()
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+      "tool_call",
+      "error",
+      "tool_result",
+    ])
+    expect(activeRunMessages[1]?.parts[2]).toMatchObject({
+      kind: "error",
+      text: "Tool webfetch failed: Permission denied",
+      data: {
+        source: "tool",
+        callId: "call_webfetch_denied",
+        toolName: "webfetch",
+      },
+    })
+    expect(activeRunMessages[1]?.parts[3]).toMatchObject({
+      kind: "tool_result",
+      text: "Hello from the approved fetch.",
+      data: {
+        callId: "call_webfetch_approved",
+        toolName: "webfetch",
+        output: "Hello from the approved fetch.",
+      },
+    })
+    expect(harness.permissionRepository.requests.listByRun(started.run.id)).toMatchObject([
+      {
+        id: firstPermissionRequestId,
+        status: "denied",
+      },
+      {
+        id: secondPermissionRequestId,
+        status: "approved",
+      },
+    ])
+    expect(events.filter((event) => event.type === "permission.requested")).toHaveLength(2)
+    expect(events.filter((event) => event.type === "tool.call.completed")).toEqual([
+      expect.objectContaining({
+        type: "tool.call.completed",
+        callId: "call_webfetch_approved",
+        name: "webfetch",
+        output: "Hello from the approved fetch.",
+      }),
+    ])
+    expect(completedEventIndex).toBeGreaterThan(-1)
+    expect(cancelledEventIndex).toBeGreaterThan(completedEventIndex)
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
+  })
+
   test("retries transient provider failures before completing the run", async () => {
     const harness = await createHarness("provider-retry", false)
     const started = startPromptRun({

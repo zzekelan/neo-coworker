@@ -873,6 +873,88 @@ describe("runtime permission flow", () => {
     ).toThrow(/not pending|cancelled/i)
   })
 
+  test("cancelling a run with multiple pending permission requests finalizes every pending request", async () => {
+    const harness = await createHarness("permission-cancel-multi", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_permission_cancel_multi",
+      messageId: "message_permission_cancel_multi_user",
+      prompt: "Try two web fetches and then cancel",
+    })
+    const firstUrl = "data:text/plain,Hello%20from%20the%20first%20cancelled%20fetch."
+    const secondUrl = "data:text/plain,Hello%20from%20the%20second%20cancelled%20fetch."
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider([], [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_webfetch_cancel_1",
+            name: "webfetch",
+            inputText: `{"url":"${firstUrl}"}`,
+          }
+          yield {
+            type: "tool.call",
+            callId: "call_webfetch_cancel_2",
+            name: "webfetch",
+            inputText: `{"url":"${secondUrl}"}`,
+          }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        webfetch: "ask",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const firstPermissionEvent = await waitForPermissionRequestWithin(iterator, 250)
+    const secondPermissionEvent = await waitForPermissionRequestWithin(iterator, 250)
+
+    runtime.cancelRun(started.run.id)
+
+    const remainingEvents = await collectEvents(iterator)
+
+    expect(remainingEvents.at(-1)).toMatchObject({
+      type: "run.cancelled",
+      runId: started.run.id,
+    })
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      id: started.run.id,
+      status: "cancelled",
+      finishedAt: expect.any(Number),
+    })
+    expect(harness.permissionRepository.requests.listByRun(started.run.id)).toMatchObject([
+      {
+        id: firstPermissionEvent.requestId,
+        status: "cancelled",
+        resolvedAt: expect.any(Number),
+      },
+      {
+        id: secondPermissionEvent.requestId,
+        status: "cancelled",
+        resolvedAt: expect.any(Number),
+      },
+    ])
+    expect(() =>
+      runtime.respondPermission({
+        requestId: firstPermissionEvent.requestId,
+        decision: "allow",
+      }),
+    ).toThrow(/not pending|cancelled/i)
+    expect(() =>
+      runtime.respondPermission({
+        requestId: secondPermissionEvent.requestId,
+        decision: "allow",
+      }),
+    ).toThrow(/not pending|cancelled/i)
+  })
+
   test("permission request ids stay unique across approval-gated runs", async () => {
     const harness = await createHarness("permission-unique", false)
     const runtime = createPermissionRuntime({

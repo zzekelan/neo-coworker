@@ -706,6 +706,7 @@ async function executePendingToolCalls(input: {
     deniedResultsByIndex,
     executedResults,
   })
+  let shouldCancel = false
 
   for (const result of results) {
     if (input.signal.aborted) {
@@ -727,7 +728,7 @@ async function executePendingToolCalls(input: {
       })
 
       if (readMetadataBoolean(result.metadata, TOOL_PERMISSION_DENIED_METADATA_KEY)) {
-        return "cancel"
+        shouldCancel = true
       }
 
       continue
@@ -761,7 +762,7 @@ async function executePendingToolCalls(input: {
     }
   }
 
-  return "continue"
+  return shouldCancel ? "cancel" : "continue"
 }
 
 function collectPendingToolCalls(input: {

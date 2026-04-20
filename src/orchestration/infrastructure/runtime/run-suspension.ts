@@ -6,6 +6,7 @@ import type {
 import type { OrchestrationPermissionPolicy } from "../../application/permission"
 
 export type OrchestrationRunSuspension = {
+  getPendingRequestIds(): string[]
   isPending(requestId: string): boolean
   requestPermission(input: {
     toolName: string
@@ -62,6 +63,9 @@ export function createRunSuspension(input: CreateRunSuspensionInput): Orchestrat
   })
 
   return {
+    getPendingRequestIds() {
+      return [...pendingPermissionIds]
+    },
     isPending(requestId: string) {
       return pendingPermissionIds.has(requestId)
     },

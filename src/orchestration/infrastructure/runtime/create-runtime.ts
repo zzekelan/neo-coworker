@@ -100,6 +100,14 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     }
   }
 
+  function cancelOutstandingPendingRequests(runId: string, suspend?: { getPendingRequestIds(): string[] }) {
+    if (suspend && suspend.getPendingRequestIds().length === 0) {
+      return []
+    }
+
+    return input.permission.cancelPendingRequestsByRun(runId, now())
+  }
+
   async function createActiveRunExecution(inputValue: {
     sessionId: string
     runId: string
@@ -180,6 +188,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       tools,
       afterInitialize: resolvedPromptBuild.afterInitialize,
       cleanup() {
+        cancelOutstandingPendingRequests(inputValue.runId, suspend)
         suspend.cancel()
         activeRuns.delete(activeRunKey)
         queue.close()
@@ -219,7 +228,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       return false
     }
 
-    input.permission.cancelPendingRequestsByRun(runId, now())
+    cancelOutstandingPendingRequests(runId, activeRun?.suspend)
 
     if (!activeRun) {
       return stepService.cancelRun({ runId })
