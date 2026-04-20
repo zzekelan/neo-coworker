@@ -106,4 +106,14 @@ describe("desktop chat area", () => {
     expect(source).toContain("text.chat.contextUsed(percent)")
     expect(source).toContain("style={{ width: `${percent}%` }}")
   })
+
+  test("renders each pending permission request as its own card and only auto-focuses the first", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("permissionRequests.map((request, index) => (")
+    expect(source).toContain("key={request.id}")
+    expect(source).toContain("request={request}")
+    expect(source).toContain("autoFocus={index === 0}")
+    expect(source).toContain("onReply={handlePermissionReply}")
+  })
 })

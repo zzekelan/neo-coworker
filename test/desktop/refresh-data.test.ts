@@ -155,7 +155,6 @@ describe("desktop refresh data", () => {
       },
       knownWorkspaces: new Map(),
       requestedWorkspaceRoot: "/workspace/alpha",
-      defaultWorkspaceRoot: null,
       preferredSessionId: "session-1",
     })
 
@@ -202,5 +201,130 @@ describe("desktop refresh data", () => {
 
     expect(refreshData.snapshot).not.toBeNull()
     expect(refreshData.snapshot!.contextUsage).toBeNull()
+  })
+
+  test("returns only pending permission requests for the active run, sorted by createdAt then id", async () => {
+    const activeRun = {
+      id: "run-1",
+      sessionId: "session-1",
+      trigger: "prompt" as const,
+      status: "waiting_permission" as const,
+      createdAt: 5,
+      startedAt: 5,
+      finishedAt: null,
+      errorText: null,
+      activeSkills: [],
+      parentRunId: null,
+    }
+    const sessionSummary = {
+      id: "session-1",
+      directory: "/workspace/alpha",
+      workspaceRoot: "/workspace/alpha",
+      createdAt: 1,
+      title: "Alpha session",
+      updatedAt: 2,
+      latestUserMessagePreview: "hello",
+      activeSkills: [],
+      latestRunStatus: "waiting_permission" as const,
+    }
+
+    const refreshData = await loadDesktopRefreshCore({
+      loaders: {
+        async loadWorkspaces() {
+          return {
+            workspaces: [
+              {
+                workspaceRoot: "/workspace/alpha",
+                name: "alpha",
+                latestActivityAt: 10,
+                sessionCount: 1,
+                hasBusySession: true,
+                sessions: [],
+              },
+            ],
+          }
+        },
+        async loadWorkspaceSessions() {
+          return { sessions: [sessionSummary] }
+        },
+        async loadWorkspaceSkills() {
+          return { skills: [] }
+        },
+        async loadSession() {
+          return {
+            session: sessionSummary,
+            latestRun: activeRun,
+            activeRun,
+            contextUsage: null,
+            status: "busy" as const,
+          }
+        },
+        async loadTranscript() {
+          return { transcript: [] }
+        },
+        async loadSessionRuns() {
+          return { runs: [activeRun] }
+        },
+        async loadRun() {
+          return {
+            run: activeRun,
+            permissionRequests: [
+              {
+                id: "perm-c",
+                runId: "run-1",
+                sessionId: "session-1",
+                toolName: "webfetch",
+                reason: "webfetch third",
+                status: "pending" as const,
+                createdAt: 100,
+                resolvedAt: null,
+              },
+              {
+                id: "perm-a",
+                runId: "run-1",
+                sessionId: "session-1",
+                toolName: "webfetch",
+                reason: "webfetch first",
+                status: "pending" as const,
+                createdAt: 100,
+                resolvedAt: null,
+              },
+              {
+                id: "perm-b",
+                runId: "run-1",
+                sessionId: "session-1",
+                toolName: "webfetch",
+                reason: "webfetch second",
+                status: "approved" as const,
+                createdAt: 90,
+                resolvedAt: 95,
+              },
+              {
+                id: "perm-d",
+                runId: "run-1",
+                sessionId: "session-1",
+                toolName: "write",
+                reason: "write later",
+                status: "pending" as const,
+                createdAt: 101,
+                resolvedAt: null,
+              },
+            ],
+          }
+        },
+      },
+      knownWorkspaces: new Map(),
+      requestedWorkspaceRoot: "/workspace/alpha",
+      preferredSessionId: "session-1",
+    })
+
+    expect(refreshData.permissionRequests.map((request) => request.id)).toEqual([
+      "perm-a",
+      "perm-c",
+      "perm-d",
+    ])
+    expect(
+      refreshData.permissionRequests.every((request) => request.status === "pending"),
+    ).toBe(true)
   })
 })

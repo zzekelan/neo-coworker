@@ -77,7 +77,14 @@ export async function loadDesktopRefreshCore(input: {
         const runState = await input.loaders.loadRun(snapshot.activeRun.id)
         permissionRequests = runState.permissionRequests
           .filter((request) => request.status === "pending")
-          .sort((left, right) => left.createdAt - right.createdAt)
+          .sort((left, right) => {
+            if (left.createdAt !== right.createdAt) {
+              return left.createdAt - right.createdAt
+            }
+            if (left.id < right.id) return -1
+            if (left.id > right.id) return 1
+            return 0
+          })
       }
     } catch (error) {
       sessionRestoreError = error

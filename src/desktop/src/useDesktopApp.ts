@@ -1066,7 +1066,14 @@ function upsertPermissionRequest(
   if (request.status === "pending") {
     pending.push(request)
   }
-  return pending.sort((left, right) => left.createdAt - right.createdAt)
+  return pending.sort((left, right) => {
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt - right.createdAt
+    }
+    if (left.id < right.id) return -1
+    if (left.id > right.id) return 1
+    return 0
+  })
 }
 
 function upsertSessionRun(runs: DesktopRun[], run: DesktopRun) {

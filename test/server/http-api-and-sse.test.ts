@@ -1163,7 +1163,7 @@ describe("server HTTP API and SSE", () => {
     ])
   })
 
-  test("permission reply recovers a detached pending request after server restart", async () => {
+  test("permission reply against a detached run fails after server restart (no detached recovery)", async () => {
     const harness = await createHarness("server-permission-restart-allow", createTurnProvider([
       async function* () {
         yield {
@@ -1220,98 +1220,7 @@ describe("server HTTP API and SSE", () => {
       },
     )
 
-    expect(response.status).toBe(200)
-    expect(response.body.data).toMatchObject({
-      run: {
-        id: runId,
-        status: "running",
-      },
-      permissionRequest: {
-        id: permissionId,
-        status: "approved",
-      },
-    })
-
-    const completedRun = await waitForRunStatus(harness.server, runId, "completed")
-    expect(completedRun.permissionRequests).toMatchObject([
-      {
-        id: permissionId,
-        status: "approved",
-      },
-    ])
-    expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe(
-      "hello after restart",
-    )
-  })
-
-  test("permission denial recovers a detached pending request after server restart", async () => {
-    const harness = await createHarness("server-permission-restart-deny", createTurnProvider([
-      async function* () {
-        yield {
-          type: "tool.call",
-          callId: "call_write",
-          name: "write",
-          inputText: '{"path":"notes.txt","content":"should not exist"}',
-        }
-      },
-    ]), {
-      permissionPolicy: {
-        write: "ask",
-      },
-    })
-
-    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
-      directory: harness.workspaceRoot,
-    })
-    const sessionId = createdSession.body.data.session.id as string
-
-    const startedRun = await requestJson(
-      harness.server,
-      "POST",
-      `/sessions/${sessionId}/runs`,
-      {
-        prompt: "Try to write notes.txt after restart",
-      },
-    )
-    const runId = startedRun.body.data.run.id as string
-
-    const waitingRun = await waitForRunStatus(harness.server, runId, "waiting_permission")
-    const permissionId = waitingRun.permissionRequests[0].id as string
-
-    await restartHarness(harness, createTurnProvider([]), {
-      permissionPolicy: {
-        write: "ask",
-      },
-    })
-
-    const response = await requestJson(
-      harness.server,
-      "POST",
-      `/permissions/${permissionId}/reply`,
-      {
-        decision: "deny",
-      },
-    )
-
-    expect(response.status).toBe(200)
-    expect(response.body.data).toMatchObject({
-      run: {
-        id: runId,
-        status: "running",
-      },
-      permissionRequest: {
-        id: permissionId,
-        status: "denied",
-      },
-    })
-
-    const cancelledRun = await waitForRunStatus(harness.server, runId, "cancelled")
-    expect(cancelledRun.permissionRequests).toMatchObject([
-      {
-        id: permissionId,
-        status: "denied",
-      },
-    ])
+    expect(response.status).not.toBe(200)
     await expect(readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).rejects.toThrow()
   })
 

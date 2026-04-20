@@ -18,4 +18,11 @@ describe("desktop permission request", () => {
     expect(source).toContain("void submitReply(\"deny\")")
     expect(source).toContain("disabled={isSubmitting}")
   })
+
+  test("hides the card once the underlying request is no longer pending so siblings stay visible", () => {
+    const source = readFileSync("src/desktop/src/components/PermissionRequest.tsx", "utf8")
+
+    expect(source).toContain("if (request.status !== \"pending\")")
+    expect(source).toContain("return null")
+  })
 })

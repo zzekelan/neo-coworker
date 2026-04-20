@@ -146,4 +146,17 @@ describe("desktop api client", () => {
       'workspaceRoot ? `/agents/primary?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : "/agents/primary"',
     )
   })
+
+  test("upserts per-request permission updates with deterministic ordering and sibling preservation", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    expect(source).toContain("function upsertPermissionRequest(")
+    expect(source).toContain("requests.filter((candidate) => candidate.id !== request.id)")
+    expect(source).toContain("if (request.status === \"pending\")")
+    expect(source).toContain("pending.push(request)")
+    expect(source).toContain("if (left.createdAt !== right.createdAt)")
+    expect(source).toContain("return left.createdAt - right.createdAt")
+    expect(source).toContain("if (left.id < right.id) return -1")
+    expect(source).toContain("if (left.id > right.id) return 1")
+  })
 })
