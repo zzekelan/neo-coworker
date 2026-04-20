@@ -6,6 +6,7 @@ import { join } from "node:path"
 import {
   assertRunStatusTransition,
   createSessionRunService,
+  resolvePermissionPendingRunStatus,
 } from "../../src/session"
 import {
   createSessionRepository,
@@ -14,7 +15,6 @@ import {
 } from "../../src/session"
 import {
   createPermissionRepository,
-  type PermissionRepository,
 } from "../../src/permission"
 import {
   PermissionRequestNotPendingError,
@@ -66,65 +66,175 @@ describe("permission service", () => {
     expect(harness.permissionRepository.requests.listByRun(harness.run.id)).toHaveLength(1)
   })
 
-  test("requestPermission restores the running state if request persistence fails", () => {
-    const harness = createHarness("request-rollback", [20, 30, 40])
-
-    harness.permissionRepository.requests.create({
-      id: "permission_duplicate",
-      sessionId: harness.session.id,
-      runId: harness.run.id,
-      toolName: "shell",
-      reason: "existing request",
-      createdAt: 10,
-    })
-
-    expect(() =>
-      harness.request.requestPermission({
-        runId: harness.run.id,
-        permissionRequest: {
-          id: "permission_duplicate",
-          toolName: "shell",
-          reason: "inspect worktree",
-          createdAt: 11,
-        },
-      }),
-    ).toThrow(/UNIQUE|constraint/i)
-
-    expect(harness.sessionRepository.runs.get(harness.run.id)).toMatchObject({
-      id: harness.run.id,
-      status: "running",
-    })
-    expect(harness.permissionRepository.requests.listByRun(harness.run.id)).toHaveLength(1)
-  })
-
-  test("respondPermission resolves the request and resumes the same run", () => {
-    const harness = createHarness("respond-resume", [20, 30, 40])
+  test("requestPermission allows two pending requests in the same run", () => {
+    const harness = createHarness("request-two-pending", [20, 30, 40])
 
     harness.request.requestPermission({
       runId: harness.run.id,
       permissionRequest: {
         id: "permission_1",
-        toolName: "write",
-        reason: "write notes.txt",
+        toolName: "shell",
+        reason: "inspect worktree",
         createdAt: 11,
       },
     })
 
-    const result = harness.respond.respondPermission({
-      requestId: "permission_1",
-      decision: "allow",
-      resolvedAt: 99,
+    const result = harness.request.requestPermission({
+      runId: harness.run.id,
+      permissionRequest: {
+        id: "permission_2",
+        toolName: "write",
+        reason: "write notes.txt",
+        createdAt: 12,
+      },
     })
 
     expect(result.run).toMatchObject({
       id: harness.run.id,
+      status: "waiting_permission",
+    })
+    expect(harness.permissionRepository.requests.listByRun(harness.run.id)).toMatchObject([
+      {
+        id: "permission_1",
+        status: "pending",
+        toolName: "shell",
+      },
+      {
+        id: "permission_2",
+        status: "pending",
+        toolName: "write",
+      },
+    ])
+  })
+
+  test("requestPermission keeps the run blocked if a new request fails while an older pending request exists", () => {
+    const harness = createHarness("request-rollback", [20, 30, 40])
+    const requestWithFailingCreate = createPermissionRequestService({
+      repository: {
+        ...harness.permissionRepository,
+        requests: {
+          ...harness.permissionRepository.requests,
+          create(request) {
+            if (request.id === "permission_2") {
+              throw new Error("simulated request persistence failure")
+            }
+
+            return harness.permissionRepository.requests.create(request)
+          },
+        },
+      },
+      session: createPermissionSessionPort({
+        repository: harness.sessionRepository,
+        permissionRepository: harness.permissionRepository,
+        sessionRuns: harness.sessionRuns,
+      }),
+    })
+
+    harness.request.requestPermission({
+      runId: harness.run.id,
+      permissionRequest: {
+        id: "permission_1",
+        toolName: "shell",
+        reason: "inspect worktree",
+        createdAt: 11,
+      },
+    })
+
+    expect(() =>
+      requestWithFailingCreate.requestPermission({
+        runId: harness.run.id,
+        permissionRequest: {
+          id: "permission_2",
+          toolName: "write",
+          reason: "write notes.txt",
+          createdAt: 12,
+        },
+      }),
+    ).toThrow("simulated request persistence failure")
+
+    expect(harness.sessionRepository.runs.get(harness.run.id)).toMatchObject({
+      id: harness.run.id,
+      status: "waiting_permission",
+    })
+    expect(harness.permissionRepository.requests.listByRun(harness.run.id)).toMatchObject([
+      {
+        id: "permission_1",
+        status: "pending",
+      },
+    ])
+  })
+
+  test("respondPermission keeps the run waiting until the last pending request resolves", () => {
+    const harness = createHarness("respond-multi-pending", [20, 30, 40])
+
+    harness.sessionRepository.runs.updateStatus({
+      runId: harness.run.id,
+      status: "waiting_permission",
+    })
+    harness.permissionRepository.requests.create({
+      id: "permission_1",
+      sessionId: harness.session.id,
+      runId: harness.run.id,
+      toolName: "write",
+      reason: "write notes.txt",
+      createdAt: 11,
+    })
+    harness.permissionRepository.requests.create({
+      id: "permission_2",
+      sessionId: harness.session.id,
+      runId: harness.run.id,
+      toolName: "shell",
+      reason: "inspect worktree",
+      createdAt: 12,
+    })
+
+    const firstReply = harness.respond.respondPermission({
+      requestId: "permission_2",
+      decision: "allow",
+      resolvedAt: 99,
+    })
+
+    expect(firstReply.run).toMatchObject({
+      id: harness.run.id,
+      status: "waiting_permission",
+      startedAt: 3,
+    })
+    expect(firstReply.permissionRequest).toMatchObject({
+      id: "permission_2",
+      status: "approved",
+      resolvedAt: 99,
+    })
+    expect(harness.permissionRepository.requests.listByRun(harness.run.id)).toMatchObject([
+      {
+        id: "permission_1",
+        status: "pending",
+      },
+      {
+        id: "permission_2",
+        status: "approved",
+        resolvedAt: 99,
+      },
+    ])
+    expect(harness.sessionRepository.runs.get(harness.run.id)).toMatchObject({
+      id: harness.run.id,
+      status: "waiting_permission",
+    })
+
+    const lastReply = harness.respond.respondPermission({
+      requestId: "permission_1",
+      decision: "allow",
+      resolvedAt: 100,
+    })
+
+    expect(lastReply.run).toMatchObject({
+      id: harness.run.id,
       status: "running",
       startedAt: 3,
     })
-    expect(result.permissionRequest).toMatchObject({
+    expect(lastReply.permissionRequest).toMatchObject({
       id: "permission_1",
       status: "approved",
-      resolvedAt: 99,
+      resolvedAt: 100,
     })
   })
 
@@ -213,7 +323,10 @@ describe("permission service", () => {
   })
 })
 
-function createHarness(prefix: string, nowValues: number[]) {
+function createHarness(
+  prefix: string,
+  nowValues: number[],
+) {
   const database = openSessionDatabase(createDatabasePath(prefix))
   trackDatabase(database)
 
@@ -245,13 +358,14 @@ function createHarness(prefix: string, nowValues: number[]) {
 
   const sessionPort = createPermissionSessionPort({
     repository: sessionRepository,
+    permissionRepository,
     sessionRuns,
   })
 
   return {
     sessionRepository,
     permissionRepository,
-    query: createPermissionQueryService({ repository: permissionRepository }),
+    query: createPermissionQueryService({ repository: permissionRepository, session: sessionPort }),
     request: createPermissionRequestService({
       repository: permissionRepository,
       session: sessionPort,
@@ -268,21 +382,30 @@ function createHarness(prefix: string, nowValues: number[]) {
 
 function createPermissionSessionPort(input: {
   repository: SessionRepository
+  permissionRepository: ReturnType<typeof createPermissionRepository>
   sessionRuns: Pick<ReturnType<typeof createSessionRunService>, "transitionRunToRunning">
 }) {
   return {
     getRun(runId: string) {
       return input.repository.runs.get(runId)
     },
-    transitionRunToWaitingPermission(runId: string) {
+    syncRunStatusWithPendingRequests(runId: string) {
       const run = input.repository.runs.get(runId)
-      assertRunStatusTransition(run, "waiting_permission")
-      return input.repository.runs.updateStatus({
-        runId,
-        status: "waiting_permission",
-      })
-    },
-    transitionRunToRunning(runId: string) {
+      const nextStatus = resolvePermissionPendingRunStatus(
+        input.permissionRepository.requests.listByRun(runId).filter((request) => request.status === "pending").length,
+      )
+      if (run.status === nextStatus) {
+        return run
+      }
+
+      if (nextStatus === "waiting_permission") {
+        assertRunStatusTransition(run, nextStatus)
+        return input.repository.runs.updateStatus({
+          runId,
+          status: nextStatus,
+        })
+      }
+
       return input.sessionRuns.transitionRunToRunning(runId)
     },
   }

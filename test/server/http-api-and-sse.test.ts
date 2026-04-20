@@ -1033,6 +1033,136 @@ describe("server HTTP API and SSE", () => {
     )
   })
 
+  test("run payloads expose multiple pending permission requests and stay waiting until the last reply", async () => {
+    const firstUrl = "data:text/plain,Hello%20from%20the%20first%20server%20fetch."
+    const secondUrl = "data:text/plain,Hello%20from%20the%20second%20server%20fetch."
+    const harness = await createHarness("server-permission-multi-pending", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_webfetch_1",
+          name: "webfetch",
+          inputText: `{"url":"${firstUrl}"}`,
+        }
+        yield {
+          type: "tool.call",
+          callId: "call_webfetch_2",
+          name: "webfetch",
+          inputText: `{"url":"${secondUrl}"}`,
+        }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Both fetches finished on the server." }
+      },
+    ]), {
+      permissionPolicy: {
+        webfetch: "ask",
+      },
+    })
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Fetch two notes from the server",
+      },
+    )
+    const runId = startedRun.body.data.run.id as string
+
+    const waitingRun = await waitForRunStatus(harness.server, runId, "waiting_permission")
+    expect(waitingRun.permissionRequests).toHaveLength(2)
+    expect(waitingRun.permissionRequests).toMatchObject([
+      {
+        runId,
+        sessionId,
+        toolName: "webfetch",
+        reason: `webfetch ${firstUrl}`,
+        status: "pending",
+      },
+      {
+        runId,
+        sessionId,
+        toolName: "webfetch",
+        reason: `webfetch ${secondUrl}`,
+        status: "pending",
+      },
+    ])
+
+    const firstPermissionId = waitingRun.permissionRequests[0]?.id as string
+    const secondPermissionId = waitingRun.permissionRequests[1]?.id as string
+    expect(firstPermissionId).not.toBe(secondPermissionId)
+
+    const firstReply = await requestJson(
+      harness.server,
+      "POST",
+      `/permissions/${secondPermissionId}/reply`,
+      {
+        decision: "allow",
+      },
+    )
+    expect(firstReply.status).toBe(200)
+    expect(firstReply.body.data).toMatchObject({
+      run: {
+        id: runId,
+        status: "waiting_permission",
+      },
+      permissionRequest: {
+        id: secondPermissionId,
+        status: "approved",
+      },
+    })
+
+    const stillWaitingRun = await waitForRunStatus(harness.server, runId, "waiting_permission")
+    expect(stillWaitingRun.permissionRequests).toMatchObject([
+      {
+        id: firstPermissionId,
+        status: "pending",
+      },
+      {
+        id: secondPermissionId,
+        status: "approved",
+      },
+    ])
+
+    const lastReply = await requestJson(
+      harness.server,
+      "POST",
+      `/permissions/${firstPermissionId}/reply`,
+      {
+        decision: "allow",
+      },
+    )
+    expect(lastReply.status).toBe(200)
+    expect(lastReply.body.data).toMatchObject({
+      run: {
+        id: runId,
+        status: "running",
+      },
+      permissionRequest: {
+        id: firstPermissionId,
+        status: "approved",
+      },
+    })
+
+    const completedRun = await waitForRunStatus(harness.server, runId, "completed")
+    expect(completedRun.permissionRequests).toMatchObject([
+      {
+        id: firstPermissionId,
+        status: "approved",
+      },
+      {
+        id: secondPermissionId,
+        status: "approved",
+      },
+    ])
+  })
+
   test("permission reply recovers a detached pending request after server restart", async () => {
     const harness = await createHarness("server-permission-restart-allow", createTurnProvider([
       async function* () {
@@ -1821,7 +1951,9 @@ async function createHarness(
   prefix: string,
   provider: OrchestrationModelPort,
   options: {
-    permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
+    permissionPolicy?: Partial<
+      Record<"write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
+    >
     repositoryFactory?(repository: SessionRepository): SessionRepository
   } = {},
 ) {
@@ -1905,7 +2037,9 @@ async function restartHarness(
   },
   provider: OrchestrationModelPort,
   options: {
-    permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
+    permissionPolicy?: Partial<
+      Record<"write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
+    >
   } = {},
 ) {
   await harness.server.stop()

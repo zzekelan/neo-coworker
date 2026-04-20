@@ -473,6 +473,146 @@ describe("runtime permission flow", () => {
     })
   })
 
+  test("the first reply keeps a run waiting while another permission request is still pending", async () => {
+    const harness = await createHarness("permission-webfetch-multi-pending", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_permission_webfetch_multi_pending",
+      messageId: "message_permission_webfetch_multi_pending_user",
+      prompt: "Fetch two notes from the web",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const firstUrl = "data:text/plain,Hello%20from%20the%20first%20fetch."
+    const secondUrl = "data:text/plain,Hello%20from%20the%20second%20fetch."
+    const runtime = createPermissionRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_webfetch_1",
+            name: "webfetch",
+            inputText: `{"url":"${firstUrl}"}`,
+          }
+          yield {
+            type: "tool.call",
+            callId: "call_webfetch_2",
+            name: "webfetch",
+            inputText: `{"url":"${secondUrl}"}`,
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Both fetches finished." }
+        },
+      ]),
+      harness,
+      permissionPolicy: {
+        webfetch: "ask",
+      },
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const iterator = handle.events[Symbol.asyncIterator]()
+    const firstPermissionEvent = await waitForPermissionRequestWithin(iterator, 250)
+    const secondPermissionEvent = await waitForPermissionRequestWithin(iterator, 250)
+
+    expect(firstPermissionEvent.requestId).not.toBe(secondPermissionEvent.requestId)
+    expect([firstPermissionEvent.reason, secondPermissionEvent.reason].sort()).toEqual(
+      [`webfetch ${firstUrl}`, `webfetch ${secondUrl}`].sort(),
+    )
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      id: started.run.id,
+      status: "waiting_permission",
+    })
+    expect(harness.permissionRepository.requests.listByRun(started.run.id)).toMatchObject([
+      {
+        id: firstPermissionEvent.requestId,
+        toolName: "webfetch",
+        status: "pending",
+      },
+      {
+        id: secondPermissionEvent.requestId,
+        toolName: "webfetch",
+        status: "pending",
+      },
+    ])
+
+    runtime.respondPermission({
+      requestId: secondPermissionEvent.requestId,
+      decision: "allow",
+    })
+
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      id: started.run.id,
+      status: "waiting_permission",
+    })
+    expect(harness.permissionRepository.requests.listByRun(started.run.id)).toMatchObject([
+      {
+        id: firstPermissionEvent.requestId,
+        status: "pending",
+      },
+      {
+        id: secondPermissionEvent.requestId,
+        status: "approved",
+      },
+    ])
+
+    runtime.respondPermission({
+      requestId: firstPermissionEvent.requestId,
+      decision: "allow",
+    })
+
+    const remainingEvents = await collectEvents(iterator)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(requests).toHaveLength(2)
+    expect(activeRunMessages[1]?.parts).toMatchObject([
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_webfetch_1",
+          toolName: "webfetch",
+        },
+      },
+      {
+        kind: "tool_call",
+        data: {
+          callId: "call_webfetch_2",
+          toolName: "webfetch",
+        },
+      },
+      {
+        kind: "tool_result",
+        text: "Hello from the first fetch.",
+        data: {
+          callId: "call_webfetch_1",
+          toolName: "webfetch",
+          output: "Hello from the first fetch.",
+        },
+      },
+      {
+        kind: "tool_result",
+        text: "Hello from the second fetch.",
+        data: {
+          callId: "call_webfetch_2",
+          toolName: "webfetch",
+          output: "Hello from the second fetch.",
+        },
+      },
+    ])
+    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Both fetches finished." }])
+    expect(remainingEvents.at(-1)).toMatchObject({
+      type: "run.completed",
+      runId: started.run.id,
+    })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
   test("approval resumes the same run after waiting permission", async () => {
     const harness = await createHarness("permission-allow", false)
     const started = startPromptRun({
@@ -1169,6 +1309,19 @@ async function waitForPermissionRequest(
   }
 
   throw new Error("Expected permission.requested before the event stream closed")
+}
+
+async function waitForPermissionRequestWithin(
+  events: AsyncIterable<OrchestrationRuntimeEvent> | AsyncIterator<OrchestrationRuntimeEvent>,
+  timeoutMs: number,
+): Promise<PermissionRequestedEvent> {
+  return await Promise.race([
+    waitForPermissionRequest(events),
+    (async () => {
+      await Bun.sleep(timeoutMs)
+      throw new Error(`Expected permission.requested within ${timeoutMs}ms`)
+    })(),
+  ])
 }
 
 async function collectEvents(
