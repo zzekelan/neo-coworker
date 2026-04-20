@@ -334,6 +334,11 @@ type PendingPermissionReply = {
   }>
 }
 
+type PendingPermissionQueue = {
+  active: PendingPermissionReply | null
+  queued: PermissionRequestedServerEvent[]
+}
+
 type NextCliRunLoopResult =
   | {
       type: "event"
@@ -401,6 +406,72 @@ function startPendingPermissionReply(
         sent: false,
       })),
   }
+}
+
+function comparePermissionRequests(
+  left: Pick<StoredPermissionRequest, "createdAt" | "id">,
+  right: Pick<StoredPermissionRequest, "createdAt" | "id">,
+) {
+  return left.createdAt - right.createdAt || left.id.localeCompare(right.id)
+}
+
+function comparePermissionEvents(
+  left: PermissionRequestedServerEvent,
+  right: PermissionRequestedServerEvent,
+) {
+  return comparePermissionRequests(left.permissionRequest, right.permissionRequest)
+}
+
+function createResumePermissionRequestedEvent(
+  request: StoredPermissionRequest,
+): PermissionRequestedServerEvent {
+  return {
+    id: `permission_resume_${request.id}`,
+    time: request.createdAt,
+    type: "permission.requested",
+    permissionRequest: request,
+  }
+}
+
+function enqueuePendingPermissionEvent(
+  queue: PendingPermissionQueue,
+  event: PermissionRequestedServerEvent,
+) {
+  const requestId = event.permissionRequest.id
+  if (
+    queue.active?.requestId === requestId ||
+    queue.queued.some((candidate) => candidate.permissionRequest.id === requestId)
+  ) {
+    return
+  }
+
+  queue.queued.push(event)
+  queue.queued.sort(comparePermissionEvents)
+}
+
+function startNextPendingPermissionReply(input: {
+  queue: PendingPermissionQueue
+  client: AgentServerClient
+  io: CliIO
+  onActivePermissionChange?: (value: PendingPermissionReply | null) => void
+}) {
+  if (input.queue.active || input.queue.queued.length === 0) {
+    return input.queue.active
+  }
+
+  input.queue.active = startPendingPermissionReply(input.queue.queued.shift()!, input.client, input.io)
+  input.onActivePermissionChange?.(input.queue.active)
+  return input.queue.active
+}
+
+function clearPendingPermissionQueue(
+  queue: PendingPermissionQueue,
+  onActivePermissionChange?: (value: PendingPermissionReply | null) => void,
+) {
+  queue.active?.controller.abort()
+  queue.active = null
+  queue.queued.length = 0
+  onActivePermissionChange?.(null)
 }
 
 async function resolveClient(input: RunCliInput, workspaceRoot: string): Promise<CliServerClientHandle> {
@@ -686,7 +757,10 @@ async function runSinglePromptCli(input: {
       let terminalError: string | null = null
       const eventIterator = subscription.events[Symbol.asyncIterator]()
       let nextEventPromise: Promise<IteratorResult<ServerEvent>> | null = null
-      let pendingPermission: PendingPermissionReply | null = null
+      const pendingPermissionQueue: PendingPermissionQueue = {
+        active: null,
+        queued: [],
+      }
 
       function readNextEvent() {
         if (!nextEventPromise) {
@@ -700,21 +774,30 @@ async function runSinglePromptCli(input: {
 
       while (true) {
         const next: NextCliRunLoopResult =
-          pendingPermission == null
+          pendingPermissionQueue.active == null
             ? ({ type: "event", result: await readNextEvent() } as const)
             : await Promise.race([
                 readNextEvent().then((result) => ({ type: "event", result } as const)),
-                pendingPermission.completion.then((result) => ({ type: "permission", result } as const)),
+                pendingPermissionQueue.active.completion.then((result) => ({
+                  type: "permission",
+                  result,
+                }) as const),
               ])
 
         if (next.type === "permission") {
-          if (pendingPermission?.requestId === next.result.requestId) {
-            pendingPermission = null
+          if (pendingPermissionQueue.active?.requestId === next.result.requestId) {
+            pendingPermissionQueue.active = null
           }
 
           if (next.result.error) {
             throw next.result.error
           }
+
+          startNextPendingPermissionReply({
+            queue: pendingPermissionQueue,
+            client: input.clientHandle.client,
+            io: input.io,
+          })
 
           continue
         }
@@ -734,24 +817,24 @@ async function runSinglePromptCli(input: {
         }
 
         if (event.type === "permission.requested") {
-          if (pendingPermission) {
-            throw new Error(`Run ${activeRunId} received overlapping permission requests`)
-          }
-
-          pendingPermission = startPendingPermissionReply(event, input.clientHandle.client, input.io)
+          enqueuePendingPermissionEvent(pendingPermissionQueue, event)
+          startNextPendingPermissionReply({
+            queue: pendingPermissionQueue,
+            client: input.clientHandle.client,
+            io: input.io,
+          })
         }
 
         const terminal = extractTerminalRunStatus(event)
         if (terminal.status) {
           terminalStatus = terminal.status
           terminalError = terminal.error
-          pendingPermission?.controller.abort()
-          pendingPermission = null
+          clearPendingPermissionQueue(pendingPermissionQueue)
           break
         }
       }
 
-      pendingPermission?.controller.abort()
+      clearPendingPermissionQueue(pendingPermissionQueue)
 
       if (terminalStatus == null) {
         const currentRun = await input.clientHandle.client.getRun(activeRunId)
@@ -1149,13 +1232,15 @@ async function resumeExistingChatSession(input: {
   }
 
   const runState = await input.client.getRun(activeRun.id)
-  const pendingPermission =
+  const pendingPermissions =
     activeRun.status === "waiting_permission"
-      ? runState.permissionRequests.find((request) => request.status === "pending") ?? null
-      : null
+      ? runState.permissionRequests
+          .filter((request) => request.status === "pending")
+          .sort(comparePermissionRequests)
+      : []
 
-  if (activeRun.status === "waiting_permission" && !pendingPermission) {
-    throw new Error(`Run ${activeRun.id} is waiting on permission but has no pending request`)
+  if (activeRun.status === "waiting_permission" && pendingPermissions.length === 0) {
+    throw new Error(`Run ${activeRun.id} is waiting on permission but has no pending requests`)
   }
 
   const subscription = await input.client.subscribe()
@@ -1182,7 +1267,7 @@ async function resumeExistingChatSession(input: {
       renderer,
       getExitRequested: input.getExitRequested,
       setActivePermissionPrompt: input.setActivePermissionPrompt,
-      initialPendingPermissionRequest: pendingPermission,
+      initialPendingPermissionRequests: pendingPermissions,
     })
 
     if (watched.exitedWhileBlocked) {
@@ -1206,28 +1291,26 @@ async function watchChatRun(input: {
   renderer: ReturnType<typeof createCliChatRenderer>
   getExitRequested(): boolean
   setActivePermissionPrompt(value: PendingPermissionReply | null): void
-  initialPendingPermissionRequest?: StoredPermissionRequest | null
+  initialPendingPermissionRequests?: StoredPermissionRequest[]
 }): Promise<WatchChatRunResult> {
   let terminalStatus: ReturnType<typeof extractTerminalRunStatus>["status"] = null
   let terminalError: string | null = null
   const eventIterator = input.subscription.events[Symbol.asyncIterator]()
   let nextEventPromise: Promise<IteratorResult<ServerEvent>> | null = null
-  let pendingPermission = input.initialPendingPermissionRequest
-    ? startPendingPermissionReply(
-        {
-          id: `permission_resume_${input.initialPendingPermissionRequest.id}`,
-          time: Date.now(),
-          type: "permission.requested",
-          permissionRequest: input.initialPendingPermissionRequest,
-        },
-        input.client,
-        input.io,
-      )
-    : null
-
-  if (pendingPermission) {
-    input.setActivePermissionPrompt(pendingPermission)
+  const pendingPermissionQueue: PendingPermissionQueue = {
+    active: null,
+    queued: (input.initialPendingPermissionRequests ?? [])
+      .slice()
+      .sort(comparePermissionRequests)
+      .map(createResumePermissionRequestedEvent),
   }
+
+  startNextPendingPermissionReply({
+    queue: pendingPermissionQueue,
+    client: input.client,
+    io: input.io,
+    onActivePermissionChange: input.setActivePermissionPrompt,
+  })
 
   function readNextEvent() {
     if (!nextEventPromise) {
@@ -1241,16 +1324,19 @@ async function watchChatRun(input: {
 
   while (true) {
     const next =
-      pendingPermission == null
+      pendingPermissionQueue.active == null
         ? ({ type: "event", result: await readNextEvent() } as const)
         : await Promise.race([
             readNextEvent().then((result) => ({ type: "event", result } as const)),
-            pendingPermission.completion.then((result) => ({ type: "permission", result } as const)),
+            pendingPermissionQueue.active.completion.then((result) => ({
+              type: "permission",
+              result,
+            }) as const),
           ])
 
     if (next.type === "permission") {
-      if (pendingPermission?.requestId === next.result.requestId) {
-        pendingPermission = null
+      if (pendingPermissionQueue.active?.requestId === next.result.requestId) {
+        pendingPermissionQueue.active = null
         input.setActivePermissionPrompt(null)
       }
 
@@ -1265,6 +1351,13 @@ async function watchChatRun(input: {
           exitedWhileBlocked: true,
         }
       }
+
+      startNextPendingPermissionReply({
+        queue: pendingPermissionQueue,
+        client: input.client,
+        io: input.io,
+        onActivePermissionChange: input.setActivePermissionPrompt,
+      })
 
       continue
     }
@@ -1281,27 +1374,25 @@ async function watchChatRun(input: {
     input.renderer.renderEvent(event)
 
     if (event.type === "permission.requested") {
-      if (pendingPermission) {
-        throw new Error(`Run ${input.runId} received overlapping permission requests`)
-      }
-
-      pendingPermission = startPendingPermissionReply(event, input.client, input.io)
-      input.setActivePermissionPrompt(pendingPermission)
+      enqueuePendingPermissionEvent(pendingPermissionQueue, event)
+      startNextPendingPermissionReply({
+        queue: pendingPermissionQueue,
+        client: input.client,
+        io: input.io,
+        onActivePermissionChange: input.setActivePermissionPrompt,
+      })
     }
 
     const terminal = extractTerminalRunStatus(event)
     if (terminal.status) {
       terminalStatus = terminal.status
       terminalError = terminal.error
-      pendingPermission?.controller.abort()
-      pendingPermission = null
-      input.setActivePermissionPrompt(null)
+      clearPendingPermissionQueue(pendingPermissionQueue, input.setActivePermissionPrompt)
       break
     }
   }
 
-  pendingPermission?.controller.abort()
-  input.setActivePermissionPrompt(null)
+  clearPendingPermissionQueue(pendingPermissionQueue, input.setActivePermissionPrompt)
 
   return {
     terminalStatus,

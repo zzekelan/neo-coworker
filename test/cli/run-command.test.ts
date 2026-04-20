@@ -171,6 +171,62 @@ describe("run command", () => {
     expect(countOccurrences(output.join(""), "run.started")).toBe(1)
   })
 
+  test("queues multiple live permission prompts without overlap errors", async () => {
+    const harness = await createHarness(
+      "cli-run-multi-permission-live",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_fetch_2",
+            name: "webfetch",
+            inputText: '{"url":"data:text/plain,second"}',
+          }
+          yield {
+            type: "tool.call",
+            callId: "call_fetch_1",
+            name: "webfetch",
+            inputText: '{"url":"data:text/plain,first"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Both fetches finished." }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          webfetch: "ask",
+        },
+      },
+    )
+    const output: string[] = []
+
+    await runCli({
+      argv: ["run", "Fetch two notes"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(output, ["y", "y"]),
+    })
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const run = harness.repository.runs.listBySession(sessionId)[0]!
+    const permissionRequests = harness.permissionRepository.requests.listByRun(run.id)
+    const rendered = output.join("")
+    const firstPrompt = `permission> Allow ${permissionRequests[0]!.reason}? [y/N] `
+    const secondPrompt = `permission> Allow ${permissionRequests[1]!.reason}? [y/N] `
+
+    expect(run.status).toBe("completed")
+    expect(permissionRequests).toHaveLength(2)
+    expect(permissionRequests.map((request) => request.status)).toEqual(["approved", "approved"])
+    expect(countOccurrences(rendered, "permission.requested webfetch")).toBe(2)
+    expect(countOccurrences(rendered, "permission> Allow webfetch")).toBe(2)
+    expect(rendered.indexOf(firstPrompt)).toBeGreaterThanOrEqual(0)
+    expect(rendered.indexOf(secondPrompt)).toBeGreaterThan(rendered.indexOf(firstPrompt))
+    expect(rendered).toContain("Both fetches finished.")
+    expect(rendered).not.toContain("overlapping permission requests")
+  })
+
   test("cancels the run after a denied permission reply", async () => {
     const harness = await createHarness(
       "cli-run-permission-denied",
@@ -1001,6 +1057,264 @@ describe("chat command", () => {
     expect(secondOutput.join("")).toContain("assistant> Write finished.")
   })
 
+  test("/resume re-prompts every persisted pending request in deterministic order", async () => {
+    const harness = await createHarness(
+      "cli-chat-resume-multi-permission",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_fetch_2",
+            name: "webfetch",
+            inputText: '{"url":"data:text/plain,second"}',
+          }
+          yield {
+            type: "tool.call",
+            callId: "call_fetch_1",
+            name: "webfetch",
+            inputText: '{"url":"data:text/plain,first"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Resumed both fetches." }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          webfetch: "ask",
+        },
+      },
+    )
+    const firstOutput: string[] = []
+    let sigintHandler: (() => void) | undefined
+    let firstPermissionPromptSeen = false
+    let releasePermissionPrompt!: () => void
+    const permissionPromptVisible = new Promise<void>((resolve) => {
+      releasePermissionPrompt = resolve
+    })
+
+    const firstChat = runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(firstOutput, ["Fetch two notes"], {
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        async prompt(message, options) {
+          if (message.startsWith("permission>")) {
+            if (!firstPermissionPromptSeen) {
+              firstPermissionPromptSeen = true
+              releasePermissionPrompt()
+            }
+
+            return new Promise<string>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(Object.assign(new Error("Operation aborted"), { name: "AbortError" })),
+                { once: true },
+              )
+            })
+          }
+
+          return "Fetch two notes"
+        },
+      }),
+    })
+
+    await permissionPromptVisible
+    sigintHandler?.()
+    await firstChat
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const firstRun = harness.repository.runs.listBySession(sessionId)[0]!
+    const pendingBeforeResume = harness.permissionRepository.requests.listByRun(firstRun.id)
+    const expectedPromptMessages = pendingBeforeResume.map(
+      (request) => `permission> Allow ${request.reason}? [y/N] `,
+    )
+
+    expect(firstRun.status).toBe("waiting_permission")
+    expect(pendingBeforeResume.map((request) => request.status)).toEqual(["pending", "pending"])
+
+    const secondOutput: string[] = []
+    const promptedReasons: string[] = []
+    const secondAnswers = ["/resume", "/exit"]
+
+    await runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(secondOutput, ["/resume", "/exit"], {
+        async prompt(message) {
+          if (message.startsWith("permission>")) {
+            promptedReasons.push(message)
+            secondOutput.push(`${message}y\n`)
+            return "y"
+          }
+
+          const answer = secondAnswers.shift() ?? "/exit"
+          secondOutput.push(`${message}${answer}\n`)
+          return answer
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    const rendered = secondOutput.join("")
+
+    expect(harness.repository.runs.get(firstRun.id).status).toBe("completed")
+    expect(harness.permissionRepository.requests.listByRun(firstRun.id).map((request) => request.status)).toEqual([
+      "approved",
+      "approved",
+    ])
+    expect(promptedReasons).toEqual(expectedPromptMessages)
+    expect(rendered).toContain("assistant> Resumed both fetches.")
+  })
+
+  test("approving one queued permission keeps sibling pending prompts alive", async () => {
+    const harness = await createHarness(
+      "cli-chat-resume-partial-permission",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_fetch_2",
+            name: "webfetch",
+            inputText: '{"url":"data:text/plain,second"}',
+          }
+          yield {
+            type: "tool.call",
+            callId: "call_fetch_1",
+            name: "webfetch",
+            inputText: '{"url":"data:text/plain,first"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Both fetches finally finished." }
+        },
+      ]),
+      {
+        permissionPolicy: {
+          webfetch: "ask",
+        },
+      },
+    )
+    const firstOutput: string[] = []
+    let sigintHandler: (() => void) | undefined
+    let firstPermissionPromptSeen = false
+    let releasePermissionPrompt!: () => void
+    const permissionPromptVisible = new Promise<void>((resolve) => {
+      releasePermissionPrompt = resolve
+    })
+
+    const initialChat = runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(firstOutput, ["Fetch two notes"], {
+        onSigint(listener) {
+          sigintHandler = listener
+        },
+        async prompt(message, options) {
+          if (message.startsWith("permission>")) {
+            if (!firstPermissionPromptSeen) {
+              firstPermissionPromptSeen = true
+              releasePermissionPrompt()
+            }
+
+            return new Promise<string>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(Object.assign(new Error("Operation aborted"), { name: "AbortError" })),
+                { once: true },
+              )
+            })
+          }
+
+          return "Fetch two notes"
+        },
+      }),
+    })
+
+    await permissionPromptVisible
+    sigintHandler?.()
+    await initialChat
+
+    const sessionId = harness.repository.sessions.list()[0]!.id
+    const firstRun = harness.repository.runs.listBySession(sessionId)[0]!
+
+    expect(harness.permissionRepository.requests.listByRun(firstRun.id).map((request) => request.status)).toEqual([
+      "pending",
+      "pending",
+    ])
+
+    const secondOutput: string[] = []
+    let permissionPromptCount = 0
+    let releaseSecondPermissionPrompt!: () => void
+    const secondPermissionPromptVisible = new Promise<void>((resolve) => {
+      releaseSecondPermissionPrompt = resolve
+    })
+    let secondSigintHandler: (() => void) | undefined
+
+    const resumedChat = runCli({
+      argv: ["chat"],
+      cwd: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      client: harness.client,
+      io: createIo(secondOutput, ["/resume"], {
+        onSigint(listener) {
+          secondSigintHandler = listener
+        },
+        async prompt(message, options) {
+          if (message.startsWith("permission>")) {
+            permissionPromptCount += 1
+            if (permissionPromptCount === 1) {
+              secondOutput.push(`${message}y\n`)
+              return "y"
+            }
+
+            releaseSecondPermissionPrompt()
+            return new Promise<string>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                "abort",
+                () => reject(Object.assign(new Error("Operation aborted"), { name: "AbortError" })),
+                { once: true },
+              )
+            })
+          }
+
+          secondOutput.push(`${message}/resume\n`)
+          return "/resume"
+        },
+        async select() {
+          return 0
+        },
+      }),
+    })
+
+    await secondPermissionPromptVisible
+
+    const partiallyResolved = harness.permissionRepository.requests.listByRun(firstRun.id)
+    expect(permissionPromptCount).toBe(2)
+    expect(harness.repository.runs.get(firstRun.id).status).toBe("waiting_permission")
+    expect(partiallyResolved.map((request) => request.status)).toEqual(["approved", "pending"])
+
+    secondSigintHandler?.()
+    await resumedChat
+
+    expect(harness.repository.runs.get(firstRun.id).status).toBe("waiting_permission")
+    expect(harness.permissionRepository.requests.listByRun(firstRun.id).map((request) => request.status)).toEqual([
+      "approved",
+      "pending",
+    ])
+    expect(secondOutput.join("")).toContain("permission> Allow webfetch data:text/plain,second? [y/N] ")
+  })
+
   test("resumes an already-running session after assistant output has started", async () => {
     let releaseFirstDelta!: () => void
     const firstDeltaEmitted = new Promise<void>((resolve) => {
@@ -1429,7 +1743,9 @@ async function createHarness(
   prefix: string,
   provider: OrchestrationModelPort,
   options: {
-    permissionPolicy?: Partial<Record<"write" | "edit" | "shell", "allow" | "ask" | "deny">>
+    permissionPolicy?: Partial<
+      Record<"write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
+    >
   } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), `${prefix}-`))
