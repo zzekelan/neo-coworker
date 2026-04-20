@@ -51,8 +51,7 @@ describe("agent selector component", () => {
 
   test("highlights current agent with accent color", () => {
     expect(source).toContain("agent.name === currentAgent")
-    expect(source).toContain("bg-highlight/10")
-    expect(source).toContain("text-highlight")
+    expect(source).toContain("bg-highlight")
   })
 
   test("calls onSelect with agent name on click", () => {
@@ -64,16 +63,15 @@ describe("agent selector component", () => {
     expect(source).not.toContain("AnimatePresence")
     expect(source).not.toContain("motion.")
     expect(source).not.toContain("transition=")
-    expect(source).not.toContain("transition-colors")
   })
 
   test("uses React.memo for performance", () => {
     expect(source).toContain("export const AgentSelector = React.memo(AgentSelectorComponent)")
   })
 
-  test("shows names only — no description text rendered", () => {
+  test("shows agent names without description text", () => {
+    expect(source).toContain("agent.name")
     expect(source).not.toContain("agent.description")
-    expect(source).not.toContain("description")
   })
 })
 
@@ -104,15 +102,17 @@ describe("agent badge and selector integration in ChatArea", () => {
     expect(source).toContain("onSelect={handleAgentSelect}")
   })
 
-  test("renders AgentBadge outside the form to escape overflow-hidden, in a shared wrapper", () => {
+  test("renders AgentBadge inside the form toolbar for proper layout flow", () => {
+    const formOpenIndex = source.indexOf("<motion.form")
     const formCloseIndex = source.indexOf("</motion.form>")
     const badgeIndex = source.indexOf("<AgentBadge")
-    expect(badgeIndex).toBeGreaterThan(formCloseIndex)
-    expect(source).toContain("absolute left-2 bottom-2 z-10")
+    expect(badgeIndex).toBeGreaterThan(formOpenIndex)
+    expect(badgeIndex).toBeLessThan(formCloseIndex)
+    expect(source).toContain("agentSelectorShellRef")
   })
 
-  test("positions badge at left-bottom of the input area", () => {
-    expect(source).toContain("absolute left-2 bottom-2")
+  test("positions badge in a toolbar row below the textarea", () => {
+    expect(source).toContain("flex items-center justify-between")
     expect(source).toContain("agentSelectorShellRef")
   })
 

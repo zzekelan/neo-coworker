@@ -102,8 +102,8 @@ body {
   position: absolute;
   inset-inline: 0;
   bottom: 100%;
-  height: 28px;
-  background: linear-gradient(to bottom, transparent, var(--color-paper));
+  height: 20px;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--color-paper) 95%, transparent));
   pointer-events: none;
   opacity: 1;
 }

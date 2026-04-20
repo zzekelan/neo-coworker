@@ -451,45 +451,12 @@ export function ChatArea({
         />
       )}
 
-      <div
+       <div
         ref={bottomOverlayRef}
-        className="content-fade-top absolute right-0 bottom-0 left-0 bg-paper/95 p-4 backdrop-blur-sm"
+        className="absolute right-0 bottom-0 left-0 bg-paper px-4 pt-2 pb-4"
       >
         <motion.div layout transition={SKILL_DRAWER_TRANSITION} className="relative mx-auto max-w-4xl">
           <div ref={skillPanelShellRef}>
-            {skills.length > 0 ? (
-            <div className="mb-2 flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setIsSkillPanelOpen((previous) => !previous)}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                  isSkillPanelOpen
-                    ? "bg-surface text-ink"
-                    : "text-accent hover:bg-surface hover:text-ink",
-                )}
-              >
-                <Sparkles className="h-3 w-3" />
-                {text.chat.skills}
-                <ChevronDown
-                  className={cn("h-3 w-3 transition-transform", !isSkillPanelOpen && "rotate-180")}
-                />
-              </button>
-
-              {visibleActiveSkills.length > 0 ? (
-                visibleActiveSkills.map((skillName) => (
-                  <span
-                    key={skillName}
-                    className="inline-flex items-center gap-1 rounded-md bg-highlight/10 px-1.5 py-0.5 text-[10px] font-medium text-highlight"
-                  >
-                    <Zap className="h-2.5 w-2.5" />
-                    {skillName}
-                  </span>
-                ))
-              ) : null}
-            </div>
-            ) : null}
-
             <AnimatePresence initial={false}>
               {isSkillPanelOpen ? (
                 <motion.div
@@ -528,13 +495,12 @@ export function ChatArea({
             </AnimatePresence>
           </div>
 
-          <div className="relative">
           <motion.form
             layout
             transition={SKILL_DRAWER_TRANSITION}
             onSubmit={handleSubmit}
             className={cn(
-              "relative flex items-end gap-2 overflow-hidden rounded-2xl border bg-paper shadow-sm transition-all",
+              "relative flex flex-col rounded-2xl border bg-paper shadow-sm transition-all",
               isBusy
                 ? "border-border opacity-80"
                 : "border-border focus-within:border-highlight/50 focus-within:ring-4 focus-within:ring-highlight/10",
@@ -552,8 +518,8 @@ export function ChatArea({
               }
               disabled={isInputLocked}
               aria-label={text.chat.askPlaceholder}
-              className="min-h-[56px] max-h-64 flex-1 resize-none border-0 bg-transparent pt-4 pb-8 pr-14 pl-4 text-[15px] leading-relaxed text-ink placeholder:text-accent outline-none focus:ring-0"
-              rows={1}
+              className="min-h-[96px] max-h-64 flex-1 resize-none border-0 bg-transparent px-4 pt-3 pb-2 text-[15px] leading-relaxed text-ink placeholder:text-accent outline-none focus:ring-0"
+              rows={2}
               onKeyDown={(event) => {
                 if (
                   event.key === "Enter" &&
@@ -567,44 +533,78 @@ export function ChatArea({
               }}
             />
 
-            <div className="absolute right-2 bottom-2 flex items-center gap-2">
-              {isBusy ? (
-                <button
-                  type="button"
-                  onClick={() => void onCancelRun()}
-                className="rounded-lg border border-danger/30 bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
-                  title="Cancel Run"
-                >
-                  <Square className="h-4 w-4 fill-current" />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isComposing || isSubmittingMessage}
-                className="rounded-lg bg-ink p-2 text-paper shadow-sm transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 disabled:hover:bg-ink disabled:hover:text-paper"
-                >
-                  <ArrowUp className="h-5 w-5" />
-                </button>
-              )}
+            <div className="flex items-center justify-between mx-2 px-0.5 pt-1 pb-1.5">
+              <div className="flex items-center gap-2">
+                <div ref={agentSelectorShellRef} className="relative">
+                  <AgentBadge
+                    agentName={currentAgent}
+                    isOpen={isAgentSelectorOpen}
+                    onClick={() => setIsAgentSelectorOpen((prev) => !prev)}
+                  />
+                  <AgentSelector
+                    isOpen={isAgentSelectorOpen}
+                    agents={primaryAgents}
+                    currentAgent={currentAgent}
+                    onSelect={handleAgentSelect}
+                  />
+                </div>
+
+                {skills.length > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsSkillPanelOpen((previous) => !previous)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition-colors",
+                        isSkillPanelOpen
+                          ? "bg-surface text-ink"
+                          : "text-accent hover:bg-surface hover:text-ink",
+                      )}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {text.chat.skills}
+                      <ChevronDown
+                        className={cn("h-3 w-3 transition-transform", !isSkillPanelOpen && "rotate-180")}
+                      />
+                    </button>
+
+                    {visibleActiveSkills.length > 0 ? (
+                      visibleActiveSkills.map((skillName) => (
+                        <span
+                          key={skillName}
+                          className="inline-flex items-center gap-1 rounded-md bg-highlight/10 px-1.5 py-0.5 text-[11px] font-medium text-highlight"
+                        >
+                          <Zap className="h-2.5 w-2.5" />
+                          {skillName}
+                        </span>
+                      ))
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isBusy ? (
+                  <button
+                    type="button"
+                    onClick={() => void onCancelRun()}
+                    className="rounded-lg border border-danger/30 bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
+                    title="Cancel Run"
+                  >
+                    <Square className="h-4 w-4 fill-current" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || isComposing || isSubmittingMessage}
+                    className="rounded-lg bg-ink p-2 text-paper shadow-sm transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 disabled:hover:bg-ink disabled:hover:text-paper"
+                  >
+                    <ArrowUp className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
             </div>
           </motion.form>
-
-          <div ref={agentSelectorShellRef} className="absolute left-2 bottom-2 z-10">
-            <div className="relative">
-              <AgentBadge
-                agentName={currentAgent}
-                isOpen={isAgentSelectorOpen}
-                onClick={() => setIsAgentSelectorOpen((prev) => !prev)}
-              />
-              <AgentSelector
-                isOpen={isAgentSelectorOpen}
-                agents={primaryAgents}
-                currentAgent={currentAgent}
-                onSelect={handleAgentSelect}
-              />
-            </div>
-          </div>
-          </div>
 
           {/* Status bar — context · model · run status · keyboard hints */}
           <div className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent">

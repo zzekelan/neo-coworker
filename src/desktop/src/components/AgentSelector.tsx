@@ -1,4 +1,5 @@
 import React from "react"
+import { Check } from "lucide-react"
 import { cn } from "../lib/utils"
 import type { DesktopPrimaryAgent } from "../view-types"
 
@@ -17,32 +18,48 @@ function AgentSelectorComponent({ isOpen, agents, currentAgent, onSelect }: Agen
   return (
     <div
       data-testid="agent-selector"
-      className="absolute bottom-full left-0 mb-1 z-20"
+      className="absolute bottom-full left-0 mb-2 z-20"
     >
-      <div className="min-w-[120px] overflow-hidden rounded-lg border border-border bg-paper shadow-md">
-        {agents.map((agent) => (
-          <button
-            key={agent.name}
-            type="button"
-            data-testid={`agent-option-${agent.name}`}
-            onClick={() => onSelect(agent.name)}
-            className={cn(
-              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs",
-              agent.name === currentAgent
-                ? "bg-highlight/10 font-medium text-highlight"
-                : "text-ink hover:bg-surface",
-            )}
-          >
-            <span
-              className={cn(
-                "h-1.5 w-1.5 shrink-0 rounded-full",
-                agent.name === currentAgent ? "bg-highlight" : "bg-muted/40",
-              )}
-              aria-hidden="true"
-            />
-            {agent.name}
-          </button>
-        ))}
+      <div className="min-w-[180px] overflow-hidden rounded-lg border border-border bg-paper shadow-xl ring-1 ring-ink/5">
+        <div className="py-1">
+          {agents.map((agent) => {
+            const isActive = agent.name === currentAgent
+            return (
+              <button
+                key={agent.name}
+                type="button"
+                data-testid={`agent-option-${agent.name}`}
+                onClick={() => onSelect(agent.name)}
+                className={cn(
+                  "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                  isActive
+                    ? "bg-highlight/8"
+                    : "hover:bg-surface",
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
+                    isActive
+                      ? "bg-highlight text-paper"
+                      : "border border-muted/60",
+                  )}
+                  aria-hidden="true"
+                >
+                  {isActive ? <Check className="h-2.5 w-2.5" /> : null}
+                </span>
+                <span
+                  className={cn(
+                    "text-[13px] font-medium",
+                    isActive ? "text-ink" : "text-ink/80",
+                  )}
+                >
+                  {agent.name}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
