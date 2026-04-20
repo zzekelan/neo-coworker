@@ -23,34 +23,30 @@ export function createPermissionRequestService(input: CreatePermissionRequestSer
         createdAt?: number
       }
     }) {
-      const run = session.transitionRunToWaitingPermission(inputValue.runId)
-      try {
-        const permissionRequest = repository.requests.create({
-          id: inputValue.permissionRequest.id,
-          sessionId: run.sessionId,
-          runId: run.id,
-          toolName: inputValue.permissionRequest.toolName,
-          reason: inputValue.permissionRequest.reason,
-          createdAt: inputValue.permissionRequest.createdAt,
-          status: "pending",
-          resolvedAt: null,
-        })
-        observePermissionEvent(input.observer, {
-          type: "permission.requested",
-          sessionId: run.sessionId,
-          runId: run.id,
-          requestId: permissionRequest.id,
-          toolName: permissionRequest.toolName,
-          reason: permissionRequest.reason,
-        })
+      const run = session.getRun(inputValue.runId)
+      const permissionRequest = repository.requests.create({
+        id: inputValue.permissionRequest.id,
+        sessionId: run.sessionId,
+        runId: run.id,
+        toolName: inputValue.permissionRequest.toolName,
+        reason: inputValue.permissionRequest.reason,
+        createdAt: inputValue.permissionRequest.createdAt,
+        status: "pending",
+        resolvedAt: null,
+      })
+      const nextRun = session.syncRunStatusWithPendingRequests(run.id)
+      observePermissionEvent(input.observer, {
+        type: "permission.requested",
+        sessionId: run.sessionId,
+        runId: run.id,
+        requestId: permissionRequest.id,
+        toolName: permissionRequest.toolName,
+        reason: permissionRequest.reason,
+      })
 
-        return {
-          run,
-          permissionRequest,
-        }
-      } catch (error) {
-        session.transitionRunToRunning(run.id)
-        throw error
+      return {
+        run: nextRun,
+        permissionRequest,
       }
     },
   }

@@ -1,9 +1,11 @@
 import { observePermissionEvent } from "./observe"
 import type { PermissionObserverPort } from "./ports/permission-observer"
 import type { PermissionRepository } from "./ports/repository"
+import type { PermissionSessionPort } from "./ports/session"
 
 export type CreatePermissionQueryServiceInput = {
   repository: PermissionRepository
+  session?: PermissionSessionPort
   now?: () => number
   observer?: PermissionObserverPort
 }
@@ -38,6 +40,10 @@ export function createPermissionQueryService(input: CreatePermissionQueryService
           runId: request.runId,
           requestId: request.id,
         })
+      }
+
+      if (input.session) {
+        input.session.syncRunStatusWithPendingRequests(runId)
       }
 
       return cancelled

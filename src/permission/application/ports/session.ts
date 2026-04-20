@@ -6,6 +6,5 @@ export type PermissionSessionRun = {
 
 export type PermissionSessionPort = {
   getRun(runId: string): PermissionSessionRun
-  transitionRunToWaitingPermission(runId: string): PermissionSessionRun
-  transitionRunToRunning(runId: string): PermissionSessionRun
+  syncRunStatusWithPendingRequests(runId: string): PermissionSessionRun
 }

@@ -53,6 +53,7 @@ export {
   createRunStateMachine,
   isActiveRunStatus,
   isTerminalRunStatus,
+  resolvePermissionPendingRunStatus,
 } from "./run-state-machine"
 export {
   RunInitiatingMessageNotFoundError,

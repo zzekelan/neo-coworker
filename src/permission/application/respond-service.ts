@@ -74,6 +74,7 @@ export function createPermissionRespondService(input: CreatePermissionRespondSer
         status: inputValue.decision === "allow" ? "approved" : "denied",
         resolvedAt: inputValue.resolvedAt ?? now(),
       })
+      const nextRun = session.syncRunStatusWithPendingRequests(run.id)
       observePermissionEvent(input.observer, {
         type: "permission.responded",
         sessionId: permissionRequest.sessionId,
@@ -83,7 +84,7 @@ export function createPermissionRespondService(input: CreatePermissionRespondSer
       })
 
       return {
-        run: session.transitionRunToRunning(run.id),
+        run: nextRun,
         permissionRequest: resolvedPermissionRequest,
       }
     },

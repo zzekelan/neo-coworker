@@ -7,6 +7,7 @@ import {
   createSessionRepository as createStorageRepository,
   createSessionRuntimeApi,
   openSessionDatabase as openStorageDatabase,
+  resolvePermissionPendingRunStatus,
   type SessionDatabase,
   type SessionProvider,
   type SessionRepository as StorageRepository,
@@ -168,6 +169,7 @@ export function createRuntime(input: RuntimeInput) {
     session: createPermissionSessionPort({
       repository: input.repository,
       session: sessionProvider.runs,
+      permissionRepository: input.permissionRepository,
     }),
     observer: permissionObserver,
     now,
@@ -1628,20 +1630,29 @@ function createSkillPort(input: {
 function createPermissionSessionPort(input: {
   repository: StorageRepository
   session: Pick<SessionProvider["runs"], "transitionToRunning">
+  permissionRepository: PermissionRepository
 }) {
   return {
     getRun(runId: string) {
       return input.repository.runs.get(runId)
     },
-    transitionRunToWaitingPermission(runId: string) {
+    syncRunStatusWithPendingRequests(runId: string) {
       const run = input.repository.runs.get(runId)
-      assertRunStatusTransition(run, "waiting_permission")
-      return input.repository.runs.updateStatus({
-        runId,
-        status: "waiting_permission",
-      })
-    },
-    transitionRunToRunning(runId: string) {
+      const nextStatus = resolvePermissionPendingRunStatus(
+        input.permissionRepository.requests.listByRun(runId).filter((request) => request.status === "pending").length,
+      )
+      if (run.status === nextStatus) {
+        return run
+      }
+
+      if (nextStatus === "waiting_permission") {
+        assertRunStatusTransition(run, nextStatus)
+        return input.repository.runs.updateStatus({
+          runId,
+          status: nextStatus,
+        })
+      }
+
       return input.session.transitionToRunning(runId)
     },
   }

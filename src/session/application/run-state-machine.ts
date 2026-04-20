@@ -51,6 +51,12 @@ export function isTerminalRunStatus(status: RunStatus) {
   return TERMINAL_RUN_STATUSES.includes(status as (typeof TERMINAL_RUN_STATUSES)[number])
 }
 
+export function resolvePermissionPendingRunStatus(
+  pendingPermissionRequestCount: number,
+): Extract<RunStatus, "running" | "waiting_permission"> {
+  return pendingPermissionRequestCount > 0 ? "waiting_permission" : "running"
+}
+
 export function assertRunStatusTransition(
   run: Pick<StoredRun, "id" | "status">,
   nextStatus: RunStatus,
