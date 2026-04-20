@@ -181,7 +181,7 @@ function createWindow(input) {
     minWidth: 1080,
     minHeight: 720,
     autoHideMenuBar: true,
-    backgroundColor: "#ffffff",
+    backgroundColor: getWindowBackgroundColor(desktopSettings.theme),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -209,6 +209,10 @@ function createWindow(input) {
   })
 
   return window
+}
+
+function getWindowBackgroundColor(theme) {
+  return theme === "light" ? "#f3f2f0" : "#131316"
 }
 
 function closeRuntimeHandles() {

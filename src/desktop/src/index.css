@@ -29,6 +29,22 @@
   --color-success: #237a55;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  background-color: var(--color-paper);
+}
+
+#root {
+  background-color: var(--color-paper);
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--color-paper);
@@ -103,7 +119,7 @@ body {
   inset-inline: 0;
   bottom: 100%;
   height: 20px;
-  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--color-paper) 95%, transparent));
+  background: linear-gradient(to bottom, transparent, var(--color-paper));
   pointer-events: none;
   opacity: 1;
 }
