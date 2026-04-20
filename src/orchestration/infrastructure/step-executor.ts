@@ -71,10 +71,6 @@ function createConcurrentToolDefinitions(input: {
           throw error
         }
 
-        if (isDetachedError(error)) {
-          throw error
-        }
-
         return {
           output: "",
           isError: true,
@@ -94,10 +90,6 @@ function getErrorMessage(error: unknown) {
 
 function isAbortError(error: unknown, signal: AbortSignal) {
   return signal.aborted || (error instanceof Error && error.name === "AbortError")
-}
-
-function isDetachedError(error: unknown) {
-  return error instanceof Error && error.name === "RunDetachedError"
 }
 
 function isToolPermissionDeniedError(error: unknown) {

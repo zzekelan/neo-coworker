@@ -10,7 +10,10 @@ import {
   createModelProvider,
 } from "../../src/model"
 import type { OrchestrationModelPort, OrchestrationRuntimeEvent } from "../../src/orchestration"
-import { createRuntime } from "../../src/bootstrap"
+import {
+  createRuntime,
+  PermissionRequestNotPendingError,
+} from "../../src/bootstrap"
 import {
   PermissionNotFoundError,
   createPermissionRepository,
@@ -37,9 +40,7 @@ type PermissionRequestedEvent = Extract<OrchestrationRuntimeEvent, { type: "perm
 
 type RuntimeController = ReturnType<typeof createRuntime> & {
   respondPermission(input: PermissionResponse): void
-  resumeDetachedPermission(input: PermissionResponse): void
   cancelRun(runId: string): void
-  detachRun(runId: string): void
 }
 
 afterEach(async () => {
@@ -957,7 +958,7 @@ describe("runtime permission flow", () => {
     ])
   })
 
-  test("a fresh runtime instance can recover and reply to a detached pending request", async () => {
+  test("a fresh runtime instance cannot reply to a pending request after the active runtime is gone", async () => {
     const harness = await createHarness("permission-reopen-reply", false)
     const firstRuntime = createPermissionRuntime({
       provider: createTurnProvider([], [
@@ -994,7 +995,7 @@ describe("runtime permission flow", () => {
     const iterator = handle.events[Symbol.asyncIterator]()
     const permissionEvent = await waitForPermissionRequest(iterator)
 
-    firstRuntime.detachRun(started.run.id)
+    firstRuntime.cancelRun(started.run.id)
     await collectEvents(iterator)
 
     const reopenedDatabase = trackDatabase(openStorageDatabase(harness.databasePath))
@@ -1020,18 +1021,18 @@ describe("runtime permission flow", () => {
       },
     }) as RuntimeController
 
-    secondRuntime.resumeDetachedPermission({
-      requestId: permissionEvent.requestId,
-      decision: "allow",
-    })
+    expect(() =>
+      secondRuntime.respondPermission({
+        requestId: permissionEvent.requestId,
+        decision: "allow",
+      }),
+    ).toThrow(PermissionRequestNotPendingError)
 
-    await waitForRunStatus(() => reopenedRepository.runs.get(started.run.id).status, "completed")
-
-    expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe("hello")
-    expect(reopenedRepository.runs.get(started.run.id).status).toBe("completed")
+    expect(await fileExists(join(harness.workspaceRoot, "notes.txt"))).toBe(false)
+    expect(reopenedRepository.runs.get(started.run.id).status).toBe("cancelled")
     expect(reopenedPermissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
-      status: "approved",
+      status: "cancelled",
     })
   })
 
@@ -1356,20 +1357,6 @@ async function fileExists(path: string) {
   } catch {
     return false
   }
-}
-
-async function waitForRunStatus(readStatus: () => string, expectedStatus: string) {
-  const deadline = Date.now() + 2_000
-
-  while (Date.now() < deadline) {
-    if (readStatus() === expectedStatus) {
-      return
-    }
-
-    await Bun.sleep(10)
-  }
-
-  throw new Error(`Expected run status ${expectedStatus}`)
 }
 
 function createMonotonicClock(start = 1) {

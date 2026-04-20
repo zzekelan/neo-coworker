@@ -13,7 +13,6 @@ export type OrchestrationRunSuspension = {
   }): Promise<OrchestrationPermissionResponse>
   respond(input: OrchestrationPermissionResponse): void
   cancel(error?: Error): void
-  detach(): void
 }
 
 type CreateRunSuspensionInput = {
@@ -36,13 +35,6 @@ export class PermissionRequestNotAwaitingActiveRuntimeError extends Error {
     this.requestId = input.requestId
     this.runId = input.runId
     this.sessionId = input.sessionId
-  }
-}
-
-export class DetachedRunError extends Error {
-  constructor() {
-    super("Run detached while waiting on permission")
-    this.name = "RunDetachedError"
   }
 }
 
@@ -105,10 +97,6 @@ export function createRunSuspension(input: CreateRunSuspensionInput): Orchestrat
     cancel(error?: Error) {
       pendingPermissionIds.clear()
       coordinator.cancelAll(error)
-    },
-    detach() {
-      pendingPermissionIds.clear()
-      coordinator.cancelAll(new DetachedRunError())
     },
   }
 }

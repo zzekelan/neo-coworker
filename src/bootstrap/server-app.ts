@@ -11,7 +11,6 @@ import {
 } from "../session"
 import {
   type ContextUsageSnapshot,
-  PermissionRequestNotAwaitingActiveRuntimeError,
   type OrchestrationRuntimeApi,
 } from "../orchestration"
 import type { ExportedRunTrace } from "../observability"
@@ -469,9 +468,7 @@ export type ServerAppRuntime = Pick<
   | "run"
   | "compactSession"
   | "cancelRun"
-  | "detachRun"
   | "respondPermission"
-  | "resumeDetachedPermission"
 >
 
 export type CreateServerAppRuntime = (input: {
@@ -519,7 +516,6 @@ export function createServerApp(input: {
       path: string
     }>
   >
-  allowDetachedPermissionRecovery?: boolean
   now?: () => number
 }) {
   const now = input.now ?? Date.now
@@ -550,7 +546,6 @@ export function createServerApp(input: {
     string,
     {
       cancel(): void
-      detach(): void
       drained: Promise<void>
     }
   >()
@@ -599,9 +594,6 @@ async function startRun(runInput: {
       cancel() {
         handle.cancel()
       },
-      detach() {
-        runtime.detachRun(started.run.id)
-      },
       drained,
     })
 
@@ -648,7 +640,6 @@ async function startRun(runInput: {
         cancel() {
           handle.cancel()
         },
-        detach() {},
         drained,
       })
 
@@ -780,18 +771,7 @@ async function startRun(runInput: {
     },
     permissions: {
       reply(response: PermissionResponse) {
-        try {
-          runtime.respondPermission(response)
-        } catch (error) {
-          if (
-            !input.allowDetachedPermissionRecovery ||
-            !(error instanceof PermissionRequestNotAwaitingActiveRuntimeError)
-          ) {
-            throw error
-          }
-
-          runtime.resumeDetachedPermission(response)
-        }
+        runtime.respondPermission(response)
 
         const permissionRequest = permissionRepository.requests.get(response.requestId)
         return {
@@ -806,15 +786,7 @@ async function startRun(runInput: {
     async close() {
       if (!closing) {
         closing = (async () => {
-          const runsToDrain = Array.from(activeRuns.entries()).map(([runId, activeRun]) => {
-            if (
-              input.allowDetachedPermissionRecovery &&
-              repository.runs.get(runId).status === "waiting_permission"
-            ) {
-              activeRun.detach()
-              return activeRun
-            }
-
+          const runsToDrain = Array.from(activeRuns.values()).map((activeRun) => {
             activeRun.cancel()
             return activeRun
           })

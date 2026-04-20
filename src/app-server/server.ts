@@ -119,7 +119,6 @@ export function createAgentServer(input: {
   deleteSessionImpl?: (sessionId: string) => void
   now?: () => number
   heartbeatIntervalMs?: number
-  allowDetachedPermissionRecovery?: boolean
 }) {
   const now = input.now ?? Date.now
   const heartbeatIntervalMs = input.heartbeatIntervalMs ?? DEFAULT_SSE_HEARTBEAT_INTERVAL_MS
@@ -130,7 +129,6 @@ export function createAgentServer(input: {
     deleteSessionImpl: input.deleteSessionImpl,
     exportRunTraceImpl: input.exportRunTraceImpl,
     listSkillCatalogImpl: input.listSkillCatalogImpl,
-    allowDetachedPermissionRecovery: input.allowDetachedPermissionRecovery ?? true,
     now,
   })
   let server: ServerInstance | null = null
