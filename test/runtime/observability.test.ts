@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { Database } from "bun:sqlite"
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -24,7 +23,7 @@ import {
 import { createRuntime } from "../../src/bootstrap"
 
 const tempDirectories: string[] = []
-const openDatabases: Database[] = []
+const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
 
 afterEach(async () => {
   while (openDatabases.length > 0) {
@@ -100,15 +99,17 @@ describe("runtime observability", () => {
     ])
   })
 
-  test("persists permission request and reply events for ask-mode tools", async () => {
+  test("persists per-request permission lifecycle events for multi-pending ask-mode tools", async () => {
     const harness = await createHarness("trace-permission", false)
+    const firstUrl = "data:text/plain,Hello%20from%20the%20first%20observability%20fetch."
+    const secondUrl = "data:text/plain,Hello%20from%20the%20second%20observability%20fetch."
     const started = startPromptRun({
       repository: harness.repository,
       service: harness.service,
       sessionId: harness.session.id,
       runId: "run_trace_permission",
       messageId: "message_trace_permission",
-      prompt: "Run pwd",
+      prompt: "Fetch two notes for observability",
     })
     const runtime = createRuntime({
       provider: createTurnProvider(
@@ -116,13 +117,19 @@ describe("runtime observability", () => {
           async function* () {
             yield {
               type: "tool.call",
-              callId: "call_shell",
-              name: "shell",
-              inputText: '{"command":"pwd"}',
+              callId: "call_webfetch_1",
+              name: "webfetch",
+              inputText: `{"url":"${firstUrl}"}`,
+            }
+            yield {
+              type: "tool.call",
+              callId: "call_webfetch_2",
+              name: "webfetch",
+              inputText: `{"url":"${secondUrl}"}`,
             }
           },
           async function* () {
-            yield { type: "text.delta", text: "Shell completed." }
+            yield { type: "text.delta", text: "Both fetches completed." }
           },
         ],
         harness.observability.modelObserver,
@@ -137,6 +144,8 @@ describe("runtime observability", () => {
       sessionId: harness.session.id,
       runId: started.run.id,
     })
+    let firstRequestId: string | null = null
+    let secondRequestId: string | null = null
     await collectEvents(handle.events, {
       onEvent(event) {
         if (
@@ -147,31 +156,114 @@ describe("runtime observability", () => {
           "requestId" in event &&
           typeof event.requestId === "string"
         ) {
-          handle.respondPermission({
-            requestId: event.requestId,
-            decision: "allow",
-          })
+          if (firstRequestId == null) {
+            firstRequestId = event.requestId
+            return
+          }
+
+          if (secondRequestId == null) {
+            secondRequestId = event.requestId
+            handle.respondPermission({
+              requestId: event.requestId,
+              decision: "allow",
+            })
+            handle.respondPermission({
+              requestId: firstRequestId,
+              decision: "allow",
+            })
+          }
         }
       },
     })
 
-    expect(readEventTypes(harness.observabilityRepository.runEvents.listByRun(started.run.id))).toContain(
-      "permission.requested",
+    expect(firstRequestId).not.toBeNull()
+    expect(secondRequestId).not.toBeNull()
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    expect(trace).not.toBeNull()
+
+    const permissionLifecycle = (trace?.events ?? []).filter(
+      (event) =>
+        event.source === "permission" &&
+        (event.eventType === "permission.requested" || event.eventType === "permission.responded"),
     )
-    expect(readEventTypes(harness.observabilityRepository.runEvents.listByRun(started.run.id))).toContain(
-      "permission.responded",
+
+    expect(permissionLifecycle).toEqual([
+      expect.objectContaining({
+        eventType: "permission.requested",
+        data: expect.objectContaining({
+          requestId: firstRequestId,
+          toolName: "webfetch",
+          reason: `webfetch ${firstUrl}`,
+        }),
+      }),
+      expect.objectContaining({
+        eventType: "permission.requested",
+        data: expect.objectContaining({
+          requestId: secondRequestId,
+          toolName: "webfetch",
+          reason: `webfetch ${secondUrl}`,
+        }),
+      }),
+      expect.objectContaining({
+        eventType: "permission.responded",
+        data: expect.objectContaining({
+          requestId: secondRequestId,
+          decision: "allow",
+        }),
+      }),
+      expect.objectContaining({
+        eventType: "permission.responded",
+        data: expect.objectContaining({
+          requestId: firstRequestId,
+          decision: "allow",
+        }),
+      }),
+    ])
+
+    const orchestrationPermissionRequests = (trace?.events ?? []).filter(
+      (event) => event.source === "orchestration" && event.eventType === "permission.requested",
     )
+    expect(orchestrationPermissionRequests).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          requestId: firstRequestId,
+          toolName: "webfetch",
+          reason: `webfetch ${firstUrl}`,
+        }),
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          requestId: secondRequestId,
+          toolName: "webfetch",
+          reason: `webfetch ${secondUrl}`,
+        }),
+      }),
+    ])
+
+    const lastPermissionResponseIndex = (trace?.events ?? []).findLastIndex(
+      (event) =>
+        event.source === "permission" &&
+        event.eventType === "permission.responded" &&
+        event.data.requestId === firstRequestId,
+    )
+    const runCompletedIndex = (trace?.events ?? []).findIndex((event) => event.eventType === "run.completed")
+
+    expect(lastPermissionResponseIndex).toBeGreaterThanOrEqual(0)
+    expect(runCompletedIndex).toBeGreaterThan(lastPermissionResponseIndex)
   })
 
-  test("exports persisted traces after reopening the same storage file", async () => {
+  test("exports persisted multi-request permission traces after reopening the same storage file", async () => {
     const harness = await createHarness("trace-reopen", true)
+    const firstUrl = "data:text/plain,Hello%20from%20the%20first%20reopen%20fetch."
+    const secondUrl = "data:text/plain,Hello%20from%20the%20second%20reopen%20fetch."
     const started = startPromptRun({
       repository: harness.repository,
       service: harness.service,
       sessionId: harness.session.id,
       runId: "run_trace_reopen",
       messageId: "message_trace_reopen",
-      prompt: "Read README.md and summarize it",
+      prompt: "Fetch two notes and reopen the trace",
     })
     const runtime = createRuntime({
       provider: createTurnProvider(
@@ -179,13 +271,19 @@ describe("runtime observability", () => {
           async function* () {
             yield {
               type: "tool.call",
-              callId: "call_read_reopen",
-              name: "read",
-              inputText: '{"path":"README.md"}',
+              callId: "call_webfetch_reopen_1",
+              name: "webfetch",
+              inputText: `{"url":"${firstUrl}"}`,
+            }
+            yield {
+              type: "tool.call",
+              callId: "call_webfetch_reopen_2",
+              name: "webfetch",
+              inputText: `{"url":"${secondUrl}"}`,
             }
           },
           async function* () {
-            yield { type: "text.delta", text: "Summary after reopen." }
+            yield { type: "text.delta", text: "Trace after reopen." }
           },
         ],
         harness.observability.modelObserver,
@@ -200,30 +298,80 @@ describe("runtime observability", () => {
       sessionId: harness.session.id,
       runId: started.run.id,
     })
-    await collectEvents(handle.events)
+    const pendingRequestIds: string[] = []
+    await collectEvents(handle.events, {
+      onEvent(event) {
+        if (
+          typeof event !== "object" ||
+          event === null ||
+          !("type" in event) ||
+          event.type !== "permission.requested" ||
+          !("requestId" in event) ||
+          typeof event.requestId !== "string"
+        ) {
+          return
+        }
+
+        pendingRequestIds.push(event.requestId)
+        if (pendingRequestIds.length === 2) {
+          handle.respondPermission({
+            requestId: pendingRequestIds[1]!,
+            decision: "allow",
+          })
+          handle.respondPermission({
+            requestId: pendingRequestIds[0]!,
+            decision: "allow",
+          })
+        }
+      },
+    })
 
     const initialTrace = harness.observability.exportRunTrace(started.run.id)
-    expect(initialTrace?.events.map((event) => event.eventType)).toEqual([
-      "run.started",
-      "skill.run.snapshot.applied",
-      "memory.loaded",
-      "prompt.assembled",
-      "tool.listed",
-      "model.turn.requested",
-      "model.prompt.assembled",
-      "message.started",
-      "model.turn.usage",
-      "context.usage.updated",
-      "tool.executed",
-      "tool.call.completed",
-      "tool.listed",
-      "model.turn.requested",
-      "model.prompt.assembled",
-      "message.started",
-      "message.delta",
-      "model.turn.usage",
-      "context.usage.updated",
-      "run.completed",
+    expect(initialTrace).not.toBeNull()
+    expect(readEventTypes(initialTrace?.events ?? [])).toEqual(
+      expect.arrayContaining([
+        "permission.requested",
+        "permission.responded",
+        "run.completed",
+      ]),
+    )
+
+    const initialPermissionLifecycle = (initialTrace?.events ?? []).filter(
+      (event) =>
+        event.source === "permission" &&
+        (event.eventType === "permission.requested" || event.eventType === "permission.responded"),
+    )
+    expect(initialPermissionLifecycle).toEqual([
+      expect.objectContaining({
+        eventType: "permission.requested",
+        data: expect.objectContaining({
+          requestId: pendingRequestIds[0],
+          toolName: "webfetch",
+          reason: `webfetch ${firstUrl}`,
+        }),
+      }),
+      expect.objectContaining({
+        eventType: "permission.requested",
+        data: expect.objectContaining({
+          requestId: pendingRequestIds[1],
+          toolName: "webfetch",
+          reason: `webfetch ${secondUrl}`,
+        }),
+      }),
+      expect.objectContaining({
+        eventType: "permission.responded",
+        data: expect.objectContaining({
+          requestId: pendingRequestIds[1],
+          decision: "allow",
+        }),
+      }),
+      expect.objectContaining({
+        eventType: "permission.responded",
+        data: expect.objectContaining({
+          requestId: pendingRequestIds[0],
+          decision: "allow",
+        }),
+      }),
     ])
 
     closeTrackedDatabase(harness.database)
@@ -249,9 +397,7 @@ describe("runtime observability", () => {
         tokenUsageSource: "estimated",
         inputTokens: expect.any(Number),
       })
-      expect(
-        reopenedObservability.exportRunTrace(started.run.id)?.events.map((event) => event.eventType),
-      ).toEqual(initialTrace?.events.map((event) => event.eventType))
+      expect(reopenedObservability.exportRunTrace(started.run.id)?.events).toEqual(initialTrace?.events)
     } finally {
       reopenedDatabase.close(false)
     }
@@ -328,7 +474,6 @@ describe("runtime observability", () => {
       catalogSkillNames: ["reviewer"],
       activeSkillNames: [],
       activeSkillCount: 0,
-      recoveryFilePaths: [],
       systemPromptLength: expect.any(Number),
       systemReminderLength: expect.any(Number),
     })
@@ -336,7 +481,6 @@ describe("runtime observability", () => {
       catalogSkillNames: [],
       activeSkillNames: ["reviewer"],
       activeSkillCount: 1,
-      recoveryFilePaths: [],
       systemPromptHash: promptEvents[0]?.data.systemPromptHash,
     })
     expect(promptEvents[0]?.data.systemReminderHash).not.toBe(promptEvents[1]?.data.systemReminderHash)
@@ -979,7 +1123,7 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
   }
 }
 
-function closeTrackedDatabase(database: Database) {
+function closeTrackedDatabase(database: { close: (throwOnError: boolean) => void }) {
   const index = openDatabases.indexOf(database)
   if (index !== -1) {
     openDatabases.splice(index, 1)
