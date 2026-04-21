@@ -18,6 +18,10 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
+function isDetachedError(error: unknown) {
+  return error instanceof Error && error.name === "RunDetachedError"
+}
+
 export async function runOrchestrationLoop(input: OrchestrationLoopInput) {
   try {
     input.stepService.initializeRun({
@@ -74,7 +78,7 @@ export async function runOrchestrationLoop(input: OrchestrationLoopInput) {
       return
     }
   } catch (error) {
-    if (input.stepService.isDetachedError(error)) {
+    if (isDetachedError(error)) {
       return
     }
 
