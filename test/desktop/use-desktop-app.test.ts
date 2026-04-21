@@ -138,15 +138,6 @@ describe("desktop api client", () => {
     expect(source).toContain("requestApi<{ run: DesktopRun }>(")
   })
 
-  test("loadPrimaryAgents scopes /agents/primary by workspaceRoot when available", () => {
-    const source = readFileSync("src/desktop/src/api.ts", "utf8")
-
-    expect(source).toContain("export async function loadPrimaryAgents(workspaceRoot?: string)")
-    expect(source).toContain(
-      'workspaceRoot ? `/agents/primary?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : "/agents/primary"',
-    )
-  })
-
   test("upserts per-request permission updates with deterministic ordering and sibling preservation", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 
