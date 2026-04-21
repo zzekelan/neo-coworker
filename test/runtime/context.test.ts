@@ -4,7 +4,18 @@ import {
   buildModelPromptSections,
   buildModelTurnInput,
   buildTranscriptMessages,
+  type ModelEvent,
+  type ModelMessage,
+  type ModelTranscriptMessage,
 } from "../../src/model"
+
+type PersistedTranscriptMessage = ModelTranscriptMessage & {
+  id: string
+  sessionId: string
+  runId: string
+  sequence: number
+  createdAt: number
+}
 
 describe("context builder", () => {
   const basePrompt = "You are Neo Coworker, a versatile day-to-day work assistant."
@@ -106,7 +117,7 @@ describe("context builder", () => {
   })
 
   test("renders persisted tool calls, tool results, and errors back into model messages", () => {
-    const messages = buildTranscriptMessages([
+    const transcript = [
       {
         id: "message_1",
         sessionId: "session_1",
@@ -116,33 +127,21 @@ describe("context builder", () => {
         createdAt: 1,
         parts: [
           {
-            id: "part_1",
-            sessionId: "session_1",
-            runId: "run_1",
-            messageId: "message_1",
             kind: "tool_call",
-            sequence: 0,
             text: null,
             data: {
               callId: "call_1",
               toolName: "read",
               inputText: '{"path":"README.md"}',
             },
-            createdAt: 2,
           },
           {
-            id: "part_2",
-            sessionId: "session_1",
-            runId: "run_1",
-            messageId: "message_1",
             kind: "tool_result",
-            sequence: 1,
             text: "file contents",
             data: {
               callId: "call_1",
               toolName: "read",
             },
-            createdAt: 3,
           },
         ],
       },
@@ -155,19 +154,15 @@ describe("context builder", () => {
         createdAt: 4,
         parts: [
           {
-            id: "part_3",
-            sessionId: "session_1",
-            runId: "run_1",
-            messageId: "message_2",
             kind: "error",
-            sequence: 2,
             text: "tool failed",
             data: null,
-            createdAt: 5,
           },
         ],
       },
-    ])
+    ] satisfies PersistedTranscriptMessage[]
+
+    const messages = buildTranscriptMessages(transcript)
 
     expect(messages).toEqual([
       {
@@ -199,8 +194,77 @@ describe("context builder", () => {
     ])
   })
 
+  test("supports reasoning-aware replay shapes in generic model contracts", () => {
+    const replayedMessages = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "reasoning",
+            text: "Need to inspect the README before calling read.",
+          },
+          {
+            type: "tool_call",
+            callId: "call_1",
+            toolName: "read",
+            inputText: '{"path":"README.md"}',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_1",
+            toolName: "read",
+            output: "# README",
+          },
+        ],
+      },
+    ] satisfies ModelMessage[]
+
+    const reasoningDelta = {
+      type: "reasoning.delta",
+      text: "Need to inspect the README before calling read.",
+    } satisfies ModelEvent
+
+    expect(replayedMessages).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "reasoning",
+            text: "Need to inspect the README before calling read.",
+          },
+          {
+            type: "tool_call",
+            callId: "call_1",
+            toolName: "read",
+            inputText: '{"path":"README.md"}',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_1",
+            toolName: "read",
+            output: "# README",
+          },
+        ],
+      },
+    ])
+    expect(reasoningDelta).toEqual({
+      type: "reasoning.delta",
+      text: "Need to inspect the README before calling read.",
+    })
+  })
+
   test("omits unresolved tool calls from replayed transcript messages", () => {
-    const messages = buildTranscriptMessages([
+    const transcript = [
       {
         id: "message_1",
         sessionId: "session_1",
@@ -210,19 +274,13 @@ describe("context builder", () => {
         createdAt: 1,
         parts: [
           {
-            id: "part_1",
-            sessionId: "session_1",
-            runId: "run_1",
-            messageId: "message_1",
             kind: "tool_call",
-            sequence: 0,
             text: null,
             data: {
               callId: "call_pending",
               toolName: "write",
               inputText: '{"path":"hello.ts","content":"console.log(\\"hello\\")"}',
             },
-            createdAt: 2,
           },
         ],
       },
@@ -235,19 +293,15 @@ describe("context builder", () => {
         createdAt: 3,
         parts: [
           {
-            id: "part_2",
-            sessionId: "session_1",
-            runId: "run_2",
-            messageId: "message_2",
             kind: "text",
-            sequence: 0,
             text: "Try again",
             data: null,
-            createdAt: 4,
           },
         ],
       },
-    ])
+    ] satisfies PersistedTranscriptMessage[]
+
+    const messages = buildTranscriptMessages(transcript)
 
     expect(messages).toEqual([
       {
@@ -258,7 +312,7 @@ describe("context builder", () => {
   })
 
   test("replays only from the latest compaction boundary message", () => {
-    const messages = buildTranscriptMessages([
+    const transcript = [
       {
         id: "message_old",
         sessionId: "session_1",
@@ -268,15 +322,9 @@ describe("context builder", () => {
         createdAt: 1,
         parts: [
           {
-            id: "part_old",
-            sessionId: "session_1",
-            runId: "run_old",
-            messageId: "message_old",
             kind: "text",
-            sequence: 0,
             text: "Old context that should be dropped",
             data: null,
-            createdAt: 2,
           },
         ],
       },
@@ -289,28 +337,16 @@ describe("context builder", () => {
         createdAt: 3,
         parts: [
           {
-            id: "part_boundary",
-            sessionId: "session_1",
-            runId: "run_active",
-            messageId: "message_boundary",
             kind: "compaction_boundary",
-            sequence: 0,
             text: null,
             data: {
               summarizeRunId: "run_summary",
             },
-            createdAt: 4,
           },
           {
-            id: "part_summary",
-            sessionId: "session_1",
-            runId: "run_active",
-            messageId: "message_boundary",
             kind: "text",
-            sequence: 1,
             text: "Primary Request\nKeep moving forward.",
             data: null,
-            createdAt: 5,
           },
         ],
       },
@@ -323,19 +359,15 @@ describe("context builder", () => {
         createdAt: 6,
         parts: [
           {
-            id: "part_new",
-            sessionId: "session_1",
-            runId: "run_active",
-            messageId: "message_new",
             kind: "text",
-            sequence: 0,
             text: "What changed after compaction?",
             data: null,
-            createdAt: 7,
           },
         ],
       },
-    ])
+    ] satisfies PersistedTranscriptMessage[]
+
+    const messages = buildTranscriptMessages(transcript)
 
     expect(messages).toEqual([
       {

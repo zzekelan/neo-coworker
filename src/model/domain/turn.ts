@@ -24,6 +24,13 @@ export type ModelSystemReminderMetadata = {
   recoveryFilePaths: string[]
 }
 
+export type ReasoningEffortMode = "default" | "low" | "medium" | "high"
+
+export type ModelThinkingConfig = {
+  enabled: boolean
+  effort?: ReasoningEffortMode
+}
+
 export type ModelProjectionInput = {
   systemPrompt: string
   lateContextMessage?: string
@@ -43,4 +50,5 @@ export type ModelTurnRequest = {
   tools: ModelTool[]
   signal: AbortSignal
   temperature?: number
+  thinking?: ModelThinkingConfig
 }

@@ -6,6 +6,10 @@ export type ModelEvent =
       text: string
     }
   | {
+      type: "reasoning.delta"
+      text: string
+    }
+  | {
       type: "tool.call"
       callId: string
       name: string

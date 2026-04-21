@@ -3,6 +3,11 @@ export type ModelTextPart = {
   text: string
 }
 
+export type ModelReasoningPart = {
+  type: "reasoning"
+  text: string
+}
+
 export type ModelToolCallPart = {
   type: "tool_call"
   callId: string
@@ -21,6 +26,7 @@ export type ModelToolResultPart = {
 
 export type ModelMessagePart =
   | ModelTextPart
+  | ModelReasoningPart
   | ModelToolCallPart
   | ModelToolResultPart
 

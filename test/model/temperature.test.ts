@@ -154,13 +154,58 @@ describe("model adapter temperature threading", () => {
     })
   })
 
-  test("fake adapter still accepts requests with temperature", async () => {
+  test("openai-compatible adapter keeps generic thinking config out of provider payloads for now", async () => {
+    let receivedBody: unknown
+
+    const adapter = createOpenAICompatibleAdapter({
+      model: "kimi-k2.5",
+      client: {
+        chat: {
+          completions: {
+            create(body) {
+              receivedBody = body
+              return (async function* () {})()
+            },
+          },
+        },
+      },
+    })
+
+    await drain(adapter.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+      thinking: {
+        enabled: true,
+        effort: "default",
+      },
+    }))
+
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.5",
+      messages: [{ role: "system", content: "system" }],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
+  test("fake adapter still accepts requests with generic thinking and effort config", async () => {
     const request = {
       system: "system",
       messages: [],
       tools: [],
       signal: new AbortController().signal,
       temperature: 0.7,
+      thinking: {
+        enabled: true,
+        effort: "high",
+      },
     } satisfies ModelTurnRequest
 
     let capturedRequest: ModelTurnRequest | undefined
