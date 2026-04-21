@@ -108,6 +108,17 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     return input.permission.cancelPendingRequestsByRun(runId, now())
   }
 
+  function throwPermissionRequestNotAwaitingActiveRuntime(
+    permissionRequest: ReturnType<CreateOrchestrationRuntimeApiInput["permission"]["getPermissionRequest"]>,
+  ): never {
+    throw new PermissionRequestNotAwaitingActiveRuntimeError({
+      requestId: permissionRequest.id,
+      runId: permissionRequest.runId,
+      sessionId: permissionRequest.sessionId,
+      status: permissionRequest.status,
+    })
+  }
+
   async function createActiveRunExecution(inputValue: {
     sessionId: string
     runId: string
@@ -203,19 +214,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     )
 
     if (!activeRun || !activeRun.suspend.isPending(response.requestId)) {
-      if (permissionRequest.status !== "pending") {
-        input.permission.respondPermission({
-          requestId: response.requestId,
-          decision: response.decision,
-          resolvedAt: now(),
-        })
-      }
-
-      throw new PermissionRequestNotAwaitingActiveRuntimeError({
-        requestId: permissionRequest.id,
-        runId: permissionRequest.runId,
-        sessionId: permissionRequest.sessionId,
-      })
+      throwPermissionRequestNotAwaitingActiveRuntime(permissionRequest)
     }
 
     activeRun.suspend.respond(response)

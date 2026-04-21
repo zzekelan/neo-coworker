@@ -1,9 +1,22 @@
+import { createRequire } from "node:module"
 import type { RuntimeEvent } from "../../application/event"
 import type {
   OrchestrationPermissionPort,
   OrchestrationPermissionResponse,
 } from "../../application/ports/permission"
 import type { OrchestrationPermissionPolicy } from "../../application/permission"
+
+type PermissionRequestNotPendingErrorConstructor = new (input: {
+  requestId: string
+  status: string
+}) => Error
+
+const require = createRequire(import.meta.url)
+const { PermissionRequestNotPendingError: PermissionRequestNotPendingErrorBase } = require(
+  "../../../permission",
+) as {
+  PermissionRequestNotPendingError: PermissionRequestNotPendingErrorConstructor
+}
 
 export type OrchestrationRunSuspension = {
   getPendingRequestIds(): string[]
@@ -25,18 +38,46 @@ type CreateRunSuspensionInput = {
   emit: (event: RuntimeEvent) => void
 }
 
-export class PermissionRequestNotAwaitingActiveRuntimeError extends Error {
+export class PermissionRequestNotAwaitingActiveRuntimeError extends PermissionRequestNotPendingErrorBase {
   readonly requestId: string
   readonly runId: string
   readonly sessionId: string
+  readonly status: string
 
-  constructor(input: { requestId: string; runId: string; sessionId: string }) {
-    super(`Permission request ${input.requestId} is not awaiting a reply in the active runtime`)
+  constructor(input: { requestId: string; runId: string; sessionId: string; status: string }) {
+    super({
+      requestId: input.requestId,
+      status: input.status,
+    })
     this.name = "PermissionRequestNotAwaitingActiveRuntimeError"
     this.requestId = input.requestId
     this.runId = input.runId
     this.sessionId = input.sessionId
+    this.status = input.status
+    this.message = buildNotAwaitingActiveRuntimeMessage(input)
   }
+}
+
+function buildNotAwaitingActiveRuntimeMessage(input: {
+  requestId: string
+  status: string
+}) {
+  if (input.status === "pending") {
+    return `Permission request ${input.requestId} is not awaiting a reply in the active runtime (stored status: pending)`
+  }
+
+  return `Permission request ${input.requestId} is not awaiting a reply in the active runtime (request is not pending: ${input.status})`
+}
+
+function throwPermissionRequestNotAwaitingActiveRuntime(
+  permissionRequest: ReturnType<OrchestrationPermissionPort["getPermissionRequest"]>,
+): never {
+  throw new PermissionRequestNotAwaitingActiveRuntimeError({
+    requestId: permissionRequest.id,
+    runId: permissionRequest.runId,
+    sessionId: permissionRequest.sessionId,
+    status: permissionRequest.status,
+  })
 }
 
 export function createRunSuspension(input: CreateRunSuspensionInput): OrchestrationRunSuspension {
@@ -75,19 +116,7 @@ export function createRunSuspension(input: CreateRunSuspensionInput): Orchestrat
     respond(response) {
       const permissionRequest = input.permission.getPermissionRequest(response.requestId)
       if (!pendingPermissionIds.has(response.requestId)) {
-        if (permissionRequest.status !== "pending") {
-          input.permission.respondPermission({
-            requestId: response.requestId,
-            decision: response.decision,
-            resolvedAt: input.now(),
-          })
-        }
-
-        throw new PermissionRequestNotAwaitingActiveRuntimeError({
-          requestId: permissionRequest.id,
-          runId: permissionRequest.runId,
-          sessionId: permissionRequest.sessionId,
-        })
+        throwPermissionRequestNotAwaitingActiveRuntime(permissionRequest)
       }
 
       input.permission.respondPermission({
