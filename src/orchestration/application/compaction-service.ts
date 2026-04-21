@@ -250,6 +250,10 @@ export function createOrchestrationCompactionService(input: {
           throw error
         }
 
+        if (isDetachedError(error)) {
+          throw error
+        }
+
         const errorText = getErrorMessage(error)
         const attemptCount = breakerState.consecutiveFailures + 1
         appendCompactionFailureArtifacts({
@@ -388,6 +392,10 @@ export function createOrchestrationCompactionService(input: {
           return {
             status: "cancelled",
           }
+        }
+
+        if (isDetachedError(error)) {
+          throw error
         }
 
         const message = getErrorMessage(error)
@@ -624,6 +632,10 @@ async function performCompactionRun(input: CompactionRunInput & {
     } satisfies CompactionRunResult
   } catch (error) {
     if (isAbortError(error, input.signal)) {
+      throw error
+    }
+
+    if (isDetachedError(error)) {
       throw error
     }
 
@@ -1261,6 +1273,10 @@ function stripAnalysisBlocks(text: string) {
 
 function isAbortError(error: unknown, signal: AbortSignal) {
   return signal.aborted || (error instanceof Error && error.name === "AbortError")
+}
+
+function isDetachedError(error: unknown) {
+  return error instanceof Error && error.name === "RunDetachedError"
 }
 
 function getErrorMessage(error: unknown) {

@@ -238,6 +238,10 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
       throw error
     }
 
+    if (stepService.isDetachedError(error)) {
+      throw error
+    }
+
     throw error
   }
 }
