@@ -13,6 +13,12 @@ import {
   type ModelProvider,
 } from "../model"
 import { readEnvWithFallback } from "./env"
+import {
+  resolveProviderCapabilities as resolveProviderCapabilitiesFromCatalog,
+  type ModelsDevCatalog,
+  type ProviderCapabilityOverride,
+  type ResolvedProviderCapabilities,
+} from "./provider-capabilities"
 
 type ProviderKind = "openai" | "openai-compatible"
 
@@ -154,6 +160,25 @@ export function resolveDefaultProviderConfig(
     baseURL,
     timeout: parseTimeout(readEnvValue(env, "LLM_TIMEOUT_MS")),
   }
+}
+
+export function resolveProviderCapabilities(input: {
+  env?: Record<string, string | undefined>
+  override?: ProviderCapabilityOverride
+  catalog?: ModelsDevCatalog
+} = {}): ResolvedProviderCapabilities {
+  const env = input.env ?? process.env
+  const config = resolveDefaultProviderConfig(env)
+
+  return resolveProviderCapabilitiesFromCatalog({
+    config: {
+      provider: config.provider,
+      model: config.model,
+      baseURL: config.baseURL,
+    },
+    override: input.override,
+    catalog: input.catalog,
+  })
 }
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"

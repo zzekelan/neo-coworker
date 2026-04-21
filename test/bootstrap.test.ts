@@ -3,6 +3,7 @@ import { buildCli } from "../src/cli"
 import {
   createDefaultSearchBackend,
   resolveDefaultProviderConfig,
+  resolveProviderCapabilities,
   resolveContextWindowSize,
   resolveSearchBackendConfig,
 } from "../src/bootstrap"
@@ -215,6 +216,185 @@ describe("bootstrap", () => {
     const searchBackend = createDefaultSearchBackend({})
 
     expect(searchBackend).toBeDefined()
+  })
+
+  test("resolves known Kimi reasoning capabilities from models.dev metadata", () => {
+    expect(
+      resolveProviderCapabilities({
+        env: {
+          LLM_PROVIDER: "openai-compatible",
+          LLM_API_KEY: "test-key",
+          LLM_MODEL: "kimi-k2.6",
+          LLM_BASE_URL: "https://api.moonshot.ai/v1",
+        },
+      }),
+    ).toEqual({
+      provider: "openai-compatible",
+      providerId: "moonshotai",
+      model: "kimi-k2.6",
+      catalog: {
+        source: "models.dev",
+        miss: false,
+      },
+      reasoning: {
+        supported: true,
+        source: "models.dev",
+      },
+      toolCall: {
+        supported: true,
+        source: "models.dev",
+      },
+      interleaved: {
+        supported: true,
+        field: "reasoning_content",
+        source: "models.dev",
+      },
+      reasoningEffort: {
+        supported: true,
+        source: "models.dev",
+      },
+      thinkingControls: {
+        thinking: {
+          supported: true,
+          source: "models.dev",
+        },
+        reasoningEffort: {
+          supported: true,
+          source: "models.dev",
+        },
+      },
+    })
+  })
+
+  test("resolves known OpenAI reasoning capabilities from models.dev metadata", () => {
+    expect(
+      resolveProviderCapabilities({
+        env: {
+          LLM_PROVIDER: "openai",
+          LLM_API_KEY: "test-key",
+          LLM_MODEL: "gpt-5",
+        },
+      }),
+    ).toEqual({
+      provider: "openai",
+      providerId: "openai",
+      model: "gpt-5",
+      catalog: {
+        source: "models.dev",
+        miss: false,
+      },
+      reasoning: {
+        supported: true,
+        source: "models.dev",
+      },
+      toolCall: {
+        supported: true,
+        source: "models.dev",
+      },
+      interleaved: {
+        supported: false,
+        field: null,
+        source: "models.dev",
+      },
+      reasoningEffort: {
+        supported: true,
+        source: "models.dev",
+      },
+      thinkingControls: {
+        thinking: {
+          supported: true,
+          source: "models.dev",
+        },
+        reasoningEffort: {
+          supported: true,
+          source: "models.dev",
+        },
+      },
+    })
+  })
+
+  test("applies manual overrides with higher precedence than models.dev capability metadata", () => {
+    expect(
+      resolveProviderCapabilities({
+        env: {
+          LLM_PROVIDER: "openai-compatible",
+          LLM_API_KEY: "test-key",
+          LLM_MODEL: "kimi-k2.6",
+          LLM_BASE_URL: "https://api.moonshot.ai/v1",
+        },
+        override: {
+          thinking: false,
+          reasoningEffort: false,
+        },
+      }),
+    ).toMatchObject({
+      reasoning: {
+        supported: true,
+        source: "models.dev",
+      },
+      reasoningEffort: {
+        supported: true,
+        source: "models.dev",
+      },
+      thinkingControls: {
+        thinking: {
+          supported: false,
+          source: "override",
+        },
+        reasoningEffort: {
+          supported: false,
+          source: "override",
+        },
+      },
+    })
+  })
+
+  test("falls back conservatively for unknown models and reports a models.dev miss", () => {
+    expect(
+      resolveProviderCapabilities({
+        env: {
+          LLM_PROVIDER: "openai-compatible",
+          LLM_API_KEY: "test-key",
+          LLM_MODEL: "unknown-model",
+          LLM_BASE_URL: "https://example.invalid/v1",
+        },
+      }),
+    ).toEqual({
+      provider: "openai-compatible",
+      providerId: null,
+      model: "unknown-model",
+      catalog: {
+        source: "default",
+        miss: true,
+      },
+      reasoning: {
+        supported: false,
+        source: "default",
+      },
+      toolCall: {
+        supported: true,
+        source: "default",
+      },
+      interleaved: {
+        supported: false,
+        field: null,
+        source: "default",
+      },
+      reasoningEffort: {
+        supported: false,
+        source: "default",
+      },
+      thinkingControls: {
+        thinking: {
+          supported: false,
+          source: "default",
+        },
+        reasoningEffort: {
+          supported: false,
+          source: "default",
+        },
+      },
+    })
   })
 
   test("prefers LLM_CONTEXT_WINDOW over provider metadata lookups", async () => {
