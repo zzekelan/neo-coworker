@@ -1,5 +1,11 @@
 import OpenAI from "openai"
 import {
+  _resetModelsDevCatalogCache,
+  getModelsDevCatalogCachePath,
+  loadModelsDevCatalog,
+  type LoadModelsDevCatalogInput,
+} from "./provider-capability-catalog"
+import {
   CredentialPool,
   PoolStrategy,
   RateLimitTracker,
@@ -13,6 +19,9 @@ import {
   type ModelProvider,
 } from "../model"
 import { readEnvWithFallback } from "./env"
+import {
+  MODELS_DEV_CAPABILITY_SNAPSHOT,
+} from "./provider-capabilities-snapshot"
 import {
   resolveProviderCapabilities as resolveProviderCapabilitiesFromCatalog,
   type ModelsDevCatalog,
@@ -166,19 +175,35 @@ export function resolveProviderCapabilities(input: {
   env?: Record<string, string | undefined>
   override?: ProviderCapabilityOverride
   catalog?: ModelsDevCatalog
-} = {}): ResolvedProviderCapabilities {
+} & Omit<LoadModelsDevCatalogInput, "env"> = {}): Promise<ResolvedProviderCapabilities> {
   const env = input.env ?? process.env
   const config = resolveDefaultProviderConfig(env)
 
-  return resolveProviderCapabilitiesFromCatalog({
+  return Promise.resolve(input.catalog ?? loadModelsDevCatalog({
+    env,
+    cwd: input.cwd,
+    fetchImpl: input.fetchImpl,
+    now: input.now,
+    cachePath: input.cachePath,
+    refreshIntervalMs: input.refreshIntervalMs,
+    fetchTimeoutMs: input.fetchTimeoutMs,
+    snapshot: input.snapshot,
+  }).then((result) => result.catalog)).then((catalog) => resolveProviderCapabilitiesFromCatalog({
     config: {
       provider: config.provider,
       model: config.model,
       baseURL: config.baseURL,
     },
     override: input.override,
-    catalog: input.catalog,
-  })
+    catalog,
+  }))
+}
+
+export {
+  _resetModelsDevCatalogCache,
+  getModelsDevCatalogCachePath,
+  loadModelsDevCatalog,
+  MODELS_DEV_CAPABILITY_SNAPSHOT,
 }
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"

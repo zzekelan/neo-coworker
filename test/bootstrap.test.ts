@@ -1,14 +1,28 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { dirname, join } from "node:path"
 import { buildCli } from "../src/cli"
 import {
+  _resetModelsDevCatalogCache,
   createDefaultSearchBackend,
+  getModelsDevCatalogCachePath,
+  loadModelsDevCatalog,
+  MODELS_DEV_CAPABILITY_SNAPSHOT,
   resolveDefaultProviderConfig,
   resolveProviderCapabilities,
   resolveContextWindowSize,
   resolveSearchBackendConfig,
 } from "../src/bootstrap"
 
+const tempDirectories: string[] = []
+
 describe("bootstrap", () => {
+  afterEach(async () => {
+    _resetModelsDevCatalogCache()
+    await Promise.all(tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
+  })
+
   test("parses the run command", () => {
     const cli = buildCli()
     expect(cli.parse(["run", "hello runtime"])).toEqual({
@@ -218,8 +232,10 @@ describe("bootstrap", () => {
     expect(searchBackend).toBeDefined()
   })
 
-  test("resolves known Kimi reasoning capabilities from models.dev metadata", () => {
-    expect(
+  test("resolves known Kimi reasoning capabilities from the bundled snapshot when offline", async () => {
+    const cachePath = await createTempModelsCachePath("bootstrap-kimi-capabilities-")
+
+    await expect(
       resolveProviderCapabilities({
         env: {
           LLM_PROVIDER: "openai-compatible",
@@ -227,8 +243,12 @@ describe("bootstrap", () => {
           LLM_MODEL: "kimi-k2.6",
           LLM_BASE_URL: "https://api.moonshot.ai/v1",
         },
+        cachePath,
+        fetchImpl: async () => {
+          throw new Error("offline")
+        },
       }),
-    ).toEqual({
+    ).resolves.toEqual({
       provider: "openai-compatible",
       providerId: "moonshotai",
       model: "kimi-k2.6",
@@ -266,16 +286,22 @@ describe("bootstrap", () => {
     })
   })
 
-  test("resolves known OpenAI reasoning capabilities from models.dev metadata", () => {
-    expect(
+  test("resolves known OpenAI reasoning capabilities from the bundled snapshot when offline", async () => {
+    const cachePath = await createTempModelsCachePath("bootstrap-openai-capabilities-")
+
+    await expect(
       resolveProviderCapabilities({
         env: {
           LLM_PROVIDER: "openai",
           LLM_API_KEY: "test-key",
           LLM_MODEL: "gpt-5",
         },
+        cachePath,
+        fetchImpl: async () => {
+          throw new Error("offline")
+        },
       }),
-    ).toEqual({
+    ).resolves.toEqual({
       provider: "openai",
       providerId: "openai",
       model: "gpt-5",
@@ -313,8 +339,10 @@ describe("bootstrap", () => {
     })
   })
 
-  test("applies manual overrides with higher precedence than models.dev capability metadata", () => {
-    expect(
+  test("applies manual overrides with higher precedence than models.dev capability metadata", async () => {
+    const cachePath = await createTempModelsCachePath("bootstrap-capability-overrides-")
+
+    await expect(
       resolveProviderCapabilities({
         env: {
           LLM_PROVIDER: "openai-compatible",
@@ -326,8 +354,12 @@ describe("bootstrap", () => {
           thinking: false,
           reasoningEffort: false,
         },
+        cachePath,
+        fetchImpl: async () => {
+          throw new Error("offline")
+        },
       }),
-    ).toMatchObject({
+    ).resolves.toMatchObject({
       reasoning: {
         supported: true,
         source: "models.dev",
@@ -349,8 +381,10 @@ describe("bootstrap", () => {
     })
   })
 
-  test("falls back conservatively for unknown models and reports a models.dev miss", () => {
-    expect(
+  test("falls back conservatively for unknown models and reports a models.dev miss", async () => {
+    const cachePath = await createTempModelsCachePath("bootstrap-capability-miss-")
+
+    await expect(
       resolveProviderCapabilities({
         env: {
           LLM_PROVIDER: "openai-compatible",
@@ -358,8 +392,12 @@ describe("bootstrap", () => {
           LLM_MODEL: "unknown-model",
           LLM_BASE_URL: "https://example.invalid/v1",
         },
+        cachePath,
+        fetchImpl: async () => {
+          throw new Error("offline")
+        },
       }),
-    ).toEqual({
+    ).resolves.toEqual({
       provider: "openai-compatible",
       providerId: null,
       model: "unknown-model",
@@ -393,6 +431,159 @@ describe("bootstrap", () => {
           supported: false,
           source: "default",
         },
+      },
+    })
+  })
+
+  test("populates memory and disk cache from a remote fixture and reuses fresh memory cache without refetching", async () => {
+    const cachePath = await createTempModelsCachePath("bootstrap-models-cache-remote-")
+    const remoteCatalog = {
+      remote: {
+        id: "remote",
+        name: "Remote Provider",
+        models: {
+          "remote-model": {
+            id: "remote-model",
+            reasoning: true,
+            tool_call: true,
+          },
+        },
+      },
+    }
+    let fetchCalls = 0
+
+    const first = await loadModelsDevCatalog({
+      cachePath,
+      now: () => 1_000,
+      fetchImpl: async () => {
+        fetchCalls += 1
+        return new Response(JSON.stringify(remoteCatalog), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      },
+    })
+
+    const second = await loadModelsDevCatalog({
+      cachePath,
+      now: () => 1_500,
+      fetchImpl: async () => {
+        throw new Error("fresh memory cache should avoid refetch")
+      },
+    })
+
+    expect(fetchCalls).toBe(1)
+    expect(first).toMatchObject({
+      source: "remote",
+      stale: false,
+      fetchAttempted: true,
+      diskCacheCorrupted: false,
+      catalog: remoteCatalog,
+    })
+    expect(second).toMatchObject({
+      source: "memory",
+      stale: false,
+      fetchAttempted: false,
+      diskCacheCorrupted: false,
+      catalog: remoteCatalog,
+    })
+    await expect(readFile(cachePath, "utf8")).resolves.toContain("remote-model")
+  })
+
+  test("refreshes a stale disk cache after the hourly TTL", async () => {
+    const cachePath = await createTempModelsCachePath("bootstrap-models-cache-stale-")
+    const staleCatalog = {
+      stale: {
+        id: "stale",
+        name: "Stale Provider",
+        models: {
+          "stale-model": {
+            id: "stale-model",
+            tool_call: true,
+          },
+        },
+      },
+    }
+    const refreshedCatalog = {
+      fresh: {
+        id: "fresh",
+        name: "Fresh Provider",
+        models: {
+          "fresh-model": {
+            id: "fresh-model",
+            reasoning: true,
+            tool_call: true,
+          },
+        },
+      },
+    }
+
+    await writeFile(cachePath, JSON.stringify(staleCatalog), "utf8")
+    await utimes(cachePath, new Date(0), new Date(0))
+
+    const result = await loadModelsDevCatalog({
+      cachePath,
+      now: () => 2 * 60 * 60 * 1000,
+      fetchImpl: async () => new Response(JSON.stringify(refreshedCatalog), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    })
+
+    expect(result).toMatchObject({
+      source: "remote",
+      stale: false,
+      fetchAttempted: true,
+      diskCacheCorrupted: false,
+      catalog: refreshedCatalog,
+    })
+    await expect(readFile(cachePath, "utf8")).resolves.toContain("fresh-model")
+  })
+
+  test("falls back cleanly to the bundled snapshot when the disk cache is corrupt and the network is unavailable", async () => {
+    const cachePath = await createTempModelsCachePath("bootstrap-models-cache-corrupt-")
+
+    await writeFile(cachePath, "{not valid json", "utf8")
+
+    const loaded = await loadModelsDevCatalog({
+      cachePath,
+      now: () => 5_000,
+      fetchImpl: async () => {
+        throw new Error("offline")
+      },
+    })
+
+    const resolved = await resolveProviderCapabilities({
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "kimi-k2.6",
+        LLM_BASE_URL: "https://api.moonshot.ai/v1",
+        NCOWORKER_SERVER_DB_PATH: join(dirname(cachePath), "server.sqlite"),
+      },
+      cachePath,
+      fetchImpl: async () => {
+        throw new Error("offline")
+      },
+    })
+
+    expect(loaded).toMatchObject({
+      source: "bundled-snapshot",
+      stale: false,
+      fetchAttempted: true,
+      diskCacheCorrupted: true,
+      catalog: MODELS_DEV_CAPABILITY_SNAPSHOT,
+    })
+    expect(resolved).toMatchObject({
+      providerId: "moonshotai",
+      reasoning: {
+        supported: true,
+        source: "models.dev",
+      },
+      interleaved: {
+        supported: true,
+        field: "reasoning_content",
+        source: "models.dev",
       },
     })
   })
@@ -484,4 +675,29 @@ describe("bootstrap", () => {
       source: "default",
     })
   })
+
+  test("places the models.dev disk cache next to the standalone server storage path", async () => {
+    const workspaceRoot = await createTempDirectory("bootstrap-models-cache-path-")
+    const cachePath = getModelsDevCatalogCachePath(
+      {
+        NCOWORKER_SERVER_DB_PATH: join(workspaceRoot, ".ncoworker", "server.sqlite"),
+      },
+      workspaceRoot,
+    )
+
+    expect(cachePath).toBe(join(workspaceRoot, ".ncoworker", "models.dev.json"))
+  })
 })
+
+async function createTempDirectory(prefix: string) {
+  const directory = await mkdtemp(join(tmpdir(), prefix))
+  tempDirectories.push(directory)
+  return directory
+}
+
+async function createTempModelsCachePath(prefix: string) {
+  const directory = await createTempDirectory(prefix)
+  const cacheDirectory = join(directory, ".ncoworker")
+  await mkdir(cacheDirectory, { recursive: true })
+  return join(cacheDirectory, "models.dev.json")
+}
