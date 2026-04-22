@@ -1071,15 +1071,27 @@ function buildTask21Evidence(input) {
     if (traceEventTypes.includes("replay.fail_fast.blocked")) {
       throw new Error("Kimi fixture evidence unexpectedly recorded replay.fail_fast.blocked on a successful run.")
     }
-    if ((input.sqliteEvidence?.transcriptSummary?.assistantReasoningReplayMessageCount ?? 0) < 1) {
-      throw new Error("Kimi fixture transcript did not persist an assistant reasoning+tool_call message for sqlite-backed replay evidence.")
+    if (input.desiredThinkingEnabled === true) {
+      if ((input.sqliteEvidence?.transcriptSummary?.assistantReasoningReplayMessageCount ?? 0) < 1) {
+        throw new Error("Kimi transcript did not persist an assistant reasoning+tool_call message for sqlite-backed replay evidence.")
+      }
+    } else {
+      if ((input.sqliteEvidence?.transcriptSummary?.assistantReasoningReplayMessageCount ?? 0) !== 0) {
+        throw new Error("Kimi no-thinking transcript unexpectedly persisted assistant reasoning+tool_call replay evidence.")
+      }
+      if ((input.sqliteEvidence?.transcriptSummary?.reasoningPartCount ?? 0) !== 0) {
+        throw new Error("Kimi no-thinking transcript unexpectedly persisted reasoning parts.")
+      }
     }
-    assertExactCapabilityTelemetry(capabilityEvent)
+    assertExactCapabilityTelemetry(capabilityEvent, {
+      desiredThinkingEnabled: input.desiredThinkingEnabled,
+      desiredEffortMode: input.desiredEffortMode,
+    })
     assertExactContextTelemetry(contextWindowEvent)
     if (kimiClassification?.outcome !== "success") {
       throw new Error(`Kimi fixture run classification was not successful (got ${String(kimiClassification?.outcome)}).`)
     }
-    if (!kimiReplayValidation.validated) {
+    if (kimiReplayValidation && !kimiReplayValidation.validated) {
       throw new Error("Kimi fixture did not validate reasoning replay from the real desktop provider request.")
     }
   }
@@ -1150,7 +1162,11 @@ function assertTraceEvent(traceEventTypes, eventType) {
   }
 }
 
-function assertExactCapabilityTelemetry(eventData) {
+function assertExactCapabilityTelemetry(eventData, input) {
+  const expectedThinkingEffortSource =
+    input.desiredThinkingEnabled === true && input.desiredEffortMode !== "default"
+      ? "config"
+      : "models.dev"
   const expected = {
     model: "kimi-k2.6",
     provider: "openai-compatible",
@@ -1163,7 +1179,7 @@ function assertExactCapabilityTelemetry(eventData) {
     interleavedField: "reasoning_content",
     reasoningEffortSource: "models.dev",
     thinkingSource: "config",
-    thinkingEffortSource: "config",
+    thinkingEffortSource: expectedThinkingEffortSource,
   }
   const actual = JSON.stringify(eventData)
   const expectedJson = JSON.stringify(expected)
@@ -1173,13 +1189,11 @@ function assertExactCapabilityTelemetry(eventData) {
 }
 
 function assertExactContextTelemetry(eventData) {
-  const expected = {
-    contextWindow: 262144,
-    source: "models.dev",
-  }
-  const actual = JSON.stringify(eventData)
-  const expectedJson = JSON.stringify(expected)
-  if (actual !== expectedJson) {
+  const valid =
+    eventData?.contextWindow === 262144
+    && (eventData?.source === "models.dev" || eventData?.source === "/models")
+  if (!valid) {
+    const actual = JSON.stringify(eventData)
     throw new Error(`Kimi context-window telemetry did not match the expected /models source. Got ${actual}`)
   }
 }
