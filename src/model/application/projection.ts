@@ -2,6 +2,7 @@ import type {
   ModelActiveSkill,
   ModelMessage,
   ModelMessagePart,
+  ModelReasoningPart,
   ModelTool,
   ModelProjectionInput,
   ModelSkillCatalogEntry,
@@ -169,7 +170,7 @@ export function buildTranscriptMessages(
     }
 
     const parts = message.parts
-      .map(renderTextPart)
+      .map(renderUserTextPart)
       .filter((part): part is ModelTextPart => part !== null)
 
     if (parts.length === 0) {
@@ -230,6 +231,14 @@ function buildAssistantMessages(
   const toolMessages: ModelMessage[] = []
 
   for (const part of message.parts) {
+    if (part.kind === "reasoning") {
+      const rendered = renderReasoningPart(part)
+      if (rendered) {
+        assistantParts.push(rendered)
+      }
+      continue
+    }
+
     if (isTextPart(part.kind)) {
       const rendered = renderTextPart(part)
       if (rendered) {
@@ -312,17 +321,30 @@ function createResolvedToolCallKey(message: ModelTranscriptMessage, callId: stri
 function isTextPart(kind: ModelTranscriptPart["kind"]) {
   return (
     kind === "text" ||
-    kind === "reasoning" ||
     kind === "step_start" ||
     kind === "step_finish" ||
     kind === "patch"
   )
 }
 
+function renderReasoningPart(part: ModelTranscriptPart): ModelReasoningPart | null {
+  if (part.kind !== "reasoning" || !part.text) {
+    return null
+  }
+
+  return {
+    type: "reasoning",
+    text: part.text,
+  }
+}
+
+function renderUserTextPart(part: ModelTranscriptPart): ModelTextPart | null {
+  return renderTextPart(part)
+}
+
 function renderTextPart(part: ModelTranscriptPart): ModelTextPart | null {
   switch (part.kind) {
     case "text":
-    case "reasoning":
     case "step_start":
     case "step_finish":
     case "patch":

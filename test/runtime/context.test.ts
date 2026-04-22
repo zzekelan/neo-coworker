@@ -4,8 +4,6 @@ import {
   buildModelPromptSections,
   buildModelTurnInput,
   buildTranscriptMessages,
-  type ModelEvent,
-  type ModelMessage,
   type ModelTranscriptMessage,
 } from "../../src/model"
 
@@ -194,8 +192,46 @@ describe("context builder", () => {
     ])
   })
 
-  test("supports reasoning-aware replay shapes in generic model contracts", () => {
-    const replayedMessages = [
+  test("preserves reasoning parts when replaying assistant tool-call messages", () => {
+    const transcript = [
+      {
+        id: "message_1",
+        sessionId: "session_1",
+        runId: "run_1",
+        role: "assistant",
+        sequence: 1,
+        createdAt: 1,
+        parts: [
+          {
+            kind: "reasoning",
+            text: "Need to inspect the README before calling read.",
+            data: null,
+          },
+          {
+            kind: "tool_call",
+            text: null,
+            data: {
+              callId: "call_1",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          },
+          {
+            kind: "tool_result",
+            text: "README contents",
+            data: {
+              callId: "call_1",
+              toolName: "read",
+              output: "README contents",
+            },
+          },
+        ],
+      },
+    ] satisfies PersistedTranscriptMessage[]
+
+    const messages = buildTranscriptMessages(transcript)
+
+    expect(messages).toEqual([
       {
         role: "assistant",
         parts: [
@@ -218,49 +254,11 @@ describe("context builder", () => {
             type: "tool_result",
             callId: "call_1",
             toolName: "read",
-            output: "# README",
-          },
-        ],
-      },
-    ] satisfies ModelMessage[]
-
-    const reasoningDelta = {
-      type: "reasoning.delta",
-      text: "Need to inspect the README before calling read.",
-    } satisfies ModelEvent
-
-    expect(replayedMessages).toEqual([
-      {
-        role: "assistant",
-        parts: [
-          {
-            type: "reasoning",
-            text: "Need to inspect the README before calling read.",
-          },
-          {
-            type: "tool_call",
-            callId: "call_1",
-            toolName: "read",
-            inputText: '{"path":"README.md"}',
-          },
-        ],
-      },
-      {
-        role: "tool",
-        parts: [
-          {
-            type: "tool_result",
-            callId: "call_1",
-            toolName: "read",
-            output: "# README",
+            output: "README contents",
           },
         ],
       },
     ])
-    expect(reasoningDelta).toEqual({
-      type: "reasoning.delta",
-      text: "Need to inspect the README before calling read.",
-    })
   })
 
   test("omits unresolved tool calls from replayed transcript messages", () => {
@@ -377,6 +375,116 @@ describe("context builder", () => {
       {
         role: "user",
         parts: [{ type: "text", text: "What changed after compaction?" }],
+      },
+    ])
+  })
+
+  test("preserves reasoning replay after slicing from the latest compaction boundary", () => {
+    const transcript = [
+      {
+        id: "message_old",
+        sessionId: "session_1",
+        runId: "run_old",
+        role: "assistant",
+        sequence: 0,
+        createdAt: 1,
+        parts: [
+          {
+            kind: "reasoning",
+            text: "Old reasoning that should be dropped.",
+            data: null,
+          },
+        ],
+      },
+      {
+        id: "message_boundary",
+        sessionId: "session_1",
+        runId: "run_active",
+        role: "synthetic",
+        sequence: 1,
+        createdAt: 2,
+        parts: [
+          {
+            kind: "compaction_boundary",
+            text: null,
+            data: {
+              summarizeRunId: "run_summary",
+            },
+          },
+          {
+            kind: "text",
+            text: "Summary after compaction.",
+            data: null,
+          },
+        ],
+      },
+      {
+        id: "message_new",
+        sessionId: "session_1",
+        runId: "run_active",
+        role: "assistant",
+        sequence: 2,
+        createdAt: 3,
+        parts: [
+          {
+            kind: "reasoning",
+            text: "Need the README before using read.",
+            data: null,
+          },
+          {
+            kind: "tool_call",
+            text: null,
+            data: {
+              callId: "call_1",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          },
+          {
+            kind: "tool_result",
+            text: "README contents",
+            data: {
+              callId: "call_1",
+              toolName: "read",
+              output: "README contents",
+            },
+          },
+        ],
+      },
+    ] satisfies PersistedTranscriptMessage[]
+
+    const messages = buildTranscriptMessages(transcript)
+
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "Summary after compaction." }],
+      },
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "reasoning",
+            text: "Need the README before using read.",
+          },
+          {
+            type: "tool_call",
+            callId: "call_1",
+            toolName: "read",
+            inputText: '{"path":"README.md"}',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_1",
+            toolName: "read",
+            output: "README contents",
+          },
+        ],
       },
     ])
   })

@@ -6,6 +6,10 @@ import type {
 import type { OrchestrationTool } from "./tool"
 
 export type OrchestrationModelTurnRequest = {
+  thinking?: {
+    enabled: boolean
+    effort?: "default" | "low" | "medium" | "high"
+  }
   systemPrompt: string
   lateContextMessage?: string
   skillCatalog: OrchestrationSkillCatalogEntry[]
@@ -33,6 +37,10 @@ export type OrchestrationModelEvent =
       text: string
     }
   | {
+      type: "reasoning.delta"
+      text: string
+    }
+  | {
       type: "tool.call"
       callId: string
       name: string
@@ -50,4 +58,6 @@ export type OrchestrationModelPort = {
     inputTokens: number
   }
   streamTurn(request: OrchestrationModelTurnRequest): AsyncIterable<OrchestrationModelEvent>
+  continueWithoutThinking?(input: { sessionId: string }): void
+  restoreThinking?(input: { sessionId: string }): void
 }

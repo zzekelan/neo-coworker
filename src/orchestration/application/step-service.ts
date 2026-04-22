@@ -35,6 +35,42 @@ type CreateOrchestrationStepServiceInput = {
   contextWindow: OrchestrationContextWindowPort
   skill: OrchestrationSkillPort
   runtimeObserver?: OrchestrationRuntimeObserverPort
+  thinking?: {
+    enabled: boolean
+    effort?: "default" | "low" | "medium" | "high"
+  }
+  resolveThinking?: (
+    sessionId: string,
+  ) =>
+    | {
+        enabled: boolean
+        effort?: "default" | "low" | "medium" | "high"
+      }
+    | undefined
+  telemetry?: {
+    capabilityResolution?: {
+      model: string
+      provider: "openai" | "openai-compatible"
+      providerFamily: "kimi" | "generic"
+      catalogSource: "models.dev" | "default"
+      catalogMiss: boolean
+      reasoningSource: "config" | "models.dev" | "default"
+      toolCallSource: "config" | "models.dev" | "default"
+      interleavedSource: "config" | "models.dev" | "default"
+      interleavedField: "reasoning_content" | "reasoning_details" | null
+      reasoningEffortSource: "config" | "models.dev" | "default"
+      thinkingSource: "config" | "models.dev" | "default"
+      thinkingEffortSource: "config" | "models.dev" | "default"
+    }
+    contextWindow?: {
+      contextWindow: number
+      source: "config" | "/models" | "models.dev" | "default"
+    }
+    modelClassification?: {
+      model: string
+      providerFamily: "kimi" | "generic"
+    }
+  }
   now?: () => number
 }
 
@@ -349,6 +385,18 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
       input.session.transitionRunToRunning(runInput.runId)
       runInput.emit({ type: "run.started", runId: runInput.runId })
+      if (input.telemetry?.capabilityResolution) {
+        runInput.emit({
+          type: "capability.resolution.recorded",
+          ...input.telemetry.capabilityResolution,
+        })
+      }
+      if (input.telemetry?.contextWindow) {
+        runInput.emit({
+          type: "context.window.resolved",
+          ...input.telemetry.contextWindow,
+        })
+      }
       runInput.emit({
         type: "skill.run.snapshot.applied",
         activeSkillNames: run.activeSkills,
@@ -360,6 +408,13 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       emit: OrchestrationEventEmitter
     }) {
       input.session.completeRun(runInput.runId)
+      if (input.telemetry?.modelClassification?.providerFamily === "kimi") {
+        runInput.emit({
+          type: "kimi.run.classified",
+          model: input.telemetry.modelClassification.model,
+          outcome: "success",
+        })
+      }
       runInput.emit({ type: "run.completed", runId: runInput.runId })
     },
     failRun(runInput: {
@@ -371,6 +426,13 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         runId: runInput.runId,
         errorText: runInput.error,
       })
+      if (input.telemetry?.modelClassification?.providerFamily === "kimi") {
+        runInput.emit({
+          type: "kimi.run.classified",
+          model: input.telemetry.modelClassification.model,
+          outcome: "failure",
+        })
+      }
       runInput.emit({
         type: "run.failed",
         runId: runInput.runId,
@@ -469,6 +531,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         now,
       })
       const turnKey = createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId))
+      const effectiveThinking = input.resolveThinking?.(stepInput.sessionId) ?? input.thinking
       const assistantTurn = createAssistantTurnRecorder({
         session: input.session,
         sessionId: stepInput.sessionId,
@@ -500,6 +563,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
               recoveryFilePaths: systemReminderBatch.recoveryFilePaths,
             },
             contextWindow,
+            thinking: effectiveThinking,
             temperature: agentLateContext?.temperature,
             tools: availableTools,
             transcript,
@@ -525,6 +589,14 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             if (item.type === "text.delta") {
               assistantTurn.appendText(item.text)
               stepInput.emit({ type: "message.delta", text: item.text })
+              if (stepInput.signal.aborted) {
+                throw createAbortError()
+              }
+              continue
+            }
+
+            if (item.type === "reasoning.delta") {
+              assistantTurn.appendReasoning(item.text)
               if (stepInput.signal.aborted) {
                 throw createAbortError()
               }
@@ -818,6 +890,7 @@ function createAssistantTurnRecorder(input: {
   let message: { id: string } | null = null
   let nextPartSequence = 0
   let activeTextPart: { id: string; text: string } | null = null
+  let activeReasoningPart: { id: string; text: string } | null = null
 
   function ensureMessage() {
     if (message) {
@@ -851,10 +924,26 @@ function createAssistantTurnRecorder(input: {
     })
     nextPartSequence += 1
     activeTextPart = part.kind === "text" ? readActiveTextPart(createdPart) : null
+    activeReasoningPart = part.kind === "reasoning" ? readActiveReasoningPart(createdPart) : null
     return createdPart
   }
 
   return {
+    appendReasoning(text: string) {
+      if (activeReasoningPart) {
+        activeReasoningPart.text += text
+        input.session.updateMessagePart({
+          partId: activeReasoningPart.id,
+          text: activeReasoningPart.text,
+        })
+        return
+      }
+
+      createPart({
+        kind: "reasoning",
+        text,
+      })
+    },
     appendText(text: string) {
       if (activeTextPart) {
         activeTextPart.text += text
@@ -916,6 +1005,17 @@ function createAssistantTurnRecorder(input: {
 
 function readActiveTextPart(part: OrchestrationPartRecord) {
   if (part.kind !== "text") {
+    return null
+  }
+
+  return {
+    id: part.id,
+    text: part.text ?? "",
+  }
+}
+
+function readActiveReasoningPart(part: OrchestrationPartRecord) {
+  if (part.kind !== "reasoning") {
     return null
   }
 

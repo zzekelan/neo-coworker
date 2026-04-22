@@ -69,6 +69,11 @@ export function createOpenAICompatibleEventNormalizer() {
       const events: ModelEvent[] = []
 
       for (const choice of chunk.choices) {
+        const reasoningContent = readOpenAICompatibleReasoningContent(choice.delta)
+        if (reasoningContent) {
+          events.push({ type: "reasoning.delta", text: reasoningContent })
+        }
+
         if (choice.delta.content) {
           events.push({ type: "text.delta", text: choice.delta.content })
         }
@@ -114,6 +119,14 @@ export function createOpenAICompatibleEventNormalizer() {
       return flushOpenAICompatibleToolCalls(toolCalls)
     },
   }
+}
+
+function readOpenAICompatibleReasoningContent(
+  delta: OpenAI.Chat.ChatCompletionChunk.Choice.Delta,
+) {
+  return typeof (delta as { reasoning_content?: unknown }).reasoning_content === "string"
+    ? (delta as { reasoning_content: string }).reasoning_content
+    : null
 }
 
 function rememberFunctionCall(

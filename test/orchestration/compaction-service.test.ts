@@ -178,6 +178,31 @@ describe("orchestration compaction service", () => {
     expect(previousSummarySection).not.toContain(COMPACTION_TAIL_HEADING)
     expect(previousSummarySection).not.toContain("[tool_result:read] README excerpt")
   })
+
+  test("compaction ignores reasoning deltas emitted during summarization", async () => {
+    const harness = createHarness({
+      summaryTexts: [buildStructuredSummary("gamma")],
+      transcript: [
+        makeTextMessage("run_history", "user", 0, "Initial request"),
+        makeTextMessage("run_history", "assistant", 1, "Thinking through the compact summary."),
+      ],
+    })
+    harness.modelCapture.streamEvents = [
+      { type: "reasoning.delta", text: "first reason about the summary" },
+      { type: "text.delta", text: buildStructuredSummary("gamma") },
+      {
+        type: "usage",
+        inputTokens: 120,
+        outputTokens: 24,
+        source: "estimated",
+      },
+    ]
+
+    const result = await harness.service.compactSession(createManualCompactionInput(harness.session, "run_manual_1"))
+
+    expect(result).toEqual({ status: "completed" })
+    expect(readLatestSummaryText(harness.session.transcript)).toContain("Solve gamma")
+  })
 })
 
 function createHarness(input: {
@@ -238,6 +263,13 @@ function createCompactionModelCapture(summaryTexts: string[]) {
   const projectRequests: Array<Parameters<NonNullable<OrchestrationModelPort["projectTurn"]>>[0]> = []
   const projectedTokens = [800, 240, 760, 220]
   let projectIndex = 0
+  const capture = {
+    streamEvents: null as Array<
+      | { type: "text.delta"; text: string }
+      | { type: "reasoning.delta"; text: string }
+      | { type: "usage"; inputTokens: number; outputTokens: number; source: "provider" | "estimated" }
+    > | null,
+  }
 
   const model: OrchestrationModelPort = {
     projectTurn(request) {
@@ -248,6 +280,13 @@ function createCompactionModelCapture(summaryTexts: string[]) {
     },
     async *streamTurn(request) {
       summaryRequests.push(request)
+      if (capture.streamEvents) {
+        for (const event of capture.streamEvents) {
+          yield event
+        }
+        return
+      }
+
       const summaryText = summaryTexts[Math.max(0, summaryRequests.length - 1)] ?? summaryTexts.at(-1) ?? ""
       yield { type: "text.delta" as const, text: summaryText }
       yield {
@@ -263,6 +302,7 @@ function createCompactionModelCapture(summaryTexts: string[]) {
     model,
     summaryRequests,
     projectRequests,
+    ...capture,
   }
 }
 

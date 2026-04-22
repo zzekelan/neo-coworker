@@ -805,6 +805,10 @@ async function summarizeTranscript(input: {
       continue
     }
 
+    if (event.type === "reasoning.delta") {
+      continue
+    }
+
     throw new Error(`Summarize run requested unexpected tool ${event.name}`)
   }
 

@@ -6,6 +6,7 @@ export type {
 export type {
   ModelMessage,
   ModelMessagePart,
+  ModelReasoningPart,
   ModelTextPart,
   ModelToolCallPart,
   ModelToolResultPart,
