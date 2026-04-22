@@ -127,7 +127,7 @@ describe("server HTTP API and SSE", () => {
       activeRun: null,
       contextUsage: {
         contextTokens: expect.any(Number),
-        contextWindow: 128_000,
+        contextWindow: 192_000,
         utilizationPercent: expect.any(Number),
         source: "estimated",
       },
@@ -251,6 +251,96 @@ describe("server HTTP API and SSE", () => {
 
     releasePrompt()
     await waitForRunStatus(harness.server, runId, "completed")
+  })
+
+  test("toggles session thinking over HTTP and rejects changes while a run is active", async () => {
+    const seenThinking: Array<boolean | undefined> = []
+    let releasePrompt!: () => void
+    const continuePrompt = new Promise<void>((resolve) => {
+      releasePrompt = resolve
+    })
+    let turnIndex = 0
+    const harness = await createHarness(
+      "server-http-thinking-toggle",
+      createModelProvider({
+        runtime: createModelRuntimeApi({
+          async *streamTurn(request: ProviderTurnRequest) {
+            turnIndex += 1
+            seenThinking.push(request.thinking?.enabled)
+
+            if (turnIndex === 2) {
+              await continuePrompt
+            }
+
+            yield {
+              type: "text.delta",
+              text: `thinking=${String(request.thinking?.enabled)}`,
+            }
+          },
+        }),
+      }),
+      {
+        thinking: {
+          enabled: true,
+        },
+      },
+    )
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const disable = await requestJson(harness.server, "POST", `/sessions/${sessionId}/thinking`, {
+      enabled: false,
+    })
+    expect(disable.status).toBe(200)
+    expect(disable.body.data).toMatchObject({
+      session: {
+        id: sessionId,
+      },
+      status: "idle",
+    })
+
+    const disabledRun = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "Run with thinking disabled",
+    })
+    const disabledRunId = disabledRun.body.data.run.id as string
+    await waitForRunStatus(harness.server, disabledRunId, "completed")
+
+    const restore = await requestJson(harness.server, "POST", `/sessions/${sessionId}/thinking`, {
+      enabled: true,
+    })
+    expect(restore.status).toBe(200)
+    expect(restore.body.data).toMatchObject({
+      session: {
+        id: sessionId,
+      },
+      status: "idle",
+    })
+
+    const startedBusyRun = await requestJson(harness.server, "POST", `/sessions/${sessionId}/runs`, {
+      prompt: "Keep running",
+    })
+    const busyRunId = startedBusyRun.body.data.run.id as string
+    await waitForRunStatus(harness.server, busyRunId, "running")
+
+    const busyToggle = await requestJson(harness.server, "POST", `/sessions/${sessionId}/thinking`, {
+      enabled: false,
+    })
+    expect(busyToggle.status).toBe(409)
+    expect(busyToggle.body).toMatchObject({
+      error: {
+        code: "invalid_state",
+        message: expect.stringContaining(`Session ${sessionId} already has active run ${busyRunId}`),
+      },
+    })
+
+    releasePrompt()
+    await waitForRunStatus(harness.server, busyRunId, "completed")
+
+    expect(seenThinking).toHaveLength(2)
+    expect(seenThinking[0]).toBe(false)
   })
 
   test("hides summarize runs from session snapshots and run listings", async () => {
@@ -512,7 +602,7 @@ describe("server HTTP API and SSE", () => {
       })
       expect(sessionState.body.data.contextUsage).toMatchObject({
         contextTokens: expect.any(Number),
-        contextWindow: 128_000,
+        contextWindow: 192_000,
         utilizationPercent: expect.any(Number),
         source: "estimated",
       })
@@ -1864,6 +1954,10 @@ async function createHarness(
       Record<"write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
     >
     repositoryFactory?(repository: SessionRepository): SessionRepository
+    thinking?: {
+      enabled: boolean
+      effort?: "default" | "low" | "medium" | "high"
+    }
   } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), `${prefix}-`))

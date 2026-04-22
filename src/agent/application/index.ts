@@ -4,6 +4,7 @@ export type { AgentProfileInput, AgentProfileOutput } from "../domain/agent-prof
 export { BUILTIN_AGENTS, getBuiltinAgent } from "../domain/builtin-agents"
 export type { AgentProfileService } from "./agent-profile-service"
 export { createAgentProfileService } from "./agent-profile-service"
+export type { AgentModelPort, AgentModelTurnRequest } from "./ports/sub-agent-runtime"
 export { createSubAgentContext, createSubAgentRun, type CreateSubAgentRunInput } from "./sub-agent-context"
 export { filterToolsForAgent, loadSkillsForAgent } from "./tool-filter"
 export { buildToolDeniedMessage, isToolAllowedForAgent } from "./tool-permission-check"

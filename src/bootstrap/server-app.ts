@@ -469,6 +469,7 @@ export type ServerAppRuntime = Pick<
   | "compactSession"
   | "cancelRun"
   | "respondPermission"
+  | "setSessionThinkingOverride"
 >
 
 export type CreateServerAppRuntime = (input: {
@@ -732,6 +733,42 @@ async function startRun(runInput: {
           ...updated,
           latestRunStatus: getLatestVisibleRunBySession(repository, updated.id)?.status ?? null,
         }
+      },
+      continueWithoutThinking(inputValue: { sessionId: string }) {
+        const activeRun = repository.runs.getActiveBySession(inputValue.sessionId)
+        if (activeRun) {
+          throw new SessionBusyError({
+            sessionId: inputValue.sessionId,
+            activeRunId: activeRun.id,
+          })
+        }
+
+        runtime.setSessionThinkingOverride({
+          sessionId: inputValue.sessionId,
+          thinking: { enabled: false },
+        })
+
+        return buildSessionSnapshot(repository, inputValue.sessionId, {
+          contextUsage: contextUsageBySession.get(inputValue.sessionId) ?? null,
+        })
+      },
+      restoreThinking(inputValue: { sessionId: string }) {
+        const activeRun = repository.runs.getActiveBySession(inputValue.sessionId)
+        if (activeRun) {
+          throw new SessionBusyError({
+            sessionId: inputValue.sessionId,
+            activeRunId: activeRun.id,
+          })
+        }
+
+        runtime.setSessionThinkingOverride({
+          sessionId: inputValue.sessionId,
+          thinking: null,
+        })
+
+        return buildSessionSnapshot(repository, inputValue.sessionId, {
+          contextUsage: contextUsageBySession.get(inputValue.sessionId) ?? null,
+        })
       },
     },
     workspaces: {

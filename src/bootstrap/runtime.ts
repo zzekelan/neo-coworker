@@ -42,6 +42,7 @@ import {
   type ToolDefinition,
   type ToolParallelConfig,
 } from "../tool"
+import type { ModelProvider } from "../model"
 import {
   createSkillWriteService,
   createWorkspaceSkillStore,
@@ -55,6 +56,8 @@ import {
   createSubAgentRun as createAgentSubRun,
   buildToolDeniedMessage,
   isToolAllowedForAgent,
+  type AgentModelPort,
+  type AgentModelTurnRequest,
   type AgentProfile,
   type AgentProfileService,
 } from "../agent"
@@ -83,6 +86,7 @@ import {
   resolvePermissionPolicy,
   type OrchestrationActiveRunRegistry,
   type RunHandle,
+  type OrchestrationModelTurnRequest,
   PermissionRequestNotAwaitingActiveRuntimeError,
 } from "../orchestration"
 
@@ -113,6 +117,31 @@ type RuntimeInput = {
   activeRuns?: OrchestrationActiveRunRegistry
   systemPrompt?: string
   contextWindow?: number
+  thinking?: OrchestrationModelTurnRequest["thinking"]
+  telemetry?: {
+    capabilityResolution?: {
+      model: string
+      provider: "openai" | "openai-compatible"
+      providerFamily: "kimi" | "generic"
+      catalogSource: "models.dev" | "default"
+      catalogMiss: boolean
+      reasoningSource: "config" | "models.dev" | "default"
+      toolCallSource: "config" | "models.dev" | "default"
+      interleavedSource: "config" | "models.dev" | "default"
+      interleavedField: "reasoning_content" | "reasoning_details" | null
+      reasoningEffortSource: "config" | "models.dev" | "default"
+      thinkingSource: "config" | "models.dev" | "default"
+      thinkingEffortSource: "config" | "models.dev" | "default"
+    }
+    contextWindow?: {
+      contextWindow: number
+      source: "config" | "/models" | "models.dev" | "default"
+    }
+    modelClassification?: {
+      model: string
+      providerFamily: "kimi" | "generic"
+    }
+  }
   now?: () => number
 }
 
@@ -134,9 +163,58 @@ type CliRunInput = {
 
 export { PermissionRequestNotAwaitingActiveRuntimeError }
 
+export function createOrchestrationModelPort(provider: ModelProvider): OrchestrationModelPort {
+  return {
+    projectTurn(request) {
+      return provider.projectTurn({
+        systemPrompt: request.systemPrompt,
+        lateContextMessage: request.lateContextMessage,
+        skillCatalog: request.skillCatalog,
+        activeSkills: request.activeSkills,
+        systemReminders: request.systemReminders,
+        systemReminderMetadata: request.systemReminderMetadata,
+        contextWindow: request.contextWindow,
+        tools: request.tools,
+        transcript: request.transcript,
+        compressibleToolNames: request.compressibleToolNames,
+        temperature: request.temperature,
+      })
+    },
+    async *streamTurn(request) {
+      for await (const event of provider.streamTurn({
+        systemPrompt: request.systemPrompt,
+        lateContextMessage: request.lateContextMessage,
+        skillCatalog: request.skillCatalog,
+        activeSkills: request.activeSkills,
+        systemReminders: request.systemReminders,
+        systemReminderMetadata: request.systemReminderMetadata,
+        contextWindow: request.contextWindow,
+        temperature: request.temperature,
+        thinking: request.thinking,
+        tools: request.tools,
+        transcript: request.transcript,
+        compressibleToolNames: request.compressibleToolNames,
+        sessionId: request.sessionId,
+        runId: request.runId,
+        turnKey: request.turnKey,
+        signal: request.signal,
+      })) {
+        yield event
+      }
+    },
+    continueWithoutThinking(input) {
+      provider.continueWithoutThinking?.(input)
+    },
+    restoreThinking(input) {
+      provider.restoreThinking?.(input)
+    },
+  }
+}
+
 export function createRuntime(input: RuntimeInput) {
   const now = input.now ?? Date.now
   const observability = input.observability
+  const subAgentModel = createAgentModelPort(input.provider)
   const permissionObserver = createPermissionObserver(observability?.permissionObserver)
   const basePermissionPolicy = resolvePermissionPolicy(input.permissionPolicy)
   const agentProfileServices = new Map<string, AgentProfileService>()
@@ -196,6 +274,8 @@ export function createRuntime(input: RuntimeInput) {
       },
     },
     skill: skillPort,
+    thinking: input.thinking,
+    telemetry: input.telemetry,
     permission: permissionPort,
     tools: createToolPortFactory({
       permissionObserver,
@@ -215,7 +295,7 @@ export function createRuntime(input: RuntimeInput) {
       async createSubAgentRun(subAgentInput) {
         return createAgentSubRun({
           ...subAgentInput,
-          model: input.provider,
+          model: subAgentModel,
           session: sessionPort,
           skill: skillPort,
           contextWindow,
@@ -280,6 +360,27 @@ export function createRuntime(input: RuntimeInput) {
     now,
     runtimeObserver: observability?.runtimeObserver,
   })
+}
+
+function createAgentModelPort(model: OrchestrationModelPort): AgentModelPort {
+  const agentModel: AgentModelPort = {
+    async *streamTurn(request: AgentModelTurnRequest) {
+      for await (const event of model.streamTurn(request)) {
+        if (event.type === "reasoning.delta") {
+          continue
+        }
+
+        yield event
+      }
+    },
+  }
+
+  if (model.projectTurn) {
+    const projectTurn = model.projectTurn
+    agentModel.projectTurn = (request: Omit<AgentModelTurnRequest, "signal">) => projectTurn(request)
+  }
+
+  return agentModel
 }
 
 export function getDefaultCliStoragePath(workspaceRoot: string) {

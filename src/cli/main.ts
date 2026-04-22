@@ -15,6 +15,9 @@ import {
   resolveContextWindowSize,
   resolveAgentServerOrigin,
   resolveDefaultProviderConfig,
+  resolveProviderCapabilities,
+  resolveProviderReplayGuard,
+  resolveRuntimeThinkingConfig,
   type DefaultProviderInput,
   type ModelObserverPort,
   type ModelProvider,
@@ -112,8 +115,9 @@ export function buildCli(input: BuildCliInput = {}) {
       }
 
       try {
+        const shouldResolveProviderAuthority = input.provider == null
         const shouldResolveContextWindow =
-          input.provider == null &&
+          shouldResolveProviderAuthority &&
           input.createClient == null &&
           input.createOpenAIProviderImpl == null &&
           input.createOpenAICompatibleProviderImpl == null
@@ -123,11 +127,27 @@ export function buildCli(input: BuildCliInput = {}) {
                 env: input.env,
               })).contextWindow
             : undefined
+        const resolvedCapabilities =
+          shouldResolveProviderAuthority
+            ? await resolveProviderCapabilities({
+                env: input.env,
+              })
+            : undefined
+        const runtimeThinking = resolvedCapabilities
+          ? resolveRuntimeThinkingConfig({
+              env: input.env,
+              resolvedCapabilities,
+            })
+          : undefined
         const provider =
           input.provider ??
           (await createDefaultProvider({
             env: input.env,
             modelObserver: deferredModelObserver,
+            replayGuard: resolvedCapabilities
+              ? resolveProviderReplayGuard(resolvedCapabilities)
+              : undefined,
+            resolvedCapabilities,
             createClient: input.createClient,
             createOpenAIProviderImpl: input.createOpenAIProviderImpl,
             createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
@@ -147,6 +167,7 @@ export function buildCli(input: BuildCliInput = {}) {
               observability,
               searchBackend,
               contextWindow,
+              thinking: runtimeThinking,
             })
           },
           createLocalStorageImpl(workspaceRoot) {

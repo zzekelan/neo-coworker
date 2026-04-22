@@ -1,6 +1,7 @@
 export type { AgentProfile } from "../application"
 export { AgentProfileSchema } from "../application"
 export type { AgentProfileInput, AgentProfileOutput } from "../application"
+export type { AgentModelPort, AgentModelTurnRequest } from "../application"
 export { BUILTIN_AGENTS, getBuiltinAgent } from "../application"
 export { createSubAgentContext, createSubAgentRun, filterToolsForAgent, loadSkillsForAgent } from "../application"
 export { buildToolDeniedMessage, isToolAllowedForAgent } from "../application"

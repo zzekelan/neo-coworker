@@ -89,6 +89,10 @@ const setCurrentAgentBodySchema = z.object({
   agent: z.string().trim().min(1),
 })
 
+const setSessionThinkingBodySchema = z.object({
+  enabled: z.boolean(),
+})
+
 const workspaceRootQuerySchema = z.object({
   workspaceRoot: z.string().trim().min(1),
 })
@@ -306,6 +310,20 @@ export function createAgentServer(input: {
               agent: body.agent,
             }),
           },
+        })
+      }
+
+      const sessionThinkingMatch = matchPath(path, ["sessions", ":sessionId", "thinking"])
+      if (request.method === "POST" && sessionThinkingMatch) {
+        const body = await readJsonBody(request, setSessionThinkingBodySchema)
+        return jsonResponse(200, {
+          data: body.enabled
+            ? app.sessions.restoreThinking({
+                sessionId: sessionThinkingMatch.sessionId,
+              })
+            : app.sessions.continueWithoutThinking({
+                sessionId: sessionThinkingMatch.sessionId,
+              }),
         })
       }
 
