@@ -58,10 +58,20 @@ interface ChatAreaProps {
   onToggleSidebar: () => void
   errorMessage: string | null
   skillWarningMessage: string | null
+  compatibilityPrompt: CompatibilityPromptView | null
+  onStartNewSessionFromCompatibility: () => void
+  onContinueWithoutThinking: () => void
   modelName?: string
   currentAgent: string
   primaryAgents: DesktopPrimaryAgent[]
   onSetAgent: (agentName: string) => void
+}
+
+export type CompatibilityPromptView = {
+  kind: "legacy_session_missing_reasoning"
+  sessionId: string
+  runId: string
+  rawError: string
 }
 
 export function ChatArea({
@@ -81,6 +91,9 @@ export function ChatArea({
   onToggleSidebar,
   errorMessage,
   skillWarningMessage,
+  compatibilityPrompt,
+  onStartNewSessionFromCompatibility,
+  onContinueWithoutThinking,
   modelName,
   currentAgent,
   primaryAgents,
@@ -414,6 +427,36 @@ export function ChatArea({
           }}
           footer={
             <div className="mx-auto max-w-4xl">
+              {compatibilityPrompt ? (
+                <div
+                  role="alertdialog"
+                  aria-label={text.compatibility.legacySessionTitle}
+                  className="mb-4 rounded-xl border border-danger bg-danger/10 px-4 py-3 text-sm text-danger"
+                >
+                  <p className="font-semibold">{text.compatibility.legacySessionTitle}</p>
+                  <p className="mt-1 text-ink/80">{text.compatibility.legacySessionMessage}</p>
+                  <p className="mt-2 text-xs text-ink/70">
+                    {text.compatibility.continueWithoutThinkingHint}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={onContinueWithoutThinking}
+                      className="rounded-md border border-border bg-paper px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface"
+                    >
+                      {text.compatibility.continueWithoutThinking}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onStartNewSessionFromCompatibility}
+                      className="rounded-md border border-danger bg-danger px-3 py-1.5 text-xs font-medium text-paper hover:opacity-90"
+                    >
+                      {text.compatibility.startNewSession}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               {errorMessage ? (
                 <div className="mb-4 rounded-xl border border-danger bg-danger/10 px-4 py-3 text-sm text-danger">
                   {errorMessage}

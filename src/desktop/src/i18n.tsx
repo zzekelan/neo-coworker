@@ -157,6 +157,7 @@ type DesktopText = {
     completedSkills: string
     cancelledSuffix: string
     failedSuffix: string
+    reasoning: string
   }
   settings: {
     title: string
@@ -183,6 +184,23 @@ type DesktopText = {
     appliedGeneral: string
     appliedLlm: string
     stopRunsFirst: string
+    reasoning: string
+    reasoningThinking: string
+    reasoningThinkingOn: string
+    reasoningThinkingOff: string
+    reasoningEffort: string
+    reasoningEffortDefault: string
+    reasoningEffortLow: string
+    reasoningEffortMedium: string
+    reasoningEffortHigh: string
+    reasoningUnknownModelWarning: string
+  }
+  compatibility: {
+    legacySessionTitle: string
+    legacySessionMessage: string
+    continueWithoutThinking: string
+    continueWithoutThinkingHint: string
+    startNewSession: string
   }
 }
 
@@ -372,6 +390,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedSkills: "Updated skills",
       cancelledSuffix: "(cancelled)",
       failedSuffix: "failed",
+      reasoning: "Reasoning",
     },
     settings: {
       title: "Settings",
@@ -398,6 +417,25 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       appliedGeneral: "General settings applied successfully.",
       appliedLlm: "LLM settings applied successfully.",
       stopRunsFirst: "Stop active runs before applying LLM settings.",
+      reasoning: "Reasoning",
+      reasoningThinking: "Enable thinking",
+      reasoningThinkingOn: "On",
+      reasoningThinkingOff: "Off",
+      reasoningEffort: "Reasoning effort",
+      reasoningEffortDefault: "Default",
+      reasoningEffortLow: "Low",
+      reasoningEffortMedium: "Medium",
+      reasoningEffortHigh: "High",
+      reasoningUnknownModelWarning: "Model not found in models.dev catalog. Reasoning controls below are manual overrides.",
+    },
+    compatibility: {
+      legacySessionTitle: "Session compatibility",
+      legacySessionMessage:
+        "This session was created before reasoning support, so it can't continue with thinking enabled. Choose how to proceed.",
+      continueWithoutThinking: "Continue without thinking",
+      continueWithoutThinkingHint:
+        "Thinking stays off for this session until you re-enable it in settings or start a new session.",
+      startNewSession: "Start new session",
     },
   },
   zh: {
@@ -585,6 +623,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedSkills: "更新了技能",
       cancelledSuffix: "（已取消）",
       failedSuffix: "失败",
+      reasoning: "推理",
     },
     settings: {
       title: "设置",
@@ -611,6 +650,25 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       appliedGeneral: "通用设置已成功应用。",
       appliedLlm: "LLM 设置已成功应用。",
       stopRunsFirst: "请先停止活动 run，再应用 LLM 设置。",
+      reasoning: "推理",
+      reasoningThinking: "启用思考",
+      reasoningThinkingOn: "开",
+      reasoningThinkingOff: "关",
+      reasoningEffort: "推理强度",
+      reasoningEffortDefault: "默认",
+      reasoningEffortLow: "低",
+      reasoningEffortMedium: "中",
+      reasoningEffortHigh: "高",
+      reasoningUnknownModelWarning: "models.dev 目录中未找到该模型。下方推理控件为手动覆盖。",
+    },
+    compatibility: {
+      legacySessionTitle: "会话兼容性",
+      legacySessionMessage:
+        "这个会话是在支持推理之前创建的，无法在启用思考的情况下继续。请选择如何处理。",
+      continueWithoutThinking: "不带思考继续",
+      continueWithoutThinkingHint:
+        "本会话的思考将保持关闭，直到你在设置中重新启用，或者新建一个会话。",
+      startNewSession: "新建会话",
     },
   },
 }

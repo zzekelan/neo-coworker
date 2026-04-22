@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Check, ChevronDown } from "lucide-react"
-import type { DesktopServerMode, DesktopSettings } from "../desktop-settings"
+import type { DesktopReasoningEffortMode, DesktopServerMode, DesktopSettings } from "../desktop-settings"
 import { cn } from "../lib/utils"
 import { useDesktopText } from "../i18n"
 import type { DesktopSettingsSuccessMessage } from "../useDesktopSettings"
@@ -11,6 +11,12 @@ type SelectOption<T extends string> = {
   label: string
 }
 
+export type DesktopReasoningCapability = {
+  catalogMiss: boolean
+  thinkingSupported: boolean
+  reasoningEffortSupported: boolean
+}
+
 interface SettingsPanelProps {
   isOpen: boolean
   settings: DesktopSettings
@@ -19,6 +25,7 @@ interface SettingsPanelProps {
   hasBusySession: boolean
   errorMessage: string | null
   successMessage: DesktopSettingsSuccessMessage | null
+  reasoningCapability?: DesktopReasoningCapability
   onClose(): void
   onUpdateSettings(patch: Partial<DesktopSettings>): void | Promise<unknown>
   onApplyGeneralSettings(): void | Promise<unknown>
@@ -33,6 +40,7 @@ export function SettingsPanel({
   hasBusySession,
   errorMessage,
   successMessage,
+  reasoningCapability,
   onClose,
   onUpdateSettings,
   onApplyGeneralSettings,
@@ -203,6 +211,14 @@ export function SettingsPanel({
                     <p className="mt-1 text-[11px] leading-relaxed text-accent">{text.settings.timeoutHint}</p>
                   </Field>
                 </div>
+
+                <ReasoningSubsection
+                  settings={settings}
+                  disabled={llmFieldsDisabled}
+                  capability={reasoningCapability}
+                  text={text}
+                  onUpdateSettings={onUpdateSettings}
+                />
               </section>
             )}
 
@@ -386,6 +402,61 @@ function SettingsSelect<T extends string>(input: {
             )
           })}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function ReasoningSubsection(input: {
+  settings: DesktopSettings
+  disabled: boolean
+  capability: DesktopReasoningCapability | undefined
+  text: ReturnType<typeof useDesktopText>
+  onUpdateSettings(patch: Partial<DesktopSettings>): void | Promise<unknown>
+}) {
+  const { settings, disabled, capability, text, onUpdateSettings } = input
+  const showWarning = !capability || capability.catalogMiss
+  const showThinking = !capability || capability.thinkingSupported || capability.catalogMiss
+  const showEffort = !capability || capability.reasoningEffortSupported || capability.catalogMiss
+  const effortOptions: Array<SelectOption<DesktopReasoningEffortMode>> = [
+    { value: "default", label: text.settings.reasoningEffortDefault },
+    { value: "low", label: text.settings.reasoningEffortLow },
+    { value: "medium", label: text.settings.reasoningEffortMedium },
+    { value: "high", label: text.settings.reasoningEffortHigh },
+  ]
+
+  return (
+    <div className="mt-5 space-y-3">
+      <SectionHeading title={text.settings.reasoning} />
+      {showWarning ? (
+        <p className="rounded-xl border border-highlight/30 bg-highlight/10 px-3 py-2.5 text-xs leading-relaxed text-highlight">
+          {text.settings.reasoningUnknownModelWarning}
+        </p>
+      ) : null}
+      <div className="grid gap-3">
+        {showThinking ? (
+          <Field label={text.settings.reasoningThinking}>
+            <SettingsSelect
+              value={settings.thinkingEnabled ? "on" : "off"}
+              disabled={disabled}
+              onChange={(value) => void onUpdateSettings({ thinkingEnabled: value === "on" })}
+              options={[
+                { value: "off", label: text.settings.reasoningThinkingOff },
+                { value: "on", label: text.settings.reasoningThinkingOn },
+              ]}
+            />
+          </Field>
+        ) : null}
+        {showEffort ? (
+          <Field label={text.settings.reasoningEffort}>
+            <SettingsSelect
+              value={settings.reasoningEffortMode}
+              disabled={disabled}
+              onChange={(value) => void onUpdateSettings({ reasoningEffortMode: value })}
+              options={effortOptions}
+            />
+          </Field>
+        ) : null}
       </div>
     </div>
   )

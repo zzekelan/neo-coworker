@@ -117,3 +117,41 @@ describe("desktop chat area", () => {
     expect(source).toContain("onReply={handlePermissionReply}")
   })
 })
+
+describe("desktop chat area compatibility prompt", () => {
+  test("ChatArea declares the compatibility prompt props", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("compatibilityPrompt: CompatibilityPromptView | null")
+    expect(source).toContain("onStartNewSessionFromCompatibility: () => void")
+    expect(source).toContain("onContinueWithoutThinking: () => void")
+    expect(source).toContain("kind: \"legacy_session_missing_reasoning\"")
+  })
+
+  test("ChatArea renders the localized compatibility prompt with both actions", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("{compatibilityPrompt ? (")
+    expect(source).toContain("text.compatibility.legacySessionTitle")
+    expect(source).toContain("text.compatibility.legacySessionMessage")
+    expect(source).toContain("text.compatibility.continueWithoutThinkingHint")
+    expect(source).toContain("text.compatibility.continueWithoutThinking")
+    expect(source).toContain("text.compatibility.startNewSession")
+    expect(source).toContain("onClick={onContinueWithoutThinking}")
+    expect(source).toContain("onClick={onStartNewSessionFromCompatibility}")
+  })
+
+  test("App.tsx threads the compatibility prompt from useAgent into ChatArea", () => {
+    const appSource = readFileSync("src/desktop/src/App.tsx", "utf8")
+    const useAgentSource = readFileSync("src/desktop/src/hooks/useAgent.ts", "utf8")
+
+    expect(useAgentSource).toContain("compatibilityPrompt: desktop.compatibilityPrompt")
+    expect(useAgentSource).toContain("desktop.dismissCompatibilityPrompt()")
+
+    expect(appSource).toContain("compatibilityPrompt,")
+    expect(appSource).toContain("dismissCompatibilityPrompt,")
+    expect(appSource).toContain("compatibilityPrompt={compatibilityPrompt}")
+    expect(appSource).toContain("onStartNewSessionFromCompatibility={")
+    expect(appSource).toContain("void createSession()")
+  })
+})

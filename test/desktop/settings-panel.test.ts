@@ -30,4 +30,75 @@ describe("desktop settings panel", () => {
     expect(panelSource).toContain("text.settings.externalHint")
     expect(panelSource).toContain("text.settings.stopRunsFirst")
   })
+
+  test("renders a Reasoning subsection with capability-driven warning, thinking toggle, and effort options", () => {
+    const panelSource = readFileSync("src/desktop/src/components/SettingsPanel.tsx", "utf8")
+    const i18nSource = readFileSync("src/desktop/src/i18n.tsx", "utf8")
+
+    expect(panelSource).toContain("reasoningCapability?: DesktopReasoningCapability")
+    expect(panelSource).toContain("function ReasoningSubsection")
+    expect(panelSource).toContain("text.settings.reasoning")
+    expect(panelSource).toContain("text.settings.reasoningUnknownModelWarning")
+    expect(panelSource).toContain("text.settings.reasoningThinking")
+    expect(panelSource).toContain("text.settings.reasoningEffort")
+    expect(panelSource).toContain("text.settings.reasoningEffortDefault")
+    expect(panelSource).toContain("text.settings.reasoningEffortLow")
+    expect(panelSource).toContain("text.settings.reasoningEffortMedium")
+    expect(panelSource).toContain("text.settings.reasoningEffortHigh")
+    expect(panelSource).toContain("const showWarning = !capability || capability.catalogMiss")
+    expect(panelSource).toContain(
+      "const showThinking = !capability || capability.thinkingSupported || capability.catalogMiss",
+    )
+    expect(panelSource).toContain(
+      "const showEffort = !capability || capability.reasoningEffortSupported || capability.catalogMiss",
+    )
+    expect(panelSource).toContain("thinkingEnabled: value === \"on\"")
+    expect(panelSource).toContain("reasoningEffortMode: value")
+    expect(panelSource).toContain("disabled={disabled}")
+
+    expect(i18nSource).toContain("reasoning: \"Reasoning\"")
+    expect(i18nSource).toContain("reasoning: \"推理\"")
+    expect(i18nSource).toContain("reasoningUnknownModelWarning")
+  })
+})
+
+describe("desktop compatibility i18n", () => {
+  test("exposes EN/ZH copy for the legacy-session compatibility prompt", () => {
+    const i18nSource = readFileSync("src/desktop/src/i18n.tsx", "utf8")
+
+    expect(i18nSource).toContain("legacySessionTitle: string")
+    expect(i18nSource).toContain("legacySessionMessage: string")
+    expect(i18nSource).toContain("continueWithoutThinking: string")
+    expect(i18nSource).toContain("continueWithoutThinkingHint: string")
+    expect(i18nSource).toContain("startNewSession: string")
+
+    expect(i18nSource).toContain("legacySessionTitle: \"Session compatibility\"")
+    expect(i18nSource).toContain("continueWithoutThinking: \"Continue without thinking\"")
+    expect(i18nSource).toContain("startNewSession: \"Start new session\"")
+
+    expect(i18nSource).toContain("legacySessionTitle: \"会话兼容性\"")
+    expect(i18nSource).toContain("continueWithoutThinking: \"不带思考继续\"")
+    expect(i18nSource).toContain("startNewSession: \"新建会话\"")
+  })
+
+  test("continue-without-thinking copy explicitly states the override is session-scoped until re-enabled or new session", () => {
+    const i18nSource = readFileSync("src/desktop/src/i18n.tsx", "utf8")
+
+    const enHint = i18nSource.match(/continueWithoutThinkingHint:\s*"([^"]+)"/)
+    const zhHint = i18nSource.match(/continueWithoutThinkingHint:\s*"([^"]+)"/g)
+
+    expect(enHint).not.toBeNull()
+    expect(zhHint).not.toBeNull()
+    expect(zhHint?.length ?? 0).toBeGreaterThanOrEqual(2)
+
+    const enText = enHint?.[1] ?? ""
+    expect(enText.toLowerCase()).toContain("this session")
+    expect(enText.toLowerCase()).toContain("re-enable")
+    expect(enText.toLowerCase()).toContain("new session")
+
+    const zhText = (zhHint?.[1] ?? "").replace(/^continueWithoutThinkingHint:\s*"|"$/g, "")
+    expect(zhText).toContain("本会话")
+    expect(zhText).toContain("重新启用")
+    expect(zhText).toContain("新建一个会话")
+  })
 })
