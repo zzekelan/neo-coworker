@@ -12,12 +12,19 @@ import {
   type ObservabilityRepository,
 } from "../observability"
 import { createWorkspaceSkillRuntime } from "../skill"
-import { createDefaultProvider, resolveContextWindowSize } from "./provider"
+import {
+  createDefaultProvider,
+  resolveContextWindowSize,
+  resolveProviderCapabilities,
+  resolveProviderReplayGuard,
+  resolveRuntimeThinkingConfig,
+} from "./provider"
 import { createDefaultSearchBackend } from "./search"
-import { createRuntime } from "./runtime"
+import { createOrchestrationModelPort, createRuntime } from "./runtime"
 import { getServerStoragePath } from "./paths"
 import { readEnvWithFallback } from "./env"
 import { createAgentProfileService, type AgentProfileService } from "../agent"
+import type { ResolvedProviderCapabilities } from "./provider-capabilities"
 
 const DEFAULT_SERVER_HOST = "127.0.0.1"
 const DEFAULT_SERVER_PORT = 3100
@@ -50,6 +57,8 @@ export async function createStandaloneServerComposition(input: {
   cwd?: string
   now?: () => number
   createDefaultProviderImpl?: typeof createDefaultProvider
+  resolveProviderCapabilitiesImpl?: typeof resolveProviderCapabilities
+  resolveContextWindowSizeImpl?: typeof resolveContextWindowSize
   openSessionDatabaseImpl?: typeof openSessionDatabase
   createSessionRepositoryImpl?: typeof createSessionRepository
   createPermissionRepositoryImpl?: typeof createPermissionRepository
@@ -81,13 +90,24 @@ export async function createStandaloneServerComposition(input: {
       repository: observabilityRepository,
       now,
     })
-    const contextWindow = await resolveContextWindowSize({
+    const resolvedCapabilities = await (input.resolveProviderCapabilitiesImpl ?? resolveProviderCapabilities)({
+      env,
+      cwd,
+    })
+    const runtimeThinking = resolveRuntimeThinkingConfig({
+      env,
+      resolvedCapabilities,
+    })
+    const contextWindow = await (input.resolveContextWindowSizeImpl ?? resolveContextWindowSize)({
       env,
     })
     const provider = await (input.createDefaultProviderImpl ?? createDefaultProvider)({
       env,
       modelObserver: observability.modelObserver,
+      replayGuard: resolveProviderReplayGuard(resolvedCapabilities),
+      resolvedCapabilities,
     })
+    const orchestrationModel = createOrchestrationModelPort(provider)
     const searchBackend = createDefaultSearchBackend({
       env,
     })
@@ -131,12 +151,24 @@ export async function createStandaloneServerComposition(input: {
         now: () => number
       }) {
         return createRuntimeImpl({
-          provider,
+          provider: orchestrationModel,
           repository: runtimeInput.repository,
           permissionRepository: runtimeInput.permissionRepository,
           observability,
           searchBackend,
           contextWindow: contextWindow.contextWindow,
+          thinking: runtimeThinking,
+          telemetry: {
+            capabilityResolution: buildCapabilityTelemetry(resolvedCapabilities),
+            contextWindow: {
+              contextWindow: contextWindow.contextWindow,
+              source: mapContextWindowSource(contextWindow.source),
+            },
+            modelClassification: {
+              model: resolvedCapabilities.model,
+              providerFamily: classifyProviderFamily(resolvedCapabilities),
+            },
+          },
           now: runtimeInput.now,
         })
       },
@@ -159,7 +191,10 @@ export async function createStandaloneServerComposition(input: {
         repository: SessionRepository
         permissionRepository: PermissionRepository
         now: () => number
-      }): Pick<ReturnType<typeof createRuntime>, "run" | "cancelRun" | "respondPermission">
+      }): Pick<
+        ReturnType<typeof createRuntime>,
+        "run" | "cancelRun" | "respondPermission" | "setSessionThinkingOverride"
+      >
       deleteSession(sessionId: string): void
       closeDatabase(): void
     }
@@ -214,4 +249,44 @@ function parseServerPort(value: string | undefined) {
   }
 
   return port
+}
+
+function buildCapabilityTelemetry(resolvedCapabilities: ResolvedProviderCapabilities) {
+  return {
+    model: resolvedCapabilities.model,
+    provider: resolvedCapabilities.provider,
+    providerFamily: classifyProviderFamily(resolvedCapabilities),
+    catalogSource: resolvedCapabilities.catalog.source,
+    catalogMiss: resolvedCapabilities.catalog.miss,
+    reasoningSource: mapCapabilitySource(resolvedCapabilities.reasoning.source),
+    toolCallSource: mapCapabilitySource(resolvedCapabilities.toolCall.source),
+    interleavedSource: mapCapabilitySource(resolvedCapabilities.interleaved.source),
+    interleavedField: resolvedCapabilities.interleaved.field,
+    reasoningEffortSource: mapCapabilitySource(resolvedCapabilities.reasoningEffort.source),
+    thinkingSource: mapCapabilitySource(resolvedCapabilities.thinkingControls.thinking.source),
+    thinkingEffortSource: mapCapabilitySource(resolvedCapabilities.thinkingControls.reasoningEffort.source),
+  } as const
+}
+
+function classifyProviderFamily(resolvedCapabilities: ResolvedProviderCapabilities) {
+  return resolvedCapabilities.providerId === "moonshotai" || resolvedCapabilities.model.startsWith("kimi-")
+    ? "kimi"
+    : "generic"
+}
+
+function mapCapabilitySource(source: ResolvedProviderCapabilities["reasoning"]["source"]) {
+  return source === "override" ? "config" : source
+}
+
+function mapContextWindowSource(source: "provider" | "models.dev" | "env" | "default") {
+  switch (source) {
+    case "env":
+      return "config"
+    case "provider":
+      return "/models"
+    case "models.dev":
+      return "models.dev"
+    default:
+      return "default"
+  }
 }

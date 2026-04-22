@@ -15,8 +15,12 @@ import {
   createOpenAIAdapter,
   createOpenAICompatibleAdapter,
   type ClassifiedError,
+  type ModelThinkingConfig,
+  type ModelReplayGuardConfig,
   type ModelObserverPort,
   type ModelProvider,
+  type OpenAICompatibleRequestConfig,
+  type ReasoningEffortMode,
 } from "../model"
 import { readEnvWithFallback } from "./env"
 import {
@@ -41,7 +45,12 @@ type ProviderConfig = {
 
 type ContextWindowMetadata = {
   contextWindow: number
-  source: "provider" | "env" | "default"
+  source: "provider" | "models.dev" | "env" | "default"
+}
+
+type ReasoningConfig = {
+  thinkingEnabled?: boolean
+  reasoningEffort?: ReasoningEffortMode
 }
 
 type OpenAIClientConfig = Pick<ProviderConfig, "apiKey" | "baseURL" | "timeout">
@@ -54,6 +63,8 @@ type ModelProviderFactory = (input: {
 export type DefaultProviderInput = {
   env?: Record<string, string | undefined>
   modelObserver?: ModelObserverPort
+  replayGuard?: ModelReplayGuardConfig
+  resolvedCapabilities?: ResolvedProviderCapabilities
   createClient?: (config: OpenAIClientConfig) => OpenAI
   createOpenAIProviderImpl?: ModelProviderFactory
   createOpenAICompatibleProviderImpl?: ModelProviderFactory
@@ -117,6 +128,34 @@ function parsePositiveInteger(value: string | undefined, variableName: string) {
   return Number.parseInt(value, 10)
 }
 
+function parseBoolean(value: string | undefined, variableName: string) {
+  if (value == null) {
+    return undefined
+  }
+
+  if (value === "true") {
+    return true
+  }
+
+  if (value === "false") {
+    return false
+  }
+
+  throw new Error(`${variableName} must be either true or false when provided`)
+}
+
+function parseReasoningEffortMode(value: string | undefined, variableName: string) {
+  if (value == null) {
+    return undefined
+  }
+
+  if (value === "default" || value === "low" || value === "medium" || value === "high") {
+    return value
+  }
+
+  throw new Error(`${variableName} must be one of: default, low, medium, high when provided`)
+}
+
 export function resolveAgentServerOrigin(
   env: Record<string, string | undefined> = process.env,
 ) {
@@ -171,6 +210,84 @@ export function resolveDefaultProviderConfig(
   }
 }
 
+export function resolveReasoningConfig(
+  env: Record<string, string | undefined> = process.env,
+): ReasoningConfig {
+  const thinkingEnabled = parseBoolean(readEnvValue(env, "LLM_THINKING_ENABLED"), "LLM_THINKING_ENABLED")
+  const reasoningEffort = parseReasoningEffortMode(
+    readEnvValue(env, "LLM_REASONING_EFFORT"),
+    "LLM_REASONING_EFFORT",
+  )
+
+  return {
+    ...(thinkingEnabled === undefined ? {} : { thinkingEnabled }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+  }
+}
+
+export function resolveReasoningCapabilityOverride(
+  env: Record<string, string | undefined> = process.env,
+  override?: ProviderCapabilityOverride,
+): ProviderCapabilityOverride | undefined {
+  const reasoningConfig = resolveReasoningConfig(env)
+  const envOverride: ProviderCapabilityOverride = {
+    ...(reasoningConfig.thinkingEnabled === undefined
+      ? {}
+      : { thinking: reasoningConfig.thinkingEnabled }),
+    ...(reasoningConfig.reasoningEffort === undefined || reasoningConfig.reasoningEffort === "default"
+      ? {}
+      : { reasoningEffort: true }),
+  }
+  const merged = {
+    ...envOverride,
+    ...override,
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
+export function resolveRuntimeThinkingConfig(input: {
+  env?: Record<string, string | undefined>
+  resolvedCapabilities?: ResolvedProviderCapabilities
+}): ModelThinkingConfig | undefined {
+  const env = input.env ?? process.env
+  const reasoningConfig = resolveReasoningConfig(env)
+  const supportsThinking = input.resolvedCapabilities?.thinkingControls.thinking.supported === true
+
+  if (reasoningConfig.thinkingEnabled === false) {
+    return { enabled: false }
+  }
+
+  if (reasoningConfig.thinkingEnabled !== true && !supportsThinking) {
+    return undefined
+  }
+
+  return {
+    enabled: true,
+    ...(reasoningConfig.reasoningEffort === undefined
+      ? {}
+      : { effort: reasoningConfig.reasoningEffort }),
+  }
+}
+
+export function resolveProviderReplayGuard(
+  resolvedCapabilities: ResolvedProviderCapabilities,
+): ModelReplayGuardConfig | undefined {
+  if (
+    (resolvedCapabilities.providerId !== "moonshotai" && !resolvedCapabilities.model.startsWith("kimi-"))
+    || resolvedCapabilities.interleaved.supported !== true
+    || !resolvedCapabilities.interleaved.field
+  ) {
+    return undefined
+  }
+
+  return {
+    providerFamily: "kimi",
+    model: resolvedCapabilities.model,
+    requiredReasoningField: resolvedCapabilities.interleaved.field,
+  }
+}
+
 export function resolveProviderCapabilities(input: {
   env?: Record<string, string | undefined>
   override?: ProviderCapabilityOverride
@@ -178,6 +295,7 @@ export function resolveProviderCapabilities(input: {
 } & Omit<LoadModelsDevCatalogInput, "env"> = {}): Promise<ResolvedProviderCapabilities> {
   const env = input.env ?? process.env
   const config = resolveDefaultProviderConfig(env)
+  const override = resolveReasoningCapabilityOverride(env, input.override)
 
   return Promise.resolve(input.catalog ?? loadModelsDevCatalog({
     env,
@@ -194,7 +312,7 @@ export function resolveProviderCapabilities(input: {
       model: config.model,
       baseURL: config.baseURL,
     },
-    override: input.override,
+    override,
     catalog,
   }))
 }
@@ -207,13 +325,20 @@ export {
 }
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
-const DEFAULT_CONTEXT_WINDOW_SIZE = 128_000
+const DEFAULT_CONTEXT_WINDOW_SIZE = 192_000
 const DEFAULT_CONTEXT_WINDOW_METADATA_TIMEOUT_MS = 2_000
 
 export async function resolveContextWindowSize(input: {
   env?: Record<string, string | undefined>
+  catalog?: ModelsDevCatalog
   fetchImpl?: typeof fetch
   metadataTimeoutMs?: number
+  cwd?: string
+  now?: () => number
+  cachePath?: string
+  refreshIntervalMs?: number
+  fetchTimeoutMs?: number
+  snapshot?: ModelsDevCatalog
 } = {}): Promise<ContextWindowMetadata> {
   const env = input.env ?? process.env
   const fetchImpl = input.fetchImpl ?? fetch
@@ -227,6 +352,18 @@ export async function resolveContextWindowSize(input: {
   }
 
   const config = resolveDefaultProviderConfig(env)
+  const modelsDevContextWindow = await resolveModelsDevContextWindow({
+    config,
+    catalog: input.catalog,
+    env,
+    cwd: input.cwd,
+    fetchImpl: input.fetchImpl,
+    now: input.now,
+    cachePath: input.cachePath,
+    refreshIntervalMs: input.refreshIntervalMs,
+    fetchTimeoutMs: input.fetchTimeoutMs,
+    snapshot: input.snapshot,
+  })
   let metadata: number | null = null
 
   try {
@@ -243,6 +380,13 @@ export async function resolveContextWindowSize(input: {
     return {
       contextWindow: metadata,
       source: "provider",
+    }
+  }
+
+  if (modelsDevContextWindow) {
+    return {
+      contextWindow: modelsDevContextWindow,
+      source: "models.dev",
     }
   }
 
@@ -268,10 +412,12 @@ export async function createDefaultProvider(
         }))
   const createProviderForKey = createProviderFactory({
     config,
+    resolvedCapabilities: input.resolvedCapabilities,
     createClient,
     createOpenAIProviderImpl: input.createOpenAIProviderImpl,
     createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
     observer: input.modelObserver,
+    replayGuard: input.replayGuard,
   })
   const primaryProvider = createProviderForKey({ apiKey: config.apiKey })
   const credentialPool =
@@ -291,10 +437,12 @@ export async function createDefaultProvider(
 
 function createProviderFactory(input: {
   config: ProviderConfig
+  resolvedCapabilities?: ResolvedProviderCapabilities
   createClient: (config: OpenAIClientConfig) => OpenAI
   createOpenAIProviderImpl?: ModelProviderFactory
   createOpenAICompatibleProviderImpl?: ModelProviderFactory
   observer?: ModelObserverPort
+  replayGuard?: ModelReplayGuardConfig
 }) {
   return (runtimeInput: {
     apiKey: string
@@ -307,6 +455,8 @@ function createProviderFactory(input: {
     })
 
     if (input.config.provider === "openai-compatible") {
+      const requestConfig = createOpenAICompatibleRequestConfig(input.resolvedCapabilities)
+
       if (input.createOpenAICompatibleProviderImpl) {
         return input.createOpenAICompatibleProviderImpl({
           model: input.config.model,
@@ -320,10 +470,12 @@ function createProviderFactory(input: {
           provider: createOpenAICompatibleAdapter({
             model: input.config.model,
             client,
+            requestConfig,
           }),
           rateLimitTracker: runtimeInput.rateLimitTracker,
         }),
         observer: input.observer,
+        replayGuard: input.replayGuard,
       })
     }
 
@@ -344,8 +496,35 @@ function createProviderFactory(input: {
         rateLimitTracker: runtimeInput.rateLimitTracker,
       }),
       observer: input.observer,
+      replayGuard: input.replayGuard,
     })
   }
+}
+
+function createOpenAICompatibleRequestConfig(
+  resolvedCapabilities: ResolvedProviderCapabilities | undefined,
+): OpenAICompatibleRequestConfig | undefined {
+  if (!resolvedCapabilities || resolvedCapabilities.provider !== "openai-compatible") {
+    return undefined
+  }
+
+  const requestConfig: OpenAICompatibleRequestConfig = {
+    ...(resolvedCapabilities.interleaved.supported === true
+      && resolvedCapabilities.interleaved.field
+      && { replayedReasoningField: resolvedCapabilities.interleaved.field }),
+    ...(resolvedCapabilities.thinkingControls.thinking.supported === true && {
+      serializeThinking: true,
+    }),
+    ...(resolvedCapabilities.thinkingControls.reasoningEffort.supported === true && {
+      serializeReasoningEffort: true,
+    }),
+    ...((resolvedCapabilities.providerId === "moonshotai" || resolvedCapabilities.model.startsWith("kimi-"))
+      && resolvedCapabilities.thinkingControls.thinking.supported === true && {
+        forcePreserveReasoning: true,
+      }),
+  }
+
+  return Object.keys(requestConfig).length > 0 ? requestConfig : undefined
 }
 
 function createResilientProvider(input: {
@@ -361,14 +540,22 @@ function createResilientProvider(input: {
   sleep: (delayMs: number) => Promise<void>
   retryAttempts: number
 }): ModelProvider {
+  const sessionThinkingOverrides = new Set<string>()
+
   return {
     projectTurn(request) {
       return input.baseProvider.projectTurn(request)
     },
     async *streamTurn(request) {
+      const effectiveRequest = request.sessionId && sessionThinkingOverrides.has(request.sessionId)
+        ? {
+            ...request,
+            thinking: { enabled: false as const },
+          }
+        : request
       let apiKey = selectCredentialKey(input.credentialPool, input.primaryApiKey)
       let pendingRotation: { failedKey: string; reason: ClassifiedError["reason"] } | null = null
-      const rateLimitTracker = createRateLimitTracker(input.observer, request)
+      const rateLimitTracker = createRateLimitTracker(input.observer, effectiveRequest)
 
       for (let attempt = 1; attempt <= input.retryAttempts; attempt += 1) {
         const provider = apiKey === input.primaryApiKey
@@ -383,7 +570,7 @@ function createResilientProvider(input: {
         pendingRotation = null
 
         try {
-          for await (const event of provider.streamTurn(request)) {
+          for await (const event of provider.streamTurn(effectiveRequest)) {
             sawProviderOutput = true
             yield event
           }
@@ -422,6 +609,14 @@ function createResilientProvider(input: {
           }))
         }
       }
+    },
+    continueWithoutThinking(overrideInput) {
+      sessionThinkingOverrides.add(overrideInput.sessionId)
+      input.baseProvider.continueWithoutThinking?.(overrideInput)
+    },
+    restoreThinking(overrideInput) {
+      sessionThinkingOverrides.delete(overrideInput.sessionId)
+      input.baseProvider.restoreThinking?.(overrideInput)
     },
   }
 }
@@ -636,8 +831,45 @@ async function fetchContextWindowMetadata(input: {
   return readContextWindowFromPayload(payload)
 }
 
+async function resolveModelsDevContextWindow(input: {
+  config: Pick<ProviderConfig, "provider" | "model" | "baseURL">
+  catalog?: ModelsDevCatalog
+  env: Record<string, string | undefined>
+  cwd?: string
+  fetchImpl?: typeof fetch
+  now?: () => number
+  cachePath?: string
+  refreshIntervalMs?: number
+  fetchTimeoutMs?: number
+  snapshot?: ModelsDevCatalog
+}) {
+  const catalog = input.catalog ?? (await loadModelsDevCatalog({
+    env: input.env,
+    cwd: input.cwd,
+    fetchImpl: input.fetchImpl,
+    now: input.now,
+    cachePath: input.cachePath,
+    refreshIntervalMs: input.refreshIntervalMs,
+    fetchTimeoutMs: input.fetchTimeoutMs,
+    snapshot: input.snapshot,
+  })).catalog
+  const resolved = resolveProviderCapabilitiesFromCatalog({
+    config: input.config,
+    catalog,
+  })
+  const modelMetadata = resolved.providerId ? catalog[resolved.providerId]?.models[resolved.model] : undefined
+  return readModelsDevContextWindow(modelMetadata)
+}
+
 function ensureTrailingSlash(value: string) {
   return value.endsWith("/") ? value : `${value}/`
+}
+
+function readModelsDevContextWindow(modelMetadata: ModelsDevCatalog[string]["models"][string] | undefined) {
+  const contextWindow = modelMetadata?.limit?.context
+  return typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0
+    ? contextWindow
+    : null
 }
 
 function readContextWindowFromPayload(payload: unknown): number | null {

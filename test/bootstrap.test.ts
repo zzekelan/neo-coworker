@@ -10,10 +10,17 @@ import {
   loadModelsDevCatalog,
   MODELS_DEV_CAPABILITY_SNAPSHOT,
   resolveDefaultProviderConfig,
+  resolveReasoningCapabilityOverride,
+  resolveReasoningConfig,
+  resolveRuntimeThinkingConfig,
   resolveProviderCapabilities,
   resolveContextWindowSize,
   resolveSearchBackendConfig,
 } from "../src/bootstrap"
+import {
+  type ModelsDevCatalog,
+  resolveProviderCapabilities as resolveProviderCapabilitiesFromCatalog,
+} from "../src/bootstrap/provider-capabilities"
 
 const tempDirectories: string[] = []
 
@@ -204,6 +211,130 @@ describe("bootstrap", () => {
         OPENAI_MODEL: "gpt-5",
       }),
     ).toThrow("LLM_API_KEY is required")
+  })
+
+  test("reads reasoning config from LLM_THINKING_ENABLED and LLM_REASONING_EFFORT", () => {
+    expect(
+      resolveReasoningConfig({
+        LLM_THINKING_ENABLED: "true",
+        LLM_REASONING_EFFORT: "high",
+      }),
+    ).toEqual({
+      thinkingEnabled: true,
+      reasoningEffort: "high",
+    })
+  })
+
+  test("rejects invalid reasoning env values", () => {
+    expect(() =>
+      resolveReasoningConfig({
+        LLM_THINKING_ENABLED: "yes",
+      }),
+    ).toThrow("LLM_THINKING_ENABLED must be either true or false when provided")
+
+    expect(() =>
+      resolveReasoningConfig({
+        LLM_REASONING_EFFORT: "ultra",
+      }),
+    ).toThrow("LLM_REASONING_EFFORT must be one of: default, low, medium, high when provided")
+  })
+
+  test("maps reasoning env values into capability overrides with deterministic precedence", () => {
+    expect(
+      resolveReasoningCapabilityOverride({
+        LLM_THINKING_ENABLED: "true",
+        LLM_REASONING_EFFORT: "high",
+      }),
+    ).toEqual({
+      thinking: true,
+      reasoningEffort: true,
+    })
+
+    expect(
+      resolveReasoningCapabilityOverride(
+        {
+          LLM_THINKING_ENABLED: "false",
+          LLM_REASONING_EFFORT: "default",
+        },
+        {
+          thinking: true,
+        },
+      ),
+    ).toEqual({
+      thinking: true,
+    })
+  })
+
+  test("derives effective runtime thinking from env-backed reasoning config", () => {
+    expect(
+      resolveRuntimeThinkingConfig({
+        env: {
+          LLM_THINKING_ENABLED: "false",
+          LLM_REASONING_EFFORT: "high",
+        },
+      }),
+    ).toEqual({
+      enabled: false,
+    })
+
+    expect(
+      resolveRuntimeThinkingConfig({
+        env: {
+          LLM_THINKING_ENABLED: "true",
+          LLM_REASONING_EFFORT: "default",
+        },
+      }),
+    ).toEqual({
+      enabled: true,
+      effort: "default",
+    })
+
+    expect(
+      resolveRuntimeThinkingConfig({
+        env: {
+          LLM_REASONING_EFFORT: "medium",
+        },
+        resolvedCapabilities: {
+          provider: "openai-compatible",
+          providerId: "moonshotai",
+          model: "kimi-k2.6",
+          catalog: {
+            source: "models.dev",
+            miss: false,
+          },
+          reasoning: {
+            supported: true,
+            source: "models.dev",
+          },
+          toolCall: {
+            supported: true,
+            source: "models.dev",
+          },
+          interleaved: {
+            supported: true,
+            field: "reasoning_content",
+            source: "models.dev",
+          },
+          reasoningEffort: {
+            supported: true,
+            source: "models.dev",
+          },
+          thinkingControls: {
+            thinking: {
+              supported: true,
+              source: "models.dev",
+            },
+            reasoningEffort: {
+              supported: true,
+              source: "models.dev",
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      enabled: true,
+      effort: "medium",
+    })
   })
 
   test("reads search backend configuration from SEARCH_BACKEND_* variables", () => {
@@ -435,6 +566,125 @@ describe("bootstrap", () => {
     })
   })
 
+  test("resolves models.dev capability fixtures without live network access", async () => {
+    const catalog: ModelsDevCatalog = {
+      moonshotai: {
+        id: "moonshotai",
+        name: "Moonshot AI",
+        models: {
+          "kimi-k2.6": {
+            id: "kimi-k2.6",
+            reasoning: true,
+            tool_call: true,
+            interleaved: { field: "reasoning_content" },
+            experimental: {
+              modes: {
+                thinking: {
+                  provider: {
+                    body: {
+                      reasoning_effort: true,
+                      thinking: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const cachePath = await createTempModelsCachePath("bootstrap-models-dev-fixture-")
+    await writeFile(cachePath, JSON.stringify(catalog), "utf8")
+
+    await expect(
+      loadModelsDevCatalog({
+        cachePath,
+        now: () => 1_000,
+        fetchImpl: async () => {
+          throw new Error("offline")
+        },
+      }),
+    ).resolves.toMatchObject({
+      source: "disk",
+      stale: false,
+      fetchAttempted: false,
+      diskCacheCorrupted: false,
+      catalog,
+    })
+
+    expect(
+      resolveProviderCapabilitiesFromCatalog({
+        config: {
+          provider: "openai-compatible",
+          model: "kimi-k2.6",
+          baseURL: "https://api.moonshot.ai/v1",
+        },
+        catalog,
+      }),
+    ).toMatchObject({
+      provider: "openai-compatible",
+      providerId: "moonshotai",
+      model: "kimi-k2.6",
+      catalog: {
+        source: "models.dev",
+        miss: false,
+      },
+      reasoning: {
+        supported: true,
+        source: "models.dev",
+      },
+      toolCall: {
+        supported: true,
+        source: "models.dev",
+      },
+      interleaved: {
+        supported: true,
+        field: "reasoning_content",
+        source: "models.dev",
+      },
+      reasoningEffort: {
+        supported: true,
+        source: "models.dev",
+      },
+      thinkingControls: {
+        thinking: {
+          supported: true,
+          source: "models.dev",
+        },
+        reasoningEffort: {
+          supported: true,
+          source: "models.dev",
+        },
+      },
+    })
+
+    expect(
+      resolveProviderCapabilitiesFromCatalog({
+        config: {
+          provider: "openai-compatible",
+          model: "unknown-model",
+          baseURL: "https://example.invalid/v1",
+        },
+        catalog,
+      }),
+    ).toMatchObject({
+      catalog: {
+        source: "default",
+        miss: true,
+      },
+      reasoning: {
+        supported: false,
+        source: "default",
+      },
+      interleaved: {
+        supported: false,
+        field: null,
+        source: "default",
+      },
+    })
+  })
+
   test("populates memory and disk cache from a remote fixture and reuses fresh memory cache without refetching", async () => {
     const cachePath = await createTempModelsCachePath("bootstrap-models-cache-remote-")
     const remoteCatalog = {
@@ -538,6 +788,70 @@ describe("bootstrap", () => {
       catalog: refreshedCatalog,
     })
     await expect(readFile(cachePath, "utf8")).resolves.toContain("fresh-model")
+  })
+
+  test("keeps stale in-memory cache stale when refresh fails so later calls retry", async () => {
+    const cachePath = await createTempModelsCachePath("bootstrap-models-cache-stale-memory-")
+    const remoteCatalog = {
+      remote: {
+        id: "remote",
+        name: "Remote Provider",
+        models: {
+          "remote-model": {
+            id: "remote-model",
+            reasoning: true,
+            tool_call: true,
+          },
+        },
+      },
+    }
+    let fetchCalls = 0
+
+    await loadModelsDevCatalog({
+      cachePath,
+      now: () => 1_000,
+      fetchImpl: async () => {
+        fetchCalls += 1
+        return new Response(JSON.stringify(remoteCatalog), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      },
+    })
+
+    const staleResult = await loadModelsDevCatalog({
+      cachePath,
+      now: () => 2 * 60 * 60 * 1000,
+      fetchImpl: async () => {
+        fetchCalls += 1
+        throw new Error("offline during refresh")
+      },
+    })
+
+    const retriedResult = await loadModelsDevCatalog({
+      cachePath,
+      now: () => 2 * 60 * 60 * 1000 + 1,
+      fetchImpl: async () => {
+        fetchCalls += 1
+        throw new Error("still offline during refresh")
+      },
+    })
+
+    expect(fetchCalls).toBe(3)
+    expect(staleResult).toMatchObject({
+      source: "memory",
+      stale: true,
+      fetchAttempted: true,
+      diskCacheCorrupted: false,
+      catalog: remoteCatalog,
+    })
+    expect(retriedResult).toMatchObject({
+      source: "memory",
+      stale: true,
+      fetchAttempted: true,
+      diskCacheCorrupted: false,
+      catalog: remoteCatalog,
+    })
   })
 
   test("falls back cleanly to the bundled snapshot when the disk cache is corrupt and the network is unavailable", async () => {
@@ -647,13 +961,89 @@ describe("bootstrap", () => {
         LLM_API_KEY: "test-key",
         LLM_MODEL: "gpt-5",
       },
+      catalog: {
+        openai: {
+          id: "openai",
+          name: "OpenAI",
+          models: {
+            "gpt-5": {
+              id: "gpt-5",
+              limit: {
+                context: 1_000_000,
+              },
+            },
+          },
+        },
+      },
       fetchImpl: async () => {
         throw new Error("network down")
       },
     })
 
     expect(result).toEqual({
-      contextWindow: 128000,
+      contextWindow: 1_000_000,
+      source: "models.dev",
+    })
+  })
+
+  test("falls back to models.dev context metadata when /models is unavailable", async () => {
+    const result = await resolveContextWindowSize({
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "kimi-k2.6",
+        LLM_BASE_URL: "https://api.moonshot.ai/v1",
+      },
+      catalog: {
+        moonshotai: {
+          id: "moonshotai",
+          name: "Moonshot AI",
+          models: {
+            "kimi-k2.6": {
+              id: "kimi-k2.6",
+              limit: {
+                context: 262_144,
+              },
+            },
+          },
+        },
+      },
+      fetchImpl: async () => {
+        throw new Error("network down")
+      },
+    })
+
+    expect(result).toEqual({
+      contextWindow: 262_144,
+      source: "models.dev",
+    })
+  })
+
+  test("falls back to the 192K default context window when provider and models.dev metadata are unavailable", async () => {
+    const result = await resolveContextWindowSize({
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "gpt-5",
+      },
+      catalog: {
+        openai: {
+          id: "openai",
+          name: "OpenAI",
+          models: {
+            "gpt-5": {
+              id: "gpt-5",
+            },
+          },
+        },
+      },
+      fetchImpl: async () => {
+        throw new Error("network down")
+      },
+    })
+
+    expect(result).toEqual({
+      contextWindow: 192000,
       source: "default",
     })
   })
@@ -666,13 +1056,27 @@ describe("bootstrap", () => {
         LLM_MODEL: "slow-model",
         LLM_BASE_URL: "https://example.invalid/v1",
       },
+      catalog: {
+        fallback: {
+          id: "fallback",
+          name: "Fallback Provider",
+          models: {
+            "slow-model": {
+              id: "slow-model",
+              limit: {
+                context: 200_000,
+              },
+            },
+          },
+        },
+      },
       metadataTimeoutMs: 1,
       fetchImpl: async () => new Promise<Response>(() => {}),
     })
 
     expect(result).toEqual({
-      contextWindow: 128000,
-      source: "default",
+      contextWindow: 200_000,
+      source: "models.dev",
     })
   })
 

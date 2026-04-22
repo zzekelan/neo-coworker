@@ -25,6 +25,11 @@ export type ModelsDevModeMetadata = {
 export type ModelsDevModelMetadata = {
   id: string
   name?: string
+  limit?: {
+    context?: number
+    input?: number
+    output?: number
+  }
   reasoning?: boolean
   tool_call?: boolean
   interleaved?: true | { field: InterleavedReasoningField }

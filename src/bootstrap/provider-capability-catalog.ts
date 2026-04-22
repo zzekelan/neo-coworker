@@ -84,7 +84,6 @@ export async function loadModelsDevCatalog(
       return refreshed
     }
 
-    setMemoryCache(cachePath, cached.catalog, now())
     return {
       catalog: cached.catalog,
       source: "memory",
