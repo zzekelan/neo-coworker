@@ -28,6 +28,7 @@ export type OpenAICompatibleRequestConfig = {
   serializeThinking?: boolean
   forcePreserveReasoning?: boolean
   serializeReasoningEffort?: boolean
+  disabledThinkingTemperature?: number
 }
 
 type OpenAICompatibleClient = {
@@ -328,6 +329,18 @@ function toReasoningEffort(input: {
   return input.requestThinking.effort
 }
 
+function toTemperature(input: {
+  requestTemperature: number | undefined
+  requestThinking: { enabled: boolean } | undefined
+  requestConfig?: OpenAICompatibleRequestConfig
+}) {
+  if (input.requestThinking?.enabled === false && input.requestConfig?.disabledThinkingTemperature !== undefined) {
+    return input.requestConfig.disabledThinkingTemperature
+  }
+
+  return input.requestTemperature
+}
+
 export function createOpenAICompatibleProvider(input: {
   model: string
   client: OpenAICompatibleClient
@@ -347,6 +360,11 @@ export function createOpenAICompatibleProvider(input: {
         requestThinking: request.thinking,
         requestConfig: input.requestConfig,
       })
+      const temperature = toTemperature({
+        requestTemperature: request.temperature,
+        requestThinking: request.thinking,
+        requestConfig: input.requestConfig,
+      })
       const stream = await input.client.chat.completions.create(
         {
           model: input.model,
@@ -361,7 +379,7 @@ export function createOpenAICompatibleProvider(input: {
             include_usage: true,
           },
           max_completion_tokens: 16000,
-          ...(request.temperature !== undefined && { temperature: request.temperature }),
+          ...(temperature !== undefined && { temperature }),
           ...(thinking !== undefined && { thinking }),
           ...(reasoningEffort !== undefined && { reasoning_effort: reasoningEffort }),
           parallel_tool_calls: true,

@@ -503,6 +503,7 @@ function createOpenAICompatibleRequestConfig(
     }),
     ...((resolvedCapabilities.providerId === "moonshotai" || resolvedCapabilities.model.startsWith("kimi-"))
       && supportsThinkingSerialization && {
+        disabledThinkingTemperature: 0.6,
         forcePreserveReasoning: true,
       }),
   }
