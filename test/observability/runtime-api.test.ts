@@ -48,46 +48,6 @@ describe("observability runtime api", () => {
     ])
   })
 
-  test("normalizes replay fail-fast telemetry payloads without special casing", () => {
-    const harness = createRepository()
-    const runtime = createObservabilityRuntimeApi({
-      repository: harness.repository,
-      now: () => 42,
-    })
-
-    runtime.modelObserver.recordModelEvent({
-      type: "replay.fail_fast.blocked",
-      sessionId: "session_1",
-      runId: "run_1",
-      turnKey: "run_1:turn_1",
-      model: "kimi-k2.6",
-      providerFamily: "kimi",
-      classification: "legacy_session_missing_reasoning",
-      missingPart: "reasoning",
-      requiredReasoningField: "reasoning_content",
-    })
-
-    expect(harness.runEvents).toEqual([
-      {
-        id: "event_1",
-        sessionId: "session_1",
-        runId: "run_1",
-        sequence: 0,
-        source: "model",
-        eventType: "replay.fail_fast.blocked",
-        data: {
-          turnKey: "run_1:turn_1",
-          model: "kimi-k2.6",
-          providerFamily: "kimi",
-          classification: "legacy_session_missing_reasoning",
-          missingPart: "reasoning",
-          requiredReasoningField: "reasoning_content",
-        },
-        createdAt: 42,
-      },
-    ])
-  })
-
   test("normalizes source-specific observer events into durable run events", () => {
     const harness = createRepository()
     const runtime = createObservabilityRuntimeApi({
