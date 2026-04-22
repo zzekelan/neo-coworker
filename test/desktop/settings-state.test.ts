@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
@@ -29,6 +29,8 @@ describe("desktop settings state", () => {
       model: "kimi-k2.5",
       baseURL: "https://example.invalid/v1",
       timeoutMs: "30000",
+      thinkingEnabled: true,
+      reasoningEffortMode: "high",
     })
 
     expect(written).toEqual({
@@ -39,6 +41,8 @@ describe("desktop settings state", () => {
       model: "kimi-k2.5",
       baseURL: "https://example.invalid/v1",
       timeoutMs: "30000",
+      thinkingEnabled: true,
+      reasoningEffortMode: "high",
     })
     expect(readDesktopSettingsState(filePath)).toEqual(written)
   })
@@ -64,6 +68,8 @@ describe("desktop settings state", () => {
       model: "env-model",
       baseURL: "https://env.invalid/v1",
       timeoutMs: "45000",
+      thinkingEnabled: false,
+      reasoningEffortMode: "default",
     })
   })
 
@@ -76,6 +82,8 @@ describe("desktop settings state", () => {
       model: "",
       baseURL: "",
       timeoutMs: "",
+      thinkingEnabled: false,
+      reasoningEffortMode: "default",
     })
   })
 
@@ -103,6 +111,72 @@ describe("desktop settings state", () => {
       LLM_MODEL: "local-model",
       LLM_TIMEOUT_MS: "45000",
     })
+  })
+
+  test("ignores reasoning controls coming from env files (UI-only preferences)", () => {
+    const directory = createSettingsDirectory()
+    writeFileSync(
+      join(directory, ".env"),
+      [
+        "LLM_PROVIDER=openai",
+        "LLM_THINKING_ENABLED=true",
+        "LLM_REASONING_EFFORT=high",
+      ].join("\n"),
+    )
+
+    expect(readDesktopSettingsEnvFiles(directory)).toEqual({
+      LLM_PROVIDER: "openai",
+    })
+  })
+
+  test("normalizes invalid reasoning controls back to defaults", () => {
+    const filePath = createSettingsFilePath()
+
+    const written = writeDesktopSettingsState(filePath, {
+      language: "en",
+      theme: "dark",
+      provider: "openai-compatible",
+      apiKey: "k",
+      model: "m",
+      baseURL: "",
+      timeoutMs: "",
+      thinkingEnabled: "yes",
+      reasoningEffortMode: "ultra",
+    })
+
+    expect(written.thinkingEnabled).toBe(false)
+    expect(written.reasoningEffortMode).toBe("default")
+    expect(readDesktopSettingsState(filePath)).toEqual(written)
+  })
+
+  test("preserves false thinkingEnabled across save/load roundtrip", () => {
+    const filePath = createSettingsFilePath()
+
+    const written = writeDesktopSettingsState(filePath, {
+      language: "en",
+      theme: "dark",
+      provider: "openai-compatible",
+      apiKey: "k",
+      model: "m",
+      baseURL: "",
+      timeoutMs: "",
+      thinkingEnabled: false,
+      reasoningEffortMode: "low",
+    })
+
+    expect(written.thinkingEnabled).toBe(false)
+    expect(written.reasoningEffortMode).toBe("low")
+    expect(readDesktopSettingsState(filePath).thinkingEnabled).toBe(false)
+    expect(readDesktopSettingsState(filePath).reasoningEffortMode).toBe("low")
+  })
+
+  test("external-server desktop bridge keeps LLM reasoning fields view-only (no managed restart)", () => {
+    const mainSource = readFileSync("src/desktop/electron/main.mjs", "utf8")
+
+    expect(mainSource).toContain("if (currentServerMode !== \"managed-local\") {")
+    expect(mainSource).toContain("restarted: false")
+    const panelSource = readFileSync("src/desktop/src/components/SettingsPanel.tsx", "utf8")
+    expect(panelSource).toContain("const llmFieldsDisabled = serverMode !== \"managed-local\"")
   })
 })
 

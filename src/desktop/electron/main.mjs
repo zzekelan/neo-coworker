@@ -372,6 +372,8 @@ function buildManagedServerEnv(input) {
   delete env.LLM_MODEL
   delete env.LLM_BASE_URL
   delete env.LLM_TIMEOUT_MS
+  delete env.LLM_THINKING_ENABLED
+  delete env.LLM_REASONING_EFFORT
 
   env.LLM_PROVIDER = input.settings.provider
   env.LLM_API_KEY = input.settings.apiKey
@@ -382,6 +384,8 @@ function buildManagedServerEnv(input) {
   if (input.settings.timeoutMs) {
     env.LLM_TIMEOUT_MS = input.settings.timeoutMs
   }
+  env.LLM_THINKING_ENABLED = input.settings.thinkingEnabled ? "true" : "false"
+  env.LLM_REASONING_EFFORT = input.settings.reasoningEffortMode
 
   return env
 }

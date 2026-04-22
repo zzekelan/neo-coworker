@@ -157,5 +157,16 @@ function normalizeBrowserSettings(value: unknown): DesktopSettings {
       typeof candidate.timeoutMs === "string" && /^\d*$/.test(candidate.timeoutMs.trim())
         ? candidate.timeoutMs.trim()
         : "",
+    thinkingEnabled:
+      typeof candidate.thinkingEnabled === "boolean"
+        ? candidate.thinkingEnabled
+        : DEFAULT_DESKTOP_SETTINGS.thinkingEnabled,
+    reasoningEffortMode:
+      candidate.reasoningEffortMode === "low"
+        || candidate.reasoningEffortMode === "medium"
+        || candidate.reasoningEffortMode === "high"
+        || candidate.reasoningEffortMode === "default"
+        ? candidate.reasoningEffortMode
+        : DEFAULT_DESKTOP_SETTINGS.reasoningEffortMode,
   }
 }

@@ -9,6 +9,8 @@ const DEFAULT_SETTINGS = {
   model: "",
   baseURL: "",
   timeoutMs: "",
+  thinkingEnabled: false,
+  reasoningEffortMode: "default",
 }
 const DESKTOP_SETTINGS_ENV_KEYS = new Set([
   "LLM_PROVIDER",
@@ -28,6 +30,8 @@ export function createDefaultDesktopSettings(env = process.env) {
     model: normalizeString(env.LLM_MODEL),
     baseURL: normalizeString(env.LLM_BASE_URL),
     timeoutMs: normalizeTimeout(env.LLM_TIMEOUT_MS),
+    thinkingEnabled: DEFAULT_SETTINGS.thinkingEnabled,
+    reasoningEffortMode: DEFAULT_SETTINGS.reasoningEffortMode,
   }
 }
 
@@ -93,6 +97,10 @@ export function normalizeDesktopSettingsState(value, defaults = DEFAULT_SETTINGS
       typeof value.timeoutMs === "string"
         ? normalizeTimeout(value.timeoutMs)
         : defaults.timeoutMs,
+    thinkingEnabled:
+      typeof value.thinkingEnabled === "boolean" ? value.thinkingEnabled : defaults.thinkingEnabled,
+    reasoningEffortMode:
+      normalizeReasoningEffortMode(value.reasoningEffortMode) ?? defaults.reasoningEffortMode,
   }
 }
 
@@ -106,6 +114,12 @@ function normalizeTheme(value) {
 
 function normalizeProvider(value) {
   return value === "openai-compatible" ? "openai-compatible" : value === "openai" ? "openai" : null
+}
+
+function normalizeReasoningEffortMode(value) {
+  return value === "low" || value === "medium" || value === "high" || value === "default"
+    ? value
+    : null
 }
 
 function normalizeString(value) {

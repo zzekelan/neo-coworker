@@ -72,6 +72,8 @@ export async function loadDesktopSettings() {
         model: "",
         baseURL: "",
         timeoutMs: "",
+        thinkingEnabled: false,
+        reasoningEffortMode: "default",
       } satisfies DesktopSettings,
       serverMode: (bridge.serverMode ?? "external") as DesktopServerMode,
     }
@@ -314,6 +316,18 @@ export async function updateSessionAgent(input: { sessionId: string; agent: stri
       method: "POST",
       body: {
         agent: input.agent,
+      },
+    },
+  )
+}
+
+export async function setSessionThinking(input: { sessionId: string; enabled: boolean }) {
+  return requestApi<unknown>(
+    `/sessions/${encodeURIComponent(input.sessionId)}/thinking`,
+    {
+      method: "POST",
+      body: {
+        enabled: input.enabled,
       },
     },
   )
