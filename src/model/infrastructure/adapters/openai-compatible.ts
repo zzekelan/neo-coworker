@@ -4,13 +4,31 @@ import {
   type ModelMessage,
   type ModelTool,
 } from "../../domain"
+import type { ReasoningEffortMode } from "../../domain/turn"
 import type { Provider } from "../../application/ports/provider"
 import { createOpenAICompatibleEventNormalizer } from "../normalize"
 
 type OpenAICompatibleChunk = OpenAI.Chat.ChatCompletionChunk
-type OpenAICompatibleMessage = OpenAI.Chat.ChatCompletionMessageParam
-type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming
+type OpenAICompatibleReasoningField = "reasoning_content" | "reasoning_details"
+type OpenAICompatibleThinking = {
+  type: "enabled" | "disabled"
+  keep?: "all"
+}
+type OpenAICompatibleAssistantMessage = OpenAI.Chat.ChatCompletionAssistantMessageParam
+  & Partial<Record<OpenAICompatibleReasoningField, string>>
+type OpenAICompatibleMessage = OpenAI.Chat.ChatCompletionMessageParam | OpenAICompatibleAssistantMessage
+type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming & {
+  reasoning_effort?: Exclude<ReasoningEffortMode, "default">
+  thinking?: OpenAICompatibleThinking
+}
 type OpenAICompatibleTools = OpenAI.Chat.ChatCompletionTool[]
+
+export type OpenAICompatibleRequestConfig = {
+  replayedReasoningField?: OpenAICompatibleReasoningField
+  serializeThinking?: boolean
+  forcePreserveReasoning?: boolean
+  serializeReasoningEffort?: boolean
+}
 
 type OpenAICompatibleClient = {
   chat: {
@@ -42,7 +60,19 @@ function readMessageText(message: ModelMessage) {
     .join("\n\n")
 }
 
-function toChatCompletionMessages(messages: ModelMessage[]): OpenAICompatibleMessage[] {
+function readMessageReasoning(message: ModelMessage) {
+  return message.parts
+    .filter((part) => part.type === "reasoning")
+    .map((part) => part.text)
+    .join("\n\n")
+}
+
+function toChatCompletionMessages(
+  messages: ModelMessage[],
+  input: {
+    replayedReasoningField?: OpenAICompatibleReasoningField
+  } = {},
+): OpenAICompatibleMessage[] {
   const serialized: OpenAICompatibleMessage[] = []
 
   for (const message of messages) {
@@ -63,6 +93,7 @@ function toChatCompletionMessages(messages: ModelMessage[]): OpenAICompatibleMes
 
     const content = readMessageText(message)
     if (message.role === "assistant") {
+      const reasoning = readMessageReasoning(message)
       const toolCalls = message.parts
         .filter((part): part is Extract<typeof part, { type: "tool_call" }> => part.type === "tool_call")
         .map((part) => ({
@@ -74,15 +105,21 @@ function toChatCompletionMessages(messages: ModelMessage[]): OpenAICompatibleMes
           },
         }))
 
-      if (!content && toolCalls.length === 0) {
+      if (!content && !reasoning && toolCalls.length === 0) {
         continue
       }
 
-      serialized.push({
+      const assistantMessage: OpenAICompatibleAssistantMessage = {
         role: "assistant",
         content: content || null,
         tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-      })
+      }
+
+      if (input.replayedReasoningField && reasoning) {
+        assistantMessage[input.replayedReasoningField] = reasoning
+      }
+
+      serialized.push(assistantMessage)
       continue
     }
 
@@ -241,18 +278,83 @@ function toChatCompletionTool(tool: ModelTool): OpenAI.Chat.ChatCompletionTool {
   }
 }
 
+function resolveReplayedReasoningField(input: {
+  requestThinking: { enabled: boolean } | undefined
+  requestConfig?: OpenAICompatibleRequestConfig
+}) {
+  if (input.requestThinking?.enabled !== true) {
+    return undefined
+  }
+
+  return input.requestConfig?.replayedReasoningField
+}
+
+function toThinking(input: {
+  requestThinking: { enabled: boolean } | undefined
+  requestConfig?: OpenAICompatibleRequestConfig
+}): OpenAICompatibleThinking | undefined {
+  if (!input.requestThinking || input.requestConfig?.serializeThinking !== true) {
+    return undefined
+  }
+
+  if (input.requestThinking.enabled !== true) {
+    return {
+      type: "disabled",
+    }
+  }
+
+  return {
+    type: "enabled",
+    ...(input.requestConfig.forcePreserveReasoning === true && { keep: "all" as const }),
+  }
+}
+
+function toReasoningEffort(input: {
+  requestThinking: {
+    enabled: boolean
+    effort?: ReasoningEffortMode
+  } | undefined
+  requestConfig?: OpenAICompatibleRequestConfig
+}): Exclude<ReasoningEffortMode, "default"> | undefined {
+  if (
+    input.requestThinking?.enabled !== true
+    || input.requestConfig?.serializeReasoningEffort !== true
+    || !input.requestThinking.effort
+    || input.requestThinking.effort === "default"
+  ) {
+    return undefined
+  }
+
+  return input.requestThinking.effort
+}
+
 export function createOpenAICompatibleProvider(input: {
   model: string
   client: OpenAICompatibleClient
+  requestConfig?: OpenAICompatibleRequestConfig
 }): Provider {
   return {
     async *streamTurn(request) {
+      const replayedReasoningField = resolveReplayedReasoningField({
+        requestThinking: request.thinking,
+        requestConfig: input.requestConfig,
+      })
+      const thinking = toThinking({
+        requestThinking: request.thinking,
+        requestConfig: input.requestConfig,
+      })
+      const reasoningEffort = toReasoningEffort({
+        requestThinking: request.thinking,
+        requestConfig: input.requestConfig,
+      })
       const stream = await input.client.chat.completions.create(
         {
           model: input.model,
           messages: [
             { role: "system", content: request.system },
-            ...toChatCompletionMessages(request.messages),
+            ...toChatCompletionMessages(request.messages, {
+              replayedReasoningField,
+            }),
           ],
           stream: true,
           stream_options: {
@@ -260,6 +362,8 @@ export function createOpenAICompatibleProvider(input: {
           },
           max_completion_tokens: 16000,
           ...(request.temperature !== undefined && { temperature: request.temperature }),
+          ...(thinking !== undefined && { thinking }),
+          ...(reasoningEffort !== undefined && { reasoning_effort: reasoningEffort }),
           parallel_tool_calls: true,
           tools: request.tools.map(toChatCompletionTool) as OpenAICompatibleTools,
         },

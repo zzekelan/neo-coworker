@@ -7,6 +7,7 @@ import type OpenAI from "openai"
 
 import { createRuntime, createDefaultProvider } from "../../src/bootstrap"
 import {
+  SYSTEM_REMINDER_NOTICE,
   createModelProvider,
   createModelRuntimeApi,
 } from "../../src/model"
@@ -150,6 +151,215 @@ describe("integration: error resilience", () => {
 
     expect(calls).toEqual(["key-a", "key-b"])
     expect(events.at(0)).toEqual({ type: "text.delta", text: "Recovered with second key." })
+  })
+
+  test("default provider threads authoritative kimi request serialization into the openai-compatible adapter", async () => {
+    let receivedBody: unknown
+
+    const provider = await createDefaultProvider({
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "single-key",
+        LLM_MODEL: "kimi-k2.6",
+        LLM_BASE_URL: "https://api.moonshot.ai/v1",
+      },
+      resolvedCapabilities: {
+        provider: "openai-compatible",
+        providerId: "moonshotai",
+        model: "kimi-k2.6",
+        catalog: {
+          source: "models.dev",
+          miss: false,
+        },
+        reasoning: {
+          supported: true,
+          source: "models.dev",
+        },
+        toolCall: {
+          supported: true,
+          source: "models.dev",
+        },
+        interleaved: {
+          supported: true,
+          field: "reasoning_content",
+          source: "models.dev",
+        },
+        reasoningEffort: {
+          supported: true,
+          source: "models.dev",
+        },
+        thinkingControls: {
+          thinking: {
+            supported: true,
+            source: "models.dev",
+          },
+          reasoningEffort: {
+            supported: true,
+            source: "models.dev",
+          },
+        },
+      },
+      createClient() {
+        return {
+          chat: {
+            completions: {
+              create(body: unknown) {
+                receivedBody = body
+                return (async function* () {})()
+              },
+            },
+          },
+        } as unknown as OpenAI
+      },
+    })
+
+    await collectEvents(
+      provider.streamTurn({
+        systemPrompt: "system",
+        skillCatalog: [],
+        activeSkills: [],
+        tools: [],
+        transcript: [
+          {
+            role: "assistant",
+            parts: [
+              {
+                kind: "reasoning",
+                text: "Need to inspect the README before calling read.",
+              },
+              {
+                kind: "tool_call",
+                text: null,
+                data: {
+                  callId: "call_1",
+                  toolName: "read",
+                  inputText: '{"path":"README.md"}',
+                },
+              },
+              {
+                kind: "tool_result",
+                text: "README contents",
+                data: {
+                  callId: "call_1",
+                  toolName: "read",
+                  output: "README contents",
+                },
+              },
+            ],
+          },
+        ],
+        signal: new AbortController().signal,
+        thinking: { enabled: true, effort: "default" },
+      }),
+    )
+
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.6",
+      messages: [
+        { role: "system", content: ["system", SYSTEM_REMINDER_NOTICE].join("\n\n") },
+        {
+          role: "assistant",
+          content: null,
+          reasoning_content: "Need to inspect the README before calling read.",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "read",
+                arguments: '{"path":"README.md"}',
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_1",
+          content: "README contents",
+        },
+      ],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      thinking: {
+        type: "enabled",
+        keep: "all",
+      },
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
+  test("default provider preserves session thinking overrides through the resilient wrapper", async () => {
+    const seenThinking: Array<boolean | undefined> = []
+    const lifecycleCalls: string[] = []
+    const provider = await createDefaultProvider({
+      env: {
+        LLM_PROVIDER: "openai",
+        LLM_API_KEY: "single-key",
+        LLM_MODEL: "gpt-5",
+      },
+      createClient() {
+        return {} as OpenAI
+      },
+      createOpenAIProviderImpl() {
+        return {
+          projectTurn() {
+            return { inputTokens: 0 }
+          },
+          async *streamTurn(request) {
+            seenThinking.push(request.thinking?.enabled)
+            yield {
+              type: "text.delta" as const,
+              text: `thinking=${String(request.thinking?.enabled)}`,
+            }
+          },
+          continueWithoutThinking(input) {
+            lifecycleCalls.push(`disable:${input.sessionId}`)
+          },
+          restoreThinking(input) {
+            lifecycleCalls.push(`enable:${input.sessionId}`)
+          },
+        }
+      },
+    })
+
+    provider.continueWithoutThinking?.({ sessionId: "session_override" })
+    await collectEvents(
+      provider.streamTurn({
+        systemPrompt: "system",
+        skillCatalog: [],
+        activeSkills: [],
+        tools: [],
+        transcript: [],
+        signal: new AbortController().signal,
+        sessionId: "session_override",
+        runId: "run_override_disabled",
+        turnKey: "run_override_disabled:turn_1",
+        thinking: { enabled: true },
+      }),
+    )
+
+    provider.restoreThinking?.({ sessionId: "session_override" })
+    await collectEvents(
+      provider.streamTurn({
+        systemPrompt: "system",
+        skillCatalog: [],
+        activeSkills: [],
+        tools: [],
+        transcript: [],
+        signal: new AbortController().signal,
+        sessionId: "session_override",
+        runId: "run_override_restored",
+        turnKey: "run_override_restored:turn_1",
+        thinking: { enabled: true },
+      }),
+    )
+
+    expect(seenThinking).toEqual([false, true])
+    expect(lifecycleCalls).toEqual(["disable:session_override", "enable:session_override"])
   })
 
   test("retryable classified provider failure is retried and eventually succeeds", async () => {

@@ -10,7 +10,7 @@ import type {
 
 type UsageEstimateInput = {
   request: Pick<ModelTurnRequest, "system" | "messages" | "tools">
-  outputEvents: Array<Extract<ModelEvent, { type: "text.delta" | "tool.call" }>>
+  outputEvents: Array<Extract<ModelEvent, { type: "text.delta" | "reasoning.delta" | "tool.call" }>>
 }
 
 export function estimateModelTurnUsage(input: UsageEstimateInput): ModelUsageEvent {
@@ -53,6 +53,8 @@ function serializeMessagePart(part: ModelMessage["parts"][number]) {
   switch (part.type) {
     case "text":
       return `text: ${part.text}`
+    case "reasoning":
+      return `reasoning: ${part.text}`
     case "tool_call":
       return `tool_call ${part.toolName} ${part.callId}: ${part.inputText}`
     case "tool_result":
@@ -75,10 +77,14 @@ function serializeTool(tool: ModelTool) {
 }
 
 function serializeOutputEvent(
-  event: Extract<ModelEvent, { type: "text.delta" | "tool.call" }>,
+  event: Extract<ModelEvent, { type: "text.delta" | "reasoning.delta" | "tool.call" }>,
 ) {
   if (event.type === "text.delta") {
     return event.text
+  }
+
+  if (event.type === "reasoning.delta") {
+    return `reasoning: ${event.text}`
   }
 
   return `tool_call ${event.name} ${event.callId}: ${event.inputText}`

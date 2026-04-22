@@ -13,6 +13,8 @@ type OpenAICompatibleCreate = (
   options?: OpenAIRequestOptions,
 ) => OpenAICompatibleChunkStream
 
+type ProviderInput = Parameters<typeof createOpenAICompatibleProvider>[0]
+
 function createMockOpenAICompatibleClient(create: OpenAICompatibleCreate): OpenAI {
   return {
     chat: {
@@ -21,6 +23,26 @@ function createMockOpenAICompatibleClient(create: OpenAICompatibleCreate): OpenA
       },
     },
   } as OpenAI
+}
+
+function createOpenAICompatibleChunk(partial: Record<string, unknown>): OpenAI.Chat.ChatCompletionChunk {
+  return {
+    id: "chatcmpl_fixture",
+    object: "chat.completion.chunk",
+    created: 1,
+    model: "kimi-k2.5",
+    choices: [
+      {
+        index: 0,
+        finish_reason: null,
+        delta: partial,
+      },
+    ],
+  } as OpenAI.Chat.ChatCompletionChunk
+}
+
+function createProvider(input: ProviderInput) {
+  return createOpenAICompatibleProvider(input)
 }
 
 describe("openai-compatible provider", () => {
@@ -120,7 +142,7 @@ describe("openai-compatible provider", () => {
       } as OpenAI.Chat.ChatCompletionChunk,
     ] satisfies OpenAI.Chat.ChatCompletionChunk[]
 
-    const provider = createOpenAICompatibleProvider({
+    const provider = createProvider({
       model: "kimi-k2.5",
       client: createMockOpenAICompatibleClient(async (body, options) => {
         receivedBody = body
@@ -203,8 +225,38 @@ describe("openai-compatible provider", () => {
     ])
   })
 
+  test("emits streamed reasoning deltas from reasoning_content chunks", async () => {
+    const provider = createProvider({
+      model: "kimi-k2.5",
+      client: createMockOpenAICompatibleClient(async () => {
+        return (async function* () {
+          yield createOpenAICompatibleChunk({
+            reasoning_content: "Need to inspect the README before calling read.",
+          })
+        })()
+      }),
+    })
+
+    const events = []
+    for await (const event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      {
+        type: "reasoning.delta",
+        text: "Need to inspect the README before calling read.",
+      },
+    ])
+  })
+
   test("emits each streamed tool call exactly once when multiple tool calls are present", async () => {
-    const provider = createOpenAICompatibleProvider({
+    const provider = createProvider({
       model: "kimi-k2.5",
       client: createMockOpenAICompatibleClient(async () => {
         return (async function* () {
@@ -318,7 +370,7 @@ describe("openai-compatible provider", () => {
   test("serializes structured tool transcript for follow-up turns", async () => {
     let receivedBody: unknown
 
-    const provider = createOpenAICompatibleProvider({
+    const provider = createProvider({
       model: "kimi-k2.5",
       client: createMockOpenAICompatibleClient(async (body) => {
         receivedBody = body
@@ -400,8 +452,250 @@ describe("openai-compatible provider", () => {
     })
   })
 
+  test("replays assistant reasoning alongside tool calls for follow-up turns", async () => {
+    let receivedBody: unknown
+
+    const provider = createProvider({
+      model: "kimi-k2.5",
+      requestConfig: {
+        replayedReasoningField: "reasoning_content",
+      },
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
+    })
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: [
+        {
+          role: "user",
+          parts: [{ type: "text", text: "inspect README.md" }],
+        },
+        {
+          role: "assistant",
+          parts: [
+            {
+              type: "reasoning",
+              text: "Need to inspect the README before calling read.",
+            },
+            {
+              type: "tool_call",
+              callId: "call_1",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          ],
+        },
+      ],
+      tools: [],
+      signal: new AbortController().signal,
+      thinking: {
+        enabled: true,
+      },
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.5",
+      messages: [
+        { role: "system", content: "system" },
+        { role: "user", content: "inspect README.md" },
+        {
+          role: "assistant",
+          content: null,
+          reasoning_content: "Need to inspect the README before calling read.",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "read",
+                arguments: '{"path":"README.md"}',
+              },
+            },
+          ],
+        },
+      ],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
+  test("omits replayed provider-specific reasoning fields for unknown models by default", async () => {
+    let receivedBody: unknown
+
+    const provider = createProvider({
+      model: "unknown-model",
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
+    })
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: [
+        {
+          role: "assistant",
+          parts: [
+            {
+              type: "reasoning",
+              text: "Need to inspect the README before calling read.",
+            },
+            {
+              type: "tool_call",
+              callId: "call_1",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          ],
+        },
+      ],
+      tools: [],
+      signal: new AbortController().signal,
+      thinking: {
+        enabled: true,
+      },
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toEqual({
+      model: "unknown-model",
+      messages: [
+        { role: "system", content: "system" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "read",
+                arguments: '{"path":"README.md"}',
+              },
+            },
+          ],
+        },
+      ],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
+  test("forces internal kimi thinking preservation and omits reasoning_effort for default", async () => {
+    let receivedBody: unknown
+
+    const provider = createProvider({
+      model: "kimi-k2.6",
+      requestConfig: {
+        replayedReasoningField: "reasoning_content",
+        serializeThinking: true,
+        forcePreserveReasoning: true,
+        serializeReasoningEffort: true,
+      },
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
+    })
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+      thinking: {
+        enabled: true,
+        effort: "default",
+      },
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.6",
+      messages: [{ role: "system", content: "system" }],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      thinking: {
+        type: "enabled",
+        keep: "all",
+      },
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
+  for (const effort of ["low", "medium", "high"] as const) {
+    test(`serializes explicit reasoning_effort=${effort} when supported`, async () => {
+      let receivedBody: unknown
+
+      const provider = createProvider({
+        model: "kimi-k2.6",
+        requestConfig: {
+          replayedReasoningField: "reasoning_content",
+          serializeThinking: true,
+          forcePreserveReasoning: true,
+          serializeReasoningEffort: true,
+        },
+        client: createMockOpenAICompatibleClient(async (body) => {
+          receivedBody = body
+          return (async function* () {})()
+        }),
+      })
+
+      for await (const _event of provider.streamTurn({
+        system: "system",
+        messages: [],
+        tools: [],
+        signal: new AbortController().signal,
+        thinking: {
+          enabled: true,
+          effort,
+        },
+      })) {
+        void _event
+      }
+
+      expect(receivedBody).toEqual({
+        model: "kimi-k2.6",
+        messages: [{ role: "system", content: "system" }],
+        stream: true,
+        stream_options: {
+          include_usage: true,
+        },
+        max_completion_tokens: 16000,
+        thinking: {
+          type: "enabled",
+          keep: "all",
+        },
+        reasoning_effort: effort,
+        parallel_tool_calls: true,
+        tools: [],
+      })
+    })
+  }
+
   test("fails fast when a tool schema cannot be converted to chat-completions JSON schema", async () => {
-    const provider = createOpenAICompatibleProvider({
+    const provider = createProvider({
       model: "kimi-k2.5",
       client: createMockOpenAICompatibleClient(async () => {
         throw new Error("should not reach client.create for unsupported schemas")
@@ -431,7 +725,7 @@ describe("openai-compatible provider", () => {
   test("serializes record-valued tool properties into chat-completions JSON schema", async () => {
     let receivedBody: unknown
 
-    const provider = createOpenAICompatibleProvider({
+    const provider = createProvider({
       model: "kimi-k2.5",
       client: createMockOpenAICompatibleClient(async (body) => {
         receivedBody = body
@@ -500,7 +794,7 @@ describe("openai-compatible provider", () => {
   test("serializes effect-wrapped tool schemas by unwrapping to the underlying object shape", async () => {
     let receivedBody: unknown
 
-    const provider = createOpenAICompatibleProvider({
+    const provider = createProvider({
       model: "kimi-k2.5",
       client: createMockOpenAICompatibleClient(async (body) => {
         receivedBody = body

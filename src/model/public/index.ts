@@ -13,6 +13,7 @@ export {
   createOpenAIAdapter,
   createOpenAICompatibleAdapter,
 } from "../infrastructure/runner"
+export type { OpenAICompatibleRequestConfig } from "../infrastructure/adapters/openai-compatible"
 export {
   CredentialPool,
   PoolStrategy,
@@ -43,6 +44,7 @@ export function createOpenAIProvider(input: {
 export function createOpenAICompatibleProvider(input: {
   model: string
   client: OpenAI
+  requestConfig?: import("../infrastructure/adapters/openai-compatible").OpenAICompatibleRequestConfig
 }) {
   return createModelRuntimeApi(createOpenAICompatibleAdapter(input))
 }
@@ -62,6 +64,7 @@ export function createOpenAICompatibleModelProvider(input: {
   model: string
   client: OpenAI
   observer?: ModelObserverPort
+  requestConfig?: import("../infrastructure/adapters/openai-compatible").OpenAICompatibleRequestConfig
 }) {
   return createModelProvider({
     runtime: createOpenAICompatibleProvider(input),
