@@ -4,6 +4,26 @@ export type OrchestrationRuntimeEvent =
       runId: string
     }
   | {
+      type: "capability.resolution.recorded"
+      model: string
+      provider: "openai" | "openai-compatible"
+      providerFamily: "kimi" | "generic"
+      catalogSource: "models.dev" | "default"
+      catalogMiss: boolean
+      reasoningSource: "config" | "models.dev" | "default"
+      toolCallSource: "config" | "models.dev" | "default"
+      interleavedSource: "config" | "models.dev" | "default"
+      interleavedField: "reasoning_content" | "reasoning_details" | null
+      reasoningEffortSource: "config" | "models.dev" | "default"
+      thinkingSource: "config" | "models.dev" | "default"
+      thinkingEffortSource: "config" | "models.dev" | "default"
+    }
+  | {
+      type: "context.window.resolved"
+      contextWindow: number
+      source: "config" | "/models" | "models.dev" | "default"
+    }
+  | {
       type: "skill.run.snapshot.applied"
       activeSkillNames: string[]
       activeSkillCount: number
@@ -95,6 +115,11 @@ export type OrchestrationRuntimeEvent =
   | {
       type: "run.completed"
       runId: string
+    }
+  | {
+      type: "kimi.run.classified"
+      model: string
+      outcome: "success" | "failure"
     }
   | {
       type: "run.failed"

@@ -7,7 +7,7 @@ export type ContextUsageSnapshot = {
   source: ContextUsageSource | null
 }
 
-export const DEFAULT_CONTEXT_WINDOW_SIZE = 128_000
+export const DEFAULT_CONTEXT_WINDOW_SIZE = 192_000
 
 export function buildContextUsageSnapshot(input: {
   contextTokens: number

@@ -1,5 +1,5 @@
 import { createOrchestrationStepService } from "../../application/step-service"
-import { DEFAULT_CONTEXT_WINDOW_SIZE } from "../../application/context-usage"
+import { DEFAULT_CONTEXT_WINDOW_SIZE as DEFAULT_ORCHESTRATION_CONTEXT_WINDOW_SIZE } from "../../application/context-usage"
 import {
   buildStaticPromptAssembly,
   type StaticPromptAssembly,
@@ -39,6 +39,34 @@ export type CreateOrchestrationRuntimeApiInput = {
   agentProfiles?: OrchestrationAgentProfilePort
   skill: OrchestrationSkillPort
   contextWindow?: OrchestrationContextWindowPort
+  thinking?: {
+    enabled: boolean
+    effort?: "default" | "low" | "medium" | "high"
+  }
+  telemetry?: {
+    capabilityResolution?: {
+      model: string
+      provider: "openai" | "openai-compatible"
+      providerFamily: "kimi" | "generic"
+      catalogSource: "models.dev" | "default"
+      catalogMiss: boolean
+      reasoningSource: "config" | "models.dev" | "default"
+      toolCallSource: "config" | "models.dev" | "default"
+      interleavedSource: "config" | "models.dev" | "default"
+      interleavedField: "reasoning_content" | "reasoning_details" | null
+      reasoningEffortSource: "config" | "models.dev" | "default"
+      thinkingSource: "config" | "models.dev" | "default"
+      thinkingEffortSource: "config" | "models.dev" | "default"
+    }
+    contextWindow?: {
+      contextWindow: number
+      source: "config" | "/models" | "models.dev" | "default"
+    }
+    modelClassification?: {
+      model: string
+      providerFamily: "kimi" | "generic"
+    }
+  }
   permission: OrchestrationPermissionPort
   tools: OrchestrationToolPortFactory
   activeRuns: OrchestrationActiveRunRegistry
@@ -61,6 +89,8 @@ export type CreateOrchestrationRuntimeApiInput = {
   runtimeObserver?: OrchestrationRuntimeObserverPort
 }
 
+type ThinkingConfig = NonNullable<CreateOrchestrationRuntimeApiInput["thinking"]>
+
 type BuildSystemPromptResult =
   | string
   | StaticPromptAssembly
@@ -77,10 +107,16 @@ export type OrchestrationRunInput = {
 export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeApiInput) {
   const now = input.now ?? Date.now
   const activeRuns = input.activeRuns
+  const sessionThinkingOverrides = new Map<string, ThinkingConfig | null>()
   const contextWindow = input.contextWindow ?? {
     getContextWindow() {
-      return DEFAULT_CONTEXT_WINDOW_SIZE
+      return DEFAULT_ORCHESTRATION_CONTEXT_WINDOW_SIZE
     },
+  }
+  const resolveThinking = (sessionId: string) => {
+    return sessionThinkingOverrides.has(sessionId)
+      ? sessionThinkingOverrides.get(sessionId) ?? undefined
+      : input.thinking
   }
   const stepService = createOrchestrationStepService({
     session: input.session,
@@ -88,6 +124,9 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     agentProfiles: input.agentProfiles,
     contextWindow,
     skill: input.skill,
+    thinking: input.thinking,
+    resolveThinking,
+    telemetry: input.telemetry,
     runtimeObserver: input.runtimeObserver,
     now,
   })
@@ -345,6 +384,26 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
     },
     respondPermission,
     cancelRun,
+    setSessionThinkingOverride(inputValue: {
+      sessionId: string
+      thinking: ThinkingConfig | null
+    }) {
+      if (inputValue.thinking === null) {
+        sessionThinkingOverrides.delete(inputValue.sessionId)
+        input.model.restoreThinking?.({ sessionId: inputValue.sessionId })
+        return input.thinking ?? null
+      }
+
+       sessionThinkingOverrides.set(inputValue.sessionId, inputValue.thinking)
+
+      if (inputValue.thinking.enabled === false) {
+        input.model.continueWithoutThinking?.({ sessionId: inputValue.sessionId })
+      } else {
+        input.model.restoreThinking?.({ sessionId: inputValue.sessionId })
+      }
+
+      return inputValue.thinking
+    },
   }
 }
 

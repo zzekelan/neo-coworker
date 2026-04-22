@@ -20,7 +20,12 @@ import {
   type ProviderEvent,
   type ProviderTurnRequest,
 } from "../../src/model"
-import { createRuntime } from "../../src/bootstrap"
+import {
+  createOrchestrationModelPort,
+  createRuntime,
+  createStandaloneServerComposition,
+  type OrchestrationModelPort,
+} from "../../src/bootstrap"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -1065,6 +1070,825 @@ describe("runtime observability", () => {
       estimatedTokensSaved: expect.any(Number),
     })
   })
+
+  test("records authoritative capability and context source telemetry without persisting reasoning payload text", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "trace-capability-authority-"))
+    tempDirectories.push(directory)
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+
+    const now = createMonotonicClock()
+    const composition = await createStandaloneServerComposition({
+      cwd: directory,
+      now,
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "kimi-k2.6",
+        LLM_BASE_URL: "https://api.moonshot.ai/v1",
+        NCOWORKER_SERVER_DB_PATH: join(directory, "server.sqlite"),
+      },
+      resolveProviderCapabilitiesImpl: async () => ({
+        provider: "openai-compatible",
+        providerId: "moonshotai",
+        model: "kimi-k2.6",
+        catalog: {
+          source: "models.dev",
+          miss: false,
+        },
+        reasoning: {
+          supported: true,
+          source: "models.dev",
+        },
+        toolCall: {
+          supported: true,
+          source: "models.dev",
+        },
+        interleaved: {
+          supported: true,
+          field: "reasoning_content",
+          source: "models.dev",
+        },
+        reasoningEffort: {
+          supported: true,
+          source: "models.dev",
+        },
+        thinkingControls: {
+          thinking: {
+            supported: true,
+            source: "override",
+          },
+          reasoningEffort: {
+            supported: true,
+            source: "override",
+          },
+        },
+      }),
+      resolveContextWindowSizeImpl: async () => ({
+        contextWindow: 65_536,
+        source: "provider",
+      }),
+      createDefaultProviderImpl: async (providerInput = {}) =>
+        createModelProvider({
+          observer: providerInput.modelObserver,
+          replayGuard: providerInput.replayGuard,
+          runtime: createModelRuntimeApi({
+            async *streamTurn() {
+              yield { type: "text.delta", text: "Telemetry classification complete." }
+            },
+          }),
+        }),
+    })
+
+    try {
+      const service = createSessionRunService({
+        repository: composition.repository,
+        now,
+      })
+      const session = composition.repository.sessions.create({
+        id: "trace_capability_authority_session",
+        directory: workspaceRoot,
+        workspaceRoot,
+        createdAt: now(),
+      })
+      seedCompletedAssistantReasoningRun({
+        repository: composition.repository,
+        sessionId: session.id,
+        runId: "run_trace_capability_reasoning_history",
+        reasoningText: "private reasoning payload that must never be stored in telemetry",
+      })
+
+      const started = startPromptRun({
+        repository: composition.repository,
+        service,
+        sessionId: session.id,
+        runId: "run_trace_capability_authority",
+        messageId: "message_trace_capability_authority",
+        prompt: "Confirm the capability telemetry path.",
+      })
+      const runtime = composition.createRuntimeImpl({
+        repository: composition.repository,
+        permissionRepository: composition.permissionRepository,
+        now,
+      })
+
+      const handle = await runtime.run({
+        sessionId: session.id,
+        runId: started.run.id,
+      })
+      await collectEvents(handle.events)
+
+      const trace = composition.exportRunTrace(started.run.id)
+      expect(trace).not.toBeNull()
+      expect(readEventTypes(trace?.events ?? [])).toEqual(
+        expect.arrayContaining([
+          "capability.resolution.recorded",
+          "context.window.resolved",
+          "model.turn.requested",
+          "kimi.run.classified",
+          "run.completed",
+        ]),
+      )
+
+      const capabilityEvent = trace?.events.find(
+        (event) => event.eventType === "capability.resolution.recorded",
+      )
+      expect(capabilityEvent?.data).toEqual({
+        model: "kimi-k2.6",
+        provider: "openai-compatible",
+        providerFamily: "kimi",
+        catalogSource: "models.dev",
+        catalogMiss: false,
+        reasoningSource: "models.dev",
+        toolCallSource: "models.dev",
+        interleavedSource: "models.dev",
+        interleavedField: "reasoning_content",
+        reasoningEffortSource: "models.dev",
+        thinkingSource: "config",
+        thinkingEffortSource: "config",
+      })
+
+      const contextWindowEvent = trace?.events.find(
+        (event) => event.eventType === "context.window.resolved",
+      )
+      expect(contextWindowEvent?.data).toEqual({
+        contextWindow: 65_536,
+        source: "/models",
+      })
+
+      const kimiClassification = trace?.events.find((event) => event.eventType === "kimi.run.classified")
+      expect(kimiClassification?.data).toEqual({
+        model: "kimi-k2.6",
+        outcome: "success",
+      })
+
+      composition.closeDatabase()
+      const persistedRunEventJson = readPersistedRunEventJson({
+        databasePath: composition.config.databasePath,
+        runId: started.run.id,
+      })
+      expect(persistedRunEventJson.join("\n")).not.toContain(
+        "private reasoning payload that must never be stored in telemetry",
+      )
+    } finally {
+      composition.closeDatabase()
+    }
+  })
+
+  test("records models.dev misses with default fallbacks", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "trace-capability-miss-"))
+    tempDirectories.push(directory)
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+
+    const now = createMonotonicClock()
+    const composition = await createStandaloneServerComposition({
+      cwd: directory,
+      now,
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "unknown-model",
+        LLM_BASE_URL: "https://example.invalid/v1",
+        NCOWORKER_SERVER_DB_PATH: join(directory, "server.sqlite"),
+      },
+      resolveProviderCapabilitiesImpl: async () => ({
+        provider: "openai-compatible",
+        providerId: null,
+        model: "unknown-model",
+        catalog: {
+          source: "default",
+          miss: true,
+        },
+        reasoning: {
+          supported: false,
+          source: "default",
+        },
+        toolCall: {
+          supported: true,
+          source: "default",
+        },
+        interleaved: {
+          supported: false,
+          field: null,
+          source: "default",
+        },
+        reasoningEffort: {
+          supported: false,
+          source: "default",
+        },
+        thinkingControls: {
+          thinking: {
+            supported: false,
+            source: "default",
+          },
+          reasoningEffort: {
+            supported: false,
+            source: "default",
+          },
+        },
+      }),
+      resolveContextWindowSizeImpl: async () => ({
+        contextWindow: 192_000,
+        source: "default",
+      }),
+      createDefaultProviderImpl: async (providerInput = {}) =>
+        createModelProvider({
+          observer: providerInput.modelObserver,
+          replayGuard: providerInput.replayGuard,
+          runtime: createModelRuntimeApi({
+            async *streamTurn() {
+              yield { type: "text.delta", text: "Default fallback telemetry complete." }
+            },
+          }),
+        }),
+    })
+
+    try {
+      const service = createSessionRunService({
+        repository: composition.repository,
+        now,
+      })
+      const session = composition.repository.sessions.create({
+        id: "trace_capability_miss_session",
+        directory: workspaceRoot,
+        workspaceRoot,
+        createdAt: now(),
+      })
+      const started = startPromptRun({
+        repository: composition.repository,
+        service,
+        sessionId: session.id,
+        runId: "run_trace_capability_miss",
+        messageId: "message_trace_capability_miss",
+        prompt: "Confirm the default fallback telemetry path.",
+      })
+      const runtime = composition.createRuntimeImpl({
+        repository: composition.repository,
+        permissionRepository: composition.permissionRepository,
+        now,
+      })
+
+      const handle = await runtime.run({
+        sessionId: session.id,
+        runId: started.run.id,
+      })
+      await collectEvents(handle.events)
+
+      const trace = composition.exportRunTrace(started.run.id)
+      expect(trace).not.toBeNull()
+      expect(trace?.events.find((event) => event.eventType === "capability.resolution.recorded")?.data).toEqual({
+        model: "unknown-model",
+        provider: "openai-compatible",
+        providerFamily: "generic",
+        catalogSource: "default",
+        catalogMiss: true,
+        reasoningSource: "default",
+        toolCallSource: "default",
+        interleavedSource: "default",
+        interleavedField: null,
+        reasoningEffortSource: "default",
+        thinkingSource: "default",
+        thinkingEffortSource: "default",
+      })
+      expect(trace?.events.find((event) => event.eventType === "context.window.resolved")?.data).toEqual({
+        contextWindow: 192_000,
+        source: "default",
+      })
+      expect(readEventTypes(trace?.events ?? [])).not.toContain("kimi.run.classified")
+    } finally {
+      composition.closeDatabase()
+    }
+  })
+
+  test("uses authoritative runtime thinking and preserves models.dev context-source telemetry", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "trace-authoritative-kimi-replay-"))
+    tempDirectories.push(directory)
+    const workspaceRoot = join(directory, "workspace")
+    await mkdir(workspaceRoot, { recursive: true })
+    await Bun.write(join(workspaceRoot, "placeholder.txt"), "placeholder")
+
+    let providerInvocationCount = 0
+    const now = createMonotonicClock()
+    const composition = await createStandaloneServerComposition({
+      cwd: directory,
+      now,
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "kimi-k2.6",
+        LLM_BASE_URL: "https://api.moonshot.ai/v1",
+        NCOWORKER_SERVER_DB_PATH: join(directory, "server.sqlite"),
+      },
+      resolveProviderCapabilitiesImpl: async () => ({
+        provider: "openai-compatible",
+        providerId: "moonshotai",
+        model: "kimi-k2.6",
+        catalog: {
+          source: "models.dev",
+          miss: false,
+        },
+        reasoning: {
+          supported: true,
+          source: "models.dev",
+        },
+        toolCall: {
+          supported: true,
+          source: "models.dev",
+        },
+        interleaved: {
+          supported: true,
+          field: "reasoning_content",
+          source: "models.dev",
+        },
+        reasoningEffort: {
+          supported: true,
+          source: "models.dev",
+        },
+        thinkingControls: {
+          thinking: {
+            supported: true,
+            source: "models.dev",
+          },
+          reasoningEffort: {
+            supported: true,
+            source: "models.dev",
+          },
+        },
+      }),
+      resolveContextWindowSizeImpl: async () => ({
+        contextWindow: 262_144,
+        source: "models.dev",
+      }),
+      createDefaultProviderImpl: async (providerInput = {}) =>
+        createModelProvider({
+          observer: providerInput.modelObserver,
+          replayGuard: providerInput.replayGuard,
+          runtime: createModelRuntimeApi({
+            async *streamTurn() {
+              providerInvocationCount += 1
+              yield { type: "text.delta", text: "Provider should not be called." }
+            },
+          }),
+        }),
+    })
+
+    try {
+      const service = createSessionRunService({
+        repository: composition.repository,
+        now,
+      })
+      const session = composition.repository.sessions.create({
+        id: "trace_authoritative_kimi_replay_session",
+        directory: workspaceRoot,
+        workspaceRoot,
+        createdAt: now(),
+      })
+      seedCompletedAssistantReasoningRun({
+        repository: composition.repository,
+        sessionId: session.id,
+        runId: "run_trace_authoritative_kimi_replay_reasoning_history",
+        reasoningText: "private reasoning payload that must never be stored in telemetry",
+      })
+      seedLegacyAssistantToolReplayRun({
+        repository: composition.repository,
+        sessionId: session.id,
+        runId: "run_trace_authoritative_kimi_replay_legacy_history",
+      })
+
+      const started = startPromptRun({
+        repository: composition.repository,
+        service,
+        sessionId: session.id,
+        runId: "run_trace_authoritative_kimi_replay",
+        messageId: "message_trace_authoritative_kimi_replay",
+        prompt: "Continue the Kimi session through the authoritative runtime.",
+      })
+      const runtime = composition.createRuntimeImpl({
+        repository: composition.repository,
+        permissionRepository: composition.permissionRepository,
+        now,
+      })
+
+      const handle = await runtime.run({
+        sessionId: session.id,
+        runId: started.run.id,
+      })
+      await collectEvents(handle.events)
+
+      expect(providerInvocationCount).toBe(0)
+
+      const trace = composition.exportRunTrace(started.run.id)
+      expect(trace).not.toBeNull()
+      const eventTypes = readEventTypes(trace?.events ?? [])
+      expect(eventTypes).toContain("replay.fail_fast.blocked")
+      expect(eventTypes).toContain("error.classified")
+      expect(eventTypes).not.toContain("model.turn.requested")
+
+      expect(trace?.events.find((event) => event.eventType === "capability.resolution.recorded")?.data).toEqual({
+        model: "kimi-k2.6",
+        provider: "openai-compatible",
+        providerFamily: "kimi",
+        catalogSource: "models.dev",
+        catalogMiss: false,
+        reasoningSource: "models.dev",
+        toolCallSource: "models.dev",
+        interleavedSource: "models.dev",
+        interleavedField: "reasoning_content",
+        reasoningEffortSource: "models.dev",
+        thinkingSource: "models.dev",
+        thinkingEffortSource: "models.dev",
+      })
+      expect(trace?.events.find((event) => event.eventType === "context.window.resolved")?.data).toEqual({
+        contextWindow: 262_144,
+        source: "models.dev",
+      })
+      expect(trace?.events.find((event) => event.eventType === "kimi.run.classified")?.data).toEqual({
+        model: "kimi-k2.6",
+        outcome: "failure",
+      })
+
+      expect(
+        trace?.events.find((event) => event.eventType === "replay.fail_fast.blocked")?.data,
+      ).toEqual({
+        turnKey: `${started.run.id}:turn_1`,
+        model: "kimi-k2.6",
+        providerFamily: "kimi",
+        classification: "legacy_session_missing_reasoning",
+        missingPart: "reasoning",
+        requiredReasoningField: "reasoning_content",
+      })
+
+      composition.closeDatabase()
+      const persistedRunEventJson = readPersistedRunEventJson({
+        databasePath: composition.config.databasePath,
+        runId: started.run.id,
+      })
+      expect(persistedRunEventJson.join("\n")).not.toContain(
+        "private reasoning payload that must never be stored in telemetry",
+      )
+    } finally {
+      composition.closeDatabase()
+    }
+  })
+
+  test("emits replay fail-fast classification before provider telemetry and never persists reasoning payload text", async () => {
+    const harness = await createHarness("trace-replay-failfast", false)
+    seedCompletedAssistantReasoningRun({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_replay_reasoning_history",
+      reasoningText: "private reasoning payload that must never be stored in telemetry",
+    })
+    seedLegacyAssistantToolReplayRun({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_replay_legacy_history",
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_replay_failfast",
+      messageId: "message_trace_replay_failfast",
+      prompt: "Continue the Kimi session.",
+    })
+    let providerInvocationCount = 0
+    const provider: OrchestrationModelPort = createOrchestrationModelPort(createModelProvider({
+      observer: harness.observability.modelObserver,
+      replayGuard: {
+        providerFamily: "kimi",
+        model: "kimi-k2.6",
+        requiredReasoningField: "reasoning_content",
+      },
+      runtime: createModelRuntimeApi({
+        async *streamTurn() {
+          providerInvocationCount += 1
+          yield { type: "text.delta", text: "Provider should never be called." }
+        },
+      }),
+    }))
+    const runtime = createRuntime({
+      provider,
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      thinking: {
+        enabled: true,
+      },
+      telemetry: {
+        capabilityResolution: {
+          model: "kimi-k2.6",
+          provider: "openai-compatible",
+          providerFamily: "kimi",
+          catalogSource: "models.dev",
+          catalogMiss: false,
+          reasoningSource: "models.dev",
+          toolCallSource: "models.dev",
+          interleavedSource: "models.dev",
+          interleavedField: "reasoning_content",
+          reasoningEffortSource: "models.dev",
+          thinkingSource: "config",
+          thinkingEffortSource: "config",
+        },
+        contextWindow: {
+          contextWindow: 65_536,
+          source: "/models",
+        },
+        modelClassification: {
+          model: "kimi-k2.6",
+          providerFamily: "kimi",
+        },
+      },
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    expect(providerInvocationCount).toBe(0)
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    expect(trace).not.toBeNull()
+    const eventTypes = readEventTypes(trace?.events ?? [])
+    expect(eventTypes).toContain("replay.fail_fast.blocked")
+    expect(eventTypes).toContain("error.classified")
+    expect(eventTypes).not.toContain("model.turn.requested")
+
+    const blockedIndex = (trace?.events ?? []).findIndex(
+      (event) => event.eventType === "replay.fail_fast.blocked",
+    )
+    const errorClassifiedIndex = (trace?.events ?? []).findIndex(
+      (event) => event.eventType === "error.classified",
+    )
+    const failedIndex = (trace?.events ?? []).findIndex((event) => event.eventType === "run.failed")
+    const firstProviderTelemetryIndex = (trace?.events ?? []).findIndex(
+      (event) => event.source === "model" && event.eventType === "model.turn.requested",
+    )
+    expect(blockedIndex).toBeGreaterThanOrEqual(0)
+    expect(errorClassifiedIndex).toBeGreaterThan(blockedIndex)
+    expect(failedIndex).toBeGreaterThan(blockedIndex)
+    expect(firstProviderTelemetryIndex).toBe(-1)
+
+    expect(
+      trace?.events.find((event) => event.eventType === "replay.fail_fast.blocked")?.data,
+    ).toEqual({
+      turnKey: `${started.run.id}:turn_1`,
+      model: "kimi-k2.6",
+      providerFamily: "kimi",
+      classification: "legacy_session_missing_reasoning",
+      missingPart: "reasoning",
+      requiredReasoningField: "reasoning_content",
+    })
+    expect(trace?.events.find((event) => event.eventType === "kimi.run.classified")?.data).toEqual({
+      model: "kimi-k2.6",
+      outcome: "failure",
+    })
+
+    const persistedRunEventJson = harness.database
+      .query(`SELECT data_json FROM run_event WHERE run_id = ? ORDER BY sequence ASC`)
+      .all(started.run.id) as Array<{ data_json: string }>
+    expect(persistedRunEventJson.map((row) => row.data_json).join("\n")).not.toContain(
+      "private reasoning payload that must never be stored in telemetry",
+    )
+  })
+
+  test("does not block replay when prior assistant history contains reasoning but no legacy tool-call replay", async () => {
+    const harness = await createHarness("trace-legacy-replay-fixture", false)
+    seedCompletedAssistantReasoningRun({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_legacy_reasoning_history",
+      reasoningText: "Need to inspect the README before calling read.",
+    })
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_legacy_replay",
+      messageId: "message_trace_legacy_replay",
+      prompt: "Continue the Kimi session.",
+    })
+
+    let providerInvocationCount = 0
+    const provider: OrchestrationModelPort = createOrchestrationModelPort(createModelProvider({
+      observer: harness.observability.modelObserver,
+      replayGuard: {
+        providerFamily: "kimi",
+        model: "kimi-k2.6",
+        requiredReasoningField: "reasoning_content",
+      },
+      runtime: createModelRuntimeApi({
+        async *streamTurn() {
+          providerInvocationCount += 1
+          yield { type: "text.delta", text: "Provider should never be called." }
+        },
+      }),
+    }))
+
+    const runtime = createRuntime({
+      provider,
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      thinking: {
+        enabled: true,
+      },
+      telemetry: {
+        capabilityResolution: {
+          model: "kimi-k2.6",
+          provider: "openai-compatible",
+          providerFamily: "kimi",
+          catalogSource: "models.dev",
+          catalogMiss: false,
+          reasoningSource: "models.dev",
+          toolCallSource: "models.dev",
+          interleavedSource: "models.dev",
+          interleavedField: "reasoning_content",
+          reasoningEffortSource: "models.dev",
+          thinkingSource: "config",
+          thinkingEffortSource: "config",
+        },
+        contextWindow: {
+          contextWindow: 65_536,
+          source: "/models",
+        },
+        modelClassification: {
+          model: "kimi-k2.6",
+          providerFamily: "kimi",
+        },
+      },
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    expect(providerInvocationCount).toBe(1)
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    expect(trace).not.toBeNull()
+    expect(readEventTypes(trace?.events ?? [])).not.toContain("replay.fail_fast.blocked")
+    expect(readEventTypes(trace?.events ?? [])).toContain("model.turn.requested")
+  })
+
+  test("continue-without-thinking disables thinking for later turns in the same session until restored", async () => {
+    const harness = await createHarness("trace-session-thinking-override", false)
+    seedLegacyAssistantToolReplayRun({
+      repository: harness.repository,
+      sessionId: harness.session.id,
+      runId: "run_trace_session_override_legacy_history",
+    })
+
+    const seenThinking: Array<boolean | undefined> = []
+    let providerInvocationCount = 0
+    const provider: OrchestrationModelPort = createOrchestrationModelPort(createModelProvider({
+      observer: harness.observability.modelObserver,
+      replayGuard: {
+        providerFamily: "kimi",
+        model: "kimi-k2.6",
+        requiredReasoningField: "reasoning_content",
+      },
+      runtime: createModelRuntimeApi({
+        async *streamTurn(request: ProviderTurnRequest) {
+          providerInvocationCount += 1
+          seenThinking.push(request.thinking?.enabled)
+          yield { type: "text.delta", text: `thinking=${String(request.thinking?.enabled)}` }
+        },
+      }),
+    }))
+
+    const runtime = createRuntime({
+      provider,
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      thinking: {
+        enabled: true,
+      },
+      telemetry: {
+        capabilityResolution: {
+          model: "kimi-k2.6",
+          provider: "openai-compatible",
+          providerFamily: "kimi",
+          catalogSource: "models.dev",
+          catalogMiss: false,
+          reasoningSource: "models.dev",
+          toolCallSource: "models.dev",
+          interleavedSource: "models.dev",
+          interleavedField: "reasoning_content",
+          reasoningEffortSource: "models.dev",
+          thinkingSource: "config",
+          thinkingEffortSource: "config",
+        },
+        contextWindow: {
+          contextWindow: 65_536,
+          source: "/models",
+        },
+        modelClassification: {
+          model: "kimi-k2.6",
+          providerFamily: "kimi",
+        },
+      },
+      now: harness.now,
+    })
+
+    const first = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_session_override_first",
+      messageId: "message_trace_session_override_first",
+      prompt: "Continue the legacy Kimi session.",
+    })
+    const firstHandle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: first.run.id,
+    })
+    await collectEvents(firstHandle.events)
+
+    expect(providerInvocationCount).toBe(0)
+    expect(
+      harness.observability.exportRunTrace(first.run.id)?.events.find(
+        (event) => event.eventType === "replay.fail_fast.blocked",
+      )?.data,
+    ).toEqual({
+      turnKey: `${first.run.id}:turn_1`,
+      model: "kimi-k2.6",
+      providerFamily: "kimi",
+      classification: "legacy_session_missing_reasoning",
+      missingPart: "reasoning",
+      requiredReasoningField: "reasoning_content",
+    })
+
+    runtime.setSessionThinkingOverride({
+      sessionId: harness.session.id,
+      thinking: { enabled: false },
+    })
+
+    const second = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_session_override_second",
+      messageId: "message_trace_session_override_second",
+      prompt: "Keep going without thinking.",
+    })
+    const secondHandle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: second.run.id,
+    })
+    await collectEvents(secondHandle.events)
+
+    expect(providerInvocationCount).toBe(1)
+    expect(seenThinking).toEqual([false])
+    expect(readEventTypes(harness.observability.exportRunTrace(second.run.id)?.events ?? [])).not.toContain(
+      "replay.fail_fast.blocked",
+    )
+
+    runtime.setSessionThinkingOverride({
+      sessionId: harness.session.id,
+      thinking: null,
+    })
+
+    const third = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_session_override_third",
+      messageId: "message_trace_session_override_third",
+      prompt: "Thinking should be restored.",
+    })
+    const thirdHandle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: third.run.id,
+    })
+    await collectEvents(thirdHandle.events)
+
+    expect(providerInvocationCount).toBe(1)
+    expect(
+      harness.observability.exportRunTrace(third.run.id)?.events.find(
+        (event) => event.eventType === "replay.fail_fast.blocked",
+      )?.data,
+    ).toEqual({
+      turnKey: `${third.run.id}:turn_1`,
+      model: "kimi-k2.6",
+      providerFamily: "kimi",
+      classification: "legacy_session_missing_reasoning",
+      missingPart: "reasoning",
+      requiredReasoningField: "reasoning_content",
+    })
+  })
 })
 
 async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
@@ -1225,13 +2049,106 @@ function seedCompletedRunWithToolResults(input: {
   }
 }
 
+function seedCompletedAssistantReasoningRun(input: {
+  repository: SessionRepository
+  sessionId: string
+  runId: string
+  reasoningText: string
+}) {
+  input.repository.runs.create({
+    id: input.runId,
+    sessionId: input.sessionId,
+    trigger: "prompt",
+    status: "completed",
+  })
+  const assistantMessage = input.repository.messages.create({
+    id: `${input.runId}_assistant`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "assistant",
+    sequence: 0,
+  })
+
+  input.repository.parts.create({
+    id: `${input.runId}_reasoning_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: assistantMessage.id,
+    kind: "reasoning",
+    sequence: 0,
+    text: input.reasoningText,
+  })
+}
+
+function seedLegacyAssistantToolReplayRun(input: {
+  repository: SessionRepository
+  sessionId: string
+  runId: string
+}) {
+  input.repository.runs.create({
+    id: input.runId,
+    sessionId: input.sessionId,
+    trigger: "prompt",
+    status: "completed",
+  })
+  const assistantMessage = input.repository.messages.create({
+    id: `${input.runId}_assistant`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    role: "assistant",
+    sequence: 0,
+  })
+
+  input.repository.parts.create({
+    id: `${input.runId}_tool_call_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: assistantMessage.id,
+    kind: "tool_call",
+    sequence: 0,
+    text: '{"path":"README.md"}',
+    data: {
+      callId: "call_legacy_read",
+      toolName: "read",
+      inputText: '{"path":"README.md"}',
+    },
+  })
+  input.repository.parts.create({
+    id: `${input.runId}_tool_result_part`,
+    sessionId: input.sessionId,
+    runId: input.runId,
+    messageId: assistantMessage.id,
+    kind: "tool_result",
+    sequence: 1,
+    text: "1: README contents",
+    data: {
+      callId: "call_legacy_read",
+      toolName: "read",
+      output: "1: README contents",
+    },
+  })
+}
+
+function readPersistedRunEventJson(input: { databasePath: string; runId: string }) {
+  const database = openSessionDatabase(input.databasePath)
+
+  try {
+    const rows = database
+      .query(`SELECT data_json FROM run_event WHERE run_id = ? ORDER BY sequence ASC`)
+      .all(input.runId) as Array<{ data_json: string }>
+    return rows.map((row) => row.data_json)
+  } finally {
+    database.close(false)
+  }
+}
+
 function createTurnProvider(
   turns: Array<(request: ProviderTurnRequest) => AsyncIterable<ProviderEvent>>,
   observer?: ReturnType<typeof createObservabilityRuntimeApi>["modelObserver"],
-) {
+): OrchestrationModelPort {
   let index = 0
 
-  return createModelProvider({
+  return createOrchestrationModelPort(createModelProvider({
     observer,
     runtime: createModelRuntimeApi({
       async *streamTurn(request: ProviderTurnRequest) {
@@ -1247,7 +2164,7 @@ function createTurnProvider(
         }
       },
     }),
-  })
+  }))
 }
 
 async function collectEvents(
