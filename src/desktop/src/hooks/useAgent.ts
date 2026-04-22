@@ -88,12 +88,11 @@ export function useAgent() {
     },
     errorMessage: desktop.actionError,
     skillWarningMessage: desktop.skillWarningMessage,
-    compatibilityPrompt: desktop.compatibilityPrompt,
     dismissCompatibilityPrompt() {
-      desktop.dismissCompatibilityPrompt()
+      return undefined
     },
     continueWithoutThinking() {
-      return desktop.continueSessionWithoutThinking()
+      return false
     },
     contextUsage: desktop.contextUsage ? mapContextUsage(desktop.contextUsage) : null,
     refreshAppState() {

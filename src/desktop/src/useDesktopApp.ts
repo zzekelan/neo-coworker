@@ -21,7 +21,6 @@ import {
   updateSessionActiveSkills,
   loadPrimaryAgents,
   updateSessionAgent,
-  setSessionThinking,
 } from "./api"
 import {
   upsertTranscriptMessage,
@@ -59,28 +58,7 @@ type AppState = {
   isSending: boolean
   isManagingWorkspace: boolean
   actionError: string | null
-  compatibilityPrompt: CompatibilityPromptState | null
   skillWarningMessage: string | null
-}
-
-type CompatibilityPromptState = {
-  kind: "legacy_session_missing_reasoning"
-  sessionId: string
-  runId: string
-  rawError: string
-}
-
-// Stable marker emitted by src/model/application/runtime-api.ts when a legacy
-// session is blocked before provider invocation due to missing reasoning
-// metadata. Kept as a literal here so the desktop renderer does not pull the
-// node-only model module into the browser bundle.
-const REPLAY_COMPATIBILITY_ERROR_MARKER = "[replay_compatibility_legacy_session_missing_reasoning]"
-
-function isCompatibilityErrorMessage(message: string | null | undefined) {
-  if (!message) {
-    return false
-  }
-  return message.includes(REPLAY_COMPATIBILITY_ERROR_MARKER)
 }
 
 type ContextUsageState = {
@@ -440,19 +418,9 @@ export function useDesktopApp() {
     }
 
     if (event.type === "runtime.error" && event.sessionId === activeSessionId) {
-      const compatibility = isCompatibilityErrorMessage(event.error)
-        ? ({
-            kind: "legacy_session_missing_reasoning",
-            sessionId: event.sessionId,
-            runId: event.runId,
-            rawError: event.error,
-          } satisfies CompatibilityPromptState)
-        : null
-
       setState((previous) => ({
         ...previous,
-        actionError: compatibility ? null : event.error,
-        compatibilityPrompt: compatibility ?? previous.compatibilityPrompt,
+        actionError: event.error,
         isSending: false,
       }))
     }
@@ -913,44 +881,11 @@ export function useDesktopApp() {
     },
 
     dismissCompatibilityPrompt() {
-      setState((previous) => ({
-        ...previous,
-        compatibilityPrompt: null,
-      }))
+      return undefined
     },
 
     async continueSessionWithoutThinking() {
-      const sessionId = state.compatibilityPrompt?.sessionId
-      if (!sessionId) {
-        setState((previous) => ({
-          ...previous,
-          compatibilityPrompt: null,
-        }))
-        return false
-      }
-
-      try {
-        await setSessionThinking({ sessionId, enabled: false })
-
-        setState((previous) => ({
-          ...previous,
-          compatibilityPrompt: null,
-          actionError: null,
-        }))
-
-        await refresh({
-          workspaceRoot: selectionRef.current.activeWorkspaceRoot,
-          sessionId,
-          preserveTranscript: true,
-        })
-        return true
-      } catch (error) {
-        setState((previous) => ({
-          ...previous,
-          actionError: toErrorMessage(error),
-        }))
-        return false
-      }
+      return false
     },
   }
 
@@ -1003,7 +938,6 @@ function createInitialState(input: {
       actionError: null,
       skillWarningMessage: null,
       contextUsage: null,
-      compatibilityPrompt: null,
     }
   }
 
@@ -1030,7 +964,6 @@ function createInitialState(input: {
     actionError: null,
     skillWarningMessage: null,
     contextUsage: null,
-    compatibilityPrompt: null,
   }
 }
 
