@@ -31,7 +31,6 @@ export {
   type CreateModelRuntimeApiInput,
   type ModelProvider,
   type ModelProviderRequest,
-  type ModelReplayGuardConfig,
   type ModelRuntimeApi,
 } from "./runtime-api"
 export {

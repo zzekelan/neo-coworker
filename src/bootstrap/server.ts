@@ -16,7 +16,6 @@ import {
   createDefaultProvider,
   resolveContextWindowSize,
   resolveProviderCapabilities,
-  resolveProviderReplayGuard,
   resolveRuntimeThinkingConfig,
 } from "./provider"
 import { createDefaultSearchBackend } from "./search"
@@ -104,7 +103,6 @@ export async function createStandaloneServerComposition(input: {
     const provider = await (input.createDefaultProviderImpl ?? createDefaultProvider)({
       env,
       modelObserver: observability.modelObserver,
-      replayGuard: resolveProviderReplayGuard(resolvedCapabilities),
       resolvedCapabilities,
     })
     const orchestrationModel = createOrchestrationModelPort(provider)

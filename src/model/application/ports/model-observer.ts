@@ -15,16 +15,6 @@ export type ModelObserverEvent = {
   runId: string
   turnKey?: string
 } | {
-  type: "replay.fail_fast.blocked"
-  sessionId: string
-  runId: string
-  turnKey: string
-  model: string
-  providerFamily: "kimi"
-  classification: "legacy_session_missing_reasoning"
-  missingPart: "reasoning"
-  requiredReasoningField: "reasoning_content" | "reasoning_details"
-} | {
   type: "microcompact.applied"
   sessionId: string
   runId: string

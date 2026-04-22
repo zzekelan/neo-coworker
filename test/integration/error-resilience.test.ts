@@ -362,6 +362,96 @@ describe("integration: error resilience", () => {
     expect(lifecycleCalls).toEqual(["disable:session_override", "enable:session_override"])
   })
 
+  test("default provider still serializes explicit disabled thinking for config-disabled kimi models", async () => {
+    let receivedBody: unknown
+
+    const provider = await createDefaultProvider({
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "single-key",
+        LLM_MODEL: "kimi-k2.6",
+        LLM_BASE_URL: "https://api.moonshot.ai/v1",
+      },
+      resolvedCapabilities: {
+        provider: "openai-compatible",
+        providerId: "moonshotai",
+        model: "kimi-k2.6",
+        catalog: {
+          source: "models.dev",
+          miss: false,
+        },
+        reasoning: {
+          supported: true,
+          source: "models.dev",
+        },
+        toolCall: {
+          supported: true,
+          source: "models.dev",
+        },
+        interleaved: {
+          supported: true,
+          field: "reasoning_content",
+          source: "models.dev",
+        },
+        reasoningEffort: {
+          supported: true,
+          source: "models.dev",
+        },
+        thinkingControls: {
+          thinking: {
+            supported: false,
+            source: "override",
+          },
+          reasoningEffort: {
+            supported: true,
+            source: "models.dev",
+          },
+        },
+      },
+      createClient() {
+        return {
+          chat: {
+            completions: {
+              create(body: unknown) {
+                receivedBody = body
+                return (async function* () {})()
+              },
+            },
+          },
+        } as unknown as OpenAI
+      },
+    })
+
+    await collectEvents(
+      provider.streamTurn({
+        systemPrompt: "system",
+        skillCatalog: [],
+        activeSkills: [],
+        tools: [],
+        transcript: [],
+        signal: new AbortController().signal,
+        thinking: { enabled: false },
+      }),
+    )
+
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.6",
+      messages: [
+        { role: "system", content: ["system", SYSTEM_REMINDER_NOTICE].join("\n\n") },
+      ],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      thinking: {
+        type: "disabled",
+      },
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
   test("retryable classified provider failure is retried and eventually succeeds", async () => {
     const harness = await createHarness("error-resilience-retry")
     const started = startPromptRun({

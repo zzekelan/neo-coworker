@@ -15,13 +15,11 @@ import {
   createOpenAIAdapter,
   createOpenAICompatibleAdapter,
   type ClassifiedError,
-  type ModelThinkingConfig,
-  type ModelReplayGuardConfig,
   type ModelObserverPort,
   type ModelProvider,
   type OpenAICompatibleRequestConfig,
-  type ReasoningEffortMode,
 } from "../model"
+import type { ModelThinkingConfig, ReasoningEffortMode } from "../model/domain/turn"
 import { readEnvWithFallback } from "./env"
 import {
   MODELS_DEV_CAPABILITY_SNAPSHOT,
@@ -63,7 +61,6 @@ type ModelProviderFactory = (input: {
 export type DefaultProviderInput = {
   env?: Record<string, string | undefined>
   modelObserver?: ModelObserverPort
-  replayGuard?: ModelReplayGuardConfig
   resolvedCapabilities?: ResolvedProviderCapabilities
   createClient?: (config: OpenAIClientConfig) => OpenAI
   createOpenAIProviderImpl?: ModelProviderFactory
@@ -270,24 +267,6 @@ export function resolveRuntimeThinkingConfig(input: {
   }
 }
 
-export function resolveProviderReplayGuard(
-  resolvedCapabilities: ResolvedProviderCapabilities,
-): ModelReplayGuardConfig | undefined {
-  if (
-    (resolvedCapabilities.providerId !== "moonshotai" && !resolvedCapabilities.model.startsWith("kimi-"))
-    || resolvedCapabilities.interleaved.supported !== true
-    || !resolvedCapabilities.interleaved.field
-  ) {
-    return undefined
-  }
-
-  return {
-    providerFamily: "kimi",
-    model: resolvedCapabilities.model,
-    requiredReasoningField: resolvedCapabilities.interleaved.field,
-  }
-}
-
 export function resolveProviderCapabilities(input: {
   env?: Record<string, string | undefined>
   override?: ProviderCapabilityOverride
@@ -417,7 +396,6 @@ export async function createDefaultProvider(
     createOpenAIProviderImpl: input.createOpenAIProviderImpl,
     createOpenAICompatibleProviderImpl: input.createOpenAICompatibleProviderImpl,
     observer: input.modelObserver,
-    replayGuard: input.replayGuard,
   })
   const primaryProvider = createProviderForKey({ apiKey: config.apiKey })
   const credentialPool =
@@ -442,7 +420,6 @@ function createProviderFactory(input: {
   createOpenAIProviderImpl?: ModelProviderFactory
   createOpenAICompatibleProviderImpl?: ModelProviderFactory
   observer?: ModelObserverPort
-  replayGuard?: ModelReplayGuardConfig
 }) {
   return (runtimeInput: {
     apiKey: string
@@ -475,7 +452,6 @@ function createProviderFactory(input: {
           rateLimitTracker: runtimeInput.rateLimitTracker,
         }),
         observer: input.observer,
-        replayGuard: input.replayGuard,
       })
     }
 
@@ -496,7 +472,6 @@ function createProviderFactory(input: {
         rateLimitTracker: runtimeInput.rateLimitTracker,
       }),
       observer: input.observer,
-      replayGuard: input.replayGuard,
     })
   }
 }
@@ -508,18 +483,26 @@ function createOpenAICompatibleRequestConfig(
     return undefined
   }
 
+  const supportsThinkingSerialization =
+    resolvedCapabilities.thinkingControls.thinking.supported === true
+    || resolvedCapabilities.reasoning.supported === true
+
   const requestConfig: OpenAICompatibleRequestConfig = {
     ...(resolvedCapabilities.interleaved.supported === true
       && resolvedCapabilities.interleaved.field
       && { replayedReasoningField: resolvedCapabilities.interleaved.field }),
-    ...(resolvedCapabilities.thinkingControls.thinking.supported === true && {
+    // An explicit config-level disable is not the same as the provider lacking
+    // the thinking wire format. We still need to serialize `{ type: "disabled" }`
+    // for reasoning-capable models like Kimi so the upstream default does not
+    // silently re-enable thinking.
+    ...(supportsThinkingSerialization && {
       serializeThinking: true,
     }),
     ...(resolvedCapabilities.thinkingControls.reasoningEffort.supported === true && {
       serializeReasoningEffort: true,
     }),
     ...((resolvedCapabilities.providerId === "moonshotai" || resolvedCapabilities.model.startsWith("kimi-"))
-      && resolvedCapabilities.thinkingControls.thinking.supported === true && {
+      && supportsThinkingSerialization && {
         forcePreserveReasoning: true,
       }),
   }

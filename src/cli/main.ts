@@ -16,7 +16,6 @@ import {
   resolveAgentServerOrigin,
   resolveDefaultProviderConfig,
   resolveProviderCapabilities,
-  resolveProviderReplayGuard,
   resolveRuntimeThinkingConfig,
   type DefaultProviderInput,
   type ModelObserverPort,
@@ -144,9 +143,6 @@ export function buildCli(input: BuildCliInput = {}) {
           (await createDefaultProvider({
             env: input.env,
             modelObserver: deferredModelObserver,
-            replayGuard: resolvedCapabilities
-              ? resolveProviderReplayGuard(resolvedCapabilities)
-              : undefined,
             resolvedCapabilities,
             createClient: input.createClient,
             createOpenAIProviderImpl: input.createOpenAIProviderImpl,
