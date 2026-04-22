@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import { buildTranscriptMessages } from "../../src/model"
 import {
   CURRENT_SESSION_SCHEMA_VERSION,
   SessionConflictError,
@@ -895,6 +896,89 @@ describe("storage repository", () => {
     expect(transcript.map((message) => message.id)).toEqual(["message_0", "message_2", "message_3"])
     expect(transcript.map((message) => message.agent)).toEqual(["default", "plan", "review"])
     expect(transcript[1]?.parts.map((part) => part.id)).toEqual(["part_0", "part_1", "part_2"])
+  })
+
+  test("replays persisted reasoning parts after reopening storage", () => {
+    const databasePath = createDatabasePath("reasoning-transcript-fixture")
+    const initialDatabase = openStorageDatabase(databasePath)
+    trackDatabase(initialDatabase)
+
+    const repository = createStorageRepository({ database: initialDatabase })
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "completed",
+      createdAt: 2,
+    })
+    const message = repository.messages.create({
+      id: "message_1",
+      sessionId: "session_1",
+      runId: "run_1",
+      role: "assistant",
+      sequence: 0,
+      createdAt: 3,
+    })
+    repository.parts.create({
+      id: "part_reasoning",
+      sessionId: "session_1",
+      runId: "run_1",
+      messageId: message.id,
+      kind: "reasoning",
+      sequence: 0,
+      text: "Need to inspect the README before calling read.",
+      createdAt: 4,
+    })
+
+    openDatabases.pop()?.close(false)
+
+    const reopenedDatabase = openStorageDatabase(databasePath)
+    trackDatabase(reopenedDatabase)
+    const reopenedRepository = createStorageRepository({ database: reopenedDatabase })
+    const transcript = reopenedRepository.messages.listSessionTranscript("session_1")
+
+    expect(transcript).toEqual([
+      {
+        id: "message_1",
+        sessionId: "session_1",
+        runId: "run_1",
+        role: "assistant",
+        sequence: 0,
+        createdAt: 3,
+        parts: [
+          {
+            id: "part_reasoning",
+            sessionId: "session_1",
+            runId: "run_1",
+            messageId: "message_1",
+            kind: "reasoning",
+            sequence: 0,
+            text: "Need to inspect the README before calling read.",
+            data: null,
+            createdAt: 4,
+          },
+        ],
+      },
+    ])
+    expect(buildTranscriptMessages(transcript)).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "reasoning",
+            text: "Need to inspect the README before calling read.",
+          },
+        ],
+      },
+    ])
   })
 
   test("preserves insertion order for runs that share the same createdAt millisecond", () => {
