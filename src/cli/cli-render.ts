@@ -7,6 +7,7 @@ export type CliRenderState = {
   renderedRunStatuses: Map<string, Set<StoredRun["status"]>>
   messageRoles: Map<string, StoredMessageRole>
   printedTextByPartId: Map<string, string>
+  printedReasoningByPartId: Map<string, string>
   renderedPartIds: Set<string>
 }
 
@@ -15,6 +16,7 @@ export function createCliRenderState(): CliRenderState {
     renderedRunStatuses: new Map<string, Set<StoredRun["status"]>>(),
     messageRoles: new Map<string, StoredMessageRole>(),
     printedTextByPartId: new Map<string, string>(),
+    printedReasoningByPartId: new Map<string, string>(),
     renderedPartIds: new Set<string>(),
   }
 }
@@ -87,6 +89,18 @@ function renderAssistantPart(
     return renderTextPart(state, event.part.id, event.part.text)
   }
 
+  if (event.part.kind === "reasoning") {
+    return renderReasoningPart(state, event.part.id, event.part.text)
+  }
+
+  if (isCompactionBoundaryPart(event.part)) {
+    if (state.renderedPartIds.has(event.part.id)) {
+      return ""
+    }
+    state.renderedPartIds.add(event.part.id)
+    return formatCompactionBoundaryLine(event.part.data)
+  }
+
   if (state.renderedPartIds.has(event.part.id)) {
     return ""
   }
@@ -94,8 +108,6 @@ function renderAssistantPart(
   state.renderedPartIds.add(event.part.id)
 
   switch (event.part.kind) {
-    case "compaction_boundary":
-      return formatCompactionBoundaryLine(event.part.data)
     case "tool_call": {
       const toolName = getObjectStringValue(event.part.data, "toolName") ?? "unknown"
       const inputText = getObjectStringValue(event.part.data, "inputText") ?? ""
@@ -107,7 +119,6 @@ function renderAssistantPart(
     }
     case "error":
       return `error ${event.part.text ?? "unknown error"}\n`
-    case "reasoning":
     case "step_start":
     case "step_finish":
     case "patch":
@@ -128,6 +139,25 @@ function renderTextPart(state: CliRenderState, partId: string, text: string | nu
   }
 
   return text
+}
+
+function renderReasoningPart(state: CliRenderState, partId: string, text: string | null) {
+  if (!text) {
+    return ""
+  }
+
+  const previousText = state.printedReasoningByPartId.get(partId) ?? ""
+  state.printedReasoningByPartId.set(partId, text)
+
+  const delta = text.startsWith(previousText) ? text.slice(previousText.length) : text
+  if (!delta) {
+    return ""
+  }
+
+  if (previousText.length === 0) {
+    return `reasoning> ${delta}`
+  }
+  return delta
 }
 
 function getObjectStringValue(value: unknown, key: string) {

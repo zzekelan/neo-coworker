@@ -39,4 +39,15 @@ describe("desktop message", () => {
     expect(source).toContain("const isLargePatchText = /^diff --git |^@@ |^\\+\\+\\+ |^--- /m.test(value)")
     expect(source).toContain("return wasTruncated ? `${limitedText}\\n...` : limitedText")
   })
+
+  test("renders reasoning parts visible-by-default with a collapsible affordance", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    expect(source).toContain('part.type === "reasoning"')
+    expect(source).toContain("<ReasoningBlock")
+    expect(source).toContain("const ReasoningBlock")
+    expect(source).toContain("useState(true)")
+    expect(source).toContain("labels.message.reasoning")
+    expect(source).toContain("aria-expanded={isExpanded}")
+  })
 })

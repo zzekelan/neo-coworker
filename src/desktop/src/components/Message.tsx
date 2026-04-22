@@ -347,9 +347,64 @@ const MessagePartRenderer: React.FC<{
     )
   }
 
+  if (part.type === "reasoning") {
+    return <ReasoningBlock text={part.text} partIndex={partIndex} />
+  }
+
   // tool_result parts are filtered out before reaching here
   return null
 }
+
+/** Reasoning block: visible-by-default, user-collapsible. */
+const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo(({ text, partIndex }) => {
+  const labels = useDesktopText()
+  const [isExpanded, setIsExpanded] = useState(true)
+  const toggle = useCallback(() => setIsExpanded((prev) => !prev), [])
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
+      className="relative"
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        onKeyDown={expandKeyDown(toggle)}
+        aria-expanded={isExpanded}
+        className="group flex w-full items-center gap-1.5 py-0.5 text-left rounded-md cursor-pointer transition-colors hover:bg-surface/50 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:rounded-md focus-visible:outline-none"
+      >
+        <span className="text-[12px] font-medium uppercase tracking-wider text-muted/70">
+          {labels.message.reasoning}
+        </span>
+        <div className="flex w-5 shrink-0 items-center justify-center">
+          <ChevronLeft
+            className={cn(
+              "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
+              isExpanded && "rotate-[-90deg]",
+            )}
+          />
+        </div>
+      </button>
+      <AnimatePresence initial={false}>
+        {isExpanded ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="ml-1 mt-0.5 border-l-2 border-border/40 pl-3 py-1 whitespace-pre-wrap text-[13px] leading-relaxed text-muted italic">
+              {text}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
+  )
+})
 
 /** Collapsible group for ≥2 consecutive completed tool calls of the same type. */
 const ToolCallGroup: React.FC<{

@@ -54,6 +54,7 @@ export interface DesktopSkillCatalogEntry {
 
 export type MessagePart =
   | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
   | {
       type: "tool_call"
       toolName: string

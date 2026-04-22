@@ -332,4 +332,46 @@ describe("desktop transcript mapper", () => {
     const result = mapTranscriptMessage(message)
     expect(result.content).toContain("⚠️ Automatic compaction has been paused")
   })
+
+  test("maps reasoning parts as structured reasoning entries instead of flattening into text", () => {
+    const message: DesktopMessage = {
+      id: "message-assistant-reasoning",
+      sessionId: "session-1",
+      runId: "run-r1",
+      role: "assistant",
+      sequence: 1,
+      createdAt: 1_710_000_005_000,
+      parts: [
+        {
+          id: "part-reasoning-1",
+          sessionId: "session-1",
+          runId: "run-r1",
+          messageId: "message-assistant-reasoning",
+          kind: "reasoning",
+          sequence: 0,
+          text: "Step 1: inspect the file. Step 2: plan the edit.",
+          data: null,
+          createdAt: 1_710_000_005_000,
+        },
+        {
+          id: "part-text-1",
+          sessionId: "session-1",
+          runId: "run-r1",
+          messageId: "message-assistant-reasoning",
+          kind: "text",
+          sequence: 1,
+          text: "Here is the edited file.",
+          data: null,
+          createdAt: 1_710_000_005_100,
+        },
+      ],
+    }
+
+    const result = mapTranscriptMessage(message)
+    expect(result.parts).toEqual([
+      { type: "reasoning", text: "Step 1: inspect the file. Step 2: plan the edit." },
+      { type: "text", text: "Here is the edited file." },
+    ])
+    expect(result.content).toBe("Here is the edited file.")
+  })
 })

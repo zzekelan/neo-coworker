@@ -114,6 +114,17 @@ function mapMessagePart(
     }
   }
 
+  if (part.kind === "reasoning") {
+    const reasoningText = part.text ?? ""
+    if (!reasoningText) {
+      return null
+    }
+    return {
+      type: "reasoning",
+      text: reasoningText,
+    }
+  }
+
   const text = formatPlainPart(part)
   if (!text) {
     return null
@@ -143,7 +154,7 @@ function buildMessageContent(parts: MessagePart[]) {
 }
 
 function formatPlainPart(part: DesktopPart) {
-  if (part.kind === "text" || part.kind === "reasoning") {
+  if (part.kind === "text") {
     return part.text ?? ""
   }
 
