@@ -444,6 +444,7 @@ describe("integration: error resilience", () => {
         include_usage: true,
       },
       max_completion_tokens: 16000,
+      temperature: 0.6,
       thinking: {
         type: "disabled",
       },

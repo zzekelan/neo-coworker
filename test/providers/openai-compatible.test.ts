@@ -644,6 +644,51 @@ describe("openai-compatible provider", () => {
     })
   })
 
+  test("normalizes disabled Kimi thinking requests to temperature 0.6", async () => {
+    let receivedBody: unknown
+
+    const provider = createProvider({
+      model: "kimi-k2.6",
+      requestConfig: {
+        serializeThinking: true,
+        disabledThinkingTemperature: 0.6,
+      },
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
+    })
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+      temperature: 1,
+      thinking: {
+        enabled: false,
+      },
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toEqual({
+      model: "kimi-k2.6",
+      messages: [{ role: "system", content: "system" }],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      temperature: 0.6,
+      thinking: {
+        type: "disabled",
+      },
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
   for (const effort of ["low", "medium", "high"] as const) {
     test(`serializes explicit reasoning_effort=${effort} when supported`, async () => {
       let receivedBody: unknown
