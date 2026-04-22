@@ -53,7 +53,7 @@ export function createModelRuntimeApi(input: CreateModelRuntimeApiInput) {
 export type ModelRuntimeApi = ReturnType<typeof createModelRuntimeApi>
 
 export type ModelProviderRequest = ModelProjectionInput &
-  Pick<ProviderTurnRequest, "signal" | "temperature"> & {
+  Pick<ProviderTurnRequest, "signal" | "temperature" | "thinking"> & {
     sessionId?: string
     runId?: string
     turnKey?: string
@@ -64,12 +64,28 @@ export type ModelProvider = {
     inputTokens: number
   }
   streamTurn(request: ModelProviderRequest): AsyncIterable<ModelEvent>
+  continueWithoutThinking?(input: { sessionId: string }): void
+  restoreThinking?(input: { sessionId: string }): void
+}
+
+type ReplayCompatibilityBlock = {
+  providerFamily: "kimi"
+  classification: "legacy_session_missing_reasoning"
+  missingPart: "reasoning"
+  requiredReasoningField: "reasoning_content" | "reasoning_details"
 }
 
 export function createModelProvider(input: {
   runtime: ModelRuntimeApi
   observer?: ModelObserverPort
+  replayGuard?: {
+    providerFamily: "kimi"
+    model: string
+    requiredReasoningField: "reasoning_content" | "reasoning_details"
+  }
 }): ModelProvider {
+  const sessionThinkingOverrides = new Set<string>()
+
   return {
     projectTurn(request) {
       const projected = buildModelTurnProjection(request)
@@ -82,6 +98,36 @@ export function createModelProvider(input: {
       }
     },
     async *streamTurn(request) {
+      const effectiveThinking =
+        request.sessionId && sessionThinkingOverrides.has(request.sessionId)
+          ? { enabled: false as const }
+          : request.thinking
+      const projected = buildModelTurnProjection(request)
+      let sawToolCall = false
+      let sawReasoningDelta = false
+      const replayBlock = resolveReplayCompatibilityBlock({
+        projectedRequest: {
+          ...projected.request,
+          ...(effectiveThinking !== undefined && { thinking: effectiveThinking }),
+        },
+        replayGuard: input.replayGuard,
+      })
+      if (replayBlock) {
+        const replayCompatibilityError = createReplayCompatibilityError(replayBlock)
+        observeReplayFailFastBlock({
+          observer: input.observer,
+          request,
+          replayGuard: input.replayGuard!,
+          block: replayBlock,
+        })
+        observeClassifiedError({
+          observer: input.observer,
+          request,
+          error: replayCompatibilityError,
+        })
+        throw replayCompatibilityError
+      }
+
       if (request.sessionId && request.runId) {
         try {
           input.observer?.recordModelEvent?.({
@@ -129,15 +175,15 @@ export function createModelProvider(input: {
           // Observability must not alter the model request path.
         }
       }
-      const projected = buildModelTurnProjection(request)
 
-      const outputEvents: Array<Extract<ModelEvent, { type: "text.delta" | "tool.call" }>> = []
+      const outputEvents: Array<Extract<ModelEvent, { type: "text.delta" | "reasoning.delta" | "tool.call" }>> = []
       let observedUsage = false
 
       try {
         for await (const event of input.runtime.streamTurn({
           ...projected.request,
           signal: request.signal,
+          ...(effectiveThinking !== undefined && { thinking: effectiveThinking }),
         })) {
           if (event.type === "usage") {
             observedUsage = true
@@ -150,8 +196,14 @@ export function createModelProvider(input: {
             continue
           }
 
-          if (event.type === "text.delta" || event.type === "tool.call") {
+          if (event.type === "text.delta" || event.type === "reasoning.delta" || event.type === "tool.call") {
             outputEvents.push(event)
+            if (event.type === "tool.call") {
+              sawToolCall = true
+            }
+            if (event.type === "reasoning.delta") {
+              sawReasoningDelta = true
+            }
           }
 
           yield event
@@ -179,6 +231,15 @@ export function createModelProvider(input: {
         throw error
       }
 
+      if (
+        request.sessionId
+        && request.thinking?.enabled === true
+        && sawToolCall
+        && !sawReasoningDelta
+      ) {
+        sessionThinkingOverrides.add(request.sessionId)
+      }
+
       if (!observedUsage) {
         const estimatedUsage = estimateModelTurnUsage({
           request: projected.request,
@@ -192,8 +253,104 @@ export function createModelProvider(input: {
         yield estimatedUsage
       }
     },
+    continueWithoutThinking(inputValue) {
+      sessionThinkingOverrides.add(inputValue.sessionId)
+    },
+    restoreThinking(inputValue) {
+      sessionThinkingOverrides.delete(inputValue.sessionId)
+    },
   }
 }
+
+function resolveReplayCompatibilityBlock(input: {
+  projectedRequest: Pick<ProviderTurnRequest, "messages" | "thinking">
+  replayGuard:
+    | {
+        providerFamily: "kimi"
+        model: string
+        requiredReasoningField: "reasoning_content" | "reasoning_details"
+      }
+    | undefined
+}) {
+  if (!input.replayGuard || input.projectedRequest.thinking?.enabled !== true) {
+    return null
+  }
+
+  const hasLegacyAssistantToolReplay = input.projectedRequest.messages.some((message) => {
+    if (message.role !== "assistant") {
+      return false
+    }
+
+    const hasToolCall = message.parts.some((part) => part.type === "tool_call")
+    if (!hasToolCall) {
+      return false
+    }
+
+    return message.parts.some((part) => part.type === "reasoning") === false
+  })
+
+  if (!hasLegacyAssistantToolReplay) {
+    return null
+  }
+
+  return {
+    providerFamily: input.replayGuard.providerFamily,
+    classification: "legacy_session_missing_reasoning",
+    missingPart: "reasoning",
+    requiredReasoningField: input.replayGuard.requiredReasoningField,
+  } satisfies ReplayCompatibilityBlock
+}
+
+function observeReplayFailFastBlock(input: {
+  observer?: ModelObserverPort
+  request: ModelProviderRequest
+  replayGuard: {
+    providerFamily: "kimi"
+    model: string
+    requiredReasoningField: "reasoning_content" | "reasoning_details"
+  }
+  block: ReplayCompatibilityBlock
+}) {
+  if (!input.request.sessionId || !input.request.runId) {
+    return
+  }
+
+  try {
+    input.observer?.recordModelEvent?.({
+      type: "replay.fail_fast.blocked",
+      sessionId: input.request.sessionId,
+      runId: input.request.runId,
+      turnKey: input.request.turnKey ?? `${input.request.runId}:turn_unkeyed`,
+      model: input.replayGuard.model,
+      providerFamily: input.block.providerFamily,
+      classification: input.block.classification,
+      missingPart: input.block.missingPart,
+      requiredReasoningField: input.block.requiredReasoningField,
+    })
+  } catch {
+    // Observability must not alter the model request path.
+  }
+}
+
+export const REPLAY_COMPATIBILITY_ERROR_CODE = "replay_compatibility_legacy_session_missing_reasoning"
+
+export function isReplayCompatibilityErrorMessage(message: string | null | undefined) {
+  if (!message) {
+    return false
+  }
+  return message.includes(`[${REPLAY_COMPATIBILITY_ERROR_CODE}]`)
+}
+
+function createReplayCompatibilityError(input: ReplayCompatibilityBlock) {
+  const detail = input.providerFamily === "kimi"
+    ? "Legacy session replay blocked before provider invocation because assistant reasoning metadata is missing."
+    : "Legacy session replay blocked before provider invocation."
+  const error = new Error(`[${REPLAY_COMPATIBILITY_ERROR_CODE}] ${detail}`)
+  error.name = "ReplayCompatibilityError"
+  return error
+}
+
+export type ModelReplayGuardConfig = NonNullable<Parameters<typeof createModelProvider>[0]["replayGuard"]>
 
 function hashPromptSection(text: string) {
   return createHash("sha256").update(text).digest("hex")

@@ -133,7 +133,7 @@ describe("agent loop", () => {
         sessionId: harness.session.id,
         runId: started.run.id,
         contextTokens: expect.any(Number),
-        contextWindow: 128_000,
+        contextWindow: 192_000,
         utilizationPercent: expect.any(Number),
         source: "estimated",
       }),
@@ -214,6 +214,83 @@ describe("agent loop", () => {
     expect(
       activeRunMessages.flatMap((message) => message.parts.filter((part) => part.kind === "tool_result")),
     ).toHaveLength(2)
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
+  test("auto-disables thinking after a tool-call-first turn so the follow-up turn continues", async () => {
+    const harness = await createHarness("tool-call-first-thinking", true)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_tool_call_first",
+      messageId: "message_tool_call_first_user",
+      prompt: "Inspect README.md and continue",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_read",
+            name: "read",
+            inputText: '{"path":"README.md"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Tool result handled." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      thinking: {
+        enabled: true,
+      },
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(requests).toHaveLength(2)
+    expect(requests[0]?.thinking?.enabled).toBe(true)
+    expect(requests[1]?.thinking?.enabled).toBe(false)
+    expect(requests[1]?.messages.slice(-2)).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool_call",
+            callId: "call_read",
+            toolName: "read",
+            inputText: '{"path":"README.md"}',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_read",
+            toolName: "read",
+            output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
+          },
+        ],
+      },
+    ])
+    expect(activeRunMessages).toHaveLength(3)
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(activeRunMessages[2]?.parts).toEqual([
+      expect.objectContaining({ kind: "text", text: "Tool result handled." }),
+    ])
+    expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
