@@ -64,6 +64,194 @@ describe("edit tool — replaceAll option", () => {
   })
 })
 
+describe("edit tool — concurrent mutations", () => {
+  test("serializes concurrent edits to the same file", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const filePath = join(workspaceRoot, "shared.txt")
+    await writeFile(filePath, "alpha")
+
+    let releaseFirstWrite!: () => void
+    let signalFirstWriteStarted!: () => void
+    const firstWriteStarted = new Promise<void>((resolve) => {
+      signalFirstWriteStarted = resolve
+    })
+
+    const registry = createToolRuntimeApi({
+      tools: [
+        createEditTool({
+          requestPermission,
+          async atomicWrite(file, content) {
+            if (file === filePath && content === "beta") {
+              signalFirstWriteStarted()
+              await new Promise<void>((resolve) => {
+                releaseFirstWrite = resolve
+              })
+            }
+
+            await writeFile(file, content, "utf8")
+          },
+        }),
+      ],
+    })
+
+    const firstEdit = registry.execute({
+      toolName: "edit",
+      args: { path: "shared.txt", oldText: "alpha", newText: "beta" },
+      workspaceRoot,
+    })
+
+    await firstWriteStarted
+
+    const secondEdit = registry.execute({
+      toolName: "edit",
+      args: { path: "shared.txt", oldText: "beta", newText: "gamma" },
+      workspaceRoot,
+    })
+
+    const secondStateBeforeRelease = await Promise.race([
+      secondEdit.then(() => "settled", () => "settled"),
+      new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 0)),
+    ])
+
+    expect(secondStateBeforeRelease).toBe("pending")
+
+    releaseFirstWrite()
+
+    const [firstResult, secondResult] = await Promise.all([firstEdit, secondEdit])
+    expect(firstResult.isError).toBeFalsy()
+    expect(secondResult.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("gamma")
+  })
+
+  test("does not block concurrent edits to different files", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const alphaPath = join(workspaceRoot, "alpha.txt")
+    const betaPath = join(workspaceRoot, "beta.txt")
+    await writeFile(alphaPath, "alpha")
+    await writeFile(betaPath, "beta")
+
+    let releaseAlphaWrite!: () => void
+    let signalAlphaWriteStarted!: () => void
+    let signalBetaWriteStarted!: () => void
+    const alphaWriteStarted = new Promise<void>((resolve) => {
+      signalAlphaWriteStarted = resolve
+    })
+    const betaWriteStarted = new Promise<void>((resolve) => {
+      signalBetaWriteStarted = resolve
+    })
+
+    const registry = createToolRuntimeApi({
+      tools: [
+        createEditTool({
+          requestPermission,
+          async atomicWrite(file, content) {
+            if (file === alphaPath && content === "ALPHA") {
+              signalAlphaWriteStarted()
+              await new Promise<void>((resolve) => {
+                releaseAlphaWrite = resolve
+              })
+            }
+
+            if (file === betaPath && content === "BETA") {
+              signalBetaWriteStarted()
+            }
+
+            await writeFile(file, content, "utf8")
+          },
+        }),
+      ],
+    })
+
+    const alphaEdit = registry.execute({
+      toolName: "edit",
+      args: { path: "alpha.txt", oldText: "alpha", newText: "ALPHA" },
+      workspaceRoot,
+    })
+
+    await alphaWriteStarted
+
+    const betaEdit = registry.execute({
+      toolName: "edit",
+      args: { path: "beta.txt", oldText: "beta", newText: "BETA" },
+      workspaceRoot,
+    })
+
+    await betaWriteStarted
+
+    const betaResult = await betaEdit
+    expect(betaResult.isError).toBeFalsy()
+    expect(await readFile(betaPath, "utf8")).toBe("BETA")
+
+    releaseAlphaWrite()
+    const alphaResult = await alphaEdit
+    expect(alphaResult.isError).toBeFalsy()
+    expect(await readFile(alphaPath, "utf8")).toBe("ALPHA")
+  })
+
+  test("releases the concurrent same-file lock after a failed mutation", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const filePath = join(workspaceRoot, "recover.txt")
+    await writeFile(filePath, "start")
+
+    let releaseFailedWrite!: () => void
+    let signalFailedWriteStarted!: () => void
+    const failedWriteStarted = new Promise<void>((resolve) => {
+      signalFailedWriteStarted = resolve
+    })
+
+    const registry = createToolRuntimeApi({
+      tools: [
+        createEditTool({
+          requestPermission,
+          async atomicWrite(file, content) {
+            if (file === filePath && content === "middle") {
+              signalFailedWriteStarted()
+              await new Promise<void>((resolve) => {
+                releaseFailedWrite = resolve
+              })
+              throw new Error("simulated write failure")
+            }
+
+            await writeFile(file, content, "utf8")
+          },
+        }),
+      ],
+    })
+
+    const firstEdit = registry.execute({
+      toolName: "edit",
+      args: { path: "recover.txt", oldText: "start", newText: "middle" },
+      workspaceRoot,
+    })
+
+    await failedWriteStarted
+
+    const secondEdit = registry.execute({
+      toolName: "edit",
+      args: { path: "recover.txt", oldText: "start", newText: "done" },
+      workspaceRoot,
+    })
+
+    const secondStateBeforeRelease = await Promise.race([
+      secondEdit.then(() => "settled", () => "settled"),
+      new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 0)),
+    ])
+
+    expect(secondStateBeforeRelease).toBe("pending")
+
+    releaseFailedWrite()
+
+    await expect(firstEdit).rejects.toThrow("simulated write failure")
+
+    const secondResult = await secondEdit
+    expect(secondResult.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("done")
+  })
+})
+
 describe("edit tool — multi-match protection", () => {
   test("returns isError=true when oldText appears multiple times without replaceAll", async () => {
     const workspaceRoot = await createTempWorkspace()

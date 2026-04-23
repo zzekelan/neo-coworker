@@ -1,6 +1,6 @@
-import { access, mkdir, rename } from "node:fs/promises"
+import { access } from "node:fs/promises"
 import { realpath } from "node:fs/promises"
-import { basename, dirname, resolve, sep } from "node:path"
+import { relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import {
   assertWorkspacePathNotReserved,
@@ -9,10 +9,7 @@ import {
   type ToolDefinition,
 } from "../../domain"
 import { createToolPermissionDeniedError } from "./errors"
-
-declare const Bun: {
-  write(path: string, content: string): Promise<unknown>
-}
+import { type AtomicUtf8FileWrite, withSerializedFileMutation, writeUtf8FileAtomically } from "./mutating-file"
 
 const CONDITIONALLY_PROTECTED_WRITE_BASENAMES = new Set([
   "readme.md",
@@ -36,7 +33,8 @@ const WriteArgsSchema = z.object({
 )
 
 function isConditionallyProtectedWritePath(relativePath: string): boolean {
-  const name = basename(relativePath).toLowerCase()
+  const segments = relativePath.replaceAll("\\", "/").split("/").filter(Boolean)
+  const name = (segments.at(-1) ?? relativePath).toLowerCase()
   return CONDITIONALLY_PROTECTED_WRITE_BASENAMES.has(name) || name === ".env" || name.startsWith(".env.")
 }
 
@@ -46,6 +44,10 @@ async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: st
   const root = await realpath(resolve(workspaceRoot))
   const target = resolve(root, relativePath)
 
+  if (target === root) {
+    throw new Error(`Path must reference a file inside workspace: ${relativePath}`)
+  }
+
   try {
     const existing = await realpath(target)
 
@@ -53,21 +55,37 @@ async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: st
       throw new Error(`Path must stay inside workspace: ${relativePath}`)
     }
 
-    assertWorkspacePathNotReserved(existing.slice(root.length + 1))
+    assertWorkspacePathNotReserved(relative(root, existing))
+
+    return existing
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw error
     }
 
-    const parentDir = dirname(target)
-    const resolvedParent = resolve(parentDir)
+    const parentDir = await realpath(resolve(target, ".."))
 
-    if (resolvedParent !== root && !resolvedParent.startsWith(`${root}${sep}`)) {
+    if (parentDir !== root && !parentDir.startsWith(`${root}${sep}`)) {
       throw new Error(`Path must stay inside workspace: ${relativePath}`)
     }
-  }
 
-  return target
+    const relativeParent = relative(root, parentDir)
+    if (relativeParent) {
+      assertWorkspacePathNotReserved(relativeParent)
+    }
+
+    const fileName = relativePath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1)
+    if (!fileName) {
+      throw new Error(`Path must reference a file inside workspace: ${relativePath}`)
+    }
+
+    const resolvedTarget = resolve(parentDir, fileName)
+    if (resolvedTarget === root || !resolvedTarget.startsWith(`${parentDir}${sep}`)) {
+      throw new Error(`Path must stay inside workspace: ${relativePath}`)
+    }
+
+    return resolvedTarget
+  }
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -79,7 +97,12 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-export function createWriteTool(input: { requestPermission: RequestToolPermission }): ToolDefinition {
+export function createWriteTool(input: {
+  requestPermission: RequestToolPermission
+  atomicWrite?: AtomicUtf8FileWrite
+}): ToolDefinition {
+  const atomicWrite = input.atomicWrite ?? writeUtf8FileAtomically
+
   return {
     name: "write",
     description:
@@ -106,22 +129,22 @@ export function createWriteTool(input: { requestPermission: RequestToolPermissio
       const file = await resolveWorkspaceWritePath(value.workspaceRoot, path)
       throwIfToolAborted(value.signal)
 
-      if ((await fileExists(file)) && isConditionallyProtectedWritePath(path)) {
-        return {
-          output: "File exists. Please read it first to confirm overwrite.",
-          isError: true,
-          metadata: { requiresRead: true },
+      return await withSerializedFileMutation(file, async () => {
+        throwIfToolAborted(value.signal)
+
+        if ((await fileExists(file)) && isConditionallyProtectedWritePath(path)) {
+          return {
+            output: "File exists. Please read it first to confirm overwrite.",
+            isError: true,
+            metadata: { requiresRead: true },
+          }
         }
-      }
 
-      await mkdir(dirname(file), { recursive: true })
+        throwIfToolAborted(value.signal)
+        await atomicWrite(file, content)
 
-      const tmpFile = `${dirname(file)}/.${basename(file)}.tmp`
-      throwIfToolAborted(value.signal)
-      await Bun.write(tmpFile, content)
-      await rename(tmpFile, file)
-
-      return { output: `Wrote ${path}` }
+        return { output: `Wrote ${path}` }
+      })
     },
   }
 }

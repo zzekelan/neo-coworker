@@ -9,12 +9,12 @@ import {
   type ToolDefinition,
 } from "../../domain"
 import { createToolPermissionDeniedError } from "./errors"
+import { type AtomicUtf8FileWrite, withSerializedFileMutation, writeUtf8FileAtomically } from "./mutating-file"
 
 declare const Bun: {
   file(path: string): {
     text(): Promise<string>
   }
-  write(path: string, content: string): Promise<unknown>
 }
 
 const MAX_FILE_SIZE = 500 * 1024
@@ -101,7 +101,12 @@ function formatLineRange(startLine: number, endLine: number): string {
   return startLine === endLine ? `${startLine}` : `${startLine}-${endLine}`
 }
 
-export function createEditTool(input: { requestPermission: RequestToolPermission }): ToolDefinition {
+export function createEditTool(input: {
+  requestPermission: RequestToolPermission
+  atomicWrite?: AtomicUtf8FileWrite
+}): ToolDefinition {
+  const atomicWrite = input.atomicWrite ?? writeUtf8FileAtomically
+
   return {
     name: "edit",
     description:
@@ -127,89 +132,92 @@ export function createEditTool(input: { requestPermission: RequestToolPermission
       throwIfToolAborted(value.signal)
       const file = await resolveWorkspaceFile(value.workspaceRoot, path)
 
-      const fileStat = await stat(file)
-      if (fileStat.size > MAX_FILE_SIZE) {
-        return {
-          output: `File is too large to edit (${Math.round(fileStat.size / 1024)} KB). Maximum editable file size is 500 KB.`,
-          isError: true,
+      return await withSerializedFileMutation(file, async () => {
+        const fileStat = await stat(file)
+        if (fileStat.size > MAX_FILE_SIZE) {
+          return {
+            output: `File is too large to edit (${Math.round(fileStat.size / 1024)} KB). Maximum editable file size is 500 KB.`,
+            isError: true,
+          }
         }
-      }
 
-      const original = await Bun.file(file).text()
-      throwIfToolAborted(value.signal)
+        const original = await Bun.file(file).text()
+        throwIfToolAborted(value.signal)
 
-      const firstMatch = original.indexOf(oldText)
+        const firstMatch = original.indexOf(oldText)
 
-      if (firstMatch === -1) {
-        throw new Error("Target text not found")
-      }
-
-      const matchPositions = findMatchPositions(original, oldText)
-      const matchCount = matchPositions.length
-
-      if (matchCount > 1 && !replaceAll) {
-        const lines = original.split("\n")
-        const contextParts = matchPositions.map((pos, i) => {
-          const lineNum = matchIndexToLineNumber(original, pos)
-          const ctx = getLineContext(lines, lineNum - 1, 2)
-          return `Match ${i + 1} (line ${lineNum}):\n${ctx}`
-        })
-        return {
-          output: `Found ${matchCount} matches for the target text. Use \`replaceAll: true\` to replace all occurrences, or provide more surrounding context to make the match unique.\n\n${contextParts.join("\n\n")}`,
-          isError: true,
+        if (firstMatch === -1) {
+          throw new Error("Target text not found")
         }
-      }
 
-      throwIfToolAborted(value.signal)
+        const matchPositions = findMatchPositions(original, oldText)
+        const matchCount = matchPositions.length
 
-      let updated: string
-      let occurrences: number
+        if (matchCount > 1 && !replaceAll) {
+          const lines = original.split("\n")
+          const contextParts = matchPositions.map((pos, i) => {
+            const lineNum = matchIndexToLineNumber(original, pos)
+            const ctx = getLineContext(lines, lineNum - 1, 2)
+            return `Match ${i + 1} (line ${lineNum}):\n${ctx}`
+          })
+          return {
+            output: `Found ${matchCount} matches for the target text. Use \`replaceAll: true\` to replace all occurrences, or provide more surrounding context to make the match unique.\n\n${contextParts.join("\n\n")}`,
+            isError: true,
+          }
+        }
 
-      if (replaceAll) {
-        let count = 0
-        updated = original.replaceAll(oldText, () => {
-          count++
-          return newText
-        })
-        occurrences = count
-      } else {
-        updated = `${original.slice(0, firstMatch)}${newText}${original.slice(firstMatch + oldText.length)}`
-        occurrences = 1
-      }
+        throwIfToolAborted(value.signal)
 
-      await Bun.write(file, updated)
+        let updated: string
+        let occurrences: number
 
-      const originalLines = original.split("\n")
-      const updatedLines = updated.split("\n")
-      const firstBeforeRange = getSpanLineRange(original, firstMatch, firstMatch + oldText.length)
-      const firstAfterRange = getSpanLineRange(updated, firstMatch, firstMatch + newText.length)
-      const lastMatch = matchPositions.at(-1) ?? firstMatch
-      const overallBeforeRange = getSpanLineRange(original, firstMatch, lastMatch + oldText.length)
-      const beforePreview = getLineRangeContext(
-        originalLines,
-        firstBeforeRange.startLine,
-        firstBeforeRange.endLine,
-        2,
-      )
-      const afterPreview = getLineRangeContext(
-        updatedLines,
-        firstAfterRange.startLine,
-        firstAfterRange.endLine,
-        2,
-      )
-      const summary = occurrences > 1
-        ? `Replaced ${occurrences} occurrences in ${path} across lines ${formatLineRange(overallBeforeRange.startLine, overallBeforeRange.endLine)}.`
-        : `Edited ${path} at lines ${formatLineRange(firstBeforeRange.startLine, firstBeforeRange.endLine)}.`
-      const beforeLabel = occurrences > 1 ? "First replacement preview (before):" : "Before:"
-      const afterLabel = occurrences > 1 ? "First replacement preview (after):" : "After:"
+        if (replaceAll) {
+          let count = 0
+          updated = original.replaceAll(oldText, () => {
+            count++
+            return newText
+          })
+          occurrences = count
+        } else {
+          updated = `${original.slice(0, firstMatch)}${newText}${original.slice(firstMatch + oldText.length)}`
+          occurrences = 1
+        }
 
-      return {
-        output:
-          `${summary}\n` +
-          `Updated lines ${formatLineRange(firstBeforeRange.startLine, firstBeforeRange.endLine)} -> ${formatLineRange(firstAfterRange.startLine, firstAfterRange.endLine)}.\n\n` +
-          `${beforeLabel}\n${beforePreview}\n\n` +
-          `${afterLabel}\n${afterPreview}`,
-      }
+        throwIfToolAborted(value.signal)
+        await atomicWrite(file, updated)
+
+        const originalLines = original.split("\n")
+        const updatedLines = updated.split("\n")
+        const firstBeforeRange = getSpanLineRange(original, firstMatch, firstMatch + oldText.length)
+        const firstAfterRange = getSpanLineRange(updated, firstMatch, firstMatch + newText.length)
+        const lastMatch = matchPositions.at(-1) ?? firstMatch
+        const overallBeforeRange = getSpanLineRange(original, firstMatch, lastMatch + oldText.length)
+        const beforePreview = getLineRangeContext(
+          originalLines,
+          firstBeforeRange.startLine,
+          firstBeforeRange.endLine,
+          2,
+        )
+        const afterPreview = getLineRangeContext(
+          updatedLines,
+          firstAfterRange.startLine,
+          firstAfterRange.endLine,
+          2,
+        )
+        const summary = occurrences > 1
+          ? `Replaced ${occurrences} occurrences in ${path} across lines ${formatLineRange(overallBeforeRange.startLine, overallBeforeRange.endLine)}.`
+          : `Edited ${path} at lines ${formatLineRange(firstBeforeRange.startLine, firstBeforeRange.endLine)}.`
+        const beforeLabel = occurrences > 1 ? "First replacement preview (before):" : "Before:"
+        const afterLabel = occurrences > 1 ? "First replacement preview (after):" : "After:"
+
+        return {
+          output:
+            `${summary}\n` +
+            `Updated lines ${formatLineRange(firstBeforeRange.startLine, firstBeforeRange.endLine)} -> ${formatLineRange(firstAfterRange.startLine, firstAfterRange.endLine)}.\n\n` +
+            `${beforeLabel}\n${beforePreview}\n\n` +
+            `${afterLabel}\n${afterPreview}`,
+        }
+      })
     },
   }
 }

@@ -1,9 +1,10 @@
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { access, chmod, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { createPermissionCoordinator } from "../../../src/permission"
 import { createToolRuntimeApi, createWriteTool } from "../../../src/tool"
+import { writeUtf8FileAtomically } from "../../../src/tool/infrastructure/builtins/mutating-file"
 
 function createAllowPermission() {
   const coordinator = createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" })
@@ -107,8 +108,100 @@ describe("write tool — atomic write", () => {
       workspaceRoot,
     })
 
-    const tmpPath = join(workspaceRoot, ".myfile.ts.tmp")
-    await expect(access(tmpPath)).rejects.toThrow()
+    const directoryEntries = await Bun.spawn(["bash", "-lc", `ls -A ${JSON.stringify(workspaceRoot)}`], {
+      stdout: "pipe",
+      stderr: "pipe",
+    }).stdout.text()
+    expect(directoryEntries).not.toContain(".myfile.ts.tmp")
+  })
+
+  test("uses a same-directory unique temp file and cleans it up after atomic rename failure", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const targetPath = join(workspaceRoot, "nested", "atomic.txt")
+    let observedTempPath: string | undefined
+
+    await expect(
+      writeUtf8FileAtomically(targetPath, "atomic content", {
+        async writeTempFile(tempPath, content) {
+          observedTempPath = tempPath
+          await writeFile(tempPath, content, "utf8")
+        },
+        async renameFile(from, to) {
+          expect(from).toBe(observedTempPath)
+          expect(to).toBe(targetPath)
+          expect(await readFile(from, "utf8")).toBe("atomic content")
+          throw new Error("rename failed")
+        },
+      }),
+    ).rejects.toThrow("rename failed")
+
+    expect(observedTempPath).toBeDefined()
+    expect(dirname(observedTempPath!)).toBe(dirname(targetPath))
+    expect(basename(observedTempPath!)).toMatch(/^\.atomic\.txt\.tmp\.[^.]+(?:-.+)?$/)
+    await expect(access(observedTempPath!)).rejects.toThrow()
+    await expect(access(targetPath)).rejects.toThrow()
+  })
+
+  test("preserves existing file mode when atomically overwriting", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const registry = createToolRuntimeApi({
+      tools: [createWriteTool({ requestPermission })],
+    })
+    const filePath = join(workspaceRoot, "script.sh")
+
+    await writeFile(filePath, "#!/bin/sh\necho old\n", "utf8")
+    await chmod(filePath, 0o700)
+
+    await registry.execute({
+      toolName: "write",
+      args: { path: "script.sh", content: "#!/bin/sh\necho new\n" },
+      workspaceRoot,
+    })
+
+    expect((await lstat(filePath)).mode & 0o777).toBe(0o700)
+  })
+
+  test("rejects writes through symlinked parents that escape the workspace", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const externalRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const registry = createToolRuntimeApi({
+      tools: [createWriteTool({ requestPermission })],
+    })
+
+    await mkdir(join(workspaceRoot, "links"), { recursive: true })
+    await symlink(externalRoot, join(workspaceRoot, "links", "outside"))
+
+    await expect(
+      registry.execute({
+        toolName: "write",
+        args: { path: "links/outside/escape.txt", content: "nope" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path must stay inside workspace")
+
+    await expect(access(join(externalRoot, "escape.txt"))).rejects.toThrow()
+  })
+
+  test("rejects writes through symlinked parents into reserved runtime directories", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const registry = createToolRuntimeApi({
+      tools: [createWriteTool({ requestPermission })],
+    })
+
+    await mkdir(join(workspaceRoot, ".ncoworker"), { recursive: true })
+    await mkdir(join(workspaceRoot, "links"), { recursive: true })
+    await symlink(join(workspaceRoot, ".ncoworker"), join(workspaceRoot, "links", "runtime"))
+
+    await expect(
+      registry.execute({
+        toolName: "write",
+        args: { path: "links/runtime/secret.txt", content: "blocked" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
   })
 })
 
