@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -249,6 +249,66 @@ describe("edit tool — concurrent mutations", () => {
     const secondResult = await secondEdit
     expect(secondResult.isError).toBeFalsy()
     expect(await readFile(filePath, "utf8")).toBe("done")
+  })
+
+  test("serializes real-path and symlink-path mutations to the same underlying file", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const realFilePath = join(workspaceRoot, "real.txt")
+    await writeFile(realFilePath, "alpha")
+    await mkdir(join(workspaceRoot, "links"), { recursive: true })
+    await symlink(realFilePath, join(workspaceRoot, "links", "alias.txt"))
+
+    let releaseFirstWrite!: () => void
+    let signalFirstWriteStarted!: () => void
+    const firstWriteStarted = new Promise<void>((resolve) => {
+      signalFirstWriteStarted = resolve
+    })
+
+    const registry = createToolRuntimeApi({
+      tools: [
+        createEditTool({
+          requestPermission,
+          async atomicWrite(file, content) {
+            if (file === realFilePath && content === "beta") {
+              signalFirstWriteStarted()
+              await new Promise<void>((resolve) => {
+                releaseFirstWrite = resolve
+              })
+            }
+
+            await writeFile(file, content, "utf8")
+          },
+        }),
+      ],
+    })
+
+    const firstEdit = registry.execute({
+      toolName: "edit",
+      args: { path: "real.txt", oldText: "alpha", newText: "beta" },
+      workspaceRoot,
+    })
+
+    await firstWriteStarted
+
+    const secondEdit = registry.execute({
+      toolName: "edit",
+      args: { path: "links/alias.txt", oldText: "beta", newText: "gamma" },
+      workspaceRoot,
+    })
+
+    const secondStateBeforeRelease = await Promise.race([
+      secondEdit.then(() => "settled", () => "settled"),
+      new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 0)),
+    ])
+
+    expect(secondStateBeforeRelease).toBe("pending")
+
+    releaseFirstWrite()
+
+    const [, secondResult] = await Promise.all([firstEdit, secondEdit])
+    expect(secondResult.isError).toBeFalsy()
+    expect(await readFile(realFilePath, "utf8")).toBe("gamma")
   })
 })
 
