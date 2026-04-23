@@ -76,7 +76,7 @@ describe("integration: tool budget wiring", () => {
       .flatMap((message) => message.parts)
       .find((part) => part.kind === "tool_result")
 
-    expect(toolResult?.text).toContain("1: hello budget")
+    expect(toolResult?.text).toContain("L1#542da631|hello budget")
     expect(toolResult?.text).not.toContain("Result spilled to")
   })
 

@@ -1028,7 +1028,7 @@ describe("runtime observability", () => {
       runId: "run_trace_microcompact_history",
       toolName: "read",
       resultCount: 7,
-      output: "1: previous read output\n2: " + "x".repeat(600),
+      output: "L1#839b9d95|previous read output\nL2#5130b33e|" + "x".repeat(600),
     })
 
     const started = startPromptRun({
@@ -2242,11 +2242,11 @@ function seedLegacyAssistantToolReplayRun(input: {
     messageId: assistantMessage.id,
     kind: "tool_result",
     sequence: 1,
-    text: "1: README contents",
+    text: "L1#5ce914f5|README contents",
     data: {
       callId: "call_legacy_read",
       toolName: "read",
-      output: "1: README contents",
+      output: "L1#5ce914f5|README contents",
     },
   })
 }

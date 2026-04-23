@@ -24,6 +24,11 @@ import { createRuntime } from "../../src/bootstrap"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
+const README_READ_OUTPUT = [
+  "L1#f1469abc|# demo workspace",
+  "L2#e3b0c442|",
+  "L3#d806ab8e|This fixture exists for the read-only tool tests.",
+].join("\n")
 
 afterEach(async () => {
   while (openDatabases.length > 0) {
@@ -105,7 +110,7 @@ describe("agent loop", () => {
             type: "tool_result",
             callId: "call_1",
             toolName: "read",
-            output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
+            output: README_READ_OUTPUT,
           },
         ],
       },
@@ -118,11 +123,11 @@ describe("agent loop", () => {
     ])
     expect(activeRunMessages[1]?.parts[2]).toMatchObject({
       kind: "tool_result",
-      text: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
+      text: README_READ_OUTPUT,
       data: {
         callId: "call_1",
         toolName: "read",
-        output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
+        output: README_READ_OUTPUT,
       },
     })
     expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Summary complete." }])
@@ -202,7 +207,7 @@ describe("agent loop", () => {
           type: "tool_result",
           callId: "call_read",
           toolName: "read",
-          output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
+          output: README_READ_OUTPUT,
         },
       ],
     })
@@ -290,7 +295,7 @@ describe("agent loop", () => {
           type: "tool_result",
           callId: "call_read",
           toolName: "read",
-          output: "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
+          output: README_READ_OUTPUT,
         },
       ],
     })

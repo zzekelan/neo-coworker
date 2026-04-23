@@ -57,7 +57,8 @@ describe("read tool enhancements", () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()
 
-    const line = "a".repeat(119) + "\n"
+    const visibleLine = "a".repeat(119)
+    const line = `${visibleLine}\n`
     const lines = Math.ceil((3 * 1024 * 1024) / line.length)
     const content = line.repeat(lines)
     await writeFile(join(workspaceRoot, "large.txt"), content)
@@ -69,6 +70,7 @@ describe("read tool enhancements", () => {
     })
 
     expect(result.output.length).toBeLessThan(2 * 1024 * 1024)
+    expect(result.output).toStartWith(formatAnchorLine(1, visibleLine))
     expect(result.output.toLowerCase()).toMatch(/truncat/)
     expect(result.isError).toBeFalsy()
   })
@@ -110,7 +112,7 @@ describe("read tool enhancements", () => {
     ).rejects.toThrow("Path must stay inside workspace")
   })
 
-  test("line numbering: each line is prefixed with its 1-based line number", async () => {
+  test("full-file reads emit anchored lines with visible line numbers", async () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()
 
@@ -122,9 +124,48 @@ describe("read tool enhancements", () => {
       workspaceRoot,
     })
 
-    expect(result.output).toContain("1: alpha")
-    expect(result.output).toContain("2: beta")
-    expect(result.output).toContain("3: gamma")
+    expect(result.output).toBe([
+      formatAnchorLine(1, "alpha"),
+      formatAnchorLine(2, "beta"),
+      formatAnchorLine(3, "gamma"),
+    ].join("\n"))
+  })
+
+  test("offset and limit reads preserve anchored line numbering", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await makeTmpWorkspace()
+
+    await writeFile(join(workspaceRoot, "window.txt"), "alpha\nbeta\ngamma\ndelta\n")
+
+    const result = await registry.execute({
+      toolName: "read",
+      args: { path: "window.txt", offset: 2, limit: 2 },
+      workspaceRoot,
+    })
+
+    expect(result.output).toBe([
+      formatAnchorLine(2, "beta"),
+      formatAnchorLine(3, "gamma"),
+    ].join("\n"))
+  })
+
+  test("blank lines remain anchorable in read output", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await makeTmpWorkspace()
+
+    await writeFile(join(workspaceRoot, "blank-lines.txt"), "alpha\n\nbeta\n")
+
+    const result = await registry.execute({
+      toolName: "read",
+      args: { path: "blank-lines.txt" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toBe([
+      formatAnchorLine(1, "alpha"),
+      formatAnchorLine(2, ""),
+      formatAnchorLine(3, "beta"),
+    ].join("\n"))
   })
 
   test("anchor helper formats canonical lines for visible content and blank lines", () => {
@@ -185,6 +226,32 @@ describe("read tool enhancements", () => {
       },
     ])
     expect(formatAnchorLine(lines[0].lineNumber, lines[0].displayContent)).toBe("L1#8ed3f6ad|alpha")
+  })
+
+  test("read uses anchored output for CRLF text and excludes first-line BOM from display and hash", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await makeTmpWorkspace()
+
+    await writeFile(join(workspaceRoot, "bom-crlf.txt"), "\ufeffalpha\r\n\r\nbeta\r\n")
+
+    const result = await registry.execute({
+      toolName: "read",
+      args: { path: "bom-crlf.txt" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toBe([
+      formatAnchorLine(1, "alpha"),
+      formatAnchorLine(2, ""),
+      formatAnchorLine(3, "beta"),
+    ].join("\n"))
+  })
+
+  test("read tool metadata documents the anchored output contract", () => {
+    const tool = createReadTool()
+
+    expect(tool.description).toContain("L{lineNumber}#{hash8}|{content}")
+    expect(tool.usageGuidance).toContain("L...#hash")
   })
 
   test("malformed anchor strings are rejected with exact error codes", () => {

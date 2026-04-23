@@ -195,7 +195,7 @@ describe("eval runner", () => {
       orderedTextIncludes: ["Read README heading.", "The heading is # demo workspace."],
       observedTexts: expect.arrayContaining([
         "Read README heading.\n",
-        "1: # demo workspace\n2: \n3: This fixture exists for the read-only tool tests.",
+        "L1#f1469abc|# demo workspace\nL2#e3b0c442|\nL3#d806ab8e|This fixture exists for the read-only tool tests.",
         "The heading is # demo workspace.",
       ]),
       missingOrderedTexts: [],

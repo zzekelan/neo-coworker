@@ -110,7 +110,7 @@ describe("integration: bootstrap parallelization wiring", () => {
       "call_read_alpha",
       "call_glob_txt",
     ])
-    expect(toolResults[0]?.text).toContain("1: alpha")
+    expect(toolResults[0]?.text).toContain("L1#8ed3f6ad|alpha")
     expect(toolResults[1]?.text).toContain("alpha.txt")
     expect(toolResults[1]?.text).toContain("beta.txt")
   })

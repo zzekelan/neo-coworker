@@ -6,6 +6,7 @@ import {
   throwIfToolAborted,
   type ToolDefinition,
 } from "../../domain"
+import { formatAnchorLine, splitLinesWithMetadata } from "./hash-anchor"
 
 declare const Bun: {
   file(path: string): {
@@ -27,6 +28,12 @@ const BLOCKED_DEVICE_PREFIXES = ["/dev/", "/proc/", "/sys/"]
 const MAX_FILE_BYTES = 2 * 1024 * 1024
 const MAX_TEXT_SLICE_BYTES = 1024 * 1024
 
+function formatReadOutput(text: string): string {
+  return splitLinesWithMetadata(text)
+    .map((line) => formatAnchorLine(line.lineNumber, line.displayContent))
+    .join("\n")
+}
+
 const ReadArgsSchema = z.object({
   path: z.string().describe(
     "Workspace-relative path to the file to read, e.g. `src/tool/infrastructure/builtins/read.ts` or `docs/ARCHITECTURE.md`. Must stay inside the workspace root.",
@@ -38,7 +45,7 @@ const ReadArgsSchema = z.object({
     "Optional maximum number of lines to return. Example: `limit: 100` returns at most 100 lines. When used with `offset`, forms a precise line window.",
   ),
 }).describe(
-  "Read a UTF-8 text file from the workspace. Use this tool to inspect source code, configs, or docs before editing. Prefer this over `grep` when you need full file context, and over `glob` when you already know the exact path. Binary files (.png, .zip, .exe, etc.) are detected by extension and rejected with a descriptive message. Files over 2 MB are automatically truncated — use `offset` and `limit` to read specific line windows of large files. Each returned line is prefixed with its 1-based line number.",
+  "Read a UTF-8 text file from the workspace. Use this tool to inspect source code, configs, or docs before editing. Prefer this over `grep` when you need full file context, and over `glob` when you already know the exact path. Binary files (.png, .zip, .exe, etc.) are detected by extension and rejected with a descriptive message. Files over 2 MB are automatically truncated — use `offset` and `limit` to read specific line windows of large files. Each returned line is formatted as `L{lineNumber}#{hash8}|{content}` so the visible line number and stable hash anchor stay together; blank lines render like `L12#e3b0c442|`.",
 )
 
 function isBinaryExtension(filePath: string): boolean {
@@ -68,12 +75,12 @@ export function createReadTool(): ToolDefinition {
   return {
     name: "read",
     description:
-      "Read a UTF-8 text file from the workspace. Use this tool to inspect source code, configs, or docs before editing. Prefer this over `grep` when you need full file context, and over `glob` when you already know the exact path. Binary files are detected by extension and rejected with a descriptive message. Files over 2 MB are automatically truncated — use `offset` and `limit` to read specific line windows of large files. Each returned line is prefixed with its 1-based line number.",
+      "Read a UTF-8 text file from the workspace. Use this tool to inspect source code, configs, or docs before editing. Prefer this over `grep` when you need full file context, and over `glob` when you already know the exact path. Binary files are detected by extension and rejected with a descriptive message. Files over 2 MB are automatically truncated — use `offset` and `limit` to read specific line windows of large files. Each returned line is formatted as `L{lineNumber}#{hash8}|{content}` so the visible line number and stable hash anchor stay together; blank lines render like `L12#e3b0c442|`.",
     inputSchema: ReadArgsSchema,
     concurrency: "read-only",
     isCompressible: true,
     resultSizeLimit: 100000,
-    usageGuidance: "Use `offset` and `limit` to navigate large files. Use `grep` to search within files. Use `glob` to discover file paths.",
+    usageGuidance: "Use `offset` and `limit` to navigate large files. Read results return anchored lines like `L24#1a2b3c4d|const value = 1`; reuse the `L...#hash` prefix before `|` when you need to cite or edit exact lines. Use `grep` to search within files. Use `glob` to discover file paths.",
     async execute(input) {
       throwIfToolAborted(input.signal)
       const { path, offset, limit } = ReadArgsSchema.parse(input.args)
@@ -120,36 +127,26 @@ export function createReadTool(): ToolDefinition {
       if (offset === undefined && limit === undefined) {
         if (fileSizeBytes > MAX_FILE_BYTES) {
           const text = await fileInfo.text()
-          const truncated = text.slice(0, MAX_TEXT_SLICE_BYTES)
-          const lines = truncated.split(/\r?\n/g)
-          if (lines.at(-1) === "") lines.pop()
-          const numbered = lines.map((line, i) => `${i + 1}: ${line}`).join("\n")
-          const totalLines = text.split(/\r?\n/g).length
+          const truncated = formatReadOutput(text.slice(0, MAX_TEXT_SLICE_BYTES))
+          const totalLines = splitLinesWithMetadata(text).length
           return {
-            output: `${numbered}\n\n[Truncated: file is ${(fileSizeBytes / 1024 / 1024).toFixed(1)} MB. Showing first ${lines.length} of ~${totalLines} lines. Use offset and limit to read specific sections.]`,
+            output: `${truncated}\n\n[Truncated: file is ${(fileSizeBytes / 1024 / 1024).toFixed(1)} MB. Showing first ${splitLinesWithMetadata(text.slice(0, MAX_TEXT_SLICE_BYTES)).length} of ~${totalLines} lines. Use offset and limit to read specific sections.]`,
           }
         }
 
         const text = await fileInfo.text()
-        const lines = text.split(/\r?\n/g)
-        if (text.endsWith("\n") && lines.at(-1) === "") {
-          lines.pop()
-        }
         return {
-          output: lines.map((line, i) => `${i + 1}: ${line}`).join("\n"),
+          output: formatReadOutput(text),
         }
       }
 
       const text = await fileInfo.text()
-      const lines = text.split(/\r?\n/g)
-      if (text.endsWith("\n") && lines.at(-1) === "") {
-        lines.pop()
-      }
+      const lines = splitLinesWithMetadata(text)
 
       const start = (offset ?? 1) - 1
       const selectedLines = limit === undefined ? lines.slice(start) : lines.slice(start, start + limit)
       const output = selectedLines
-        .map((line, index) => `${start + index + 1}: ${line}`)
+        .map((line) => formatAnchorLine(line.lineNumber, line.displayContent))
         .join("\n")
 
       return { output }
