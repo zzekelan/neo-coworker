@@ -1,3 +1,16 @@
+type EditAnchorOperation = "replace" | "prepend" | "append"
+
+type EditAnchorTelemetryBase = {
+  sessionId: string
+  runId: string
+  path: string
+  operation: EditAnchorOperation
+  rangeLength: number
+  durationMs: number
+  fallbackUsed: false
+  fileSizeBytes?: number
+}
+
 export type ToolObserverEvent =
   | {
       type: "tool.listed"
@@ -114,6 +127,21 @@ export type ToolObserverEvent =
         prunedCount: number
         remainingCount: number
       }
+    }
+  | ({
+      type: "edit.anchor.success"
+    } & EditAnchorTelemetryBase)
+  | ({
+      type: "edit.anchor.failure"
+      failureReason: string
+    } & EditAnchorTelemetryBase)
+  | {
+      type: "file.lock.waited"
+      sessionId: string
+      runId: string
+      path: string
+      operation: EditAnchorOperation
+      durationMs: number
     }
 
 export type ToolObserverPort = {

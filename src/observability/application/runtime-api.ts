@@ -4,6 +4,7 @@ import type {
   RunEventData,
   RunEventSource,
 } from "./ports/repository"
+import type { ToolObserverEvent } from "../../tool/application"
 
 export type CreateObservabilityRuntimeApiInput = {
   repository: ObservabilityRepository
@@ -111,7 +112,7 @@ export function createObservabilityRuntimeApi(input: CreateObservabilityRuntimeA
       },
     },
     toolObserver: {
-      recordToolEvent(event: RuntimeObserverEvent & { sessionId: string; runId: string }) {
+      recordToolEvent(event: ToolObserverEvent) {
         const normalized = splitObservedEvent(event)
 
         return recordRunEvent({
@@ -201,7 +202,7 @@ export function createNoopObservabilityRuntimeApi() {
       },
     },
     toolObserver: {
-      recordToolEvent(_event: RuntimeObserverEvent & { sessionId: string; runId: string }) {
+      recordToolEvent(_event: ToolObserverEvent) {
         return null
       },
     },

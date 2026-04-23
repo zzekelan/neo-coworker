@@ -71,6 +71,7 @@ export type ModelProvider = {
 export function createModelProvider(input: {
   runtime: ModelRuntimeApi
   observer?: ModelObserverPort
+  replayGuard?: unknown
 }): ModelProvider {
   const sessionThinkingOverrides = new Set<string>()
 

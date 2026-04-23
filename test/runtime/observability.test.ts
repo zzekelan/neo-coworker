@@ -1071,6 +1071,128 @@ describe("runtime observability", () => {
     })
   })
 
+  test("records anchor edit success telemetry without persisting source snippets", async () => {
+    const harness = await createHarness("trace-anchor-success", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_anchor_success",
+      messageId: "message_trace_anchor_success",
+      prompt: "Record successful anchor edit telemetry",
+    })
+
+    harness.observability.toolObserver.recordToolEvent({
+      type: "edit.anchor.success",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      path: "src/tool/infrastructure/builtins/edit.ts",
+      operation: "replace",
+      rangeLength: 1,
+      durationMs: 9,
+      fallbackUsed: false,
+      fileSizeBytes: 2048,
+    })
+    harness.observability.toolObserver.recordToolEvent({
+      type: "file.lock.waited",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      path: "src/tool/infrastructure/builtins/edit.ts",
+      operation: "replace",
+      durationMs: 4,
+    })
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    expect(trace).not.toBeNull()
+    expect(readEventTypes(trace?.events ?? [])).toEqual([
+      "edit.anchor.success",
+      "file.lock.waited",
+    ])
+
+    const successEvent = trace?.events.find((event) => event.eventType === "edit.anchor.success")
+    expect(successEvent).toEqual(
+      expect.objectContaining({
+        source: "tool",
+        data: {
+          path: "src/tool/infrastructure/builtins/edit.ts",
+          operation: "replace",
+          rangeLength: 1,
+          durationMs: 9,
+          fallbackUsed: false,
+          fileSizeBytes: 2048,
+        },
+      }),
+    )
+    expect(successEvent?.data).not.toHaveProperty("content")
+    expect(successEvent?.data).not.toHaveProperty("insertedContent")
+    expect(successEvent?.data).not.toHaveProperty("oldText")
+    expect(successEvent?.data).not.toHaveProperty("newText")
+
+    const persistedRunEventJson = readPersistedRunEventJson({
+      databasePath: harness.databasePath,
+      runId: started.run.id,
+    })
+    expect(persistedRunEventJson.join("\n")).not.toContain("private source snippet")
+    expect(persistedRunEventJson.join("\n")).not.toContain("inserted replacement text")
+  })
+
+  test("records stale anchor failure telemetry without persisting content", async () => {
+    const harness = await createHarness("trace-anchor-stale", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_anchor_stale",
+      messageId: "message_trace_anchor_stale",
+      prompt: "Record stale anchor telemetry",
+    })
+
+    harness.observability.toolObserver.recordToolEvent({
+      type: "edit.anchor.failure",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      path: "src/tool/infrastructure/builtins/edit.ts",
+      operation: "replace",
+      rangeLength: 1,
+      durationMs: 7,
+      fallbackUsed: false,
+      fileSizeBytes: 2048,
+      failureReason: "stale_anchor",
+    })
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    expect(trace).not.toBeNull()
+    expect(readEventTypes(trace?.events ?? [])).toEqual(["edit.anchor.failure"])
+
+    const failureEvent = trace?.events[0]
+    expect(failureEvent).toEqual(
+      expect.objectContaining({
+        source: "tool",
+        eventType: "edit.anchor.failure",
+        data: {
+          path: "src/tool/infrastructure/builtins/edit.ts",
+          operation: "replace",
+          rangeLength: 1,
+          durationMs: 7,
+          fallbackUsed: false,
+          fileSizeBytes: 2048,
+          failureReason: "stale_anchor",
+        },
+      }),
+    )
+    expect(failureEvent?.data).not.toHaveProperty("content")
+    expect(failureEvent?.data).not.toHaveProperty("insertedContent")
+    expect(failureEvent?.data).not.toHaveProperty("oldText")
+    expect(failureEvent?.data).not.toHaveProperty("newText")
+
+    const persistedRunEventJson = readPersistedRunEventJson({
+      databasePath: harness.databasePath,
+      runId: started.run.id,
+    })
+    expect(persistedRunEventJson.join("\n")).not.toContain("private source snippet")
+    expect(persistedRunEventJson.join("\n")).not.toContain("inserted replacement text")
+  })
+
   test("records authoritative capability and context source telemetry without persisting reasoning payload text", async () => {
     const directory = await mkdtemp(join(tmpdir(), "trace-capability-authority-"))
     tempDirectories.push(directory)

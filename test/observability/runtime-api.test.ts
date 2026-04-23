@@ -100,6 +100,98 @@ describe("observability runtime api", () => {
     })
   })
 
+  test("records typed edit anchor telemetry through the tool observer path", () => {
+    const harness = createRepository()
+    const runtime = createObservabilityRuntimeApi({
+      repository: harness.repository,
+      now: () => 42,
+    })
+
+    runtime.toolObserver.recordToolEvent({
+      type: "edit.anchor.success",
+      sessionId: "session_1",
+      runId: "run_1",
+      path: "src/tool/infrastructure/builtins/edit.ts",
+      operation: "replace",
+      rangeLength: 1,
+      durationMs: 8,
+      fallbackUsed: false,
+      fileSizeBytes: 512,
+    })
+    runtime.toolObserver.recordToolEvent({
+      type: "edit.anchor.failure",
+      sessionId: "session_1",
+      runId: "run_1",
+      path: "src/tool/infrastructure/builtins/edit.ts",
+      operation: "append",
+      rangeLength: 2,
+      durationMs: 5,
+      fallbackUsed: false,
+      fileSizeBytes: 512,
+      failureReason: "stale_anchor",
+    })
+    runtime.toolObserver.recordToolEvent({
+      type: "file.lock.waited",
+      sessionId: "session_1",
+      runId: "run_1",
+      path: "src/tool/infrastructure/builtins/edit.ts",
+      operation: "replace",
+      durationMs: 3,
+    })
+
+    expect(harness.runEvents).toEqual([
+      {
+        id: "event_1",
+        sessionId: "session_1",
+        runId: "run_1",
+        sequence: 0,
+        source: "tool",
+        eventType: "edit.anchor.success",
+        data: {
+          path: "src/tool/infrastructure/builtins/edit.ts",
+          operation: "replace",
+          rangeLength: 1,
+          durationMs: 8,
+          fallbackUsed: false,
+          fileSizeBytes: 512,
+        },
+        createdAt: 42,
+      },
+      {
+        id: "event_2",
+        sessionId: "session_1",
+        runId: "run_1",
+        sequence: 1,
+        source: "tool",
+        eventType: "edit.anchor.failure",
+        data: {
+          path: "src/tool/infrastructure/builtins/edit.ts",
+          operation: "append",
+          rangeLength: 2,
+          durationMs: 5,
+          fallbackUsed: false,
+          fileSizeBytes: 512,
+          failureReason: "stale_anchor",
+        },
+        createdAt: 42,
+      },
+      {
+        id: "event_3",
+        sessionId: "session_1",
+        runId: "run_1",
+        sequence: 2,
+        source: "tool",
+        eventType: "file.lock.waited",
+        data: {
+          path: "src/tool/infrastructure/builtins/edit.ts",
+          operation: "replace",
+          durationMs: 3,
+        },
+        createdAt: 42,
+      },
+    ])
+  })
+
   test("noop memory and skill observers discard events without throwing", () => {
     const runtime = createNoopObservabilityRuntimeApi()
 

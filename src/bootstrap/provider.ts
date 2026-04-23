@@ -61,6 +61,7 @@ type ModelProviderFactory = (input: {
 export type DefaultProviderInput = {
   env?: Record<string, string | undefined>
   modelObserver?: ModelObserverPort
+  replayGuard?: unknown
   resolvedCapabilities?: ResolvedProviderCapabilities
   createClient?: (config: OpenAIClientConfig) => OpenAI
   createOpenAIProviderImpl?: ModelProviderFactory

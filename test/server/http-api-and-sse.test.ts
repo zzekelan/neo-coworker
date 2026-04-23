@@ -776,6 +776,90 @@ describe("server HTTP API and SSE", () => {
     )
   })
 
+  test("exports anchor telemetry events over the run trace endpoint", async () => {
+    const harness = await createHarness("server-http-anchor-trace", createTurnProvider([]))
+    const session = harness.repository.sessions.create({
+      id: "session_anchor_trace",
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: harness.now(),
+    })
+    harness.repository.runs.create({
+      id: "run_anchor_trace",
+      sessionId: session.id,
+      trigger: "prompt",
+      status: "completed",
+      createdAt: harness.now(),
+    })
+
+    const observability = createObservabilityRuntimeApi({
+      repository: createObservabilityRepository({
+        database: harness.database,
+        now: harness.now,
+      }),
+      now: harness.now,
+    })
+    observability.toolObserver.recordToolEvent({
+      type: "edit.anchor.success",
+      sessionId: session.id,
+      runId: "run_anchor_trace",
+      path: "src/tool/infrastructure/builtins/edit.ts",
+      operation: "append",
+      rangeLength: 1,
+      durationMs: 11,
+      fallbackUsed: false,
+      fileSizeBytes: 1024,
+    })
+    observability.toolObserver.recordToolEvent({
+      type: "edit.anchor.failure",
+      sessionId: session.id,
+      runId: "run_anchor_trace",
+      path: "src/tool/infrastructure/builtins/edit.ts",
+      operation: "replace",
+      rangeLength: 1,
+      durationMs: 6,
+      fallbackUsed: false,
+      fileSizeBytes: 1024,
+      failureReason: "stale_anchor",
+    })
+
+    const exportedTrace = await requestJson(harness.server, "GET", "/runs/run_anchor_trace/trace")
+    expect(exportedTrace.status).toBe(200)
+    expect(exportedTrace.body.data.trace).toMatchObject({
+      sessionId: session.id,
+      runId: "run_anchor_trace",
+    })
+    expect(exportedTrace.body.data.trace.events).toEqual([
+      expect.objectContaining({
+        source: "tool",
+        eventType: "edit.anchor.success",
+        data: {
+          path: "src/tool/infrastructure/builtins/edit.ts",
+          operation: "append",
+          rangeLength: 1,
+          durationMs: 11,
+          fallbackUsed: false,
+          fileSizeBytes: 1024,
+        },
+      }),
+      expect.objectContaining({
+        source: "tool",
+        eventType: "edit.anchor.failure",
+        data: {
+          path: "src/tool/infrastructure/builtins/edit.ts",
+          operation: "replace",
+          rangeLength: 1,
+          durationMs: 6,
+          fallbackUsed: false,
+          fileSizeBytes: 1024,
+          failureReason: "stale_anchor",
+        },
+      }),
+    ])
+    expect(JSON.stringify(exportedTrace.body.data.trace.events)).not.toContain("private source snippet")
+    expect(JSON.stringify(exportedTrace.body.data.trace.events)).not.toContain("inserted replacement text")
+  })
+
   test("failed prompt persistence does not leave the session busy", async () => {
     let failNextPromptWrite = true
     const harness = await createHarness(
