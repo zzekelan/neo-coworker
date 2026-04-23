@@ -63,24 +63,56 @@ async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: st
       throw error
     }
 
-    const parentDir = await realpath(resolve(target, ".."))
-
-    if (parentDir !== root && !parentDir.startsWith(`${root}${sep}`)) {
-      throw new Error(`Path must stay inside workspace: ${relativePath}`)
-    }
-
-    const relativeParent = relative(root, parentDir)
-    if (relativeParent) {
-      assertWorkspacePathNotReserved(relativeParent)
-    }
-
-    const fileName = relativePath.replaceAll("\\", "/").split("/").filter(Boolean).at(-1)
+    const pathSegments = relativePath.replaceAll("\\", "/").split("/").filter(Boolean)
+    const fileName = pathSegments.at(-1)
     if (!fileName) {
       throw new Error(`Path must reference a file inside workspace: ${relativePath}`)
     }
 
-    const resolvedTarget = resolve(parentDir, fileName)
-    if (resolvedTarget === root || !resolvedTarget.startsWith(`${parentDir}${sep}`)) {
+    const parentSegments = pathSegments.slice(0, -1)
+    let existingParentDir = root
+    let firstMissingIndex = parentSegments.length
+
+    for (const [index, segment] of parentSegments.entries()) {
+      const candidate = resolve(existingParentDir, segment)
+
+      try {
+        const resolvedCandidate = await realpath(candidate)
+        if (resolvedCandidate !== root && !resolvedCandidate.startsWith(`${root}${sep}`)) {
+          throw new Error(`Path must stay inside workspace: ${relativePath}`)
+        }
+
+        const relativeCandidate = relative(root, resolvedCandidate)
+        if (relativeCandidate) {
+          assertWorkspacePathNotReserved(relativeCandidate)
+        }
+
+        existingParentDir = resolvedCandidate
+      } catch (parentError) {
+        if ((parentError as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw parentError
+        }
+
+        firstMissingIndex = index
+        break
+      }
+    }
+
+    for (const segment of parentSegments.slice(firstMissingIndex)) {
+      existingParentDir = resolve(existingParentDir, segment)
+    }
+
+    if (existingParentDir !== root && !existingParentDir.startsWith(`${root}${sep}`)) {
+      throw new Error(`Path must stay inside workspace: ${relativePath}`)
+    }
+
+    const relativeParent = relative(root, existingParentDir)
+    if (relativeParent) {
+      assertWorkspacePathNotReserved(relativeParent)
+    }
+
+    const resolvedTarget = resolve(existingParentDir, fileName)
+    if (resolvedTarget === root || !resolvedTarget.startsWith(`${existingParentDir}${sep}`)) {
       throw new Error(`Path must stay inside workspace: ${relativePath}`)
     }
 
