@@ -484,6 +484,63 @@ describe("orchestration prompt composer", () => {
     expect(shellIndex).toBeGreaterThan(-1)
     expect(readIndex).toBeLessThan(shellIndex)
   })
+
+  test("runtime default prompt can inject anchor-only edit guidance", async () => {
+    const observedRequests: OrchestrationModelTurnRequest[] = []
+    const session = createSessionPortStub()
+    const model: OrchestrationModelPort = {
+      projectTurn() {
+        return { inputTokens: 128 }
+      },
+      async *streamTurn(request) {
+        observedRequests.push(request)
+        yield {
+          type: "usage",
+          inputTokens: 128,
+          outputTokens: 0,
+          source: "estimated",
+        } as const
+      },
+    }
+
+    const runtime = createOrchestrationRuntimeApi({
+      model,
+      session,
+      skill: createSkillPortStub(),
+      permission: createPermissionPortStub(),
+      tools: createToolPortFactoryStub([
+        {
+          name: "edit",
+          description: "Anchor-only edit tool",
+          concurrency: "mutating",
+          usageGuidance:
+            "Read the file immediately before editing. Copy the anchor string from read output and preserve the `L{line}#{hash}` prefix exactly in `start` and optional `end`. Use `end` only for a multi-line `replace` range or when `append` should insert after a later line than `start`; `prepend` should use only `start`. Preserve `content` exactly, including indentation and newlines, and do not add line numbers or anchor prefixes inside `content`.",
+          isCompressible: false,
+        },
+      ]),
+      activeRuns: createInMemoryActiveRunRegistry(),
+      permissionPolicy: allowAllPermissionPolicy,
+      now: () => Date.parse("2026-04-07T00:00:00.000Z"),
+    })
+
+    const handle = await runtime.run({
+      sessionId: "session-1",
+      runId: "run-1",
+    })
+
+    for await (const _event of handle.events) {
+    }
+
+    const finalRequest = observedRequests.at(-1)
+    expect(finalRequest).toBeDefined()
+    expect(finalRequest?.systemPrompt).toContain("### Tool: edit")
+    expect(finalRequest?.systemPrompt).toContain("L{line}#{hash}")
+    expect(finalRequest?.systemPrompt).toContain("append` should insert after a later line than `start")
+    expect(finalRequest?.systemPrompt).toContain("Preserve `content` exactly")
+    expect(finalRequest?.systemPrompt).not.toContain("oldText")
+    expect(finalRequest?.systemPrompt).not.toContain("newText")
+    expect(finalRequest?.systemPrompt).not.toContain("replaceAll")
+  })
 })
 
 const allowAllPermissionPolicy: OrchestrationPermissionPolicy = {

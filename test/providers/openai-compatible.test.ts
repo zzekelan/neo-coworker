@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type OpenAI from "openai"
 import { z } from "zod"
 import { createOpenAICompatibleProvider } from "../../src/model"
+import { createEditTool } from "../../src/tool"
 
 type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming
 type OpenAIRequestOptions = OpenAI.RequestOptions
@@ -900,5 +901,90 @@ describe("openai-compatible provider", () => {
         },
       ],
     })
+  })
+
+  test("serializes anchor-only edit tool parameters and omits legacy edit fields", async () => {
+    let receivedBody: unknown
+
+    const provider = createProvider({
+      model: "kimi-k2.5",
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
+    })
+
+    const editTool = createEditTool({
+      requestPermission: async () => ({
+        requestId: "permission_auto",
+        decision: "allow",
+      }),
+    })
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [
+        {
+          name: editTool.name,
+          description: editTool.description,
+          inputSchema: editTool.inputSchema!,
+        },
+      ],
+      signal: new AbortController().signal,
+    })) {
+      void _event
+    }
+
+    const parameters = (receivedBody as {
+      tools: Array<{
+        function: {
+          parameters: {
+            properties: Record<string, unknown>
+            required: string[]
+          }
+        }
+      }>
+    }).tools[0]?.function.parameters
+
+    expect(parameters).toEqual({
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            "Workspace-relative path to the existing file you want to modify, such as `src/app/main.ts`. The file must exist and be under 500 KB.",
+        },
+        operation: {
+          type: "string",
+          enum: ["replace", "prepend", "append"],
+          description:
+            "Edit operation to apply at the anchored location. Use `replace` to replace the inclusive span from `start` through `end` (or only `start` when `end` is omitted), `prepend` to insert `content` before the `start` anchor line, or `append` to insert `content` after `end` when `end` is provided, otherwise after `start`.",
+        },
+        start: {
+          type: "string",
+          description:
+            "Anchor string copied from read output for the first targeted line. Reuse the exact anchor beginning with `L{line}#{hash}` from the latest read output.",
+        },
+        end: {
+          type: "string",
+          description:
+            "Optional anchor string copied from read output for the last targeted line. Use it for a multi-line `replace` span or when `append` should insert after a later line than `start`. Do not pass `end` for `prepend`. Reuse the exact anchor beginning with `L{line}#{hash}` from the latest read output.",
+        },
+        content: {
+          type: "string",
+          description:
+            "Content to insert exactly as written. Preserve indentation, spacing, and newlines exactly, and do not include read-output line numbers or anchor prefixes inside `content`.",
+        },
+      },
+      required: ["path", "operation", "start", "content"],
+      additionalProperties: false,
+      description:
+        "Modify an existing workspace file using line anchors copied from read output. Read the file first, then copy the relevant anchor strings that begin with `L{line}#{hash}` into `start` and optional `end`. Use `replace` to replace the inclusive anchored range from `start` through `end` (or just `start` when `end` is omitted), `prepend` to insert `content` before the `start` anchor line, or `append` to insert `content` after `end` when `end` is provided, otherwise after `start`. This tool requires permission. Files larger than 500 KB are rejected. Paths must stay inside the workspace. Preserve inserted content exactly as written.",
+    })
+
+    expect(parameters.properties).not.toHaveProperty("oldText")
+    expect(parameters.properties).not.toHaveProperty("newText")
+    expect(parameters.properties).not.toHaveProperty("replaceAll")
   })
 })
