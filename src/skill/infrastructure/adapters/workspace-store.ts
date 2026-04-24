@@ -90,8 +90,8 @@ async function loadSkillFromPath(
   workspaceRoot: string,
   skillPath: string,
 ): Promise<LoadedSkill> {
-  assertSkillEntrypointPath(skillPath)
   const file = await resolveSkillCatalogPath(workspaceRoot, skillPath)
+  assertSkillEntrypointPath(skillPath)
   const packageDirectory = dirname(file)
   const instructions = await readFile(file, "utf8")
   const metadata = parseSkillMetadata(instructions, skillPath.split("/").at(-2) ?? skillPath)
