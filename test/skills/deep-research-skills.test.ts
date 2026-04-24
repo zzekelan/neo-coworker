@@ -51,6 +51,24 @@ describe("deep research built-in skills", () => {
         "research/finding-synthesis/SKILL.md",
       ])
 
+      for (const pkg of packages) {
+        const skillContent = await readFile(join(result.root, "research", pkg.name, "SKILL.md"), "utf8")
+
+        expect(skillContent).toStartWith("---\n")
+        expect(skillContent).toContain(`name: ${pkg.name}`)
+        expect(skillContent).toContain("description:")
+        expect(skillContent).toContain("version: 1")
+        expect(skillContent).toContain("\n---\n\n")
+      }
+
+      const sourceNoteContent = await readFile(
+        join(result.root, "research", "source-note", "SKILL.md"),
+        "utf8",
+      )
+      expect(sourceNoteContent).toContain("Do not create skills")
+      expect(sourceNoteContent).toContain("Do not write `.ncoworker/skills/**`")
+      expect(sourceNoteContent).toContain("Do not fabricate sources")
+
       const artifactReference = await readFile(
         join(
           result.root,

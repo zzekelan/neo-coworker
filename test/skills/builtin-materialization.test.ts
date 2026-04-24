@@ -77,12 +77,14 @@ describe("built-in skill materialization", () => {
           },
         ],
       })
-      await expect(readFile(deepResearchSkill, "utf8")).resolves.toContain(
-        "name: deep-research",
-      )
-      await expect(readFile(deepResearchSkill, "utf8")).resolves.toContain(
+      const deepResearchContent = await readFile(deepResearchSkill, "utf8")
+      expect(deepResearchContent).toStartWith("---\n")
+      expect(deepResearchContent).toContain("\n---\n\n")
+      expect(deepResearchContent).toContain("name: deep-research")
+      expect(deepResearchContent).toContain(
         "description: Plan and record file-based Deep Research artifacts",
       )
+      expect(deepResearchContent).toContain("version: 1")
 
       const rootEntries = await readdir(builtinRoot)
       expect(rootEntries.sort()).toEqual([".manifest.json", "research"])
