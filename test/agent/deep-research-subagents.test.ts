@@ -145,7 +145,7 @@ function createSubAgentInput(
   }
 
   return {
-    profile: getBuiltinAgent("source-note")!,
+    profile: getBuiltinAgent("source-researcher")!,
     prompt: "Collect source notes for the authentication docs.",
     sessionId: "session-parent",
     parentRunId: "parent-run",
@@ -274,21 +274,22 @@ function createSubAgentInput(
   }
 }
 
-describe("Deep Research source-note subagents", () => {
+describe("Deep Research source researcher subagents", () => {
   test("primary prompt describes adaptive 0-5 source collection fanout", () => {
     const prompt = composeAgentAwarePrompt(promptContext, getBuiltinAgent("deep-research"))
 
-    expect(prompt).toContain("adaptive 0-5 source-note subagents")
+    expect(prompt).toContain("adaptive 0-5 Source Researcher subagents")
     expect(prompt).toContain("research breadth and uncertainty")
     expect(prompt).toContain("agent")
-    expect(prompt).toContain("source-note")
+    expect(prompt).toContain("source-researcher")
   })
 
-  test("registers a source-note builtin subagent with the source-note skill contract", () => {
-    const agent = getBuiltinAgent("source-note")
+  test("registers a source researcher builtin subagent with the source-note skill contract", () => {
+    const agent = getBuiltinAgent("source-researcher")
 
     expect(agent).toMatchObject({
-      name: "source-note",
+      name: "source-researcher",
+      displayName: "Source Researcher",
       description: "Source note collector",
       skills: ["research/source-note"],
       parallel: true,
@@ -305,7 +306,7 @@ describe("Deep Research source-note subagents", () => {
     }
   })
 
-  test("can dispatch source-note through the existing agent tool mechanics", async () => {
+  test("can dispatch source researcher through the existing agent tool mechanics", async () => {
     const delegatedProfiles: string[] = []
     const tool = createAgentTool({
       sessionId: "session-parent",
@@ -320,18 +321,18 @@ describe("Deep Research source-note subagents", () => {
 
     const result = await tool.execute({
       args: {
-        agent: "source-note",
+        agent: "source-researcher",
         prompt: "Collect source notes for docs and weak claims.",
       },
     })
 
     expect(result).toEqual({ output: "source notes returned" })
     expect(delegatedProfiles).toEqual([
-      "source-note:research/source-note:Collect source notes for docs and weak claims.",
+      "source-researcher:research/source-note:Collect source notes for docs and weak claims.",
     ])
   })
 
-  test("source-note subagent activates research/source-note instead of inheriting primary skills", async () => {
+  test("source researcher subagent activates research/source-note instead of inheriting primary skills", async () => {
     const loadedSkills: string[] = []
     const queuedActiveSkills: string[][] = []
     let builtPrompt = ""
@@ -370,7 +371,7 @@ describe("Deep Research source-note subagents", () => {
   })
 
   test("weak source contract quarantines low reliability as caveat/open-question candidate", () => {
-    const prompt = composeAgentAwarePrompt(promptContext, getBuiltinAgent("source-note"))
+    const prompt = composeAgentAwarePrompt(promptContext, getBuiltinAgent("source-researcher"))
 
     expect(prompt).toContain("low reliability")
     expect(prompt).toContain("caveat/open-question candidate")

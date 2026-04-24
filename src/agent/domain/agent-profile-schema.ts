@@ -2,6 +2,7 @@ import { z } from "zod"
 
 export const AgentProfileSchema = z.object({
   name: z.string(),
+  displayName: z.string().optional(),
   description: z.string().optional(),
   tools: z.union([z.array(z.string()), z.tuple([z.literal("*")])]).optional(),
   disallowedTools: z.array(z.string()).optional(),

@@ -35,7 +35,7 @@ describe("deep research builtin agent", () => {
     expect(agent?.tools).toBeUndefined()
     expect(agent?.systemPromptOverride).toBeUndefined()
     expect(listPrimaryBuiltinAgents().map((profile) => profile.name)).toEqual([
-      "default",
+      "general",
       "plan",
       "deep-research",
     ])

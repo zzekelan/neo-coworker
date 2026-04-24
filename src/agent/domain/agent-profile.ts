@@ -1,5 +1,6 @@
 export interface AgentProfile {
   name: string
+  displayName?: string
   description?: string
   tools?: string[] | ["*"]
   disallowedTools?: string[]

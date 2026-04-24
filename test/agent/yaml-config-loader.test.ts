@@ -16,6 +16,7 @@ describe("loadYamlAgentConfig", () => {
         [
           "agents:",
           "  test-agent:",
+          "    displayName: Test Agent",
           "    temperature: 0.5",
           "    isPrimary: true",
           "    description: YAML test agent",
@@ -29,6 +30,7 @@ describe("loadYamlAgentConfig", () => {
       expect(profiles).toHaveLength(1)
       expect(profiles[0]).toMatchObject({
         name: "test-agent",
+        displayName: "Test Agent",
         temperature: 0.5,
         isPrimary: true,
         description: "YAML test agent",
@@ -109,7 +111,7 @@ describe("loadYamlAgentConfig", () => {
         workspaceRoot,
         [
           "agents:",
-          "  default:",
+          "  general:",
           "    tools:",
           "      - read",
         ].join("\n"),
@@ -123,7 +125,7 @@ describe("loadYamlAgentConfig", () => {
         const profiles = await loadYamlAgentConfig(workspaceRoot)
 
         expect(profiles).toHaveLength(1)
-        expect(profiles[0]).toMatchObject({ name: "default" })
+        expect(profiles[0]).toMatchObject({ name: "general" })
         expect(profiles[0]).not.toHaveProperty("tools")
         expect(warnings.some((warning) => warning.includes("Ignoring tools"))).toBe(true)
       } finally {
@@ -172,7 +174,8 @@ describe("createAgentProfileService YAML merge wiring", () => {
         workspaceRoot,
         [
           "agents:",
-          "  default:",
+          "  general:",
+          "    displayName: General Workspace",
           "    temperature: 0.8",
           '    instructions: "From YAML"',
         ].join("\n"),
@@ -183,20 +186,21 @@ describe("createAgentProfileService YAML merge wiring", () => {
         join(workspaceRoot, ".ncoworker", "agents", "default.md"),
         [
           "---",
-          "name: default",
+          "name: general",
           "temperature: 0.5",
           "instructions: From markdown",
           "---",
-          "# Default override",
+          "# General override",
         ].join("\n"),
       )
 
       const service = createAgentProfileService(workspaceRoot)
-      const profile = await service.getProfile("default")
+      const profile = await service.getProfile("general")
 
       expect(profile).toBeDefined()
       expect(profile).toMatchObject({
-        name: "default",
+        name: "general",
+        displayName: "General Workspace",
         description: "General-purpose assistant",
         temperature: 0.5,
         instructions: "From markdown",

@@ -16,7 +16,7 @@ const DEEP_RESEARCH_INSTRUCTIONS = [
   "# Deep Research Workflow",
   "You are the primary Deep Research agent. Produce files-only research artifacts under `.ncoworker/research/**`; do not use ad hoc transcript-only findings as the durable record.",
   "Follow topic reuse and topic update rules: reuse an existing topic directory when the user's request matches prior scope, aliases, or open questions; otherwise create a stable new topic slug. Update the topic brief, findings, open questions, source index, and source records instead of creating duplicate topics.",
-  "Plan source collection with adaptive 0-5 source-note subagents based on research breadth and uncertainty. Use zero subagents for narrow or already-supported claims; dispatch up to five focused `source-note` subagents through the existing `agent` delegation tool when independent source collection would reduce uncertainty.",
+  "Plan source collection with adaptive 0-5 Source Researcher subagents based on research breadth and uncertainty. Use zero subagents for narrow or already-supported claims; dispatch up to five focused `source-researcher` subagents through the existing `agent` delegation tool when independent source collection would reduce uncertainty.",
   "Every finding must preserve the research schema fields, including `Claim` and `Evidence`, and distinguish verified facts from unresolved notes.",
   "Record source acceptance, source rejection, and caveats explicitly: accept only sources that are relevant, attributable, and reliable enough for the claim; reject or quarantine sources that are stale, mismatched, unverifiable, or outside allowed source types; capture limitations as caveats.",
   "Allowed source records are limited to web, docs, and files. Keep source notes structured enough to connect each accepted source to related claims and evidence.",
@@ -25,7 +25,7 @@ const DEEP_RESEARCH_INSTRUCTIONS = [
 
 const SOURCE_NOTE_SUBAGENT_INSTRUCTIONS = [
   "# Source Note Subagent Contract",
-  "You are a source-note collection subagent for Deep Research. Follow the active `research/source-note` skill instructions and return structured source notes; do not write `.ncoworker/research/**` or any durable research artifact directly.",
+  "You are a Source Researcher subagent for Deep Research. Follow the active `research/source-note` skill instructions and return structured source notes; do not write `.ncoworker/research/**` or any durable research artifact directly.",
   "Return only source-note candidates for the primary Deep Research agent to evaluate and write. Do not claim acceptance; the primary agent decides whether a note becomes an accepted source, rejected source, caveat, or open question.",
   "Each structured source note must define these fields exactly: proposed type, title, URL/URI/path, retrieved-at, publisher/author, reliability, relevance, supports, contradicts, key excerpts, caveats, suggested tags.",
   "Allowed proposed type values are limited to web, docs, and files. Do not invent source types outside the canonical research schema.",
@@ -33,8 +33,9 @@ const SOURCE_NOTE_SUBAGENT_INSTRUCTIONS = [
 ].join("\n")
 
 export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
-  default: {
-    name: "default",
+  general: {
+    name: "general",
+    displayName: "General",
     description: "General-purpose assistant",
     isPrimary: true,
     temperature: 1,
@@ -67,8 +68,9 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
     instructions: DEEP_RESEARCH_INSTRUCTIONS,
     skills: ["research/deep-research", "research/finding-synthesis"],
   },
-  "source-note": {
-    name: "source-note",
+  "source-researcher": {
+    name: "source-researcher",
+    displayName: "Source Researcher",
     description: "Source note collector",
     tools: ["read", "grep", "glob", "webfetch", "get_current_datetime"],
     parallel: true,

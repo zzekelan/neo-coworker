@@ -6,12 +6,13 @@ import {
 } from "../../src/agent/domain/builtin-agents"
 
 describe("builtin agents", () => {
-  test("defines the default primary agent", () => {
-    const agent = BUILTIN_AGENTS.default
+  test("defines the general primary agent", () => {
+    const agent = BUILTIN_AGENTS.general
 
     expect(agent).toBeDefined()
     expect(agent).toEqual({
-      name: "default",
+      name: "general",
+      displayName: "General",
       description: "General-purpose assistant",
       isPrimary: true,
       temperature: 1,
@@ -50,8 +51,22 @@ describe("builtin agents", () => {
   test("lists only the primary builtin agents", () => {
     const primaryAgents = listPrimaryBuiltinAgents()
 
-    expect(primaryAgents.map((agent) => agent.name)).toEqual(["default", "plan", "deep-research"])
+    expect(primaryAgents.map((agent) => agent.name)).toEqual(["general", "plan", "deep-research"])
     expect(primaryAgents.every((agent) => agent.isPrimary === true)).toBe(true)
+  })
+
+  test("defines source researcher as a hidden source-note skill subagent", () => {
+    const agent = BUILTIN_AGENTS["source-researcher"]
+
+    expect(agent).toBeDefined()
+    expect(agent.name).toBe("source-researcher")
+    expect(agent.displayName).toBe("Source Researcher")
+    expect(agent.description).toBe("Source note collector")
+    expect(agent.skills).toEqual(["research/source-note"])
+    expect(agent.isPrimary).toBeUndefined()
+    expect(agent.tools).toEqual(["read", "grep", "glob", "webfetch", "get_current_datetime"])
+    expect(agent.parallel).toBe(true)
+    expect(agent.instructions).toContain("research/source-note")
   })
 
   test("keeps subagent definitions untouched", () => {
@@ -83,7 +98,10 @@ describe("builtin agents", () => {
   })
 
   test("returns builtin agents by name", () => {
-    expect(getBuiltinAgent("default")).toBe(BUILTIN_AGENTS.default)
+    expect(getBuiltinAgent("general")).toBe(BUILTIN_AGENTS.general)
+    expect(getBuiltinAgent("default")).toBeUndefined()
+    expect(getBuiltinAgent("source-researcher")).toBe(BUILTIN_AGENTS["source-researcher"])
+    expect(getBuiltinAgent("source-note")).toBeUndefined()
     expect(getBuiltinAgent("plan")).toBe(BUILTIN_AGENTS.plan)
     expect(getBuiltinAgent("missing")).toBeUndefined()
   })
