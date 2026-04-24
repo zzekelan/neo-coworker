@@ -106,6 +106,18 @@ Typical event families you will see:
 
 Exact event coverage depends on the run path.
 
+## Contract Events For Deep Research MVP
+
+The repository also exposes exact contract event names for upcoming path, skill, agent, and research workflows.
+These names intentionally use snake_case to match the plan contract and do not replace existing dotted events such as `skill.activated`.
+
+- `app_state_path_resolved` records safe metadata about resolved config/data/app-state roots without absolute paths or secrets.
+- `builtin_skill_materialized` records safe metadata for materialized built-in skill packages.
+- `skill_activated` records safe metadata for contract-level skill activation events.
+- `agent_switched` records safe metadata when the active agent changes.
+- `deep_research_subagents_planned` records topic slug, planned count, and subagent kinds without prompts or private content.
+- `research_artifact_written` records topic slug, artifact kind, and workspace-relative `.ncoworker/research/**` path without artifact body, excerpts, or private file contents.
+
 ## Where Telemetry Is Wired
 
 Cross-cutting observability wiring is assembled in `bootstrap`.

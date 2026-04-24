@@ -4,6 +4,7 @@ import type {
   RunEventData,
   RunEventSource,
 } from "./ports/repository"
+import type { SkillTelemetryContractEventName } from "./event-contract"
 import type { ToolObserverEvent } from "../../tool/application"
 
 export type CreateObservabilityRuntimeApiInput = {
@@ -41,7 +42,12 @@ type MemoryObserverEvent = {
 type SkillObserverEvent = {
   sessionId: string
   runId: string
-  type: "skill.created" | "skill.patched" | "skill.deleted" | "skill.security_scan"
+  type:
+    | "skill.created"
+    | "skill.patched"
+    | "skill.deleted"
+    | "skill.security_scan"
+    | SkillTelemetryContractEventName
   payload: Record<string, unknown>
 }
 
