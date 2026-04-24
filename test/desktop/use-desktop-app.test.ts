@@ -124,6 +124,27 @@ describe("desktop app state flow", () => {
 })
 
 describe("desktop api client", () => {
+  test("subscribes to structured lifecycle server events", () => {
+    const apiSource = readFileSync("src/desktop/src/api.ts", "utf8")
+    const typesSource = readFileSync("src/desktop/src/types.ts", "utf8")
+
+    for (const eventType of [
+      "subagent.started",
+      "subagent.completed",
+      "subagent.failed",
+      "skill.load.requested",
+      "skill.load.completed",
+      "skill.load.failed",
+    ]) {
+      expect(apiSource).toContain(`"${eventType}"`)
+      expect(typesSource).toContain(`"${eventType}"`)
+    }
+
+    expect(typesSource).toContain("agentId: string")
+    expect(typesSource).toContain("displayName: string")
+    expect(typesSource).toContain("errorMessage?: string")
+  })
+
   test("exposes a compactSession function that POSTs to the compact endpoint", () => {
     const source = readFileSync("src/desktop/src/api.ts", "utf8")
 

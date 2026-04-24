@@ -200,6 +200,38 @@ export type ContextUsageEvent = {
   source: "provider" | "estimated" | null
 }
 
+export type LifecycleEvent =
+  | {
+      id: string
+      time: number
+      type: "subagent.started" | "subagent.completed" | "subagent.failed"
+      sessionId?: string
+      runId?: string
+      parentRunId: string
+      subRunId: string
+      agentId: string
+      displayName: string
+      status: "started" | "completed" | "failed"
+      errorCode?: string
+      errorMessage?: string
+    }
+  | {
+      id: string
+      time: number
+      type: "skill.load.requested" | "skill.load.completed" | "skill.load.failed"
+      sessionId: string
+      runId: string
+      skillName: string
+      status: "requested" | "completed" | "failed"
+      reason?: string
+      skillPath?: string
+      instructionsLength?: number
+      agentId?: string
+      displayName?: string
+      errorCode?: string
+      errorMessage?: string
+    }
+
 export type DesktopServerEvent =
   | HeartbeatEvent
   | SessionEvent
@@ -211,6 +243,7 @@ export type DesktopServerEvent =
   | RuntimeErrorEvent
   | ContextUsageEvent
   | ToolProgressEvent
+  | LifecycleEvent
 
 export type ConnectionState = "offline" | "connecting" | "online" | "error"
 
