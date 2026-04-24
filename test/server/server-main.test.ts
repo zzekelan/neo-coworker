@@ -13,6 +13,7 @@ import {
   CURRENT_SESSION_SCHEMA_VERSION as CURRENT_STORAGE_SCHEMA_VERSION,
   openSessionDatabase as openStorageDatabase,
 } from "../../src/session"
+import { MODELS_DEV_CAPABILITY_SNAPSHOT } from "../../src/bootstrap/provider"
 
 const tempDirectories: string[] = []
 type ServerSubprocess = {
@@ -66,10 +67,18 @@ async function cleanupState() {
 }
 
 describe("standalone server config", () => {
-  test("derives the default storage path from the launch cwd", () => {
-    expect(getDefaultStandaloneServerStoragePath("/tmp/neo-workspace")).toBe(
-      join("/tmp/neo-workspace", ".ncoworker", "server.sqlite"),
-    )
+  test("derives the default storage path from the XDG data root", () => {
+    const originalXdgDataHome = process.env.XDG_DATA_HOME
+    const xdgDataHome = join(tmpdir(), "neo-coworker-server-test-xdg-data")
+    process.env.XDG_DATA_HOME = xdgDataHome
+
+    try {
+      expect(getDefaultStandaloneServerStoragePath("/tmp/neo-workspace")).toBe(
+        join(xdgDataHome, "neo-coworker", "server.sqlite"),
+      )
+    } finally {
+      restoreOptionalEnv("XDG_DATA_HOME", originalXdgDataHome)
+    }
   })
 
   test("reads host, port, and database path from AGENT_SERVER_* variables", () => {
@@ -124,6 +133,7 @@ describe("server main entrypoint", () => {
     try {
       const directory = await mkdtemp(join(tmpdir(), "server-main-primary-agents-"))
       tempDirectories.push(directory)
+      await writeModelsDevCache(directory)
 
       const workspaceRoot = join(directory, "workspace")
       await mkdir(join(workspaceRoot, ".ncoworker", "agents"), { recursive: true })
@@ -147,9 +157,9 @@ describe("server main entrypoint", () => {
       const standaloneServer = await startStandaloneServer({
         cwd: directory,
         env: buildLoopbackEnv({
-          AGENT_SERVER_DB_PATH: join(directory, "server.sqlite"),
-          AGENT_SERVER_HOST: "127.0.0.1",
-          AGENT_SERVER_PORT: String(await allocateLoopbackPort()),
+          NCOWORKER_SERVER_DB_PATH: join(directory, "server.sqlite"),
+          NCOWORKER_SERVER_HOST: "127.0.0.1",
+          NCOWORKER_SERVER_PORT: String(await allocateLoopbackPort()),
           LLM_PROVIDER: "openai-compatible",
           LLM_API_KEY: "test-key",
           LLM_MODEL: "fake-model",
@@ -158,7 +168,7 @@ describe("server main entrypoint", () => {
       })
 
       try {
-        const response = await fetch(
+        const response = await fetchLoopback(
           `${standaloneServer.server.baseUrl}/agents/primary?workspaceRoot=${encodeURIComponent(workspaceRoot)}`,
         )
 
@@ -191,11 +201,12 @@ describe("server main entrypoint", () => {
       tempDirectories.push(directory)
 
       const databasePath = join(directory, "server.sqlite")
+      await writeModelsDevCache(directory)
       const port = await allocateLoopbackPort()
       const process = spawnServerMain({
-        AGENT_SERVER_DB_PATH: databasePath,
-        AGENT_SERVER_HOST: "127.0.0.1",
-        AGENT_SERVER_PORT: String(port),
+        NCOWORKER_SERVER_DB_PATH: databasePath,
+        NCOWORKER_SERVER_HOST: "127.0.0.1",
+        NCOWORKER_SERVER_PORT: String(port),
         LLM_PROVIDER: "openai-compatible",
         LLM_API_KEY: "test-key",
         LLM_MODEL: "fake-model",
@@ -229,9 +240,9 @@ describe("server main entrypoint", () => {
       database.close(false)
 
       const process = spawnServerMain({
-        AGENT_SERVER_DB_PATH: databasePath,
-        AGENT_SERVER_HOST: "127.0.0.1",
-        AGENT_SERVER_PORT: "3100",
+        NCOWORKER_SERVER_DB_PATH: databasePath,
+        NCOWORKER_SERVER_HOST: "127.0.0.1",
+        NCOWORKER_SERVER_PORT: "3100",
         LLM_PROVIDER: "openai-compatible",
         LLM_API_KEY: "test-key",
         LLM_MODEL: "fake-model",
@@ -288,6 +299,62 @@ function buildLoopbackEnv(overrides: Record<string, string>) {
     ...env,
     ...overrides,
   }
+}
+
+async function writeModelsDevCache(directory: string) {
+  await writeFile(
+    join(directory, "models.dev.json"),
+    JSON.stringify(MODELS_DEV_CAPABILITY_SNAPSHOT, null, 2),
+  )
+}
+
+async function fetchLoopback(url: string) {
+  const process = bunRuntime.spawn({
+    cmd: [
+      "bun",
+      "-e",
+      [
+        "const url = process.argv.at(-1)",
+        "const response = await fetch(url)",
+        "const text = await response.text()",
+        "process.stdout.write(JSON.stringify({ status: response.status, text }))",
+      ].join("; "),
+      url,
+    ],
+    cwd: globalThis.process.cwd(),
+    env: buildLoopbackEnv({}),
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "ignore",
+  })
+  const [exitCode, stdout, stderr] = await Promise.all([
+    process.exited,
+    readProcessStream(process.stdout),
+    readProcessStream(process.stderr),
+  ])
+
+  if (exitCode !== 0) {
+    throw new Error(stderr)
+  }
+
+  const output = JSON.parse(stdout) as { status: number; text: string }
+  return {
+    status: output.status,
+    async json() {
+      return JSON.parse(output.text) as unknown
+    },
+    async text() {
+      return output.text
+    },
+  }
+}
+
+function restoreOptionalEnv(name: string, value: string | undefined) {
+  if (value == null) {
+    delete process.env[name]
+    return
+  }
+  process.env[name] = value
 }
 
 async function allocateLoopbackPort() {
