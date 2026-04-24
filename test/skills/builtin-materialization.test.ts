@@ -65,13 +65,23 @@ describe("built-in skill materialization", () => {
             name: "deep-research",
             entryPath: "research/deep-research/SKILL.md",
           },
+          {
+            category: "research",
+            name: "finding-synthesis",
+            entryPath: "research/finding-synthesis/SKILL.md",
+          },
+          {
+            category: "research",
+            name: "source-note",
+            entryPath: "research/source-note/SKILL.md",
+          },
         ],
       })
       await expect(readFile(deepResearchSkill, "utf8")).resolves.toContain(
         "name: deep-research",
       )
       await expect(readFile(deepResearchSkill, "utf8")).resolves.toContain(
-        "description: Placeholder built-in Deep Research skill",
+        "description: Plan and record file-based Deep Research artifacts",
       )
 
       const rootEntries = await readdir(builtinRoot)
@@ -92,7 +102,56 @@ describe("built-in skill materialization", () => {
             entryPath: "research/deep-research/SKILL.md",
             files: [
               {
+                path: "research/deep-research/references/artifact-schema.md",
+                bytes: expect.any(Number),
+                sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              },
+              {
+                path: "research/deep-research/references/finding-quality.md",
+                bytes: expect.any(Number),
+                sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              },
+              {
+                path: "research/deep-research/references/source-note-schema.md",
+                bytes: expect.any(Number),
+                sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              },
+              {
                 path: "research/deep-research/SKILL.md",
+                bytes: expect.any(Number),
+                sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              },
+            ],
+          },
+          {
+            category: "research",
+            name: "finding-synthesis",
+            entryPath: "research/finding-synthesis/SKILL.md",
+            files: [
+              {
+                path: "research/finding-synthesis/references/finding-quality.md",
+                bytes: expect.any(Number),
+                sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              },
+              {
+                path: "research/finding-synthesis/SKILL.md",
+                bytes: expect.any(Number),
+                sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              },
+            ],
+          },
+          {
+            category: "research",
+            name: "source-note",
+            entryPath: "research/source-note/SKILL.md",
+            files: [
+              {
+                path: "research/source-note/references/source-note-schema.md",
+                bytes: expect.any(Number),
+                sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              },
+              {
+                path: "research/source-note/SKILL.md",
                 bytes: expect.any(Number),
                 sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
               },

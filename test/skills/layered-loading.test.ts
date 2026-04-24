@@ -29,11 +29,15 @@ describe("layered skill loading", () => {
 
       expect(skill).toMatchObject({
         name: "deep-research",
-        description: "Placeholder built-in Deep Research skill",
+        description: "Plan and record file-based Deep Research artifacts",
         path: "builtin:research/deep-research/SKILL.md",
         entryPath: "SKILL.md",
         source: "builtin",
-        files: [],
+        files: [
+          "references/artifact-schema.md",
+          "references/finding-quality.md",
+          "references/source-note-schema.md",
+        ],
       })
       expect(skill.baseDir).toBe(
         `file://${join(xdgDataHome, "neo-coworker", "builtin-skills", "research", "deep-research")}/`,
