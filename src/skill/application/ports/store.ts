@@ -2,9 +2,16 @@ export type SkillCatalogEntry = {
   name: string
   description: string
   path: string
+  source?: SkillSource
+  overrides?: SkillCatalogOverride[]
 }
 
 export type SkillSource = "builtin" | "global" | "workspace"
+
+export type SkillCatalogOverride = {
+  source: SkillSource
+  path: string
+}
 
 export type SkillPackageMetadata = {
   entryPath: string
