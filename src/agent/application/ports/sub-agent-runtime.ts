@@ -88,7 +88,16 @@ export type AgentSkillCatalogEntry = {
   path: string
 }
 
-export type AgentLoadedSkill = {
+export type AgentSkillSource = "builtin" | "global" | "workspace"
+
+export type AgentSkillPackageMetadata = {
+  entryPath?: string
+  baseDir?: string
+  source?: AgentSkillSource
+  files?: string[]
+}
+
+export type AgentLoadedSkill = AgentSkillPackageMetadata & {
   name: string
   instructions: string
   path: string
@@ -233,7 +242,7 @@ export type AgentModelTurnRequest = {
   systemPrompt: string
   lateContextMessage?: string
   skillCatalog: AgentSkillCatalogEntry[]
-  activeSkills: Array<{ name: string; instructions: string }>
+  activeSkills: Array<AgentSkillPackageMetadata & { name: string; instructions: string }>
   systemReminders?: string[]
   systemReminderMetadata?: {
     catalogSkillNames: string[]
