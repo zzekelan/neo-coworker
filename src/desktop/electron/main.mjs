@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import { accessSync, appendFileSync, constants as fsConstants, existsSync } from "node:fs"
 import { createServer as createNetServer } from "node:net"
 import { homedir } from "node:os"
-import { delimiter, dirname, join, resolve } from "node:path"
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import http from "node:http"
 import https from "node:https"
@@ -28,12 +28,12 @@ const workspaceRoot =
   process.env.DESKTOP_WORKSPACE_ROOT || resolveLegacyDesktopPath(repositoryRoot, "workspace")
 const desktopSelectionStatePath =
   process.env.DESKTOP_SELECTION_STATE_PATH?.trim() ||
-  resolveLegacyDesktopPath(repositoryRoot, "desktop-state.json")
+  getDesktopStatePath()
 const desktopSettingsStatePath =
   process.env.DESKTOP_SETTINGS_STATE_PATH?.trim() ||
-  resolveLegacyDesktopPath(repositoryRoot, "desktop-settings.json")
+  getDesktopSettingsPath()
 const desktopServerDatabasePath =
-  (process.env.NCOWORKER_SERVER_DB_PATH?.trim() || process.env.AGENT_SERVER_DB_PATH?.trim()) || resolveLegacyDesktopPath(repositoryRoot, "server.sqlite")
+  (process.env.NCOWORKER_SERVER_DB_PATH?.trim() || process.env.AGENT_SERVER_DB_PATH?.trim()) || getServerStoragePath()
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
 const defaultDesktopSettings = createDefaultDesktopSettings({
   ...readDesktopSettingsEnvFiles(repositoryRoot),
@@ -797,6 +797,34 @@ function resolveLegacyDesktopPath(root, fileName) {
   const nextPath = resolve(root, ".ncoworker", fileName)
   const legacyPath = resolve(root, ".agents", fileName)
   return existsSync(legacyPath) && !existsSync(nextPath) ? legacyPath : nextPath
+}
+
+function getDesktopStatePath() {
+  return join(getAppStateRoot(), "desktop-state.json")
+}
+
+function getDesktopSettingsPath() {
+  return join(getAppStateRoot(), "desktop-settings.json")
+}
+
+function getServerStoragePath() {
+  return join(getUserDataRoot(), "server.sqlite")
+}
+
+function getAppStateRoot() {
+  return getUserDataRoot()
+}
+
+function getUserDataRoot() {
+  return join(resolveXdgBase("XDG_DATA_HOME", join(homedir(), ".local", "share")), "neo-coworker")
+}
+
+function resolveXdgBase(envName, fallback) {
+  const value = process.env[envName]?.trim()
+  if (value && isAbsolute(value)) {
+    return value
+  }
+  return fallback
 }
 
 function parseSseEvent(rawEvent) {

@@ -1,17 +1,38 @@
 import { _electron as electron } from "playwright"
 import { spawnSync } from "node:child_process"
 import { createServer as createHttpServer } from "node:http"
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { homedir } from "node:os"
+import { isAbsolute, join, resolve } from "node:path"
+
+const DESKTOP_VERIFY_ENV_FILE_KEYS = new Set([
+  "XDG_DATA_HOME",
+  "DESKTOP_SELECTION_STATE_PATH",
+  "DESKTOP_SETTINGS_STATE_PATH",
+  "NCOWORKER_SERVER_DB_PATH",
+  "AGENT_SERVER_DB_PATH",
+])
 
 const cwd = process.cwd()
-const isKimiMode = (process.env.DESKTOP_VERIFY_KIMI ?? "").trim() === "1"
+const desktopVerifyEnv = {
+  ...readDesktopVerifyEnvFiles(cwd),
+  ...process.env,
+}
+const appStateRoot = getDesktopAppStateRoot(desktopVerifyEnv)
+const desktopSelectionStatePath =
+  resolveConfiguredPath(desktopVerifyEnv.DESKTOP_SELECTION_STATE_PATH) || getDesktopStatePath(desktopVerifyEnv)
+const desktopSettingsStatePath =
+  resolveConfiguredPath(desktopVerifyEnv.DESKTOP_SETTINGS_STATE_PATH) || getDesktopSettingsPath(desktopVerifyEnv)
+const serverStoragePath =
+  resolveConfiguredPath(desktopVerifyEnv.NCOWORKER_SERVER_DB_PATH) ||
+  resolveConfiguredPath(desktopVerifyEnv.AGENT_SERVER_DB_PATH) ||
+  getServerStoragePath(desktopVerifyEnv)
+const isKimiMode = (desktopVerifyEnv.DESKTOP_VERIFY_KIMI ?? "").trim() === "1"
 const liveKimiEnv = {
-  provider: process.env.DESKTOP_VERIFY_KIMI_PROVIDER?.trim() ?? "",
-  apiKey: process.env.DESKTOP_VERIFY_KIMI_API_KEY?.trim() ?? "",
-  model: process.env.DESKTOP_VERIFY_KIMI_MODEL?.trim() ?? "",
-  baseUrl: process.env.DESKTOP_VERIFY_KIMI_BASE_URL?.trim() ?? "",
+  provider: desktopVerifyEnv.DESKTOP_VERIFY_KIMI_PROVIDER?.trim() ?? "",
+  apiKey: desktopVerifyEnv.DESKTOP_VERIFY_KIMI_API_KEY?.trim() ?? "",
+  model: desktopVerifyEnv.DESKTOP_VERIFY_KIMI_MODEL?.trim() ?? "",
+  baseUrl: desktopVerifyEnv.DESKTOP_VERIFY_KIMI_BASE_URL?.trim() ?? "",
 }
 const hasLiveKimiCreds =
   liveKimiEnv.provider !== "" &&
@@ -21,17 +42,16 @@ const hasLiveKimiCreds =
 const kimiSubmode = isKimiMode ? (hasLiveKimiCreds ? "live" : "fixture") : null
 
 const prompt =
-  process.env.DESKTOP_VERIFY_PROMPT?.trim() ||
+  desktopVerifyEnv.DESKTOP_VERIFY_PROMPT?.trim() ||
   (isKimiMode ? "Reply with exactly KIMI_OK." : "Reply with exactly OK.")
 const fixtureAssistantText = "KIMI_OK."
 const expectedAssistantText =
-  process.env.DESKTOP_VERIFY_EXPECTED_TEXT?.trim() ||
+  desktopVerifyEnv.DESKTOP_VERIFY_EXPECTED_TEXT?.trim() ||
   (isKimiMode ? (kimiSubmode === "fixture" ? fixtureAssistantText : "") : "OK.")
-const desiredEffortMode = (process.env.DESKTOP_VERIFY_REASONING_EFFORT ?? "high").trim() || "high"
+const desiredEffortMode = (desktopVerifyEnv.DESKTOP_VERIFY_REASONING_EFFORT ?? "high").trim() || "high"
 const desiredThinkingEnabled =
-  (process.env.DESKTOP_VERIFY_THINKING_ENABLED ?? "true").trim().toLowerCase() === "true"
+  (desktopVerifyEnv.DESKTOP_VERIFY_THINKING_ENABLED ?? "true").trim().toLowerCase() === "true"
 
-const isolatedDesktopStateRoot = mkdtempSync(join(tmpdir(), "neo-coworker-desktop-verify-"))
 const evidenceRoot = join(cwd, ".sisyphus", "evidence")
 const evidenceTag = isKimiMode ? "task-20-kimi" : "task-20-default"
 const evidenceJsonPath = join(evidenceRoot, `${evidenceTag}-desktop-user-path.json`)
@@ -45,6 +65,12 @@ const kimiAcceptanceJsonPath = join(evidenceRoot, "task-20-kimi-acceptance.json"
 const task21EvidenceJsonPath = join(evidenceRoot, `${evidenceTag}-telemetry-sqlite-evidence.json`)
 const task21TelemetrySuccessPath = join(evidenceRoot, "task-21-telemetry-success.txt")
 const task21TelemetrySourcesPath = join(evidenceRoot, "task-21-telemetry-sources.txt")
+const projectRootAppStateFiles = [
+  join(cwd, ".ncoworker", "server.sqlite"),
+  join(cwd, ".ncoworker", "desktop-state.json"),
+  join(cwd, ".ncoworker", "desktop-settings.json"),
+  join(cwd, ".ncoworker", "models.dev.json"),
+]
 
 mkdirSync(evidenceRoot, { recursive: true })
 
@@ -52,17 +78,10 @@ let kimiFixtureServerState = null
 const desiredLlmConfig = await resolveDesiredLlmConfig()
 
 const launchEnv = {
-  ...process.env,
-  DESKTOP_SELECTION_STATE_PATH:
-    process.env.DESKTOP_SELECTION_STATE_PATH?.trim() ||
-    join(isolatedDesktopStateRoot, "desktop-state.json"),
-  DESKTOP_SETTINGS_STATE_PATH:
-    process.env.DESKTOP_SETTINGS_STATE_PATH?.trim() ||
-    join(isolatedDesktopStateRoot, "desktop-settings.json"),
-  NCOWORKER_SERVER_DB_PATH:
-    process.env.NCOWORKER_SERVER_DB_PATH?.trim() ||
-    process.env.AGENT_SERVER_DB_PATH?.trim() ||
-    join(isolatedDesktopStateRoot, "server.sqlite"),
+  ...desktopVerifyEnv,
+  DESKTOP_SELECTION_STATE_PATH: desktopSelectionStatePath,
+  DESKTOP_SETTINGS_STATE_PATH: desktopSettingsStatePath,
+  NCOWORKER_SERVER_DB_PATH: serverStoragePath,
 }
 
 const app = await electron.launch({
@@ -75,7 +94,10 @@ let traceStarted = false
 const evidence = {
   mode: isKimiMode ? "kimi" : "default",
   kimiSubmode,
-  isolatedDesktopStateRoot,
+  appStateRoot,
+  desktopSelectionStatePath,
+  desktopSettingsStatePath,
+  serverStoragePath,
   evidenceJsonPath,
   evidenceScreenshotPath,
   evidenceReasoningScreenshotPath,
@@ -108,6 +130,8 @@ const evidence = {
   transcriptCount: 0,
   assistantPreview: null,
   fixtureProviderRequests: 0,
+  projectRootAppStateFiles,
+  projectRootAppStateAbsence: null,
   task21EvidenceJsonPath,
   task21TelemetrySuccessPath: isKimiMode ? task21TelemetrySuccessPath : null,
   task21TelemetrySourcesPath: isKimiMode ? task21TelemetrySourcesPath : null,
@@ -409,6 +433,7 @@ try {
     failureSignaturePresent: task21Evidence.failureSignature.present,
     kimiReplayValidated: task21Evidence.kimiReplayValidation?.validated ?? false,
   }
+  evidence.projectRootAppStateAbsence = assertProjectRootAppStateFilesAbsent()
 
   if (traceStarted) {
     try {
@@ -474,6 +499,7 @@ try {
         evidenceTracePath: evidence.evidenceTracePath,
         task21EvidenceJsonPath,
         task21: evidence.task21,
+        projectRootAppStateAbsence: evidence.projectRootAppStateAbsence,
         kimiAcceptanceJsonPath: isKimiMode ? kimiAcceptanceJsonPath : null,
       },
       null,
@@ -492,6 +518,121 @@ try {
   await app.close()
   if (kimiFixtureServerState) {
     await stopHttpServer(kimiFixtureServerState.server)
+  }
+}
+
+function readDesktopVerifyEnvFiles(root) {
+  const env = {}
+  for (const fileName of [".env", ".env.local"]) {
+    try {
+      const raw = readFileSync(resolve(root, fileName), "utf8")
+      mergeDesktopVerifyEnv(env, raw)
+    } catch (error) {
+      const code = error && typeof error === "object" ? error.code : null
+      if (code !== "ENOENT") {
+        throw error
+      }
+    }
+  }
+  return env
+}
+
+function mergeDesktopVerifyEnv(target, raw) {
+  for (const line of raw.split(/\r?\n/)) {
+    const entry = parseDesktopVerifyEnvLine(line)
+    if (entry) {
+      target[entry.key] = entry.value
+    }
+  }
+}
+
+function parseDesktopVerifyEnvLine(line) {
+  const trimmed = line.trim()
+  if (!trimmed || trimmed.startsWith("#")) {
+    return null
+  }
+
+  const match = trimmed.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
+  if (!match) {
+    return null
+  }
+
+  const [, key, rawValue] = match
+  if (!DESKTOP_VERIFY_ENV_FILE_KEYS.has(key)) {
+    return null
+  }
+
+  return {
+    key,
+    value: normalizeDesktopVerifyEnvValue(rawValue),
+  }
+}
+
+function normalizeDesktopVerifyEnvValue(value) {
+  const trimmed = value.trim()
+  const unquoted =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ? trimmed.slice(1, -1)
+      : trimmed
+  const commentIndex = unquoted.search(/\s+#/)
+  return commentIndex === -1 ? unquoted : unquoted.slice(0, commentIndex).trim()
+}
+
+function getDesktopStatePath(env) {
+  return join(getDesktopAppStateRoot(env), "desktop-state.json")
+}
+
+function getDesktopSettingsPath(env) {
+  return join(getDesktopAppStateRoot(env), "desktop-settings.json")
+}
+
+function getServerStoragePath(env) {
+  return join(getUserDataRoot(env), "server.sqlite")
+}
+
+function getDesktopAppStateRoot(env) {
+  return getUserDataRoot(env)
+}
+
+function getUserDataRoot(env) {
+  return join(resolveXdgBase(env, "XDG_DATA_HOME", join(homedir(), ".local", "share")), "neo-coworker")
+}
+
+function resolveXdgBase(env, envName, fallback) {
+  const value = env[envName]?.trim()
+  if (value && isAbsolute(value)) {
+    return value
+  }
+  return fallback
+}
+
+function resolveConfiguredPath(value) {
+  const trimmed = value?.trim()
+  if (!trimmed) {
+    return null
+  }
+  return isAbsolute(trimmed) ? trimmed : resolve(cwd, trimmed)
+}
+
+function assertProjectRootAppStateFilesAbsent() {
+  const checks = projectRootAppStateFiles.map((path) => ({
+    path,
+    exists: existsSync(path),
+  }))
+  const present = checks.filter((check) => check.exists)
+  if (present.length > 0) {
+    throw new Error(
+      `Desktop verification found project-root app-state files: ${present
+        .map((check) => check.path)
+        .join(", ")}`,
+    )
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    allAbsent: true,
+    checks,
   }
 }
 
