@@ -10,7 +10,7 @@ async function createWorkspaceWithSkill(input: {
   skillsDirectory?: ".agents/skills" | ".ncoworker/skills"
 }) {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "skill-runtime-workspace-"))
-  const skillsDirectory = input.skillsDirectory ?? ".agents/skills"
+  const skillsDirectory = input.skillsDirectory ?? ".ncoworker/skills"
   const skillDirectory = join(workspaceRoot, ...skillsDirectory.split("/"), input.directoryName)
 
   await mkdir(skillDirectory, { recursive: true })
@@ -42,6 +42,28 @@ describe("skill runtime", () => {
     ])
   })
 
+  test("ignores skills that exist only under legacy .agents/skills", async () => {
+    const workspaceRoot = await createWorkspaceWithSkill({
+      directoryName: "legacy-only",
+      skillsDirectory: ".agents/skills",
+      instructions: [
+        "name: legacy-only",
+        "description: Legacy skill should not load",
+        "",
+        "This should not be listed.",
+      ].join("\n"),
+    })
+    const runtime = createWorkspaceSkillRuntime()
+
+    await expect(runtime.listCatalog(workspaceRoot)).resolves.toEqual([])
+    await expect(
+      runtime.loadSkill({
+        workspaceRoot,
+        name: "legacy-only",
+      }),
+    ).rejects.toBeDefined()
+  })
+
   test("discovers skill metadata without loading instructions", async () => {
     const runtime = createWorkspaceSkillRuntime()
 
@@ -51,7 +73,7 @@ describe("skill runtime", () => {
       {
         name: "reviewer",
         description: "Review code changes for bugs and regressions",
-        path: ".agents/skills/reviewer/SKILL.md",
+        path: ".ncoworker/skills/reviewer/SKILL.md",
       },
     ])
   })
@@ -81,10 +103,10 @@ describe("skill runtime", () => {
     const runtime = createWorkspaceSkillRuntime()
 
     const [skill] = await runtime.listCatalog(workspaceRoot)
-    expect(skill).toEqual({
+      expect(skill).toEqual({
       name: "strict-reviewer",
       description: "Review code changes carefully",
-      path: ".agents/skills/reviewer/SKILL.md",
+      path: ".ncoworker/skills/reviewer/SKILL.md",
     })
 
     const loaded = await runtime.loadSkill({
@@ -95,7 +117,7 @@ describe("skill runtime", () => {
     expect(loaded).toMatchObject({
       name: "strict-reviewer",
       description: "Review code changes carefully",
-      path: ".agents/skills/reviewer/SKILL.md",
+      path: ".ncoworker/skills/reviewer/SKILL.md",
       entryPath: "SKILL.md",
       source: "workspace",
       files: [],
@@ -114,11 +136,11 @@ describe("skill runtime", () => {
         "Focus on bugs first.",
       ].join("\n"),
     })
-    const brokenSkillDirectory = join(workspaceRoot, ".agents", "skills", "broken")
+    const brokenSkillDirectory = join(workspaceRoot, ".ncoworker", "skills", "broken")
 
     await mkdir(brokenSkillDirectory, { recursive: true })
     await symlink(
-      join(workspaceRoot, ".agents", "skills", "broken", "missing-SKILL.md"),
+      join(workspaceRoot, ".ncoworker", "skills", "broken", "missing-SKILL.md"),
       join(brokenSkillDirectory, "SKILL.md"),
     )
 
@@ -128,7 +150,7 @@ describe("skill runtime", () => {
       {
         name: "reviewer",
         description: "Review code changes for regressions",
-        path: ".agents/skills/reviewer/SKILL.md",
+        path: ".ncoworker/skills/reviewer/SKILL.md",
       },
     ])
   })
@@ -136,7 +158,7 @@ describe("skill runtime", () => {
   test("rejects discovered skill files that escape the skills directory", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "skill-runtime-workspace-"))
     const externalRoot = await mkdtemp(join(tmpdir(), "skill-runtime-external-"))
-    const skillDirectory = join(workspaceRoot, ".agents", "skills", "reviewer")
+    const skillDirectory = join(workspaceRoot, ".ncoworker", "skills", "reviewer")
     const externalSkillFile = join(externalRoot, "SKILL.md")
 
     await mkdir(skillDirectory, { recursive: true })
@@ -150,7 +172,7 @@ describe("skill runtime", () => {
 
     const store = createWorkspaceSkillStore()
     await expect(store.listCatalog(workspaceRoot)).rejects.toThrow(
-      "Skill must stay inside .ncoworker/skills or .agents/skills",
+      "Skill must stay inside .ncoworker/skills",
     )
   })
 })

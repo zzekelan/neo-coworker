@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto"
-import { existsSync, type Dirent } from "node:fs"
+import type { Dirent } from "node:fs"
 import { mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, join, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 import {
   getSkillCatalogPath,
-  LEGACY_SKILLS_DIRECTORY,
   parseSkillMetadata,
   SKILLS_DIRECTORY,
   SKILL_FILENAME,
@@ -20,13 +19,7 @@ import type {
 const SUPPORT_DIRECTORIES = ["assets", "examples", "references", "scripts"] as const
 
 function getSkillsDirectoryName(workspaceRoot: string) {
-  const nextDirectory = resolve(workspaceRoot, SKILLS_DIRECTORY)
-  const legacyDirectory = resolve(workspaceRoot, LEGACY_SKILLS_DIRECTORY)
-
-  if (!existsSync(nextDirectory) && existsSync(legacyDirectory)) {
-    return LEGACY_SKILLS_DIRECTORY
-  }
-
+  void workspaceRoot
   return SKILLS_DIRECTORY
 }
 
@@ -36,16 +29,11 @@ function getSkillsDirectory(workspaceRoot: string) {
 
 async function resolveSkillCatalogPath(workspaceRoot: string, skillPath: string) {
   const workspace = await realpath(resolve(workspaceRoot))
-  const allowedRoots = [
-    resolve(workspace, SKILLS_DIRECTORY),
-    resolve(workspace, LEGACY_SKILLS_DIRECTORY),
-  ]
+  const allowedRoot = resolve(workspace, SKILLS_DIRECTORY)
   const file = await realpath(resolve(workspace, skillPath))
 
-  if (!allowedRoots.some((root) => file === root || file.startsWith(`${root}${sep}`))) {
-    throw new Error(
-      `Skill must stay inside ${SKILLS_DIRECTORY} or ${LEGACY_SKILLS_DIRECTORY}: ${skillPath}`,
-    )
+  if (file !== allowedRoot && !file.startsWith(`${allowedRoot}${sep}`)) {
+    throw new Error(`Skill must stay inside ${SKILLS_DIRECTORY}: ${skillPath}`)
   }
 
   return file
@@ -60,16 +48,11 @@ async function resolveSkillFile(workspaceRoot: string, skillName: string) {
 
 async function resolveSkillCatalogWritePath(workspaceRoot: string, skillPath: string) {
   const workspace = await realpath(resolve(workspaceRoot))
-  const allowedRoots = [
-    resolve(workspace, SKILLS_DIRECTORY),
-    resolve(workspace, LEGACY_SKILLS_DIRECTORY),
-  ]
+  const allowedRoot = resolve(workspace, SKILLS_DIRECTORY)
   const file = resolve(workspace, skillPath)
 
-  if (!allowedRoots.some((root) => file === root || file.startsWith(`${root}${sep}`))) {
-    throw new Error(
-      `Skill must stay inside ${SKILLS_DIRECTORY} or ${LEGACY_SKILLS_DIRECTORY}: ${skillPath}`,
-    )
+  if (file !== allowedRoot && !file.startsWith(`${allowedRoot}${sep}`)) {
+    throw new Error(`Skill must stay inside ${SKILLS_DIRECTORY}: ${skillPath}`)
   }
 
   return file
@@ -110,12 +93,9 @@ async function loadSkillFromPath(
 function assertSkillEntrypointPath(skillPath: string) {
   const normalizedPath = skillPath.split(sep).join("/")
   const nextPrefix = `${SKILLS_DIRECTORY}/`
-  const legacyPrefix = `${LEGACY_SKILLS_DIRECTORY}/`
   const relativePath = normalizedPath.startsWith(nextPrefix)
     ? normalizedPath.slice(nextPrefix.length)
-    : normalizedPath.startsWith(legacyPrefix)
-      ? normalizedPath.slice(legacyPrefix.length)
-      : null
+    : null
   const parts = relativePath?.split("/") ?? []
 
   if (
@@ -131,7 +111,7 @@ function assertSkillEntrypointPath(skillPath: string) {
 }
 
 function resolveSkillSource(skillPath: string) {
-  if (skillPath.startsWith(`${SKILLS_DIRECTORY}/`) || skillPath.startsWith(`${LEGACY_SKILLS_DIRECTORY}/`)) {
+  if (skillPath.startsWith(`${SKILLS_DIRECTORY}/`)) {
     return "workspace" as const
   }
 
@@ -341,17 +321,12 @@ async function writeSkillFile(file: string, content: string) {
 
 async function removeEmptySkillCategoryDirectory(workspaceRoot: string, skillDirectory: string) {
   const workspace = await realpath(resolve(workspaceRoot))
-  const allowedRoots = [
-    resolve(workspace, SKILLS_DIRECTORY),
-    resolve(workspace, LEGACY_SKILLS_DIRECTORY),
-  ]
+  const allowedRoot = resolve(workspace, SKILLS_DIRECTORY)
   const parentDirectory = dirname(skillDirectory)
 
-  const owningRoot = allowedRoots.find(
-    (root) => skillDirectory === root || skillDirectory.startsWith(`${root}${sep}`),
-  )
+  const ownsSkillDirectory = skillDirectory === allowedRoot || skillDirectory.startsWith(`${allowedRoot}${sep}`)
 
-  if (!owningRoot || parentDirectory === owningRoot) {
+  if (!ownsSkillDirectory || parentDirectory === allowedRoot) {
     return
   }
 

@@ -107,7 +107,7 @@ describe("skill package loading", () => {
     const store = createWorkspaceSkillStore()
 
     await expect(store.loadByPath(workspaceRoot, escapedPath)).rejects.toThrow(
-      "Skill must stay inside .ncoworker/skills or .agents/skills",
+      "Skill must stay inside .ncoworker/skills",
     )
   })
 
