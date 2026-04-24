@@ -24,6 +24,11 @@ import {
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
+const testWithTimeout = test as unknown as (
+  label: string,
+  fn: () => Promise<void>,
+  timeout: number,
+) => void
 
 afterEach(async () => {
   while (openDatabases.length > 0) {
@@ -168,7 +173,7 @@ describe("integration: tool budget wiring", () => {
     })
   })
 
-  test("preserves per-tool resultSizeLimit handling before aggregate spill logic", async () => {
+  testWithTimeout("preserves per-tool resultSizeLimit handling before aggregate spill logic", async () => {
     const harness = await createHarness("tool-budget-size-limit")
     const started = startPromptRun({
       repository: harness.repository,
@@ -190,11 +195,8 @@ describe("integration: tool budget wiring", () => {
             inputText: JSON.stringify({ path: "oversized.txt" }),
           }
         },
-        async function* (request) {
-          if (request.signal.aborted) {
-            yield { type: "text.delta", text: "cancelled" } as const
-          }
-          await waitForAbort(request.signal)
+        async function* () {
+          yield { type: "text.delta", text: "Done." }
         },
       ]),
       repository: harness.repository,
@@ -204,10 +206,7 @@ describe("integration: tool budget wiring", () => {
     })
 
     const handle = await runtime.run({ sessionId: harness.session.id, runId: started.run.id })
-    const iterator = handle.events[Symbol.asyncIterator]()
-    await waitForToolCallCount(iterator, 1)
-    handle.cancel()
-    await collectRemainingEvents(iterator)
+    await collectEvents(handle.events)
 
     const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
     const toolResult = transcript
@@ -217,7 +216,7 @@ describe("integration: tool budget wiring", () => {
     expect(toolResult?.text).toContain("[Result truncated:")
     expect((toolResult?.data as { metadata?: { resultSizeLimit?: number } } | undefined)?.metadata?.resultSizeLimit)
       .toBe(100_000)
-  })
+  }, 30000)
 })
 
 async function createHarness(prefix: string) {

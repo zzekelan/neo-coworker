@@ -1,8 +1,8 @@
 import type { Dirent } from "node:fs"
 import { readFile, readdir, realpath } from "node:fs/promises"
-import { dirname, join, resolve, sep } from "node:path"
+import { homedir } from "node:os"
+import { dirname, isAbsolute, join, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
-import { getUserConfigRoot } from "../../../bootstrap/paths"
 import {
   parseSkillMetadata,
   SKILLS_DIRECTORY,
@@ -20,6 +20,7 @@ import { materializeBuiltinSkills } from "../builtin-materializer"
 import { createWorkspaceSkillStore } from "./workspace-store"
 
 const SUPPORT_DIRECTORIES = ["assets", "examples", "references", "scripts"] as const
+const APP_DIR_NAME = "neo-coworker"
 const GLOBAL_SKILLS_DIRECTORY_NAME = "skills"
 const GLOBAL_PATH_PREFIX = "global:"
 const BUILTIN_PATH_PREFIX = "builtin:"
@@ -35,8 +36,14 @@ type LayeredSkillCatalogEntry = SkillCatalogEntry & {
   source: SkillSource
 }
 
-export function getGlobalSkillsDirectory(configRoot = getUserConfigRoot()) {
+export function getGlobalSkillsDirectory(configRoot = getDefaultUserConfigRoot()) {
   return join(configRoot, GLOBAL_SKILLS_DIRECTORY_NAME)
+}
+
+function getDefaultUserConfigRoot(env: Record<string, string | undefined> = process.env) {
+  const xdgConfigHome = env.XDG_CONFIG_HOME?.trim()
+  const base = xdgConfigHome && isAbsolute(xdgConfigHome) ? xdgConfigHome : join(homedir(), ".config")
+  return join(base, APP_DIR_NAME)
 }
 
 export function createLayeredSkillStore(): SkillStore {

@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto"
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
-import { dirname, join, relative, resolve, sep } from "node:path"
+import { homedir } from "node:os"
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
-import { getUserDataRoot } from "../../bootstrap/paths"
 import { SKILL_FILENAME } from "../domain"
 
+const APP_DIR_NAME = "neo-coworker"
 const BUILTIN_SKILLS_DIRECTORY_NAME = "builtin-skills"
 const BUILTIN_SKILLS_MANIFEST_NAME = ".manifest.json"
 const BUILTIN_SKILLS_SOURCE_ROOT = fileURLToPath(new URL("./builtins/", import.meta.url))
@@ -40,8 +41,14 @@ export type MaterializeBuiltinSkillsResult = {
   packages: BuiltinSkillManifestPackage[]
 }
 
-export function getBuiltinSkillsDirectory(dataRoot = getUserDataRoot()) {
+export function getBuiltinSkillsDirectory(dataRoot = getDefaultUserDataRoot()) {
   return join(dataRoot, BUILTIN_SKILLS_DIRECTORY_NAME)
+}
+
+function getDefaultUserDataRoot(env: Record<string, string | undefined> = process.env) {
+  const xdgDataHome = env.XDG_DATA_HOME?.trim()
+  const base = xdgDataHome && isAbsolute(xdgDataHome) ? xdgDataHome : join(homedir(), ".local", "share")
+  return join(base, APP_DIR_NAME)
 }
 
 export async function materializeBuiltinSkills(

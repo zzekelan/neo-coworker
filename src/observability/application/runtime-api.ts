@@ -5,7 +5,6 @@ import type {
   RunEventSource,
 } from "./ports/repository"
 import type { SkillTelemetryContractEventName } from "./event-contract"
-import type { ToolObserverEvent } from "../../tool/application"
 
 export type CreateObservabilityRuntimeApiInput = {
   repository: ObservabilityRepository
@@ -24,6 +23,11 @@ type RecordRunEventInput = {
 type RuntimeObserverEvent = {
   type: string
   [key: string]: unknown
+}
+
+type ToolObserverEvent = RuntimeObserverEvent & {
+  sessionId: string
+  runId: string
 }
 
 type MemoryObserverEvent = {

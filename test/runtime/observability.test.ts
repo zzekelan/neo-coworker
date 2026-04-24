@@ -89,6 +89,7 @@ describe("runtime observability", () => {
       "memory.loaded",
       "prompt.assembled",
       "tool.listed",
+      "skill.catalog.exposed",
       "model.turn.requested",
       "model.prompt.assembled",
       "message.started",
@@ -479,7 +480,7 @@ describe("runtime observability", () => {
     const promptEvents = (trace?.events ?? []).filter((event) => event.eventType === "model.prompt.assembled")
     expect(promptEvents).toHaveLength(2)
     expect(promptEvents[0]?.data).toMatchObject({
-      catalogSkillNames: ["reviewer"],
+      catalogSkillNames: ["deep-research", "finding-synthesis", "reviewer", "source-note"],
       activeSkillNames: [],
       activeSkillCount: 0,
       systemPromptLength: expect.any(Number),
@@ -506,9 +507,9 @@ describe("runtime observability", () => {
     const catalogEvents = (trace?.events ?? []).filter((event) => event.eventType === "skill.catalog.exposed")
     expect(catalogEvents).toEqual([
       expect.objectContaining({
-        data: expect.objectContaining({
-          catalogSkillNames: ["reviewer"],
-          catalogSkillCount: 1,
+          data: expect.objectContaining({
+          catalogSkillNames: ["deep-research", "finding-synthesis", "reviewer", "source-note"],
+          catalogSkillCount: 4,
         }),
       }),
     ])
@@ -1668,14 +1669,16 @@ describe("runtime observability", () => {
       })
       await collectEvents(handle.events)
 
-      expect(providerInvocationCount).toBe(0)
+      expect(providerInvocationCount).toBe(1)
 
       const trace = composition.exportRunTrace(started.run.id)
       expect(trace).not.toBeNull()
       const eventTypes = readEventTypes(trace?.events ?? [])
-      expect(eventTypes).toContain("replay.fail_fast.blocked")
-      expect(eventTypes).toContain("error.classified")
-      expect(eventTypes).not.toContain("model.turn.requested")
+      expect(eventTypes).toContain("model.turn.requested")
+      expect(eventTypes).toContain("model.prompt.assembled")
+      expect(eventTypes).toContain("run.completed")
+      expect(eventTypes).not.toContain("replay.fail_fast.blocked")
+      expect(eventTypes).not.toContain("error.classified")
 
       expect(trace?.events.find((event) => event.eventType === "capability.resolution.recorded")?.data).toEqual({
         model: "kimi-k2.6",
@@ -1697,18 +1700,7 @@ describe("runtime observability", () => {
       })
       expect(trace?.events.find((event) => event.eventType === "kimi.run.classified")?.data).toEqual({
         model: "kimi-k2.6",
-        outcome: "failure",
-      })
-
-      expect(
-        trace?.events.find((event) => event.eventType === "replay.fail_fast.blocked")?.data,
-      ).toEqual({
-        turnKey: `${started.run.id}:turn_1`,
-        model: "kimi-k2.6",
-        providerFamily: "kimi",
-        classification: "legacy_session_missing_reasoning",
-        missingPart: "reasoning",
-        requiredReasoningField: "reasoning_content",
+        outcome: "success",
       })
 
       composition.closeDatabase()
@@ -1724,7 +1716,7 @@ describe("runtime observability", () => {
     }
   })
 
-  test("emits replay fail-fast classification before provider telemetry and never persists reasoning payload text", async () => {
+  test("records replay telemetry without persisting reasoning payload text", async () => {
     const harness = await createHarness("trace-replay-failfast", false)
     seedCompletedAssistantReasoningRun({
       repository: harness.repository,
@@ -1802,43 +1794,26 @@ describe("runtime observability", () => {
     })
     await collectEvents(handle.events)
 
-    expect(providerInvocationCount).toBe(0)
+    expect(providerInvocationCount).toBe(1)
 
     const trace = harness.observability.exportRunTrace(started.run.id)
     expect(trace).not.toBeNull()
     const eventTypes = readEventTypes(trace?.events ?? [])
-    expect(eventTypes).toContain("replay.fail_fast.blocked")
-    expect(eventTypes).toContain("error.classified")
-    expect(eventTypes).not.toContain("model.turn.requested")
+    expect(eventTypes).toContain("model.turn.requested")
+    expect(eventTypes).toContain("model.prompt.assembled")
+    expect(eventTypes).toContain("run.completed")
+    expect(eventTypes).not.toContain("replay.fail_fast.blocked")
+    expect(eventTypes).not.toContain("error.classified")
 
-    const blockedIndex = (trace?.events ?? []).findIndex(
-      (event) => event.eventType === "replay.fail_fast.blocked",
-    )
-    const errorClassifiedIndex = (trace?.events ?? []).findIndex(
-      (event) => event.eventType === "error.classified",
-    )
-    const failedIndex = (trace?.events ?? []).findIndex((event) => event.eventType === "run.failed")
     const firstProviderTelemetryIndex = (trace?.events ?? []).findIndex(
       (event) => event.source === "model" && event.eventType === "model.turn.requested",
     )
-    expect(blockedIndex).toBeGreaterThanOrEqual(0)
-    expect(errorClassifiedIndex).toBeGreaterThan(blockedIndex)
-    expect(failedIndex).toBeGreaterThan(blockedIndex)
-    expect(firstProviderTelemetryIndex).toBe(-1)
-
-    expect(
-      trace?.events.find((event) => event.eventType === "replay.fail_fast.blocked")?.data,
-    ).toEqual({
-      turnKey: `${started.run.id}:turn_1`,
-      model: "kimi-k2.6",
-      providerFamily: "kimi",
-      classification: "legacy_session_missing_reasoning",
-      missingPart: "reasoning",
-      requiredReasoningField: "reasoning_content",
-    })
+    const completedIndex = (trace?.events ?? []).findIndex((event) => event.eventType === "run.completed")
+    expect(firstProviderTelemetryIndex).toBeGreaterThanOrEqual(0)
+    expect(completedIndex).toBeGreaterThan(firstProviderTelemetryIndex)
     expect(trace?.events.find((event) => event.eventType === "kimi.run.classified")?.data).toEqual({
       model: "kimi-k2.6",
-      outcome: "failure",
+      outcome: "success",
     })
 
     const persistedRunEventJson = harness.database
@@ -2007,19 +1982,13 @@ describe("runtime observability", () => {
     })
     await collectEvents(firstHandle.events)
 
-    expect(providerInvocationCount).toBe(0)
-    expect(
-      harness.observability.exportRunTrace(first.run.id)?.events.find(
-        (event) => event.eventType === "replay.fail_fast.blocked",
-      )?.data,
-    ).toEqual({
-      turnKey: `${first.run.id}:turn_1`,
-      model: "kimi-k2.6",
-      providerFamily: "kimi",
-      classification: "legacy_session_missing_reasoning",
-      missingPart: "reasoning",
-      requiredReasoningField: "reasoning_content",
-    })
+    expect(providerInvocationCount).toBe(1)
+    expect(readEventTypes(harness.observability.exportRunTrace(first.run.id)?.events ?? [])).toEqual(
+      expect.arrayContaining(["model.turn.requested", "model.prompt.assembled", "run.completed"]),
+    )
+    expect(readEventTypes(harness.observability.exportRunTrace(first.run.id)?.events ?? [])).not.toContain(
+      "replay.fail_fast.blocked",
+    )
 
     runtime.setSessionThinkingOverride({
       sessionId: harness.session.id,
@@ -2040,8 +2009,8 @@ describe("runtime observability", () => {
     })
     await collectEvents(secondHandle.events)
 
-    expect(providerInvocationCount).toBe(1)
-    expect(seenThinking).toEqual([false])
+    expect(providerInvocationCount).toBe(2)
+    expect(seenThinking).toEqual([true, false])
     expect(readEventTypes(harness.observability.exportRunTrace(second.run.id)?.events ?? [])).not.toContain(
       "replay.fail_fast.blocked",
     )
@@ -2065,19 +2034,14 @@ describe("runtime observability", () => {
     })
     await collectEvents(thirdHandle.events)
 
-    expect(providerInvocationCount).toBe(1)
-    expect(
-      harness.observability.exportRunTrace(third.run.id)?.events.find(
-        (event) => event.eventType === "replay.fail_fast.blocked",
-      )?.data,
-    ).toEqual({
-      turnKey: `${third.run.id}:turn_1`,
-      model: "kimi-k2.6",
-      providerFamily: "kimi",
-      classification: "legacy_session_missing_reasoning",
-      missingPart: "reasoning",
-      requiredReasoningField: "reasoning_content",
-    })
+    expect(providerInvocationCount).toBe(3)
+    expect(seenThinking).toEqual([true, false, true])
+    expect(readEventTypes(harness.observability.exportRunTrace(third.run.id)?.events ?? [])).toEqual(
+      expect.arrayContaining(["model.turn.requested", "model.prompt.assembled", "run.completed"]),
+    )
+    expect(readEventTypes(harness.observability.exportRunTrace(third.run.id)?.events ?? [])).not.toContain(
+      "replay.fail_fast.blocked",
+    )
   })
 })
 

@@ -19,7 +19,6 @@ import {
   type ModelProvider,
   type OpenAICompatibleRequestConfig,
 } from "../model"
-import type { ModelThinkingConfig, ReasoningEffortMode } from "../model/domain/turn"
 import { readEnvWithFallback } from "./env"
 import {
   MODELS_DEV_CAPABILITY_SNAPSHOT,
@@ -32,6 +31,11 @@ import {
 } from "./provider-capabilities"
 
 type ProviderKind = "openai" | "openai-compatible"
+type ReasoningEffortMode = "default" | "low" | "medium" | "high"
+type ModelThinkingConfig = {
+  enabled: boolean
+  effort?: ReasoningEffortMode
+}
 
 type ProviderConfig = {
   provider: ProviderKind
