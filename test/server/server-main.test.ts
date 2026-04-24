@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createServer as createNetServer } from "node:net"
 import { tmpdir } from "node:os"
@@ -14,6 +15,7 @@ import {
   openSessionDatabase as openStorageDatabase,
 } from "../../src/session"
 import { MODELS_DEV_CAPABILITY_SNAPSHOT } from "../../src/bootstrap/provider"
+import { getModelsDevCatalogCachePath } from "../../src/bootstrap/provider-capability-catalog"
 
 const tempDirectories: string[] = []
 type ServerSubprocess = {
@@ -75,6 +77,20 @@ describe("standalone server config", () => {
     try {
       expect(getDefaultStandaloneServerStoragePath("/tmp/neo-workspace")).toBe(
         join(xdgDataHome, "neo-coworker", "server.sqlite"),
+      )
+    } finally {
+      restoreOptionalEnv("XDG_DATA_HOME", originalXdgDataHome)
+    }
+  })
+
+  test("places the default models.dev cache beside the XDG server database", () => {
+    const originalXdgDataHome = process.env.XDG_DATA_HOME
+    const xdgDataHome = join(tmpdir(), "neo-coworker-models-test-xdg-data")
+    process.env.XDG_DATA_HOME = xdgDataHome
+
+    try {
+      expect(getModelsDevCatalogCachePath({}, "/tmp/neo-workspace")).toBe(
+        join(xdgDataHome, "neo-coworker", "models.dev.json"),
       )
     } finally {
       restoreOptionalEnv("XDG_DATA_HOME", originalXdgDataHome)
@@ -203,7 +219,7 @@ describe("server main entrypoint", () => {
       const databasePath = join(directory, "server.sqlite")
       await writeModelsDevCache(directory)
       const port = await allocateLoopbackPort()
-      const process = spawnServerMain({
+      const serverProcess = spawnServerMain({
         NCOWORKER_SERVER_DB_PATH: databasePath,
         NCOWORKER_SERVER_HOST: "127.0.0.1",
         NCOWORKER_SERVER_PORT: String(port),
@@ -215,16 +231,65 @@ describe("server main entrypoint", () => {
 
       await waitForHealth(`http://127.0.0.1:${port}/health`)
 
-      process.kill("SIGINT")
-      expect(await waitForExit(process)).toBe(0)
+      serverProcess.kill("SIGINT")
+      expect(await waitForExit(serverProcess)).toBe(0)
 
-      const stdout = await readProcessStream(process.stdout)
-      const stderr = await readProcessStream(process.stderr)
+      const stdout = await readProcessStream(serverProcess.stdout)
+      const stderr = await readProcessStream(serverProcess.stderr)
 
       expect(stdout.trim()).toBe("")
       expect(stderr).toContain(`server.started http://127.0.0.1:${port}`)
       expect(stderr).toContain(`server.storage ${databasePath}`)
     } finally {
+      await cleanupState()
+    }
+  })
+
+  test("starts with default app-state files under XDG data and not project .ncoworker", async () => {
+    const originalXdgDataHome = process.env.XDG_DATA_HOME
+    const originalServerDbPath = process.env.NCOWORKER_SERVER_DB_PATH
+    const originalLegacyServerDbPath = process.env.AGENT_SERVER_DB_PATH
+
+    try {
+      const directory = await mkdtemp(join(tmpdir(), "server-main-xdg-default-"))
+      tempDirectories.push(directory)
+      const xdgDataHome = join(directory, "xdg-data")
+      const appStateRoot = join(xdgDataHome, "neo-coworker")
+      const databasePath = join(appStateRoot, "server.sqlite")
+      const modelsDevPath = join(appStateRoot, "models.dev.json")
+      await mkdir(appStateRoot, { recursive: true })
+      await writeModelsDevCache(appStateRoot)
+
+      process.env.XDG_DATA_HOME = xdgDataHome
+      delete process.env.NCOWORKER_SERVER_DB_PATH
+      delete process.env.AGENT_SERVER_DB_PATH
+
+      const port = await allocateLoopbackPort()
+      const serverProcess = spawnServerMain({
+        NCOWORKER_SERVER_HOST: "127.0.0.1",
+        NCOWORKER_SERVER_PORT: String(port),
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "fake-model",
+        LLM_BASE_URL: "https://example.invalid/v1",
+      })
+
+      await waitForHealth(`http://127.0.0.1:${port}/health`)
+
+      serverProcess.kill("SIGINT")
+      expect(await waitForExit(serverProcess)).toBe(0)
+
+      const stderr = await readProcessStream(serverProcess.stderr)
+
+      expect(stderr).toContain(`server.storage ${databasePath}`)
+      expect(existsSync(databasePath)).toBe(true)
+      expect(existsSync(modelsDevPath)).toBe(true)
+      expect(existsSync(join(globalThis.process.cwd(), ".ncoworker", "server.sqlite"))).toBe(false)
+      expect(existsSync(join(globalThis.process.cwd(), ".ncoworker", "models.dev.json"))).toBe(false)
+    } finally {
+      restoreOptionalEnv("XDG_DATA_HOME", originalXdgDataHome)
+      restoreOptionalEnv("NCOWORKER_SERVER_DB_PATH", originalServerDbPath)
+      restoreOptionalEnv("AGENT_SERVER_DB_PATH", originalLegacyServerDbPath)
       await cleanupState()
     }
   })
@@ -266,7 +331,7 @@ describe("server main entrypoint", () => {
 
 function spawnServerMain(overrides: Record<string, string>) {
   const subprocess = bunRuntime.spawn({
-    cmd: ["bun", "run", "src/app-server/main.ts"],
+    cmd: ["bun", "--no-env-file", "run", "src/app-server/main.ts"],
     cwd: globalThis.process.cwd(),
     env: buildLoopbackEnv(overrides),
     stdout: "pipe",
