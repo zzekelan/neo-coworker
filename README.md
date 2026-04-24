@@ -32,6 +32,18 @@
 - [Bun](https://bun.sh/)
 - Linux and macOS for now; on Windows, WSL is recommended.
 
+
+## Runtime Paths
+
+Neo Coworker separates app-state roots from workspace execution roots. App-state files such as the standalone server database, desktop state, desktop settings, and the adjacent `models.dev.json` cache live under XDG roots:
+
+- config root: `$XDG_CONFIG_HOME/neo-coworker`, falling back to `~/.config/neo-coworker`
+- data root: `$XDG_DATA_HOME/neo-coworker`, falling back to `~/.local/share/neo-coworker`
+
+Workspace runtime and session storage stays workspace-local under `.ncoworker`, including `workspaceRoot/.ncoworker/agent.sqlite`. Deep Research artifacts are plain workspace files under `.ncoworker/research/<topic>/`; the MVP has no research UI, source viewer, or artifact viewer.
+
+Skills load in this precedence order: workspace `.ncoworker/skills`, user-global XDG config skills, then built-in skills materialized under `$XDG_DATA_HOME/neo-coworker/builtin-skills/`. Skill create, patch, and delete operations affect workspace `.ncoworker/skills/**` only. Built-in and user-global skills are load-only.
+
 ## Other Scripts
 
 | Script | Description |

@@ -287,6 +287,30 @@ Defaults, constants, and policy values follow the owner that is responsible for 
 
 If a change needs a new directory name, a new cross-module shortcut, or a broader `kernel`, stop and update the design docs and structure checks first.
 
+
+## Runtime Data, Skills, And Research Artifacts
+
+Architecture ID: `ARCH-RUNTIME-PATHS-001`
+
+Neo Coworker separates app-state storage from workspace execution storage. App-state files live under XDG roots:
+
+- config root: `$XDG_CONFIG_HOME/neo-coworker`, falling back to `~/.config/neo-coworker`
+- data root: `$XDG_DATA_HOME/neo-coworker`, falling back to `~/.local/share/neo-coworker`
+
+The data root owns app-state files such as the standalone server database, desktop state, desktop settings, and the adjacent `models.dev.json` cache. Workspace runtime and session storage may still live under the selected workspace root, for example `workspaceRoot/.ncoworker/agent.sqlite`. Do not treat the workspace execution root as the app-state root.
+
+Deep Research artifacts are workspace-local files under `.ncoworker/research/<topic>/`. The MVP uses living topic directories, not timestamped run directories. Artifact content is files-only and git-readable, with paths such as `.ncoworker/research/index.md`, `.ncoworker/research/<topic>/brief.md`, `.ncoworker/research/<topic>/findings.md`, `.ncoworker/research/<topic>/open-questions.md`, and source records under `.ncoworker/research/<topic>/sources/{web,docs,files}/`. This does not imply a research UI, source viewer, or artifact viewer.
+
+Skill packages use a required `SKILL.md` entry file plus optional support directories: `references/`, `scripts/`, `assets/`, and `examples/`. Support files are listed for progressive disclosure and are not automatically injected into model context. Load a support file only when the workflow explicitly needs it.
+
+Skill resolution precedence is:
+
+1. workspace `.ncoworker/skills`
+2. user-global skills under the XDG config root
+3. built-in skills materialized under `$XDG_DATA_HOME/neo-coworker/builtin-skills/`
+
+Workspace skills may be created, patched, and deleted. User-global and built-in skills are load-only in the current runtime. Create, patch, and delete are workspace-only operations and must affect workspace `.ncoworker/skills/**` only. Built-in skills materialize directly under the data-root `builtin-skills/` directory, with no `current/`, version, timestamp, or release-channel folder.
+
 ## Enforcement State
 
 The structure baseline at `test/structure/baselines/architecture-findings.json` is expected to remain empty in this final state.

@@ -204,7 +204,7 @@ When adding or changing eval tasks:
 - avoid exact free-text grading in live mode unless variability is tightly controlled
 - keep `workspaceFixture` inside `evals/fixtures`
 - keep scripted tasks paired with a `scenario`
-- keep `.ncoworker/skills` fixture content minimal and commit ignored skill files explicitly when a live skill task needs them; use `.agents/skills` only for explicit legacy-removal coverage that proves old skills are ignored
+- keep `.ncoworker/skills` fixture content minimal and commit ignored skill files explicitly when a live skill task needs them; legacy `.agents/skills` fixtures are allowed only for coverage that proves old skills are ignored
 - do not place secrets in tasks, fixtures, or exported artifacts
 
 ## Where To Look Next
