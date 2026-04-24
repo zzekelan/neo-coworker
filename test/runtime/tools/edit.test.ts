@@ -562,6 +562,31 @@ describe("edit tool — stale", () => {
     expect(await readFile(filePath, "utf8")).toBe(original)
   })
 
+  test("accepts anchors whose display suffix differs when line+hash still match", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "advisory-suffix.txt")
+    const original = "alpha\ntarget: unchanged\ngamma\n"
+    await writeFile(filePath, original)
+
+    const canonical = anchor(2, "target: unchanged")
+    const malformed = `${canonical}"`
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "advisory-suffix.txt",
+        operation: "replace",
+        start: malformed,
+        content: "target: changed-by-anchor",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("alpha\ntarget: changed-by-anchor\ngamma\n")
+  })
+
   test("returns isError=true for out-of-range anchors without changing bytes", async () => {
     const workspaceRoot = await createTempWorkspace()
     const registry = await createRegistry()

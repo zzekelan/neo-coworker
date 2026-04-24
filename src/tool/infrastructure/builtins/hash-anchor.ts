@@ -130,8 +130,8 @@ export function validateInclusiveRange(
   start: ParsedAnchor,
   end: ParsedAnchor = start,
 ): InclusiveRange {
-  const startLine = validateAnchorAgainstLine(lines, start)
-  const endLine = validateAnchorAgainstLine(lines, end)
+  validateAnchorAgainstLine(lines, start)
+  validateAnchorAgainstLine(lines, end)
 
   if (start.lineNumber > end.lineNumber) {
     throw new HashAnchorError(
@@ -162,12 +162,9 @@ export function validateInclusiveRange(
         `Anchor hash mismatch at line ${anchor.lineNumber}`,
       )
     }
-    if (line.displayContent !== anchor.lineContent) {
-      throw new HashAnchorError(
-        "anchor_content_mismatch",
-        `Anchor content mismatch at line ${anchor.lineNumber}`,
-      )
-    }
+    // Display suffix after `|` is advisory only; identity = line number + hash.
+    // Hash mismatch above already proves stale content, so suffix differences
+    // (e.g. stray quote from the model) must not trigger validation failure.
     return line
   }
 }
