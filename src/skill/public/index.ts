@@ -9,6 +9,15 @@ export {
   resolveSkillCatalogPath,
   resolveSkillFile,
 } from "../infrastructure/adapters/workspace-store"
+export {
+  getBuiltinSkillsDirectory,
+  materializeBuiltinSkills,
+  type BuiltinSkillManifest,
+  type BuiltinSkillManifestFile,
+  type BuiltinSkillManifestPackage,
+  type MaterializeBuiltinSkillsInput,
+  type MaterializeBuiltinSkillsResult,
+} from "../infrastructure/builtin-materializer"
 
 export function createWorkspaceSkillRuntime(input: {
   runtime?: SkillRuntimeApi
