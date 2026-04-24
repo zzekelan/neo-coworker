@@ -46,8 +46,7 @@ export function resolveStandaloneServerConfig(
     host: readEnvWithFallback(env, "NCOWORKER_SERVER_HOST", "AGENT_SERVER_HOST") ?? DEFAULT_SERVER_HOST,
     port: parseServerPort(readEnvWithFallback(env, "NCOWORKER_SERVER_PORT", "AGENT_SERVER_PORT")),
     databasePath:
-      readEnvWithFallback(env, "NCOWORKER_SERVER_DB_PATH", "AGENT_SERVER_DB_PATH") ??
-      getDefaultStandaloneServerStoragePath(cwd),
+      env.NCOWORKER_SERVER_DB_PATH ?? getDefaultStandaloneServerStoragePath(cwd),
   }
 }
 

@@ -1091,6 +1091,27 @@ describe("bootstrap", () => {
 
     expect(cachePath).toBe(join(workspaceRoot, ".ncoworker", "models.dev.json"))
   })
+
+  test("places the models.dev disk cache beside the XDG default when only the old database env key is present", async () => {
+    const originalXdgDataHome = process.env.XDG_DATA_HOME
+    const workspaceRoot = await createTempDirectory("bootstrap-models-cache-ignore-old-db-env-")
+    const xdgDataHome = join(workspaceRoot, "xdg-data")
+    const legacyDatabasePathEnvKey = ["AGENT", "SERVER", "DB", "PATH"].join("_")
+    process.env.XDG_DATA_HOME = xdgDataHome
+
+    try {
+      const cachePath = getModelsDevCatalogCachePath(
+        {
+          [legacyDatabasePathEnvKey]: join(workspaceRoot, "old", "server.sqlite"),
+        },
+        workspaceRoot,
+      )
+
+      expect(cachePath).toBe(join(xdgDataHome, "neo-coworker", "models.dev.json"))
+    } finally {
+      restoreOptionalEnv("XDG_DATA_HOME", originalXdgDataHome)
+    }
+  })
 })
 
 async function createTempDirectory(prefix: string) {
@@ -1104,4 +1125,13 @@ async function createTempModelsCachePath(prefix: string) {
   const cacheDirectory = join(directory, ".ncoworker")
   await mkdir(cacheDirectory, { recursive: true })
   return join(cacheDirectory, "models.dev.json")
+}
+
+function restoreOptionalEnv(name: string, value: string | undefined) {
+  if (value == null) {
+    delete process.env[name]
+    return
+  }
+
+  process.env[name] = value
 }

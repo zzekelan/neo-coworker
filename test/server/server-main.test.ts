@@ -97,21 +97,39 @@ describe("standalone server config", () => {
     }
   })
 
-  test("reads host, port, and database path from AGENT_SERVER_* variables", () => {
+  test("reads legacy host and port variables while keeping database path on the XDG default", () => {
+    const originalXdgDataHome = process.env.XDG_DATA_HOME
+    const legacyDatabasePathEnvKey = ["AGENT", "SERVER", "DB", "PATH"].join("_")
+    process.env.XDG_DATA_HOME = "/tmp/xdg-data"
+    try {
+      expect(
+        resolveStandaloneServerConfig(
+          {
+            AGENT_SERVER_HOST: "0.0.0.0",
+            AGENT_SERVER_PORT: "4317",
+            [legacyDatabasePathEnvKey]: "/tmp/custom-server.sqlite",
+          },
+          "/tmp/ignored",
+        ),
+      ).toEqual({
+        host: "0.0.0.0",
+        port: 4317,
+        databasePath: "/tmp/xdg-data/neo-coworker/server.sqlite",
+      })
+    } finally {
+      restoreOptionalEnv("XDG_DATA_HOME", originalXdgDataHome)
+    }
+  })
+
+  test("reads explicit NCOWORKER_SERVER_DB_PATH as the database target", () => {
     expect(
       resolveStandaloneServerConfig(
         {
-          AGENT_SERVER_HOST: "0.0.0.0",
-          AGENT_SERVER_PORT: "4317",
-          AGENT_SERVER_DB_PATH: "/tmp/custom-server.sqlite",
+          NCOWORKER_SERVER_DB_PATH: "/tmp/custom-server.sqlite",
         },
         "/tmp/ignored",
-      ),
-    ).toEqual({
-      host: "0.0.0.0",
-      port: 4317,
-      databasePath: "/tmp/custom-server.sqlite",
-    })
+      ).databasePath,
+    ).toBe("/tmp/custom-server.sqlite")
   })
 
   test("rejects invalid AGENT_SERVER_PORT values", () => {
@@ -248,7 +266,6 @@ describe("server main entrypoint", () => {
   test("starts with default app-state files under XDG data and not project .ncoworker", async () => {
     const originalXdgDataHome = process.env.XDG_DATA_HOME
     const originalServerDbPath = process.env.NCOWORKER_SERVER_DB_PATH
-    const originalLegacyServerDbPath = process.env.AGENT_SERVER_DB_PATH
 
     try {
       const directory = await mkdtemp(join(tmpdir(), "server-main-xdg-default-"))
@@ -262,17 +279,19 @@ describe("server main entrypoint", () => {
 
       process.env.XDG_DATA_HOME = xdgDataHome
       delete process.env.NCOWORKER_SERVER_DB_PATH
-      delete process.env.AGENT_SERVER_DB_PATH
 
       const port = await allocateLoopbackPort()
-      const serverProcess = spawnServerMain({
-        NCOWORKER_SERVER_HOST: "127.0.0.1",
-        NCOWORKER_SERVER_PORT: String(port),
-        LLM_PROVIDER: "openai-compatible",
-        LLM_API_KEY: "test-key",
-        LLM_MODEL: "fake-model",
-        LLM_BASE_URL: "https://example.invalid/v1",
-      })
+      const serverProcess = spawnServerMain(
+        {
+          NCOWORKER_SERVER_HOST: "127.0.0.1",
+          NCOWORKER_SERVER_PORT: String(port),
+          LLM_PROVIDER: "openai-compatible",
+          LLM_API_KEY: "test-key",
+          LLM_MODEL: "fake-model",
+          LLM_BASE_URL: "https://example.invalid/v1",
+        },
+        { cwd: directory },
+      )
 
       await waitForHealth(`http://127.0.0.1:${port}/health`)
 
@@ -284,12 +303,11 @@ describe("server main entrypoint", () => {
       expect(stderr).toContain(`server.storage ${databasePath}`)
       expect(existsSync(databasePath)).toBe(true)
       expect(existsSync(modelsDevPath)).toBe(true)
-      expect(existsSync(join(globalThis.process.cwd(), ".ncoworker", "server.sqlite"))).toBe(false)
-      expect(existsSync(join(globalThis.process.cwd(), ".ncoworker", "models.dev.json"))).toBe(false)
+      expect(existsSync(join(directory, ".ncoworker", "server.sqlite"))).toBe(false)
+      expect(existsSync(join(directory, ".ncoworker", "models.dev.json"))).toBe(false)
     } finally {
       restoreOptionalEnv("XDG_DATA_HOME", originalXdgDataHome)
       restoreOptionalEnv("NCOWORKER_SERVER_DB_PATH", originalServerDbPath)
-      restoreOptionalEnv("AGENT_SERVER_DB_PATH", originalLegacyServerDbPath)
       await cleanupState()
     }
   })
@@ -329,10 +347,10 @@ describe("server main entrypoint", () => {
   })
 })
 
-function spawnServerMain(overrides: Record<string, string>) {
+function spawnServerMain(overrides: Record<string, string>, options: { cwd?: string } = {}) {
   const subprocess = bunRuntime.spawn({
-    cmd: ["bun", "--no-env-file", "run", "src/app-server/main.ts"],
-    cwd: globalThis.process.cwd(),
+    cmd: ["bun", "--no-env-file", "run", join(globalThis.process.cwd(), "src/app-server/main.ts")],
+    cwd: options.cwd ?? globalThis.process.cwd(),
     env: buildLoopbackEnv(overrides),
     stdout: "pipe",
     stderr: "pipe",

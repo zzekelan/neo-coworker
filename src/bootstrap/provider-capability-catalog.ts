@@ -1,6 +1,5 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import { readEnvWithFallback } from "./env"
 import { getServerStoragePath } from "./paths"
 import type { ModelsDevCatalog } from "./provider-capabilities"
 import { MODELS_DEV_CAPABILITY_SNAPSHOT } from "./provider-capabilities-snapshot"
@@ -46,9 +45,7 @@ export function getModelsDevCatalogCachePath(
   env: Record<string, string | undefined> = process.env,
   cwd: string = process.cwd(),
 ) {
-  const serverStoragePath =
-    readEnvWithFallback(env, "NCOWORKER_SERVER_DB_PATH", "AGENT_SERVER_DB_PATH") ??
-    getServerStoragePath(cwd)
+  const serverStoragePath = env.NCOWORKER_SERVER_DB_PATH ?? getServerStoragePath(cwd)
 
   return join(dirname(serverStoragePath), "models.dev.json")
 }
