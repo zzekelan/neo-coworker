@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { existsSync, type Dirent } from "node:fs"
 import { mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, join, resolve, sep } from "node:path"
+import { pathToFileURL } from "node:url"
 import {
   getSkillCatalogPath,
   LEGACY_SKILLS_DIRECTORY,
@@ -15,6 +16,8 @@ import type {
   SkillCatalogEntry,
   SkillStore,
 } from "../../application/ports/store"
+
+const SUPPORT_DIRECTORIES = ["assets", "examples", "references", "scripts"] as const
 
 function getSkillsDirectoryName(workspaceRoot: string) {
   const nextDirectory = resolve(workspaceRoot, SKILLS_DIRECTORY)
@@ -87,15 +90,163 @@ async function loadSkillFromPath(
   workspaceRoot: string,
   skillPath: string,
 ): Promise<LoadedSkill> {
+  assertSkillEntrypointPath(skillPath)
   const file = await resolveSkillCatalogPath(workspaceRoot, skillPath)
+  const packageDirectory = dirname(file)
   const instructions = await readFile(file, "utf8")
   const metadata = parseSkillMetadata(instructions, skillPath.split("/").at(-2) ?? skillPath)
 
   return {
     ...metadata,
     path: skillPath,
+    entryPath: SKILL_FILENAME,
+    baseDir: pathToFileURL(`${packageDirectory}${sep}`).href,
+    source: resolveSkillSource(skillPath),
+    files: await listSupportFiles(packageDirectory),
     instructions,
   }
+}
+
+function assertSkillEntrypointPath(skillPath: string) {
+  const normalizedPath = skillPath.split(sep).join("/")
+  const nextPrefix = `${SKILLS_DIRECTORY}/`
+  const legacyPrefix = `${LEGACY_SKILLS_DIRECTORY}/`
+  const relativePath = normalizedPath.startsWith(nextPrefix)
+    ? normalizedPath.slice(nextPrefix.length)
+    : normalizedPath.startsWith(legacyPrefix)
+      ? normalizedPath.slice(legacyPrefix.length)
+      : null
+  const parts = relativePath?.split("/") ?? []
+
+  if (
+    relativePath &&
+    (parts.length === 2 || parts.length === 3) &&
+    parts.every((part) => part.length > 0) &&
+    parts.at(-1) === SKILL_FILENAME
+  ) {
+    return
+  }
+
+  throw new Error(`Skill entrypoint must be ${SKILL_FILENAME}: ${skillPath}`)
+}
+
+function resolveSkillSource(skillPath: string) {
+  if (skillPath.startsWith(`${SKILLS_DIRECTORY}/`) || skillPath.startsWith(`${LEGACY_SKILLS_DIRECTORY}/`)) {
+    return "workspace" as const
+  }
+
+  return "workspace" as const
+}
+
+async function listSupportFiles(packageDirectory: string) {
+  const packageRoot = await realpath(packageDirectory)
+  const files: string[] = []
+  const visitedDirectories = new Set<string>()
+
+  for (const supportDirectory of SUPPORT_DIRECTORIES) {
+    const absoluteDirectory = join(packageRoot, supportDirectory)
+    const realDirectory = await safeRealpath(absoluteDirectory)
+    if (!realDirectory || !isInsideDirectory(realDirectory, packageRoot)) {
+      continue
+    }
+
+    await collectSupportFiles({
+      packageRoot,
+      directory: absoluteDirectory,
+      relativeDirectory: supportDirectory,
+      files,
+      visitedDirectories,
+    })
+  }
+
+  return files.sort((left, right) => left.localeCompare(right))
+}
+
+async function collectSupportFiles(input: {
+  packageRoot: string
+  directory: string
+  relativeDirectory: string
+  files: string[]
+  visitedDirectories: Set<string>
+}) {
+  const realDirectory = await safeRealpath(input.directory)
+  if (!realDirectory || !isInsideDirectory(realDirectory, input.packageRoot)) {
+    return
+  }
+
+  if (input.visitedDirectories.has(realDirectory)) {
+    return
+  }
+  input.visitedDirectories.add(realDirectory)
+
+  let entries: Dirent[]
+  try {
+    entries = await readdir(input.directory, { withFileTypes: true })
+  } catch (error) {
+    if (shouldSkipCatalogEntryError(error)) {
+      return
+    }
+
+    throw error
+  }
+
+  for (const entry of entries) {
+    const absolutePath = join(input.directory, entry.name)
+    const relativePath = `${input.relativeDirectory}/${entry.name}`
+    const realPath = await safeRealpath(absolutePath)
+
+    if (!realPath || !isInsideDirectory(realPath, input.packageRoot)) {
+      continue
+    }
+
+    if (entry.isDirectory() || entry.isSymbolicLink()) {
+      if (await isDirectoryPath(absolutePath)) {
+        await collectSupportFiles({
+          packageRoot: input.packageRoot,
+          directory: absolutePath,
+          relativeDirectory: relativePath,
+          files: input.files,
+          visitedDirectories: input.visitedDirectories,
+        })
+        continue
+      }
+    }
+
+    if (entry.isFile() || entry.isSymbolicLink()) {
+      input.files.push(relativePath)
+    }
+  }
+}
+
+async function safeRealpath(path: string) {
+  try {
+    return await realpath(path)
+  } catch (error) {
+    if (shouldSkipCatalogEntryError(error)) {
+      return null
+    }
+
+    throw error
+  }
+}
+
+async function isDirectoryPath(path: string) {
+  try {
+    const resolved = await realpath(path)
+    const entries = await readdir(resolved, { withFileTypes: true })
+    void entries
+    return true
+  } catch (error) {
+    if (shouldSkipCatalogEntryError(error) || (error as NodeJS.ErrnoException).code === "ENOTDIR") {
+      return false
+    }
+
+    throw error
+  }
+}
+
+function isInsideDirectory(file: string, directory: string) {
+  return file === directory || file.startsWith(`${directory}${sep}`)
 }
 
 function shouldSkipCatalogEntryError(error: unknown) {
@@ -258,15 +409,11 @@ export function createWorkspaceSkillStore(): SkillStore {
       return loadSkillFromPath(workspaceRoot, skillPath)
     },
     async loadByName(workspaceRoot: string, skillName: string) {
-      const file = await resolveSkillFile(workspaceRoot, skillName)
-      const instructions = await readFile(file, "utf8")
-      const metadata = parseSkillMetadata(instructions, skillName)
-
-      return {
-        ...metadata,
-        path: getSkillCatalogPath(skillName),
-        instructions,
-      }
+      await resolveSkillFile(workspaceRoot, skillName)
+      return loadSkillFromPath(
+        workspaceRoot,
+        getSkillCatalogPath(skillName, getSkillsDirectoryName(workspaceRoot)),
+      )
     },
     async writeSkill(workspaceRoot: string, skillPath: string, content: string) {
       const file = await resolveSkillCatalogWritePath(workspaceRoot, skillPath)

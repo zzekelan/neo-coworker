@@ -25,6 +25,8 @@ export {
 export {
   type LoadedSkill,
   type SkillCatalogEntry,
+  type SkillPackageMetadata,
+  type SkillSource,
   type SkillStore,
 } from "./ports/store"
 export {

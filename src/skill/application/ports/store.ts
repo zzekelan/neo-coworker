@@ -4,9 +4,18 @@ export type SkillCatalogEntry = {
   path: string
 }
 
+export type SkillSource = "builtin" | "global" | "workspace"
+
+export type SkillPackageMetadata = {
+  entryPath: string
+  baseDir: string
+  source: SkillSource
+  files: string[]
+}
+
 export type LoadedSkill = SkillCatalogEntry & {
   instructions: string
-}
+} & SkillPackageMetadata
 
 export type SkillStore = {
   listCatalog(workspaceRoot: string): Promise<SkillCatalogEntry[]>

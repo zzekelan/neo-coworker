@@ -92,12 +92,16 @@ describe("skill runtime", () => {
       name: "strict-reviewer",
     })
 
-    expect(loaded).toEqual({
+    expect(loaded).toMatchObject({
       name: "strict-reviewer",
       description: "Review code changes carefully",
       path: ".agents/skills/reviewer/SKILL.md",
+      entryPath: "SKILL.md",
+      source: "workspace",
+      files: [],
       instructions: expect.stringContaining("Focus on bugs first."),
     })
+    expect(loaded.baseDir).toStartWith("file://")
   })
 
   test("skips broken skill symlinks while keeping the rest of the catalog readable", async () => {

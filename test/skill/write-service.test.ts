@@ -60,15 +60,17 @@ describe("skill write service", () => {
         path: ".ncoworker/skills/reviewer/SKILL.md",
       },
     ])
-    await expect(
-      runtime.loadSkill({
-        workspaceRoot,
-        name: "reviewer",
-      }),
-    ).resolves.toEqual({
+    const loadedSkill = await runtime.loadSkill({
+      workspaceRoot,
+      name: "reviewer",
+    })
+    expect(loadedSkill).toMatchObject({
       name: "reviewer",
       description: "Review code changes for regressions",
       path: ".ncoworker/skills/reviewer/SKILL.md",
+      entryPath: "SKILL.md",
+      source: "workspace",
+      files: [],
       instructions: [
         "---",
         "name: reviewer",
@@ -80,6 +82,7 @@ describe("skill write service", () => {
         "",
       ].join("\n"),
     })
+    expect(loadedSkill.baseDir).toStartWith("file://")
 
     await expect(
       readFile(join(workspaceRoot, ".ncoworker", "skills", "reviewer", "SKILL.md"), "utf8"),
