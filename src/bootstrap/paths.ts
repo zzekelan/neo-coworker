@@ -1,61 +1,53 @@
-import { existsSync } from "fs"
-import { join, dirname, extname } from "path"
+import { homedir } from "os"
+import { isAbsolute, join } from "path"
+
+const APP_DIR_NAME = "neo-coworker"
 
 // Tracks warnings emitted to avoid duplicate console.warn
 const warnedPaths = new Set<string>()
 
-function pathOrParentExists(p: string): boolean {
-  return existsSync(p) || (extname(p) !== "" && existsSync(dirname(p)))
-}
-
-function legacyFallback(newPath: string, legacyPath: string): string {
-  if (!pathOrParentExists(newPath) && pathOrParentExists(legacyPath)) {
-    if (!warnedPaths.has(legacyPath)) {
-      console.warn(
-        `[ncoworker] Legacy path detected: ${legacyPath}. ` +
-          `Consider migrating to ${newPath}.`,
-      )
-      warnedPaths.add(legacyPath)
-    }
-    return legacyPath
+function resolveXdgBase(envName: "XDG_CONFIG_HOME" | "XDG_DATA_HOME", fallback: string): string {
+  const value = process.env[envName]
+  if (value && isAbsolute(value)) {
+    return value
   }
-  return newPath
+  return fallback
 }
 
-export function getConfigDir(workspaceRoot: string): string {
-  return legacyFallback(join(workspaceRoot, ".ncoworker"), join(workspaceRoot, ".agents"))
+export function getUserConfigRoot(): string {
+  return join(resolveXdgBase("XDG_CONFIG_HOME", join(homedir(), ".config")), APP_DIR_NAME)
+}
+
+export function getUserDataRoot(): string {
+  return join(resolveXdgBase("XDG_DATA_HOME", join(homedir(), ".local", "share")), APP_DIR_NAME)
+}
+
+export function getAppStateRoot(): string {
+  return getUserDataRoot()
+}
+
+export function getConfigDir(_workspaceRoot?: string): string {
+  return getUserConfigRoot()
 }
 
 export function getStoragePath(workspaceRoot: string): string {
-  return legacyFallback(
-    join(workspaceRoot, ".ncoworker", "agent.sqlite"),
-    join(workspaceRoot, ".agents", "agent.sqlite"),
-  )
+  return join(workspaceRoot, ".ncoworker", "agent.sqlite")
 }
 
-export function getServerStoragePath(workspaceRoot: string): string {
-  return legacyFallback(
-    join(workspaceRoot, ".ncoworker", "server.sqlite"),
-    join(workspaceRoot, ".agents", "server.sqlite"),
-  )
+export function getServerStoragePath(_workspaceRoot?: string): string {
+  return join(getUserDataRoot(), "server.sqlite")
 }
 
-export function getDesktopStatePath(repositoryRoot: string): string {
-  return legacyFallback(
-    join(repositoryRoot, ".ncoworker", "desktop-state.json"),
-    join(repositoryRoot, ".agents", "desktop-state.json"),
-  )
+export function getDesktopStatePath(_repositoryRoot?: string): string {
+  return join(getAppStateRoot(), "desktop-state.json")
 }
 
-export function getDesktopSettingsPath(repositoryRoot: string): string {
-  return legacyFallback(
-    join(repositoryRoot, ".ncoworker", "desktop-settings.json"),
-    join(repositoryRoot, ".agents", "desktop-settings.json"),
-  )
+export function getDesktopSettingsPath(_repositoryRoot?: string): string {
+  return join(getUserConfigRoot(), "desktop-settings.json")
 }
 
-export function getAgentsDir(workspaceRoot: string): string {
-  return join(workspaceRoot, ".ncoworker", "agents")
+export function getAgentsDir(_workspaceRoot?: string): string {
+  return join(getUserConfigRoot(), "agents")
 }
 
 // Reset warning state (for testing)
