@@ -45,8 +45,8 @@ import {
 import type { ModelProvider } from "../model"
 import {
   createSkillWriteService,
+  createLayeredSkillRuntime,
   createWorkspaceSkillStore,
-  createWorkspaceSkillRuntime,
   type SkillObserverPort,
   type SkillRuntimeApi,
 } from "../skill"
@@ -1439,7 +1439,7 @@ function createSkillTool(input: {
           output:
             catalog.length === 0
               ? "No skills available."
-              : ["Available skills:", ...catalog.map((skill) => `- ${skill.name}: ${skill.description}`)].join(
+              : ["Available skills:", ...catalog.map((skill) => `- ${formatSkillCatalogEntry(skill)}`)].join(
                   "\n",
                 ),
         }
@@ -1706,6 +1706,24 @@ function formatSkillIdentifier(category: string | undefined, name: string) {
   return category ? `${category}/${name}` : name
 }
 
+function formatSkillCatalogEntry(skill: {
+  name: string
+  description: string
+  source?: "builtin" | "global" | "workspace"
+  overrides?: Array<{ source: "builtin" | "global" | "workspace"; path: string }>
+}) {
+  const metadata = [
+    skill.source ? `source: ${skill.source}` : null,
+    skill.overrides && skill.overrides.length > 0
+      ? `overrides: ${skill.overrides.map((entry) => `${entry.source} ${entry.path}`).join(", ")}`
+      : null,
+  ].filter((entry): entry is string => entry !== null)
+
+  return metadata.length > 0
+    ? `${skill.name}: ${skill.description} [${metadata.join("; ")}]`
+    : `${skill.name}: ${skill.description}`
+}
+
 function createToolPermissionDeniedError() {
   const error = new Error("Permission denied")
   error.name = "ToolPermissionDeniedError"
@@ -1715,7 +1733,7 @@ function createToolPermissionDeniedError() {
 function createSkillPort(input: {
   runtime?: SkillRuntimeApi
 }): OrchestrationSkillPort {
-  const runtime = input.runtime ?? createWorkspaceSkillRuntime()
+  const runtime = input.runtime ?? createLayeredSkillRuntime()
 
   return {
     listCatalog(workspaceRoot) {
@@ -1728,6 +1746,10 @@ function createSkillPort(input: {
         name: skill.name,
         path: skill.path,
         instructions: skill.instructions,
+        entryPath: skill.entryPath,
+        baseDir: skill.baseDir,
+        source: skill.source,
+        files: skill.files,
       }
     },
   }
