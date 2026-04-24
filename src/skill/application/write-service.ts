@@ -1,5 +1,4 @@
 import {
-  LEGACY_SKILLS_DIRECTORY,
   SKILLS_DIRECTORY,
   SKILL_FILENAME,
 } from "../domain"
@@ -237,10 +236,7 @@ async function resolveExistingSkill(
 }
 
 function getSkillPathCandidates(category: string | undefined, name: string) {
-  return [
-    buildSkillPath(SKILLS_DIRECTORY, category, name),
-    buildSkillPath(LEGACY_SKILLS_DIRECTORY, category, name),
-  ]
+  return [buildSkillPath(SKILLS_DIRECTORY, category, name)]
 }
 
 function buildSkillPath(skillsDirectory: string, category: string | undefined, name: string) {

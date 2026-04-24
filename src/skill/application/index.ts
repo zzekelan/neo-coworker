@@ -31,7 +31,6 @@ export {
 } from "./ports/store"
 export {
   getSkillCatalogPath,
-  LEGACY_SKILLS_DIRECTORY,
   parseSkillMetadata,
   SKILLS_DIRECTORY,
   SKILL_FILENAME,

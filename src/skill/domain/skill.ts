@@ -1,5 +1,4 @@
 export const SKILLS_DIRECTORY = ".ncoworker/skills"
-export const LEGACY_SKILLS_DIRECTORY = ".agents/skills"
 export const SKILL_FILENAME = "SKILL.md"
 export const SKILL_METADATA_BYTES = 2048
 
