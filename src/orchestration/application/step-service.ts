@@ -14,7 +14,7 @@ import {
   type OrchestrationToolPort,
 } from "./ports/tool"
 import type { OrchestrationRuntimeObserverPort } from "./ports/runtime-observer"
-import type { RuntimeEvent } from "./event"
+import { type RuntimeEvent, redactDiagnosticMessage } from "./event"
 import {
   buildContextUsageSnapshot,
   DEFAULT_CONTEXT_WINDOW_SIZE,
@@ -326,6 +326,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       inputValue.emit({
         type: "skill.load.requested",
         skillName,
+        status: "requested",
         reason: inputValue.reason,
       })
       let loadedSkill
@@ -335,12 +336,15 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
           name: skillName,
         })
       } catch (error) {
+        const errorMessage = redactDiagnosticMessage(getErrorMessage(error))
         inputValue.emit({
           type: "skill.load.failed",
           status: "failed",
           skillName,
           reason: inputValue.reason,
-          error: getErrorMessage(error),
+          errorCode: "SKILL_LOAD_FAILED",
+          errorMessage,
+          error: errorMessage,
         })
         throw error
       }
@@ -348,6 +352,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         type: "skill.load.completed",
         skillName: loadedSkill.name,
         skillPath: loadedSkill.path,
+        status: "completed",
         instructionsLength: loadedSkill.instructions.length,
         reason: inputValue.reason,
       })

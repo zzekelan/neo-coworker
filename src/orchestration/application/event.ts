@@ -36,12 +36,14 @@ export type OrchestrationRuntimeEvent =
   | {
       type: "skill.load.requested"
       skillName: string
+      status: "requested"
       reason: "activation" | "prompt" | "recovery"
     }
   | {
       type: "skill.load.completed"
       skillName: string
       skillPath: string
+      status: "completed"
       instructionsLength: number
       reason: "activation" | "prompt" | "recovery"
     }
@@ -50,10 +52,11 @@ export type OrchestrationRuntimeEvent =
       status: "failed"
       skillName: string
       reason: "activation" | "prompt" | "recovery" | "startup"
-      error: string
+      errorCode: "SKILL_LOAD_FAILED"
+      errorMessage: string
+      error?: string
       agentId?: string
-      agentName?: string
-      agentDisplayName?: string
+      displayName?: string
     }
   | {
       type: "skill.activated"
@@ -142,3 +145,13 @@ export type OrchestrationRuntimeEvent =
     }
 
 export type RuntimeEvent = OrchestrationRuntimeEvent
+
+export function redactDiagnosticMessage(message: string) {
+  return message
+    .replace(
+      /\b([A-Z][A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Z0-9_]*)\s*=\s*[^\s;,]+/g,
+      "$1=[redacted]",
+    )
+    .replace(/\bsk-[A-Za-z0-9_-]+\b/g, "sk-[redacted]")
+    .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/g, "$1[redacted]@")
+}

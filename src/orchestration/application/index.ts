@@ -67,6 +67,7 @@ export {
   type ResolvedPermissionPolicy,
 } from "./policy"
 export type { OrchestrationRuntimeEvent, RuntimeEvent } from "./event"
+export { redactDiagnosticMessage } from "./event"
 export { OrchestrationRunSchema, RunSchema } from "./run"
 export type { OrchestrationRun, Run } from "./run"
 export {
