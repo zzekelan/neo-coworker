@@ -2,6 +2,10 @@
 name: deep-research
 description: Plan and record file-based Deep Research artifacts
 version: 1
+metadata:
+  category: research
+  scope: primary
+  builtin: true
 ---
 
 # Deep Research

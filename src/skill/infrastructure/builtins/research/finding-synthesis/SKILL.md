@@ -2,6 +2,10 @@
 name: finding-synthesis
 description: Turn Deep Research notes into cited findings
 version: 1
+metadata:
+  category: research
+  scope: synthesis
+  builtin: true
 ---
 
 # Finding Synthesis

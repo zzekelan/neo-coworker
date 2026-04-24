@@ -2,6 +2,10 @@
 name: source-note
 description: Write concise Deep Research source records
 version: 1
+metadata:
+  category: research
+  scope: source-record
+  builtin: true
 ---
 
 # Source Note

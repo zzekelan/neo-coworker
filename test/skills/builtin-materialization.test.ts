@@ -85,6 +85,9 @@ describe("built-in skill materialization", () => {
         "description: Plan and record file-based Deep Research artifacts",
       )
       expect(deepResearchContent).toContain("version: 1")
+      expect(deepResearchContent).toContain("metadata:\n  category: research")
+      expect(deepResearchContent).toContain("  scope: primary")
+      expect(deepResearchContent).toContain("  builtin: true")
 
       const rootEntries = await readdir(builtinRoot)
       expect(rootEntries.sort()).toEqual([".manifest.json", "research"])

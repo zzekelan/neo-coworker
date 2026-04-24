@@ -58,6 +58,8 @@ describe("deep research built-in skills", () => {
         expect(skillContent).toContain(`name: ${pkg.name}`)
         expect(skillContent).toContain("description:")
         expect(skillContent).toContain("version: 1")
+        expect(skillContent).toContain("metadata:\n  category: research")
+        expect(skillContent).toContain("  builtin: true")
         expect(skillContent).toContain("\n---\n\n")
       }
 
@@ -107,6 +109,8 @@ describe("deep research built-in skills", () => {
         ],
       })
       expect(skill.instructions).toContain("references/artifact-schema.md")
+      expect(skill.instructions).toContain("metadata:\n  category: research")
+      expect(skill.instructions).toContain("  scope: primary")
       expect(skill.instructions).not.toContain("Claim, Scope, Confidence, Verified at, Evidence, Notes")
 
       const sections = buildModelPromptSections({
