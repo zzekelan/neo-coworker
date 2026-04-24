@@ -7,12 +7,13 @@
 // Required env: DESKTOP_REAL_LLM_PROVIDER, DESKTOP_REAL_LLM_API_KEY, DESKTOP_REAL_LLM_MODEL.
 // Optional env: DESKTOP_REAL_LLM_BASE_URL, DESKTOP_REAL_LLM_TIMEOUT_MS, DESKTOP_REAL_LLM_MAX_MS.
 //
-// Secrets (API keys) are NEVER written to evidence files, screenshots, or trace zips.
+// Secrets (API keys) are stored only in the isolated per-run desktop settings state for this
+// verifier run and are excluded from evidence files, screenshots, trace zips, and logs.
 // Mechanism: Playwright tracing and all screenshot capture begin only AFTER the Settings
 // modal containing the API key input has been applied and fully unmounted. A defensive
 // check refuses to start tracing while any `input[type="password"]` remains in the DOM.
 // Credentials enter the system exclusively through the Settings UI (never via env vars
-// inherited by the Electron child) and are never logged, persisted, or serialized.
+// inherited by the Electron child) and remain confined to that isolated settings state.
 
 import { _electron as electron } from "playwright"
 import { spawnSync } from "node:child_process"
@@ -450,9 +451,9 @@ try {
     const editAnchorSuccessPresent =
       traceEventTypes.includes("edit.anchor.success") ||
       sqliteEvidence.runEvents.some((event) => event.eventType === "edit.anchor.success")
-    // Per Task 4 known-issue note: direct edit observer injection may not yet emit edit.anchor.* in
-    // the live runtime path. Document but do not fail-fast — the disk content + read+edit tool calls
-    // already prove the anchor-only edit succeeded.
+    if (!editAnchorSuccessPresent) {
+      throw new Error(`${attempt.id}: telemetry missing required edit.anchor.success event.`)
+    }
     attemptResults.push({
       id: attempt.id,
       label: attempt.label,
