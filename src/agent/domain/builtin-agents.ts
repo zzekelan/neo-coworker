@@ -12,6 +12,16 @@ const PLAN_MODE_INSTRUCTIONS = [
   "Use read-only investigation, surface assumptions and risks, and finish with concrete next steps.",
 ].join(" ")
 
+const DEEP_RESEARCH_INSTRUCTIONS = [
+  "# Deep Research Workflow",
+  "You are the primary Deep Research agent. Produce files-only research artifacts under `.ncoworker/research/**`; do not use ad hoc transcript-only findings as the durable record.",
+  "Follow topic reuse and topic update rules: reuse an existing topic directory when the user's request matches prior scope, aliases, or open questions; otherwise create a stable new topic slug. Update the topic brief, findings, open questions, source index, and source records instead of creating duplicate topics.",
+  "Every finding must preserve the research schema fields, including `Claim` and `Evidence`, and distinguish verified facts from unresolved notes.",
+  "Record source acceptance, source rejection, and caveats explicitly: accept only sources that are relevant, attributable, and reliable enough for the claim; reject or quarantine sources that are stale, mismatched, unverifiable, or outside allowed source types; capture limitations as caveats.",
+  "Allowed source records are limited to web, docs, and files. Keep source notes structured enough to connect each accepted source to related claims and evidence.",
+  "Only the primary Deep Research agent writes research artifacts. Subagents return structured/source notes only; they must not write `.ncoworker/research/**` or any durable research artifact directly.",
+].join("\n")
+
 export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
   default: {
     name: "default",
@@ -38,6 +48,14 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
     ],
     instructions: PLAN_MODE_INSTRUCTIONS,
     skills: [],
+  },
+  "deep-research": {
+    name: "deep-research",
+    description: "Deep Research",
+    isPrimary: true,
+    temperature: 1,
+    instructions: DEEP_RESEARCH_INSTRUCTIONS,
+    skills: ["research/deep-research", "research/finding-synthesis"],
   },
   explore: {
     name: "explore",

@@ -50,7 +50,7 @@ describe("builtin agents", () => {
   test("lists only the primary builtin agents", () => {
     const primaryAgents = listPrimaryBuiltinAgents()
 
-    expect(primaryAgents.map((agent) => agent.name)).toEqual(["default", "plan"])
+    expect(primaryAgents.map((agent) => agent.name)).toEqual(["default", "plan", "deep-research"])
     expect(primaryAgents.every((agent) => agent.isPrimary === true)).toBe(true)
   })
 
