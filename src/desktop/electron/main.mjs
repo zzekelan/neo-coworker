@@ -33,7 +33,7 @@ const desktopSettingsStatePath =
   process.env.DESKTOP_SETTINGS_STATE_PATH?.trim() ||
   getDesktopSettingsPath()
 const desktopServerDatabasePath =
-  (process.env.NCOWORKER_SERVER_DB_PATH?.trim() || process.env.AGENT_SERVER_DB_PATH?.trim()) || getServerStoragePath()
+  process.env.NCOWORKER_SERVER_DB_PATH?.trim() || getServerStoragePath()
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
 const defaultDesktopSettings = createDefaultDesktopSettings({
   ...readDesktopSettingsEnvFiles(repositoryRoot),

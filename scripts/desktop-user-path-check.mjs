@@ -10,7 +10,6 @@ const DESKTOP_VERIFY_ENV_FILE_KEYS = new Set([
   "DESKTOP_SELECTION_STATE_PATH",
   "DESKTOP_SETTINGS_STATE_PATH",
   "NCOWORKER_SERVER_DB_PATH",
-  "AGENT_SERVER_DB_PATH",
 ])
 
 const cwd = process.cwd()
@@ -25,7 +24,6 @@ const desktopSettingsStatePath =
   resolveConfiguredPath(desktopVerifyEnv.DESKTOP_SETTINGS_STATE_PATH) || getDesktopSettingsPath(desktopVerifyEnv)
 const serverStoragePath =
   resolveConfiguredPath(desktopVerifyEnv.NCOWORKER_SERVER_DB_PATH) ||
-  resolveConfiguredPath(desktopVerifyEnv.AGENT_SERVER_DB_PATH) ||
   getServerStoragePath(desktopVerifyEnv)
 const isKimiMode = (desktopVerifyEnv.DESKTOP_VERIFY_KIMI ?? "").trim() === "1"
 const liveKimiEnv = {
@@ -166,13 +164,31 @@ function requestJson(path, method = "GET", body) {
   )
 }
 
+async function clickStable(locator) {
+  let lastError = null
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      await page.waitForLoadState("domcontentloaded")
+      await locator.waitFor({ state: "visible", timeout: 10_000 })
+      await page.waitForTimeout(250)
+      await locator.click({ timeout: 10_000 })
+      return
+    } catch (error) {
+      lastError = error
+      await page.waitForTimeout(500)
+    }
+  }
+
+  throw lastError
+}
+
 try {
   await page.waitForLoadState("domcontentloaded")
   await page.waitForFunction(() => document.body.innerText.includes("NeoCoworker"), null, {
     timeout: 20_000,
   })
 
-  await page.getByRole("button", { name: /Settings|设置/ }).click()
+  await clickStable(page.getByRole("button", { name: /Settings|设置/ }))
   await page.waitForSelector("text=.ncoworker/desktop-settings.json", { timeout: 10_000 })
   const settingsSnapshot = await page.evaluate(() => {
     const bridge = window.neoCoworkerDesktop
@@ -209,7 +225,7 @@ try {
   let appliedSettings = false
   const shouldEnterLlmTab = Boolean(desiredLlmConfig) || Boolean(settingsSnapshot.provider && settingsSnapshot.model)
   if (shouldEnterLlmTab) {
-    await page.getByRole("button", { name: /LLM Settings|LLM 设置/ }).click()
+    await clickStable(page.getByRole("button", { name: /LLM Settings|LLM 设置/ }))
 
     if (desiredLlmConfig) {
       const editedFields = await editLlmFields(page, {

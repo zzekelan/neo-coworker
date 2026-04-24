@@ -179,7 +179,6 @@ const launchEnv = {
   DESKTOP_SELECTION_STATE_PATH: join(isolatedRoot, "desktop-state.json"),
   DESKTOP_SETTINGS_STATE_PATH: join(isolatedRoot, "desktop-settings.json"),
   NCOWORKER_SERVER_DB_PATH: databasePath,
-  AGENT_SERVER_DB_PATH: databasePath,
 }
 // Strip both standard LLM env vars and the verifier-specific DESKTOP_REAL_LLM_* vars from the
 // child environment, so live credentials only enter the running app via the Settings UI and
