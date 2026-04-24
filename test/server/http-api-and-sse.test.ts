@@ -1487,14 +1487,14 @@ describe("server HTTP API and SSE", () => {
     const alphaRoot = join(harness.workspaceRoot, "alpha")
     const betaRoot = join(harness.workspaceRoot, "beta")
     const gammaRoot = join(harness.workspaceRoot, "gamma")
-    await mkdir(join(alphaRoot, ".agents", "skills", "reviewer"), { recursive: true })
-    await mkdir(join(alphaRoot, ".agents", "skills", "writer"), { recursive: true })
+    await mkdir(join(alphaRoot, ".ncoworker", "skills", "reviewer"), { recursive: true })
+    await mkdir(join(alphaRoot, ".ncoworker", "skills", "writer"), { recursive: true })
     await Bun.write(
-      join(alphaRoot, ".agents", "skills", "reviewer", "SKILL.md"),
+      join(alphaRoot, ".ncoworker", "skills", "reviewer", "SKILL.md"),
       ["name: reviewer", "description: Review carefully", "", "Focus on bugs first."].join("\n"),
     )
     await Bun.write(
-      join(alphaRoot, ".agents", "skills", "writer", "SKILL.md"),
+      join(alphaRoot, ".ncoworker", "skills", "writer", "SKILL.md"),
       ["name: writer", "description: Draft clearly", "", "Lead with the result."].join("\n"),
     )
 
@@ -1590,12 +1590,12 @@ describe("server HTTP API and SSE", () => {
       {
         name: "reviewer",
         description: "Review carefully",
-        path: ".agents/skills/reviewer/SKILL.md",
+        path: ".ncoworker/skills/reviewer/SKILL.md",
       },
       {
         name: "writer",
         description: "Draft clearly",
-        path: ".agents/skills/writer/SKILL.md",
+        path: ".ncoworker/skills/writer/SKILL.md",
       },
     ])
 
@@ -1824,14 +1824,14 @@ describe("server HTTP API and SSE", () => {
         yield { type: "text.delta", text: "Skill state updated." }
       },
     ]))
-    await mkdir(join(harness.workspaceRoot, ".agents", "skills", "reviewer"), { recursive: true })
-    await mkdir(join(harness.workspaceRoot, ".agents", "skills", "writer"), { recursive: true })
+    await mkdir(join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer"), { recursive: true })
+    await mkdir(join(harness.workspaceRoot, ".ncoworker", "skills", "writer"), { recursive: true })
     await Bun.write(
-      join(harness.workspaceRoot, ".agents", "skills", "reviewer", "SKILL.md"),
+      join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer", "SKILL.md"),
       ["name: reviewer", "description: Review carefully", "", "Focus on bugs first."].join("\n"),
     )
     await Bun.write(
-      join(harness.workspaceRoot, ".agents", "skills", "writer", "SKILL.md"),
+      join(harness.workspaceRoot, ".ncoworker", "skills", "writer", "SKILL.md"),
       ["name: writer", "description: Draft clearly", "", "Lead with the result."].join("\n"),
     )
 
