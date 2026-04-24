@@ -704,7 +704,7 @@ describe("agent loop", () => {
 
   test("restores active skills and recent read files after auto compaction", async () => {
     const harness = await createHarness("auto-compact-recovery", true)
-    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+    const skillDirectory = join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer")
 
     await mkdir(skillDirectory, { recursive: true })
     await Bun.write(
@@ -838,7 +838,7 @@ describe("agent loop", () => {
 
   test("restores active skills and recent read files on the next prompt after manual compaction", async () => {
     const harness = await createHarness("manual-compact-recovery", true)
-    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+    const skillDirectory = join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer")
 
     await mkdir(skillDirectory, { recursive: true })
     await Bun.write(
@@ -965,7 +965,7 @@ describe("agent loop", () => {
 
   test("projects workspace skill catalog and run active skills into model turns", async () => {
     const harness = await createHarness("skill-context", false)
-    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+    const skillDirectory = join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer")
 
     await mkdir(skillDirectory, { recursive: true })
     await Bun.write(
@@ -1026,7 +1026,7 @@ describe("agent loop", () => {
 
   test("activates a skill mid-run and injects it on the next model turn", async () => {
     const harness = await createHarness("skill-activation", false)
-    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+    const skillDirectory = join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer")
 
     await mkdir(skillDirectory, { recursive: true })
     await Bun.write(
@@ -1115,7 +1115,7 @@ describe("agent loop", () => {
 
   test("keeps activated skills available to later runs in the same session", async () => {
     const harness = await createHarness("skill-session-persistence", false)
-    const skillDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
+    const skillDirectory = join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer")
 
     await mkdir(skillDirectory, { recursive: true })
     await Bun.write(
@@ -1193,8 +1193,8 @@ describe("agent loop", () => {
 
   test("lists available skills without activating one", async () => {
     const harness = await createHarness("skill-list", false)
-    const reviewerDirectory = join(harness.workspaceRoot, ".agents", "skills", "reviewer")
-    const writerDirectory = join(harness.workspaceRoot, ".agents", "skills", "writer")
+    const reviewerDirectory = join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer")
+    const writerDirectory = join(harness.workspaceRoot, ".ncoworker", "skills", "writer")
 
     await mkdir(reviewerDirectory, { recursive: true })
     await mkdir(writerDirectory, { recursive: true })
@@ -1319,7 +1319,7 @@ describe("agent loop", () => {
             {
               name: "reviewer",
               description: "Review code changes carefully",
-              path: ".agents/skills/reviewer/SKILL.md",
+              path: ".ncoworker/skills/reviewer/SKILL.md",
             },
           ]
         },
@@ -1328,7 +1328,7 @@ describe("agent loop", () => {
           await skillLoadBlocked
           return {
             name: "reviewer",
-            path: ".agents/skills/reviewer/SKILL.md",
+            path: ".ncoworker/skills/reviewer/SKILL.md",
             instructions: "Focus on bugs first.",
           }
         },

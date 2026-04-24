@@ -413,7 +413,7 @@ describe("runtime observability", () => {
 
   test("records skill disclosure telemetry before and after activation", async () => {
     const harness = await createHarness("trace-skill", false)
-    const skillDirectory = join(harness.session.workspaceRoot, ".agents", "skills", "reviewer")
+  const skillDirectory = join(harness.session.workspaceRoot, ".ncoworker", "skills", "reviewer")
 
     await mkdir(skillDirectory, { recursive: true })
     await Bun.write(
@@ -517,7 +517,7 @@ describe("runtime observability", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             skillName: "reviewer",
-            skillPath: ".agents/skills/reviewer/SKILL.md",
+        skillPath: ".ncoworker/skills/reviewer/SKILL.md",
           }),
         }),
       ]),
@@ -627,7 +627,7 @@ describe("runtime observability", () => {
 
   test("records recovery skill loads after auto compaction", async () => {
     const harness = await createHarness("trace-compaction-recovery", false)
-    const skillDirectory = join(harness.session.workspaceRoot, ".agents", "skills", "reviewer")
+  const skillDirectory = join(harness.session.workspaceRoot, ".ncoworker", "skills", "reviewer")
 
     await mkdir(skillDirectory, { recursive: true })
     await Bun.write(
@@ -742,14 +742,14 @@ describe("runtime observability", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           skillName: "reviewer",
-          skillPath: ".agents/skills/reviewer/SKILL.md",
+        skillPath: ".ncoworker/skills/reviewer/SKILL.md",
           reason: "prompt",
         }),
       }),
       expect.objectContaining({
         data: expect.objectContaining({
           skillName: "reviewer",
-          skillPath: ".agents/skills/reviewer/SKILL.md",
+        skillPath: ".ncoworker/skills/reviewer/SKILL.md",
           reason: "recovery",
         }),
       }),
