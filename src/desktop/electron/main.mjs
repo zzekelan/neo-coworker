@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import { accessSync, appendFileSync, constants as fsConstants, existsSync } from "node:fs"
+import { accessSync, appendFileSync, constants as fsConstants } from "node:fs"
 import { createServer as createNetServer } from "node:net"
 import { homedir } from "node:os"
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path"
@@ -25,7 +25,7 @@ const desktopRoot = resolve(__dirname, "..")
 const repositoryRoot = resolve(__dirname, "..", "..", "..")
 const preloadPath = resolve(__dirname, "preload.cjs")
 const workspaceRoot =
-  process.env.DESKTOP_WORKSPACE_ROOT || resolveLegacyDesktopPath(repositoryRoot, "workspace")
+  process.env.DESKTOP_WORKSPACE_ROOT || resolveDesktopWorkspacePath(repositoryRoot, "workspace")
 const desktopSelectionStatePath =
   process.env.DESKTOP_SELECTION_STATE_PATH?.trim() ||
   getDesktopStatePath()
@@ -793,10 +793,8 @@ function readConfiguredServerOrigin(value) {
   return url.origin
 }
 
-function resolveLegacyDesktopPath(root, fileName) {
-  const nextPath = resolve(root, ".ncoworker", fileName)
-  const legacyPath = resolve(root, ".agents", fileName)
-  return existsSync(legacyPath) && !existsSync(nextPath) ? legacyPath : nextPath
+function resolveDesktopWorkspacePath(root, fileName) {
+  return resolve(root, ".ncoworker", fileName)
 }
 
 function getDesktopStatePath() {

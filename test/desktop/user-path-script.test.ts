@@ -44,6 +44,8 @@ describe("desktop user-path verify script", () => {
     expect(mainSource).toContain("getDesktopStatePath()")
     expect(mainSource).toContain("getDesktopSettingsPath()")
     expect(mainSource).toContain("getServerStoragePath()")
+    expect(mainSource).toContain("resolveDesktopWorkspacePath(repositoryRoot, \"workspace\")")
+    expect(mainSource).not.toContain("resolveLegacyDesktopPath(repositoryRoot, \"workspace\")")
     expect(mainSource).not.toContain("resolveLegacyDesktopPath(repositoryRoot, \"server.sqlite\")")
     expect(mainSource).not.toContain("resolveLegacyDesktopPath(repositoryRoot, \"desktop-state.json\")")
     expect(mainSource).not.toContain("resolveLegacyDesktopPath(repositoryRoot, \"desktop-settings.json\")")
