@@ -1,4 +1,3 @@
-// @ts-expect-error Bun runtime module is provided by Bun.
 import { Database } from "bun:sqlite"
 import { existsSync, mkdirSync, realpathSync } from "node:fs"
 import { dirname, resolve } from "node:path"
