@@ -1,0 +1,147 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`research artifact schema defines exact Markdown templates for every research artifact 1`] = `
+"# Research Index
+
+Research artifacts live under:
+
+\`\`\`text
+.ncoworker/research/
+\`\`\`
+
+Each living topic directory contains:
+
+- \`brief.md\`
+- \`findings.md\`
+- \`open-questions.md\`
+- \`sources/index.md\`
+- \`sources/web/W001-<slug>.md\`
+- \`sources/docs/D001-<slug>.md\`
+- \`sources/files/F001-<slug>.md\`
+
+## Artifact Paths
+
+\`\`\`text
+.ncoworker/research/index.md
+.ncoworker/research/<topic>/brief.md
+.ncoworker/research/<topic>/findings.md
+.ncoworker/research/<topic>/open-questions.md
+.ncoworker/research/<topic>/sources/index.md
+.ncoworker/research/<topic>/sources/web/W001-<slug>.md
+.ncoworker/research/<topic>/sources/docs/D001-<slug>.md
+.ncoworker/research/<topic>/sources/files/F001-<slug>.md
+\`\`\`
+
+## Topic Records
+
+# <topic> Research Brief
+
+- **Topic:** <topic>
+- **Title:** <title>
+- **Summary:** <one paragraph summary>
+- **Status:** active
+- **Updated:** YYYY-MM-DD
+- **Tags:** <tag>, <tag>
+
+## Brief
+
+Write the current shared understanding for this living topic directory."
+`;
+
+exports[`research artifact schema defines exact Markdown templates for every research artifact 2`] = `
+"# <topic> Research Brief
+
+- **Topic:** <topic>
+- **Title:** <title>
+- **Summary:** <one paragraph summary>
+- **Status:** active
+- **Updated:** YYYY-MM-DD
+- **Tags:** <tag>, <tag>
+
+## Brief
+
+Write the current shared understanding for this living topic directory."
+`;
+
+exports[`research artifact schema defines exact Markdown templates for every research artifact 3`] = `
+"# <topic> Findings
+
+Store durable findings as Markdown records with the exact field order below.
+
+## F001 <short claim slug>
+
+- **Claim:** <testable claim>
+- **Scope:** <where the claim applies>
+- **Confidence:** medium
+- **Verified at:** YYYY-MM-DD
+- **Evidence:** <source IDs or paths>
+- **Notes:** <caveats or next checks>"
+`;
+
+exports[`research artifact schema defines exact Markdown templates for every research artifact 4`] = `
+"# <topic> Open Questions
+
+Track unresolved questions for this living topic directory.
+
+## Questions
+
+- [ ] <question>"
+`;
+
+exports[`research artifact schema defines exact Markdown templates for every research artifact 5`] = `
+"# <topic> Sources
+
+Source records live under:
+
+\`\`\`text
+.ncoworker/research/<topic>/sources/
+\`\`\`
+
+Allowed source directories:
+
+- \`web/\` records use IDs like \`W001\`
+- \`docs/\` records use IDs like \`D001\`
+- \`files/\` records use IDs like \`F001\`"
+`;
+
+exports[`research artifact schema defines exact Markdown templates for every research artifact 6`] = `
+"# W001 <source title>
+
+- **ID:** W001
+- **Type:** web
+- **Title:** <source title>
+- **URI/Path:** https://example.com/source
+- **Retrieved at:** YYYY-MM-DD
+- **Reliability:** <why this source is reliable enough to cite>
+- **Related findings:** F001
+- **Excerpt:** <short quoted or summarized excerpt>
+- **Notes:** <limits, access notes, or follow-ups>"
+`;
+
+exports[`research artifact schema defines exact Markdown templates for every research artifact 7`] = `
+"# D001 <source title>
+
+- **ID:** D001
+- **Type:** docs
+- **Title:** <source title>
+- **URI/Path:** https://docs.example.com/source
+- **Retrieved at:** YYYY-MM-DD
+- **Reliability:** <why this source is reliable enough to cite>
+- **Related findings:** F001
+- **Excerpt:** <short quoted or summarized excerpt>
+- **Notes:** <limits, access notes, or follow-ups>"
+`;
+
+exports[`research artifact schema defines exact Markdown templates for every research artifact 8`] = `
+"# F001 <source title>
+
+- **ID:** F001
+- **Type:** files
+- **Title:** <source title>
+- **URI/Path:** /absolute/or/workspace/path/to/source
+- **Retrieved at:** YYYY-MM-DD
+- **Reliability:** <why this source is reliable enough to cite>
+- **Related findings:** F001
+- **Excerpt:** <short quoted or summarized excerpt>
+- **Notes:** <limits, access notes, or follow-ups>"
+`;
