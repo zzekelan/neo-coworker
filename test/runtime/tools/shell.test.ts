@@ -49,7 +49,7 @@ describe("shell tool — structured result metadata", () => {
 })
 
 describe("shell tool — configurable timeout", () => {
-  test("times out and returns isError=true with timeout message when command exceeds timeout", { timeout: 10_000 }, async () => {
+  test("times out and returns isError=true with timeout message when command exceeds timeout", async () => {
     const runtime = makeRuntime()
     const start = Date.now()
     const result = await runtime.execute({
@@ -79,7 +79,7 @@ describe("shell tool — configurable timeout", () => {
 })
 
 describe("shell tool — output size cap (512KB)", () => {
-  test("truncates output exceeding 512KB and sets metadata.truncated=true", { timeout: 30_000 }, async () => {
+  test("truncates output exceeding 512KB and sets metadata.truncated=true", async () => {
     const runtime = makeRuntime()
     const result = await runtime.execute({
       toolName: "shell",
@@ -119,7 +119,7 @@ describe("shell tool — description parameter", () => {
     expect(result.output).toContain("with-description")
   })
 
-  test("emits onProgress messages that include the description when provided", { timeout: 15_000 }, async () => {
+  test("emits onProgress messages that include the description when provided", async () => {
     const progressMessages: string[] = []
     const runtime = createToolRuntimeApi({
       tools: [
@@ -145,6 +145,30 @@ describe("shell tool — description parameter", () => {
 })
 
 describe("shell tool — workspace path safety", () => {
+  test("allows allowed .ncoworker/research workdir while blocking unrelated runtime workdirs", async () => {
+    const runtime = makeRuntime()
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "shell-ncoworker-research-"))
+
+    await mkdir(join(workspaceRoot, ".ncoworker", "research", "browser-security"), { recursive: true })
+    await mkdir(join(workspaceRoot, ".ncoworker", "runtime"), { recursive: true })
+
+    const result = await runtime.execute({
+      toolName: "shell",
+      args: { command: "pwd", workdir: ".ncoworker/research/browser-security" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toContain(".ncoworker/research/browser-security")
+
+    await expect(
+      runtime.execute({
+        toolName: "shell",
+        args: { command: "pwd", workdir: ".ncoworker/runtime" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+  })
+
   test("rejects runtime state directories as workdir", async () => {
     const runtime = makeRuntime()
     const workspaceRoot = await mkdtemp(join(tmpdir(), "shell-runtime-state-"))

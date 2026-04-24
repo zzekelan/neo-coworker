@@ -33,6 +33,39 @@ function expectHashAnchorError(fn: () => unknown, code: string) {
 }
 
 describe("read tool enhancements", () => {
+  test("allows reading explicit .ncoworker/research artifacts while blocking runtime files", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await makeTmpWorkspace()
+
+    await mkdir(join(workspaceRoot, ".ncoworker", "research", "browser-security"), { recursive: true })
+    await writeFile(join(workspaceRoot, ".ncoworker", "research", "browser-security", "brief.md"), "# Brief\n")
+    await writeFile(join(workspaceRoot, ".ncoworker", "secret.txt"), "secret\n")
+
+    const result = await registry.execute({
+      toolName: "read",
+      args: { path: ".ncoworker/research/browser-security/brief.md" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toContain("# Brief")
+
+    await expect(
+      registry.execute({
+        toolName: "read",
+        args: { path: ".ncoworker/secret.txt" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+
+    await expect(
+      registry.execute({
+        toolName: "read",
+        args: { path: ".ncoworker/research/../secret.txt" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+  })
+
   test("binary file detection: reading a .png returns a binary file notice without garbled content", async () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()

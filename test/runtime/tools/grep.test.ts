@@ -14,6 +14,24 @@ function createRegistry() {
 }
 
 describe("grep tool", () => {
+  test("searches allowed .ncoworker/research artifacts but hides unrelated runtime files", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "grep-ncoworker-research-"))
+
+    await mkdir(join(workspaceRoot, ".ncoworker", "research", "browser-security"), { recursive: true })
+    await writeFile(join(workspaceRoot, ".ncoworker", "research", "browser-security", "brief.md"), "RESEARCH_NEEDLE\n")
+    await writeFile(join(workspaceRoot, ".ncoworker", "secret.txt"), "RESEARCH_NEEDLE\n")
+
+    const result = await registry.execute({
+      toolName: "grep",
+      args: { pattern: "RESEARCH_NEEDLE", output_mode: "files_with_matches" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toContain(".ncoworker/research/browser-security/brief.md")
+    expect(result.output).not.toContain(".ncoworker/secret.txt")
+  })
+
   test("finds matching lines with pattern field", async () => {
     const registry = createRegistry()
 

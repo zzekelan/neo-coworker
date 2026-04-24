@@ -14,6 +14,24 @@ function createRegistry() {
 }
 
 describe("glob tool", () => {
+  test("shows allowed .ncoworker/research artifacts but hides unrelated runtime files", async () => {
+    const registry = createRegistry()
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "glob-ncoworker-research-"))
+
+    await mkdir(join(workspaceRoot, ".ncoworker", "research", "browser-security"), { recursive: true })
+    await writeFile(join(workspaceRoot, ".ncoworker", "research", "browser-security", "brief.md"), "# Brief\n")
+    await writeFile(join(workspaceRoot, ".ncoworker", "secret.txt"), "secret\n")
+
+    const result = await registry.execute({
+      toolName: "glob",
+      args: { pattern: ".ncoworker/**/*.md" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toContain(".ncoworker/research/browser-security/brief.md")
+    expect(result.output).not.toContain(".ncoworker/secret.txt")
+  })
+
   test("finds matching files by relative glob pattern", async () => {
     const registry = createRegistry()
 

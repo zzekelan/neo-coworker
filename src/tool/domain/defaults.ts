@@ -19,6 +19,14 @@ export const WORKSPACE_RESERVED_DIRECTORIES = new Set([
   ".agents",
   ".ncoworker",
 ])
+export const WORKSPACE_ALLOWED_NCOWORKER_SUBTREES = new Set([
+  "evals",
+  "memory",
+  "permissions",
+  "research",
+  "skills",
+  "tool-results",
+])
 export const WORKSPACE_MAX_MATCHES = 20
 export const SEARCH_SKIPPED_DIRECTORIES = WORKSPACE_SKIPPED_DIRECTORIES
 export const SEARCH_MAX_MATCHES = WORKSPACE_MAX_MATCHES

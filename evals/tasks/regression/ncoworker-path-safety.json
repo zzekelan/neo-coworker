@@ -40,6 +40,20 @@
         "role": "assistant",
         "partKinds": [
           "tool_call",
+          "tool_result"
+        ],
+        "toolNames": [
+          "read"
+        ],
+        "textIncludes": [
+          "# Research fixture"
+        ]
+      },
+      {
+        "messageIndex": 2,
+        "role": "assistant",
+        "partKinds": [
+          "tool_call",
           "error"
         ],
         "toolNames": [
@@ -50,10 +64,10 @@
         ]
       },
       {
-        "messageIndex": 2,
+        "messageIndex": 3,
         "role": "assistant",
         "textIncludes": [
-          "Path is reserved for agent runtime data"
+          "Research path allowed; runtime path protected: Path is reserved for agent runtime data."
         ]
       }
     ]

@@ -37,6 +37,44 @@ async function createRegistry() {
 }
 
 describe("edit tool — anchored", () => {
+  test("allows edits under .ncoworker/research while blocking unrelated runtime files", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const researchPath = join(workspaceRoot, ".ncoworker", "research", "browser-security", "brief.md")
+    const secretPath = join(workspaceRoot, ".ncoworker", "secret.txt")
+
+    await mkdir(join(workspaceRoot, ".ncoworker", "research", "browser-security"), { recursive: true })
+    await writeFile(researchPath, "# Brief\n")
+    await writeFile(secretPath, "secret\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: ".ncoworker/research/browser-security/brief.md",
+        operation: "append",
+        start: anchor(1, "# Brief"),
+        content: "Details\n",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(researchPath, "utf8")).toBe("# Brief\nDetails\n")
+
+    await expect(
+      registry.execute({
+        toolName: "edit",
+        args: {
+          path: ".ncoworker/secret.txt",
+          operation: "replace",
+          start: anchor(1, "secret"),
+          content: "leaked",
+        },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+  })
+
   test("replaces a single anchored line", async () => {
     const workspaceRoot = await createTempWorkspace()
     const registry = await createRegistry()

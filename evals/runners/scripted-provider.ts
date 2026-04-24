@@ -86,6 +86,14 @@ function buildScenarioTurns(scenario: string): ScriptedTurn[] {
         async function* () {
           yield {
             type: "tool.call",
+            callId: "call_read_ncoworker_research",
+            name: "read",
+            inputText: '{"path":".ncoworker/research/browser-security/brief.md"}',
+          }
+        },
+        async function* () {
+          yield {
+            type: "tool.call",
             callId: "call_read_ncoworker",
             name: "read",
             inputText: '{"path":".ncoworker/secret.txt"}',
@@ -94,7 +102,7 @@ function buildScenarioTurns(scenario: string): ScriptedTurn[] {
         async function* () {
           yield {
             type: "text.delta",
-            text: "Path safety preserved: Path is reserved for agent runtime data.",
+            text: "Research path allowed; runtime path protected: Path is reserved for agent runtime data.",
           }
         },
       ]

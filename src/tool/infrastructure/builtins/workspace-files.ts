@@ -3,17 +3,36 @@ import { join, relative, resolve } from "node:path"
 import {
   WORKSPACE_MAX_MATCHES,
   WORKSPACE_SKIPPED_DIRECTORIES,
+  isWorkspacePathReserved,
   throwIfToolAborted,
 } from "../../domain"
 
+declare const Bun: {
+  spawn(
+    command: string[],
+    options: {
+      cwd: string
+      stdout: "pipe"
+      stderr: "pipe"
+      stdin: "ignore"
+      signal?: AbortSignal
+    },
+  ): {
+    stdout: ReadableStream<Uint8Array>
+    stderr: ReadableStream<Uint8Array>
+    exited: Promise<number>
+  }
+  Glob: new (pattern: string) => {
+    match(path: string): boolean
+  }
+}
+
 const WORKSPACE_EXCLUDE_GLOBS = [
   "!.agents/**",
-  "!.ncoworker/**",
   "!.git/**",
   "!node_modules/**",
   "!.worktrees/**",
   "!**/.agents/**",
-  "!**/.ncoworker/**",
   "!**/.git/**",
   "!**/node_modules/**",
   "!**/.worktrees/**",
@@ -90,7 +109,7 @@ async function listWorkspaceFilesWithTraversal(input: {
   const files = await collectFiles(workspaceRoot, workspaceRoot, input.signal)
 
   if (!input.pattern) {
-    return files
+    return files.filter(isWorkspaceFileVisible)
   }
 
   const glob = new Bun.Glob(input.pattern)
@@ -111,7 +130,7 @@ async function collectFiles(
     const entryPath = join(directory, entry.name)
 
     if (entry.isDirectory()) {
-      if (WORKSPACE_SKIPPED_DIRECTORIES.has(entry.name)) {
+      if (shouldSkipDirectory(workspaceRoot, entryPath, entry.name)) {
         continue
       }
 
@@ -128,7 +147,24 @@ async function collectFiles(
 }
 
 function isWorkspaceFileVisible(file: string) {
+  if (isWorkspacePathReserved(file)) {
+    return false
+  }
+
   return !file
     .split("/")
-    .some((segment) => WORKSPACE_SKIPPED_DIRECTORIES.has(segment))
+    .some((segment) => segment !== ".ncoworker" && WORKSPACE_SKIPPED_DIRECTORIES.has(segment))
+}
+
+function shouldSkipDirectory(workspaceRoot: string, directory: string, name: string) {
+  const relativePath = relative(workspaceRoot, directory).replaceAll("\\", "/")
+  if (relativePath === ".ncoworker") {
+    return false
+  }
+
+  if (isWorkspacePathReserved(relativePath)) {
+    return true
+  }
+
+  return name !== ".ncoworker" && WORKSPACE_SKIPPED_DIRECTORIES.has(name)
 }

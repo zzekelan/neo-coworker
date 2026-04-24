@@ -1,4 +1,4 @@
-import { access, chmod, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises"
+import { access, chmod, lstat, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, dirname, join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -21,6 +21,39 @@ async function createTempWorkspace() {
 }
 
 describe("write tool — parent dir auto-creation", () => {
+  test("allows writes under .ncoworker/research while blocking unrelated runtime files", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const registry = createToolRuntimeApi({
+      tools: [createWriteTool({ requestPermission })],
+    })
+
+    const result = await registry.execute({
+      toolName: "write",
+      args: { path: ".ncoworker/research/browser-security/brief.md", content: "# Brief\n" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toContain(".ncoworker/research/browser-security/brief.md")
+    expect(await readFile(join(workspaceRoot, ".ncoworker", "research", "browser-security", "brief.md"), "utf8")).toBe("# Brief\n")
+
+    await expect(
+      registry.execute({
+        toolName: "write",
+        args: { path: ".ncoworker/secret.txt", content: "blocked" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+
+    await expect(
+      registry.execute({
+        toolName: "write",
+        args: { path: ".ncoworker/research/../secret.txt", content: "blocked" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path is reserved for agent runtime data")
+  })
+
   test("creates parent directories that do not exist", async () => {
     const workspaceRoot = await createTempWorkspace()
     const { requestPermission } = createAllowPermission()
@@ -108,10 +141,7 @@ describe("write tool — atomic write", () => {
       workspaceRoot,
     })
 
-    const directoryEntries = await Bun.spawn(["bash", "-lc", `ls -A ${JSON.stringify(workspaceRoot)}`], {
-      stdout: "pipe",
-      stderr: "pipe",
-    }).stdout.text()
+    const directoryEntries = (await readdir(workspaceRoot)).join("\n")
     expect(directoryEntries).not.toContain(".myfile.ts.tmp")
   })
 

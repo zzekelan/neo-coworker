@@ -4,6 +4,7 @@ import { relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import {
   assertWorkspacePathNotReserved,
+  isWorkspacePathInAllowedNcoworkerSubtree,
   throwIfToolAborted,
   type RequestToolPermission,
   type ToolDefinition,
@@ -38,11 +39,24 @@ function isConditionallyProtectedWritePath(relativePath: string): boolean {
   return CONDITIONALLY_PROTECTED_WRITE_BASENAMES.has(name) || name === ".env" || name.startsWith(".env.")
 }
 
+function assertWorkspaceParentPathAllowedForWrite(relativePath: string, targetRelativePath: string) {
+  if (
+    relativePath === ".ncoworker" &&
+    isWorkspacePathInAllowedNcoworkerSubtree(targetRelativePath)
+  ) {
+    return
+  }
+
+  assertWorkspacePathNotReserved(relativePath)
+}
+
 async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: string) {
   assertWorkspacePathNotReserved(relativePath)
 
   const root = await realpath(resolve(workspaceRoot))
   const target = resolve(root, relativePath)
+  const resolvedTargetRelativePath = relative(root, target)
+  assertWorkspacePathNotReserved(resolvedTargetRelativePath)
 
   if (target === root) {
     throw new Error(`Path must reference a file inside workspace: ${relativePath}`)
@@ -84,7 +98,7 @@ async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: st
 
         const relativeCandidate = relative(root, resolvedCandidate)
         if (relativeCandidate) {
-          assertWorkspacePathNotReserved(relativeCandidate)
+          assertWorkspaceParentPathAllowedForWrite(relativeCandidate, relativePath)
         }
 
         existingParentDir = resolvedCandidate
@@ -108,7 +122,7 @@ async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: st
 
     const relativeParent = relative(root, existingParentDir)
     if (relativeParent) {
-      assertWorkspacePathNotReserved(relativeParent)
+      assertWorkspaceParentPathAllowedForWrite(relativeParent, relativePath)
     }
 
     const resolvedTarget = resolve(existingParentDir, fileName)
