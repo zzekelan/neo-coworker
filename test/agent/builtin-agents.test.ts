@@ -27,6 +27,7 @@ describe("builtin agents", () => {
 
     expect(agent).toBeDefined()
     expect(agent.name).toBe("plan")
+    expect(agent.displayName).toBe("Plan")
     expect(agent.description).toBe("Strategic planning mode — read-only, no code modifications")
     expect(agent.isPrimary).toBe(true)
     expect(agent.temperature).toBe(1)
@@ -52,6 +53,11 @@ describe("builtin agents", () => {
     const primaryAgents = listPrimaryBuiltinAgents()
 
     expect(primaryAgents.map((agent) => agent.name)).toEqual(["general", "plan", "deep-research"])
+    expect(primaryAgents.map((agent) => agent.displayName)).toEqual([
+      "General",
+      "Plan",
+      "Deep Research",
+    ])
     expect(primaryAgents.every((agent) => agent.isPrimary === true)).toBe(true)
   })
 

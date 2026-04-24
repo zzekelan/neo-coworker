@@ -43,6 +43,7 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
   },
   plan: {
     name: "plan",
+    displayName: "Plan",
     description: "Strategic planning mode — read-only, no code modifications",
     isPrimary: true,
     temperature: 1,
@@ -62,6 +63,7 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
   },
   "deep-research": {
     name: "deep-research",
+    displayName: "Deep Research",
     description: "Deep Research",
     isPrimary: true,
     temperature: 1,
