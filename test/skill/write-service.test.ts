@@ -140,11 +140,11 @@ describe("skill write service", () => {
     ])
   })
 
-  test("patches an existing legacy skill body while preserving frontmatter and emits telemetry", async () => {
+  test("patches an existing skill body while preserving frontmatter and emits telemetry", async () => {
     const workspaceRoot = await createTempWorkspace("skill-write-patch-")
     const events: Array<Record<string, unknown>> = []
     const scans: Array<Record<string, unknown>> = []
-    await writeLegacySkill(workspaceRoot, ["reviewer"], {
+    await writeWorkspaceSkill(workspaceRoot, ["reviewer"], {
       content: [
         "name: reviewer",
         "description: Review code carefully",
@@ -175,7 +175,7 @@ describe("skill write service", () => {
     })
 
     await expect(
-      readFile(join(workspaceRoot, ".agents", "skills", "reviewer", "SKILL.md"), "utf8"),
+      readFile(join(workspaceRoot, ".ncoworker", "skills", "reviewer", "SKILL.md"), "utf8"),
     ).resolves.toBe([
       "name: reviewer",
       "description: Review code carefully",
@@ -211,7 +211,7 @@ describe("skill write service", () => {
         workspaceRoot,
         category: undefined,
         name: "reviewer",
-        skillPath: ".agents/skills/reviewer/SKILL.md",
+        skillPath: ".ncoworker/skills/reviewer/SKILL.md",
         operation: "patch",
         content: [
           "name: reviewer",
@@ -301,9 +301,9 @@ describe("skill write service", () => {
     ).rejects.toBeInstanceOf(SkillPathTraversalError)
   })
 
-  test("rejects duplicate skill creation across skill directories", async () => {
+  test("rejects duplicate skill creation in the workspace skill directory", async () => {
     const workspaceRoot = await createTempWorkspace("skill-write-duplicate-")
-    await writeLegacySkill(workspaceRoot, ["reviewer"], {
+    await writeWorkspaceSkill(workspaceRoot, ["reviewer"], {
       content: [
         "name: reviewer",
         "description: Existing reviewer skill",
@@ -459,12 +459,12 @@ async function createTempWorkspace(prefix: string) {
   return directory
 }
 
-async function writeLegacySkill(
+async function writeWorkspaceSkill(
   workspaceRoot: string,
   pathSegments: string[],
   input: { content: string },
 ) {
-  const skillDirectory = join(workspaceRoot, ".agents", "skills", ...pathSegments)
+  const skillDirectory = join(workspaceRoot, ".ncoworker", "skills", ...pathSegments)
   await mkdir(skillDirectory, { recursive: true })
   await writeFile(join(skillDirectory, "SKILL.md"), input.content)
 }
