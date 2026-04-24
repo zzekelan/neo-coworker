@@ -226,8 +226,8 @@ describe("eval runner", () => {
   test("seeds session skills and grades progressive disclosure across prompt assembly", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "eval-runner-skill-"))
     tempDirectories.push(workspaceRoot)
-    const reviewerRoot = join(workspaceRoot, ".agents", "skills", "reviewer")
-    const writerRoot = join(workspaceRoot, ".agents", "skills", "writer")
+    const reviewerRoot = join(workspaceRoot, ".ncoworker", "skills", "reviewer")
+    const writerRoot = join(workspaceRoot, ".ncoworker", "skills", "writer")
     await mkdir(reviewerRoot, { recursive: true })
     await mkdir(writerRoot, { recursive: true })
     await Bun.write(

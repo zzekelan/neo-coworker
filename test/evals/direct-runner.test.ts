@@ -88,7 +88,7 @@ describe("direct eval runner", () => {
     })
   })
 
-  test("defaults eval artifacts to .ncoworker/evals with legacy fallback", async () => {
+  test("defaults eval artifacts to .ncoworker/evals without legacy fallback", async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "eval-output-root-"))
     tempDirectories.push(workspaceRoot)
 
@@ -99,7 +99,7 @@ describe("direct eval runner", () => {
     await mkdir(join(workspaceRoot, ".agents", "evals"), { recursive: true })
 
     expect(getDefaultEvalOutputRoot(workspaceRoot)).toBe(
-      join(workspaceRoot, ".agents", "evals"),
+      join(workspaceRoot, ".ncoworker", "evals"),
     )
 
     await mkdir(join(workspaceRoot, ".ncoworker", "evals"), { recursive: true })

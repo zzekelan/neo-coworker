@@ -138,8 +138,8 @@ By default eval output is written under:
 .ncoworker/evals/<timestamp>/<task-id>/
 ```
 
-If a workspace already has legacy `.agents/evals` state and no `.ncoworker/evals`
-directory yet, the runner keeps writing to `.agents/evals` for compatibility.
+Legacy `.agents/evals` directories are ignored; the default output root does not
+fall back when old artifact state is present.
 
 Each task artifact bundle currently contains:
 
@@ -204,7 +204,7 @@ When adding or changing eval tasks:
 - avoid exact free-text grading in live mode unless variability is tightly controlled
 - keep `workspaceFixture` inside `evals/fixtures`
 - keep scripted tasks paired with a `scenario`
-- keep `.ncoworker/skills` fixture content minimal and commit ignored skill files explicitly when a live skill task needs them; use `.agents/skills` only for explicit legacy fallback coverage
+- keep `.ncoworker/skills` fixture content minimal and commit ignored skill files explicitly when a live skill task needs them; use `.agents/skills` only for explicit legacy-removal coverage that proves old skills are ignored
 - do not place secrets in tasks, fixtures, or exported artifacts
 
 ## Where To Look Next

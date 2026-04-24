@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs"
 import { readdir, readFile } from "node:fs/promises"
 import { isAbsolute, resolve, join, sep } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -26,14 +25,7 @@ export function getDefaultEvalFixturesRoot() {
 }
 
 export function getDefaultEvalOutputRoot(cwd: string = process.cwd()) {
-  const nextRoot = join(cwd, ".ncoworker", "evals")
-  const legacyRoot = join(cwd, ".agents", "evals")
-
-  if (!existsSync(nextRoot) && existsSync(legacyRoot)) {
-    return legacyRoot
-  }
-
-  return nextRoot
+  return join(cwd, ".ncoworker", "evals")
 }
 
 export async function loadEvalTasks(input: {
