@@ -498,8 +498,22 @@ function renderActiveSkillSection(activeSkills: ModelActiveSkill[]) {
 
   return [
     "Active skill instructions:",
-    ...activeSkills.map((skill) => `## ${skill.name}\n${skill.instructions}`),
+    ...activeSkills.map(renderActiveSkill),
   ].join("\n\n")
+}
+
+function renderActiveSkill(skill: ModelActiveSkill) {
+  return [`## ${skill.name}`, skill.instructions, renderSkillPackageFiles(skill.files)].filter(
+    (section): section is string => section !== null,
+  ).join("\n")
+}
+
+function renderSkillPackageFiles(files: readonly string[] | undefined) {
+  if (!files || files.length === 0) {
+    return null
+  }
+
+  return ["Package files:", ...files.map((file) => `- ${file}`)].join("\n")
 }
 
 function buildMicrocompactSummary(input: {

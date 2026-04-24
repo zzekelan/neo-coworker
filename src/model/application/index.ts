@@ -46,6 +46,8 @@ export type {
   ModelProjectionInput,
   ModelReasoningPart,
   ModelSkillCatalogEntry,
+  ModelSkillPackageMetadata,
+  ModelSkillSource,
   ModelTextPart,
   ModelTool,
   ModelToolCallPart,

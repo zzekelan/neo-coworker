@@ -13,7 +13,16 @@ export type ModelSkillCatalogEntry = {
   path: string
 }
 
-export type ModelActiveSkill = {
+export type ModelSkillSource = "builtin" | "global" | "workspace"
+
+export type ModelSkillPackageMetadata = {
+  entryPath?: string
+  baseDir?: string
+  source?: ModelSkillSource
+  files?: string[]
+}
+
+export type ModelActiveSkill = ModelSkillPackageMetadata & {
   name: string
   instructions: string
 }

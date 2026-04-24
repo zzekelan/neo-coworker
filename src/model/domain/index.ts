@@ -16,7 +16,9 @@ export type {
 export type {
   ModelActiveSkill,
   ModelProjectionInput,
+  ModelSkillPackageMetadata,
   ModelSkillCatalogEntry,
+  ModelSkillSource,
   ModelTool,
   ModelTurnRequest,
 } from "./turn"
