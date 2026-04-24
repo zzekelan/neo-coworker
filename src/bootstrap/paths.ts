@@ -43,7 +43,7 @@ export function getDesktopStatePath(_repositoryRoot?: string): string {
 }
 
 export function getDesktopSettingsPath(_repositoryRoot?: string): string {
-  return join(getUserConfigRoot(), "desktop-settings.json")
+  return join(getAppStateRoot(), "desktop-settings.json")
 }
 
 export function getAgentsDir(_workspaceRoot?: string): string {

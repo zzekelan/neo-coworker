@@ -53,9 +53,6 @@ describe("bootstrap paths", () => {
 
       expect(getUserConfigRoot()).toBe(join(xdgConfigHome, APP_DIR_NAME))
       expect(getConfigDir(workspaceRoot)).toBe(join(xdgConfigHome, APP_DIR_NAME))
-      expect(getDesktopSettingsPath(workspaceRoot)).toBe(
-        join(xdgConfigHome, APP_DIR_NAME, "desktop-settings.json"),
-      )
       expect(getAgentsDir(workspaceRoot)).toBe(join(xdgConfigHome, APP_DIR_NAME, "agents"))
     })
   })
@@ -70,6 +67,9 @@ describe("bootstrap paths", () => {
       expect(getServerStoragePath(workspaceRoot)).toBe(join(xdgDataHome, APP_DIR_NAME, "server.sqlite"))
       expect(getDesktopStatePath(workspaceRoot)).toBe(
         join(xdgDataHome, APP_DIR_NAME, "desktop-state.json"),
+      )
+      expect(getDesktopSettingsPath(workspaceRoot)).toBe(
+        join(xdgDataHome, APP_DIR_NAME, "desktop-settings.json"),
       )
     })
   })
@@ -131,9 +131,12 @@ describe("bootstrap paths", () => {
       process.env.XDG_DATA_HOME = join(tmpDir, "xdg-data")
 
       const statePath = getDesktopStatePath(workspaceRoot)
+      const settingsPath = getDesktopSettingsPath(workspaceRoot)
 
       expect(statePath).toBe(join(tmpDir, "xdg-data", APP_DIR_NAME, "desktop-state.json"))
+      expect(settingsPath).toBe(join(tmpDir, "xdg-data", APP_DIR_NAME, "desktop-settings.json"))
       expect(statePath.startsWith(workspaceRoot)).toBe(false)
+      expect(settingsPath.startsWith(workspaceRoot)).toBe(false)
     })
   })
 })
