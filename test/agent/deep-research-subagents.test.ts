@@ -372,8 +372,9 @@ describe("Deep Research source researcher subagents", () => {
     expect(builtPrompt).not.toContain("research/source-note")
   })
 
-  test("source researcher startup emits structured skill load failure when source-note is missing", async () => {
+  test("source researcher startup emits structured secret-free skill load failure when source-note is missing", async () => {
     const events: Array<{ event: Record<string, unknown>; sessionId: string; runId: string }> = []
+    const secretValue = "sk-test-source-note-secret"
 
     await expect(
       createSubAgentRun(
@@ -383,7 +384,7 @@ describe("Deep Research source researcher subagents", () => {
               return []
             },
             async loadSkill(input) {
-              throw new Error(`Required builtin skill missing: ${input.name}`)
+              throw new Error(`Required builtin skill missing: ${input.name}; OPENAI_API_KEY=${secretValue}`)
             },
           },
           runtimeObserver: {
@@ -407,11 +408,56 @@ describe("Deep Research source researcher subagents", () => {
           status: "failed",
           skillName: "source-note",
           agentId: "source-researcher",
-          agentName: "source-researcher",
-          agentDisplayName: "Source Researcher",
-          error: "Required builtin skill missing: source-note",
+          displayName: "Source Researcher",
+          errorCode: "SKILL_LOAD_FAILED",
+          errorMessage: expect.stringContaining("Required builtin skill missing: source-note"),
+          reason: "startup",
         }),
       }),
+    )
+    expect(JSON.stringify(events)).not.toContain(secretValue)
+  })
+
+  test("source researcher emits structured subagent lifecycle status events", async () => {
+    const events: Array<{ event: Record<string, unknown>; sessionId: string; runId: string }> = []
+
+    await createSubAgentRun(
+      createSubAgentInput({
+        runtimeObserver: {
+          recordRuntimeEvent(input) {
+            events.push({
+              event: input.event,
+              sessionId: input.sessionId,
+              runId: input.runId,
+            })
+          },
+        },
+      }),
+    )
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: expect.objectContaining({
+            type: "subagent.started",
+            parentRunId: "parent-run",
+            subRunId: expect.any(String),
+            agentId: "source-researcher",
+            displayName: "Source Researcher",
+            status: "started",
+          }),
+        }),
+        expect.objectContaining({
+          event: expect.objectContaining({
+            type: "subagent.completed",
+            parentRunId: "parent-run",
+            subRunId: expect.any(String),
+            agentId: "source-researcher",
+            displayName: "Source Researcher",
+            status: "completed",
+          }),
+        }),
+      ]),
     )
   })
 

@@ -144,7 +144,9 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     occurredAt: now(),
     event: {
       type: "subagent.started",
-      agentName: input.profile.name,
+      agentId: input.profile.name,
+      displayName: input.profile.displayName ?? input.profile.name,
+      status: "started",
       parentRunId: input.parentRunId,
       subRunId: context.subRunId,
       maxTurns,
@@ -225,7 +227,9 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
         occurredAt: now(),
         event: {
           type: "subagent.completed",
-          agentName: input.profile.name,
+          agentId: input.profile.name,
+          displayName: input.profile.displayName ?? input.profile.name,
+          status: "completed",
           parentRunId: input.parentRunId,
           subRunId: context.subRunId,
           outputLength: output.length,
@@ -250,6 +254,23 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
       throw error
     }
 
+    recordRuntimeEvent({
+      runtimeObserver: input.runtimeObserver,
+      sessionId: subSessionId,
+      runId: context.subRunId,
+      occurredAt: now(),
+      event: {
+        type: "subagent.failed",
+        agentId: input.profile.name,
+        displayName: input.profile.displayName ?? input.profile.name,
+        status: "failed",
+        parentRunId: input.parentRunId,
+        subRunId: context.subRunId,
+        errorCode: "SUBAGENT_FAILED",
+        errorMessage: redactDiagnosticMessage(getErrorMessage(error)),
+      },
+    })
+
     throw error
   }
 }
@@ -270,6 +291,7 @@ function createStartupSkillFailureReportingPort(input: {
       try {
         return await input.skill.loadSkill(value)
       } catch (error) {
+        const errorMessage = redactDiagnosticMessage(getErrorMessage(error))
         recordRuntimeEvent({
           runtimeObserver: input.runtimeObserver,
           sessionId: input.sessionId,
@@ -280,9 +302,9 @@ function createStartupSkillFailureReportingPort(input: {
             status: "failed",
             skillName: value.name,
             agentId: input.profile.name,
-            agentName: input.profile.name,
-            agentDisplayName: input.profile.displayName,
-            error: getErrorMessage(error),
+            displayName: input.profile.displayName ?? input.profile.name,
+            errorCode: "SKILL_LOAD_FAILED",
+            errorMessage,
             reason: "startup",
           },
         })
@@ -294,6 +316,16 @@ function createStartupSkillFailureReportingPort(input: {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
+}
+
+function redactDiagnosticMessage(message: string) {
+  return message
+    .replace(
+      /\b([A-Z][A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Z0-9_]*)\s*=\s*[^\s;,]+/g,
+      "$1=[redacted]",
+    )
+    .replace(/\bsk-[A-Za-z0-9_-]+\b/g, "sk-[redacted]")
+    .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/g, "$1[redacted]@")
 }
 
 function createScopedSkillPort(input: {
