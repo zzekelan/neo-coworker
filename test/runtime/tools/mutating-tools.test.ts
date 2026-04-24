@@ -9,6 +9,11 @@ import {
   createToolRuntimeApi,
   createWriteTool,
 } from "../../../src/tool"
+import { formatAnchorLine } from "../../../src/tool/infrastructure/builtins/hash-anchor"
+
+function anchor(lineNumber: number, lineContent: string) {
+  return formatAnchorLine(lineNumber, lineContent)
+}
 
 async function createWorkspaceCopy() {
   const tempRoot = await mkdtemp(join(tmpdir(), "mutating-tools-"))
@@ -79,7 +84,12 @@ describe("mutating tools", () => {
 
     const pending = registry.execute({
       toolName: "edit",
-      args: { path: "README.md", oldText: "demo", newText: "live" },
+      args: {
+        path: "README.md",
+        operation: "replace",
+        start: anchor(1, "demo"),
+        content: "live",
+      },
       workspaceRoot,
     })
 
@@ -87,7 +97,7 @@ describe("mutating tools", () => {
     await expect(pending).rejects.toThrow("Permission denied")
   })
 
-  test("returns isError when target text appears multiple times", async () => {
+  test("returns isError when the start anchor no longer matches the file", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
     const registry = createToolRuntimeApi({
@@ -99,7 +109,12 @@ describe("mutating tools", () => {
 
     const pending = registry.execute({
       toolName: "edit",
-      args: { path: "src/repeat.txt", oldText: "demo", newText: "live" },
+      args: {
+        path: "src/repeat.txt",
+        operation: "replace",
+        start: anchor(1, "demo"),
+        content: "live",
+      },
       workspaceRoot,
     })
 
@@ -107,11 +122,11 @@ describe("mutating tools", () => {
 
     const result = await pending
     expect(result.isError).toBe(true)
-    expect(result.output).toContain("Found 2 matches")
+    expect(result.output).toContain("Anchor hash mismatch at line 1")
     expect(await readFile(repeatedFile, "utf8")).toBe("demo demo\n")
   })
 
-  test("returns isError when target text has overlapping duplicate matches", async () => {
+  test("returns isError when the start anchor is outside the file range", async () => {
     const workspaceRoot = await createWorkspaceCopy()
     const permissionState = createPermissionState()
     const registry = createToolRuntimeApi({
@@ -123,7 +138,12 @@ describe("mutating tools", () => {
 
     const pending = registry.execute({
       toolName: "edit",
-      args: { path: "src/overlap.txt", oldText: "aba", newText: "xyz" },
+      args: {
+        path: "src/overlap.txt",
+        operation: "replace",
+        start: anchor(2, "missing"),
+        content: "xyz",
+      },
       workspaceRoot,
     })
 
@@ -131,7 +151,7 @@ describe("mutating tools", () => {
 
     const result = await pending
     expect(result.isError).toBe(true)
-    expect(result.output).toMatch(/Found \d+ matches/)
+    expect(result.output).toContain("outside the available line range")
     expect(await readFile(overlappingFile, "utf8")).toBe("ababa\n")
   })
 

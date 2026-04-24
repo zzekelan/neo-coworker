@@ -49,7 +49,14 @@ describe("shadow git checkpoint triggers", () => {
   })
 
   test("edit triggers checkpoint", () => {
-    expect(shouldCheckpoint("edit", { path: "notes.txt", oldText: "a", newText: "b" })).toBe(true)
+    expect(
+      shouldCheckpoint("edit", {
+        path: "notes.txt",
+        operation: "replace",
+        start: "L1#ca978112|a",
+        content: "b",
+      }),
+    ).toBe(true)
   })
 
   test("patch triggers checkpoint", () => {

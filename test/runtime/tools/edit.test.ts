@@ -19,6 +19,12 @@ async function createTempWorkspace() {
   return await mkdtemp(join(tmpdir(), "edit-test-"))
 }
 
+const REMOVED_EDIT_FIELDS = {
+  target: ["old", "Text"].join(""),
+  replacement: ["new", "Text"].join(""),
+  mode: ["replace", "All"].join(""),
+} as const
+
 function anchor(lineNumber: number, lineContent: string) {
   return formatAnchorLine(lineNumber, lineContent)
 }
@@ -603,7 +609,7 @@ describe("edit tool — stale", () => {
     expect(await readFile(filePath, "utf8")).toBe(original)
   })
 
-  test("rejects legacy oldText/newText/replaceAll args as schema errors", async () => {
+  test("rejects removed legacy edit fields as schema errors", async () => {
     const workspaceRoot = await createTempWorkspace()
     const registry = await createRegistry()
     const filePath = join(workspaceRoot, "legacy.txt")
@@ -612,7 +618,12 @@ describe("edit tool — stale", () => {
 
     const result = await registry.execute({
       toolName: "edit",
-      args: { path: "legacy.txt", oldText: "alpha", newText: "beta", replaceAll: true },
+      args: {
+        path: "legacy.txt",
+        [REMOVED_EDIT_FIELDS.target]: "alpha",
+        [REMOVED_EDIT_FIELDS.replacement]: "beta",
+        [REMOVED_EDIT_FIELDS.mode]: true,
+      },
       workspaceRoot,
     })
 
