@@ -13,12 +13,12 @@ describe("desktop skill state", () => {
         {
           name: "reviewer",
           description: "Review carefully",
-          path: ".agents/skills/reviewer/SKILL.md",
+          path: ".ncoworker/skills/reviewer/SKILL.md",
         },
         {
           name: "writer",
           description: "Draft clearly",
-          path: ".agents/skills/writer/SKILL.md",
+          path: ".ncoworker/skills/writer/SKILL.md",
         },
       ],
       "draft",
@@ -28,7 +28,7 @@ describe("desktop skill state", () => {
       {
         name: "writer",
         description: "Draft clearly",
-        path: ".agents/skills/writer/SKILL.md",
+        path: ".ncoworker/skills/writer/SKILL.md",
       },
     ])
   })
@@ -41,6 +41,7 @@ describe("desktop skill state", () => {
           title: "Demo",
           workspaceRoot: "/tmp/demo",
           sessionId: "session-1",
+          createdAt: new Date(0).toISOString(),
           updatedAt: new Date(0).toISOString(),
           activeSkills: ["writer"],
           latestRunStatus: null,
@@ -62,6 +63,7 @@ describe("desktop skill state", () => {
       title: "Demo",
       workspaceRoot: "/tmp/demo",
       sessionId: "session-1",
+      createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
       activeSkills: ["writer"],
       latestRunStatus: null,

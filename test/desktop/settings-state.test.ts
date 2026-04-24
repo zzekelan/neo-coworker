@@ -7,6 +7,7 @@ import {
   readDesktopSettingsEnvFiles,
   readDesktopSettingsState,
   writeDesktopSettingsState,
+// @ts-expect-error Electron helper is authored as .mjs without a declaration file.
 } from "../../src/desktop/electron/settings-state.mjs"
 
 const temporaryDirectories: string[] = []
@@ -94,7 +95,7 @@ describe("desktop settings state", () => {
       [
         "LLM_PROVIDER=\"openai-compatible\"",
         "LLM_API_KEY=env-key",
-        "AGENT_SERVER_DB_PATH=\"$PWD/.agents/server.sqlite\"",
+        "NCOWORKER_SERVER_DB_PATH=\"$PWD/.ncoworker/server.sqlite\"",
       ].join("\n"),
     )
     writeFileSync(

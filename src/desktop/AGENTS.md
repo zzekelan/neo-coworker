@@ -26,7 +26,7 @@ node ./scripts/desktop-user-path-check.mjs
 
 ## CONVENTIONS
 - Browser-mode dev uses a shimmed desktop bridge in `src/main.tsx`; Electron mode uses the preload bridge.
-- Managed-local mode starts `src/app-server/main.ts` via Bun and persists desktop state under repo-root `.ncoworker/` (`.agents/` still works as legacy fallback).
+- Managed-local mode starts `src/app-server/main.ts` via Bun and persists desktop state under XDG app data; the default workspace path is repo-root `.ncoworker/workspace` with no `.agents/` fallback.
 - `useDesktopApp.ts` is the main orchestration hotspot; keep UI state logic there coherent instead of scattering side effects.
 - Dev proxy behavior belongs in `dev-server-config.ts`, not ad hoc in components.
 - **Theme System**: CSS-variable-based theme system using Linear-inspired naming (e.g., `--color-paper`, `--color-ink`, `--color-accent`, `--color-surface`).
