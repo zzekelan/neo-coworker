@@ -111,7 +111,7 @@ export function createSkillReminderTracker() {
       const state = getSessionState(sessionStates, sessionId)
       return activeSkillNames.flatMap((skillName) => {
         const skill = state.injectedSkills.get(skillName)
-        return skill ? [{ name: skill.name, instructions: skill.instructions }] : []
+        return skill ? [toActiveSkill(skill)] : []
       })
     },
     peekSystemReminderBatch(sessionId: string): SkillReminderBatch | undefined {
@@ -129,6 +129,17 @@ export function createSkillReminderTracker() {
       state.injectedSkills.clear()
       state.pendingEntries = []
     },
+  }
+}
+
+function toActiveSkill(skill: OrchestrationLoadedSkill): OrchestrationActiveSkill {
+  return {
+    name: skill.name,
+    instructions: skill.instructions,
+    ...(skill.entryPath !== undefined && { entryPath: skill.entryPath }),
+    ...(skill.baseDir !== undefined && { baseDir: skill.baseDir }),
+    ...(skill.source !== undefined && { source: skill.source }),
+    ...(skill.files !== undefined && { files: skill.files }),
   }
 }
 
@@ -177,9 +188,23 @@ function renderActiveSkillReminder(activeSkills: readonly OrchestrationActiveSki
     "<system-reminder>",
     "Active skill instructions:",
     "",
-    ...activeSkills.map((skill) => `## ${skill.name}\n${skill.instructions}`),
+    ...activeSkills.map(renderActiveSkill),
     "</system-reminder>",
   ].join("\n")
+}
+
+function renderActiveSkill(skill: OrchestrationActiveSkill) {
+  return [`## ${skill.name}`, skill.instructions, renderSkillPackageFiles(skill.files)].filter(
+    (section): section is string => section !== null,
+  ).join("\n")
+}
+
+function renderSkillPackageFiles(files: readonly string[] | undefined) {
+  if (!files || files.length === 0) {
+    return null
+  }
+
+  return ["Package files:", ...files.map((file) => `- ${file}`)].join("\n")
 }
 
 function truncateRecoverySkills(skills: readonly OrchestrationLoadedSkill[]) {

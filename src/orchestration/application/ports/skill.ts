@@ -4,7 +4,16 @@ export type OrchestrationSkillCatalogEntry = {
   path: string
 }
 
-export type OrchestrationActiveSkill = {
+export type OrchestrationSkillSource = "builtin" | "global" | "workspace"
+
+export type OrchestrationSkillPackageMetadata = {
+  entryPath?: string
+  baseDir?: string
+  source?: OrchestrationSkillSource
+  files?: string[]
+}
+
+export type OrchestrationActiveSkill = OrchestrationSkillPackageMetadata & {
   name: string
   instructions: string
 }
