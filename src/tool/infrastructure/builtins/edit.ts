@@ -1,6 +1,5 @@
-import { stat } from "node:fs/promises"
-import { realpath } from "node:fs/promises"
-import { resolve, sep } from "node:path"
+import { readFile, realpath, stat } from "node:fs/promises"
+import { relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import {
   assertWorkspacePathNotReserved,
@@ -9,10 +8,23 @@ import {
   type ToolDefinition,
 } from "../../domain"
 import { createToolPermissionDeniedError } from "./errors"
-import { HashAnchorError, parseAnchor } from "./hash-anchor"
-import { type AtomicUtf8FileWrite, withSerializedFileMutation } from "./mutating-file"
+import {
+  detectEolStyle,
+  formatAnchorLine,
+  HashAnchorError,
+  parseAnchor,
+  splitLinesWithMetadata,
+  validateInclusiveRange,
+  type EolStyle,
+} from "./hash-anchor"
+import {
+  type AtomicUtf8FileWrite,
+  withSerializedFileMutation,
+  writeUtf8FileAtomically,
+} from "./mutating-file"
 
 const MAX_FILE_SIZE = 500 * 1024
+const FIRST_LINE_BOM = "\uFEFF"
 
 const EDIT_TOOL_DESCRIPTION =
   "Modify an existing workspace file using line anchors copied from read output. Read the file first, then copy the relevant anchor strings that begin with `L{line}#{hash}` into `start` and optional `end`. Use `replace` to replace the inclusive anchored range from `start` through `end` (or just `start` when `end` is omitted), `prepend` to insert `content` before the `start` anchor line, or `append` to insert `content` after `end` when `end` is provided, otherwise after `start`. This tool requires permission. Files larger than 500 KB are rejected. Paths must stay inside the workspace. Preserve inserted content exactly as written."
@@ -36,7 +48,25 @@ const EditArgsSchema = z.object({
   content: z.string().describe(
     "Content to insert exactly as written. Preserve indentation, spacing, and newlines exactly, and do not include read-output line numbers or anchor prefixes inside `content`.",
   ),
-}).describe(EDIT_TOOL_DESCRIPTION)
+}).strict().describe(EDIT_TOOL_DESCRIPTION)
+
+type EditOperation = z.infer<typeof EditArgsSchema>["operation"]
+
+type MutableLine = {
+  content: string
+  hasLineEnding: boolean
+}
+
+type MutationPlan = {
+  updatedText: string
+  previewAnchor?: string
+  rangeStartLineNumber: number
+  rangeEndLineNumber: number
+}
+
+type ParsedContentBlock = {
+  lines: MutableLine[]
+}
 
 async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string) {
   assertWorkspacePathNotReserved(relativePath)
@@ -48,15 +78,168 @@ async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string)
     throw new Error(`Path must stay inside workspace: ${relativePath}`)
   }
 
-  assertWorkspacePathNotReserved(file.slice(root.length + 1))
+  assertWorkspacePathNotReserved(relative(root, file))
 
   return file
+}
+
+function resolveLineEnding(style: EolStyle, content: string): "\n" | "\r\n" {
+  if (style === "crlf") {
+    return "\r\n"
+  }
+
+  if (style === "lf") {
+    return "\n"
+  }
+
+  return detectEolStyle(content) === "crlf" ? "\r\n" : "\n"
+}
+
+function parseContentBlock(content: string): ParsedContentBlock {
+  if (content.length === 0) {
+    return { lines: [] }
+  }
+
+  const lines = splitLinesWithMetadata(content)
+
+  return {
+    lines: lines.map((line, index) => ({
+      content: line.rawContent,
+      hasLineEnding: index < lines.length - 1 ? true : line.lineEnding !== "",
+    })),
+  }
+}
+
+function withTrailingLineEndingPreserved(
+  lines: MutableLine[],
+  shouldPreserveTrailingLineEnding: boolean,
+): MutableLine[] {
+  if (!shouldPreserveTrailingLineEnding || lines.length === 0 || lines.at(-1)?.hasLineEnding) {
+    return lines
+  }
+
+  return [
+    ...lines.slice(0, -1),
+    {
+      ...lines[lines.length - 1],
+      hasLineEnding: true,
+    },
+  ]
+}
+
+function serializeLines(input: {
+  lines: MutableLine[]
+  lineEnding: "\n" | "\r\n"
+  retainBom: boolean
+}): string {
+  if (input.lines.length === 0) {
+    return input.retainBom ? FIRST_LINE_BOM : ""
+  }
+
+  return input.lines
+    .map((line, index) => {
+      const prefix = index === 0 && input.retainBom ? FIRST_LINE_BOM : ""
+      const suffix = index < input.lines.length - 1 || line.hasLineEnding ? input.lineEnding : ""
+      return `${prefix}${line.content}${suffix}`
+    })
+    .join("")
+}
+
+function toRangeDescription(startLineNumber: number, endLineNumber: number): string {
+  return startLineNumber === endLineNumber
+    ? `line ${startLineNumber}`
+    : `lines ${startLineNumber}-${endLineNumber}`
+}
+
+function buildPreviewAnchor(updatedText: string, preferredLineNumber: number): string | undefined {
+  const lines = splitLinesWithMetadata(updatedText)
+  if (lines.length === 0) {
+    return undefined
+  }
+
+  const lineIndex = Math.max(0, Math.min(preferredLineNumber - 1, lines.length - 1))
+  const line = lines[lineIndex]
+  return formatAnchorLine(line.lineNumber, line.displayContent)
+}
+
+function formatSchemaError(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : ""
+      return `${path}${issue.message}`
+    })
+    .join("; ")
+}
+
+function buildMutationPlan(input: {
+  originalText: string
+  operation: EditOperation
+  start: string
+  end?: string
+  content: string
+}): MutationPlan {
+  const parsedStart = parseAnchor(input.start)
+
+  const parsedEnd = input.end ? parseAnchor(input.end) : parsedStart
+  const existingLines = splitLinesWithMetadata(input.originalText)
+  const range = validateInclusiveRange(existingLines, parsedStart, parsedEnd)
+  const lineEnding = resolveLineEnding(detectEolStyle(input.originalText), input.content)
+  const retainBom = existingLines[0]?.hasBom ?? false
+  const currentLines: MutableLine[] = existingLines.map((line) => ({
+    content: line.displayContent,
+    hasLineEnding: line.lineEnding !== "",
+  }))
+  const insertedLines = withTrailingLineEndingPreserved(
+    parseContentBlock(input.content).lines,
+    input.operation === "replace" && existingLines[range.endLineIndex]?.lineEnding !== "",
+  )
+
+  let updatedLines: MutableLine[]
+  let previewLineNumber: number
+
+  if (input.operation === "replace") {
+    updatedLines = [
+      ...currentLines.slice(0, range.startLineIndex),
+      ...insertedLines,
+      ...currentLines.slice(range.endLineIndex + 1),
+    ]
+    previewLineNumber = range.startLineNumber
+  } else if (input.operation === "prepend") {
+    updatedLines = [
+      ...currentLines.slice(0, range.startLineIndex),
+      ...insertedLines,
+      ...currentLines.slice(range.startLineIndex),
+    ]
+    previewLineNumber = range.startLineNumber
+  } else {
+    updatedLines = [
+      ...currentLines.slice(0, range.endLineIndex + 1),
+      ...insertedLines,
+      ...currentLines.slice(range.endLineIndex + 1),
+    ]
+    previewLineNumber = insertedLines.length > 0 ? range.endLineNumber + 1 : range.endLineNumber
+  }
+
+  const updatedText = serializeLines({
+    lines: updatedLines,
+    lineEnding,
+    retainBom,
+  })
+
+  return {
+    updatedText,
+    previewAnchor: buildPreviewAnchor(updatedText, previewLineNumber),
+    rangeStartLineNumber: range.startLineNumber,
+    rangeEndLineNumber: range.endLineNumber,
+  }
 }
 
 export function createEditTool(input: {
   requestPermission: RequestToolPermission
   atomicWrite?: AtomicUtf8FileWrite
 }): ToolDefinition {
+  const atomicWrite = input.atomicWrite ?? writeUtf8FileAtomically
+
   return {
     name: "edit",
     description: EDIT_TOOL_DESCRIPTION,
@@ -66,7 +249,15 @@ export function createEditTool(input: {
     usageGuidance: EDIT_TOOL_USAGE_GUIDANCE,
     async execute(value) {
       throwIfToolAborted(value.signal)
-      const { path, operation, start, end, content } = EditArgsSchema.parse(value.args)
+      const parsedArgs = EditArgsSchema.safeParse(value.args)
+      if (!parsedArgs.success) {
+        return {
+          output: formatSchemaError(parsedArgs.error),
+          isError: true,
+        }
+      }
+
+      const { path, operation, start, end, content } = parsedArgs.data
       assertWorkspacePathNotReserved(path)
       const decision = await input.requestPermission({
         toolName: "edit",
@@ -81,6 +272,7 @@ export function createEditTool(input: {
       const file = await resolveWorkspaceFile(value.workspaceRoot, path)
 
       return await withSerializedFileMutation(file, async () => {
+        throwIfToolAborted(value.signal)
         const fileStat = await stat(file)
         if (fileStat.size > MAX_FILE_SIZE) {
           return {
@@ -90,9 +282,35 @@ export function createEditTool(input: {
         }
 
         try {
-          parseAnchor(start)
-          if (end) {
-            parseAnchor(end)
+          if (operation === "prepend" && end) {
+            return {
+              output: "`prepend` does not accept an `end` anchor.",
+              isError: true,
+            }
+          }
+
+          const originalText = await readFile(file, "utf8")
+          throwIfToolAborted(value.signal)
+
+          const mutation = buildMutationPlan({
+            originalText,
+            operation,
+            start,
+            end,
+            content,
+          })
+
+          if (mutation.updatedText !== originalText) {
+            throwIfToolAborted(value.signal)
+            await atomicWrite(file, mutation.updatedText)
+          }
+
+          const previewSuffix = mutation.previewAnchor ? ` Preview: ${mutation.previewAnchor}` : ""
+
+          return {
+            output:
+              `Applied ${operation} to ${path} at ${toRangeDescription(mutation.rangeStartLineNumber, mutation.rangeEndLineNumber)}.` +
+              previewSuffix,
           }
         } catch (error) {
           if (error instanceof HashAnchorError) {
@@ -101,16 +319,7 @@ export function createEditTool(input: {
               isError: true,
             }
           }
-
           throw error
-        }
-
-        return {
-          output:
-            `Anchor-based edit execution is not implemented yet for operation \`${operation}\` on ${path}. ` +
-            `The edit tool now accepts only anchor fields copied from read output (\`start\`, optional \`end\`, and exact \`content\`). ` +
-            `Task 4 will add anchored mutation semantics. Received content length: ${content.length}.`,
-          isError: true,
         }
       })
     },

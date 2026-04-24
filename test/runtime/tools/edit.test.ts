@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { createPermissionCoordinator } from "../../../src/permission"
 import { createEditTool, createToolRuntimeApi } from "../../../src/tool"
+import { formatAnchorLine } from "../../../src/tool/infrastructure/builtins/hash-anchor"
 
 function createAllowPermission() {
   const coordinator = createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" })
@@ -15,56 +16,235 @@ function createAllowPermission() {
 }
 
 async function createTempWorkspace() {
-  const dir = await mkdtemp(join(tmpdir(), "edit-test-"))
-  return dir
+  return await mkdtemp(join(tmpdir(), "edit-test-"))
 }
 
-describe("edit tool — replaceAll option", () => {
-  test("replaces all occurrences when replaceAll=true", async () => {
-    const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
+function anchor(lineNumber: number, lineContent: string) {
+  return formatAnchorLine(lineNumber, lineContent)
+}
 
-    const filePath = join(workspaceRoot, "file.txt")
-    await writeFile(filePath, "oldName and oldName and oldName")
+async function createRegistry() {
+  const { requestPermission } = createAllowPermission()
+  return createToolRuntimeApi({
+    tools: [createEditTool({ requestPermission })],
+  })
+}
+
+describe("edit tool — anchored", () => {
+  test("replaces a single anchored line", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "single.txt")
+    await writeFile(filePath, "alpha\nbeta\ngamma\n")
 
     const result = await registry.execute({
       toolName: "edit",
-      args: { path: "file.txt", oldText: "oldName", newText: "newName", replaceAll: true },
+      args: {
+        path: "single.txt",
+        operation: "replace",
+        start: anchor(2, "beta"),
+        content: "BETA",
+      },
       workspaceRoot,
     })
 
     expect(result.isError).toBeFalsy()
-    expect(result.output).toContain("3")
-    const content = await readFile(filePath, "utf8")
-    expect(content).toBe("newName and newName and newName")
+    expect(result.output).toContain("line 2")
+    expect(await readFile(filePath, "utf8")).toBe("alpha\nBETA\ngamma\n")
   })
 
-  test("replaces all occurrences and reports count in output", async () => {
+  test("replaces an inclusive anchored range", async () => {
     const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
-    const filePath = join(workspaceRoot, "multi.ts")
-    await writeFile(filePath, "const x = 1\nconst x = 2\nconst x = 3\n")
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "range.txt")
+    await writeFile(filePath, "one\ntwo\nthree\nfour\n")
 
     const result = await registry.execute({
       toolName: "edit",
-      args: { path: "multi.ts", oldText: "const x", newText: "const y", replaceAll: true },
+      args: {
+        path: "range.txt",
+        operation: "replace",
+        start: anchor(2, "two"),
+        end: anchor(3, "three"),
+        content: "dos\ntres\n",
+      },
       workspaceRoot,
     })
 
-    expect(result.output).toMatch(/3/)
-    const content = await readFile(filePath, "utf8")
-    expect(content).toBe("const y = 1\nconst y = 2\nconst y = 3\n")
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("lines 2-3")
+    expect(await readFile(filePath, "utf8")).toBe("one\ndos\ntres\nfour\n")
   })
-})
 
-describe("edit tool — concurrent mutations", () => {
+  test("prepends content before the start anchor", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "prepend.txt")
+    await writeFile(filePath, "first\nsecond\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "prepend.txt",
+        operation: "prepend",
+        start: anchor(2, "second"),
+        content: "inserted\n",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("first\ninserted\nsecond\n")
+  })
+
+  test("appends content after the start anchor when end is omitted", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "append.txt")
+    await writeFile(filePath, "first\nsecond\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "append.txt",
+        operation: "append",
+        start: anchor(1, "first"),
+        content: "inserted\n",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("first\ninserted\nsecond\n")
+  })
+
+  test("appends content after the end anchor when provided", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "append-end.txt")
+    await writeFile(filePath, "first\nsecond\nthird\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "append-end.txt",
+        operation: "append",
+        start: anchor(1, "first"),
+        end: anchor(2, "second"),
+        content: "inserted\n",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("first\nsecond\ninserted\nthird\n")
+  })
+
+  test("replaces a blank line using its anchor", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "blank.txt")
+    await writeFile(filePath, "before\n\nafter\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "blank.txt",
+        operation: "replace",
+        start: anchor(2, ""),
+        content: "between",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("before\nbetween\nafter\n")
+  })
+
+  test("targets duplicate displayed lines by line-numbered anchor", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "duplicate.txt")
+    await writeFile(filePath, "repeat\nrepeat\nrepeat\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "duplicate.txt",
+        operation: "replace",
+        start: anchor(2, "repeat"),
+        content: "middle",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("repeat\nmiddle\nrepeat\n")
+  })
+
+  test("preserves CRLF when inserting multi-line content", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "crlf.txt")
+    await writeFile(filePath, "alpha\r\nbeta\r\ngamma\r\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "crlf.txt",
+        operation: "append",
+        start: anchor(1, "alpha"),
+        content: "one\ntwo\n",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("alpha\r\none\r\ntwo\r\nbeta\r\ngamma\r\n")
+  })
+
+  test("retains the first-line BOM when editing later lines", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "bom.txt")
+    await writeFile(filePath, "\uFEFFfirst\nsecond\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "bom.txt",
+        operation: "replace",
+        start: anchor(2, "second"),
+        content: "SECOND",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("\uFEFFfirst\nSECOND\n")
+  })
+
+  test("retains the first-line BOM when replacing line 1", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "bom-first-line.txt")
+    await writeFile(filePath, "\uFEFFfirst\nsecond\n")
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "bom-first-line.txt",
+        operation: "replace",
+        start: anchor(1, "first"),
+        content: "FIRST",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("\uFEFFFIRST\nsecond\n")
+  })
+
   test("serializes concurrent edits to the same file", async () => {
     const workspaceRoot = await createTempWorkspace()
     const { requestPermission } = createAllowPermission()
@@ -97,7 +277,12 @@ describe("edit tool — concurrent mutations", () => {
 
     const firstEdit = registry.execute({
       toolName: "edit",
-      args: { path: "shared.txt", oldText: "alpha", newText: "beta" },
+      args: {
+        path: "shared.txt",
+        operation: "replace",
+        start: anchor(1, "alpha"),
+        content: "beta",
+      },
       workspaceRoot,
     })
 
@@ -105,7 +290,12 @@ describe("edit tool — concurrent mutations", () => {
 
     const secondEdit = registry.execute({
       toolName: "edit",
-      args: { path: "shared.txt", oldText: "beta", newText: "gamma" },
+      args: {
+        path: "shared.txt",
+        operation: "replace",
+        start: anchor(1, "beta"),
+        content: "gamma",
+      },
       workspaceRoot,
     })
 
@@ -166,7 +356,12 @@ describe("edit tool — concurrent mutations", () => {
 
     const alphaEdit = registry.execute({
       toolName: "edit",
-      args: { path: "alpha.txt", oldText: "alpha", newText: "ALPHA" },
+      args: {
+        path: "alpha.txt",
+        operation: "replace",
+        start: anchor(1, "alpha"),
+        content: "ALPHA",
+      },
       workspaceRoot,
     })
 
@@ -174,7 +369,12 @@ describe("edit tool — concurrent mutations", () => {
 
     const betaEdit = registry.execute({
       toolName: "edit",
-      args: { path: "beta.txt", oldText: "beta", newText: "BETA" },
+      args: {
+        path: "beta.txt",
+        operation: "replace",
+        start: anchor(1, "beta"),
+        content: "BETA",
+      },
       workspaceRoot,
     })
 
@@ -223,7 +423,12 @@ describe("edit tool — concurrent mutations", () => {
 
     const firstEdit = registry.execute({
       toolName: "edit",
-      args: { path: "recover.txt", oldText: "start", newText: "middle" },
+      args: {
+        path: "recover.txt",
+        operation: "replace",
+        start: anchor(1, "start"),
+        content: "middle",
+      },
       workspaceRoot,
     })
 
@@ -231,7 +436,12 @@ describe("edit tool — concurrent mutations", () => {
 
     const secondEdit = registry.execute({
       toolName: "edit",
-      args: { path: "recover.txt", oldText: "start", newText: "done" },
+      args: {
+        path: "recover.txt",
+        operation: "replace",
+        start: anchor(1, "start"),
+        content: "done",
+      },
       workspaceRoot,
     })
 
@@ -285,7 +495,12 @@ describe("edit tool — concurrent mutations", () => {
 
     const firstEdit = registry.execute({
       toolName: "edit",
-      args: { path: "real.txt", oldText: "alpha", newText: "beta" },
+      args: {
+        path: "real.txt",
+        operation: "replace",
+        start: anchor(1, "alpha"),
+        content: "beta",
+      },
       workspaceRoot,
     })
 
@@ -293,7 +508,12 @@ describe("edit tool — concurrent mutations", () => {
 
     const secondEdit = registry.execute({
       toolName: "edit",
-      args: { path: "links/alias.txt", oldText: "beta", newText: "gamma" },
+      args: {
+        path: "links/alias.txt",
+        operation: "replace",
+        start: anchor(1, "beta"),
+        content: "gamma",
+      },
       workspaceRoot,
     })
 
@@ -312,107 +532,136 @@ describe("edit tool — concurrent mutations", () => {
   })
 })
 
-describe("edit tool — multi-match protection", () => {
-  test("returns isError=true when oldText appears multiple times without replaceAll", async () => {
+describe("edit tool — stale", () => {
+  test("returns isError=true when the start anchor hash is stale", async () => {
     const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
-    const filePath = join(workspaceRoot, "repeat.txt")
-    await writeFile(filePath, "const x = 1\nconst x = 2\nconst x = 3\n")
-
-    const result = await registry.execute({
-      toolName: "edit",
-      args: { path: "repeat.txt", oldText: "const x", newText: "const y" },
-      workspaceRoot,
-    })
-
-    expect(result.isError).toBe(true)
-    expect(result.output).toContain("Found 3 matches")
-  })
-
-  test("returns match context (surrounding lines) when multi-match protection triggers", async () => {
-    const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
-    const filePath = join(workspaceRoot, "ctx.txt")
-    await writeFile(filePath, "line1\nline2\nfoo\nline4\nline5\nfoo\nline7\n")
-
-    const result = await registry.execute({
-      toolName: "edit",
-      args: { path: "ctx.txt", oldText: "foo", newText: "bar" },
-      workspaceRoot,
-    })
-
-    expect(result.isError).toBe(true)
-    expect(result.output).toContain("Found 2 matches")
-    expect(result.output).toContain("line2")
-    expect(result.output).toContain("line4")
-  })
-
-  test("does not modify file when multi-match protection triggers", async () => {
-    const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
-    const filePath = join(workspaceRoot, "safe.txt")
-    const original = "foo\nfoo\n"
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "stale.txt")
+    const original = "alpha\nbeta\n"
     await writeFile(filePath, original)
 
-    await registry.execute({
+    const result = await registry.execute({
       toolName: "edit",
-      args: { path: "safe.txt", oldText: "foo", newText: "bar" },
+      args: {
+        path: "stale.txt",
+        operation: "replace",
+        start: anchor(2, "old beta"),
+        content: "BETA",
+      },
       workspaceRoot,
     })
 
-    const content = await readFile(filePath, "utf8")
-    expect(content).toBe(original)
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("Anchor hash mismatch")
+    expect(await readFile(filePath, "utf8")).toBe(original)
   })
 
-  test("succeeds with replaceAll=true when text appears multiple times", async () => {
+  test("returns isError=true for out-of-range anchors without changing bytes", async () => {
     const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
-    const filePath = join(workspaceRoot, "dup.txt")
-    await writeFile(filePath, "foo\nfoo\n")
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "range-error.txt")
+    const original = "alpha\n"
+    await writeFile(filePath, original)
 
     const result = await registry.execute({
       toolName: "edit",
-      args: { path: "dup.txt", oldText: "foo", newText: "bar", replaceAll: true },
+      args: {
+        path: "range-error.txt",
+        operation: "replace",
+        start: anchor(2, "beta"),
+        content: "BETA",
+      },
       workspaceRoot,
     })
 
-    expect(result.isError).toBeFalsy()
-    const content = await readFile(filePath, "utf8")
-    expect(content).toBe("bar\nbar\n")
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("outside the available line range")
+    expect(await readFile(filePath, "utf8")).toBe(original)
+  })
+
+  test("returns isError=true for reversed ranges without changing bytes", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "reversed.txt")
+    const original = "one\ntwo\nthree\n"
+    await writeFile(filePath, original)
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "reversed.txt",
+        operation: "replace",
+        start: anchor(3, "three"),
+        end: anchor(2, "two"),
+        content: "updated",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("Anchor range is reversed")
+    expect(await readFile(filePath, "utf8")).toBe(original)
+  })
+
+  test("rejects legacy oldText/newText/replaceAll args as schema errors", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "legacy.txt")
+    const original = "alpha\n"
+    await writeFile(filePath, original)
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: { path: "legacy.txt", oldText: "alpha", newText: "beta", replaceAll: true },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("Unrecognized key")
+    expect(await readFile(filePath, "utf8")).toBe(original)
+  })
+
+  test("rejects prepend when end is provided without changing bytes", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const registry = await createRegistry()
+    const filePath = join(workspaceRoot, "prepend-end.txt")
+    const original = "first\nsecond\n"
+    await writeFile(filePath, original)
+
+    const result = await registry.execute({
+      toolName: "edit",
+      args: {
+        path: "prepend-end.txt",
+        operation: "prepend",
+        start: anchor(1, "first"),
+        end: anchor(2, "second"),
+        content: "inserted\n",
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("does not accept an `end` anchor")
+    expect(await readFile(filePath, "utf8")).toBe(original)
   })
 })
 
 describe("edit tool — max file size protection", () => {
   test("rejects edit when file exceeds 500KB", async () => {
     const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
+    const registry = await createRegistry()
     const filePath = join(workspaceRoot, "big.txt")
     const bigContent = "target\n" + "x".repeat(512 * 1024)
     await writeFile(filePath, bigContent)
 
     const result = await registry.execute({
       toolName: "edit",
-      args: { path: "big.txt", oldText: "target", newText: "replaced" },
+      args: {
+        path: "big.txt",
+        operation: "replace",
+        start: anchor(1, "target"),
+        content: "replaced",
+      },
       workspaceRoot,
     })
 
@@ -422,107 +671,23 @@ describe("edit tool — max file size protection", () => {
 
   test("allows edit on file under 500KB", async () => {
     const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
+    const registry = await createRegistry()
     const filePath = join(workspaceRoot, "small.txt")
-    await writeFile(filePath, "hello target world\n")
+    await writeFile(filePath, "hello\ntarget\nworld\n")
 
     const result = await registry.execute({
       toolName: "edit",
-      args: { path: "small.txt", oldText: "target", newText: "replaced" },
+      args: {
+        path: "small.txt",
+        operation: "replace",
+        start: anchor(2, "target"),
+        content: "replaced",
+      },
       workspaceRoot,
     })
 
     expect(result.isError).toBeFalsy()
-  })
-})
-
-describe("edit tool — match context return", () => {
-  test("returns line number range of replacement in output", async () => {
-    const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
-    const filePath = join(workspaceRoot, "context.ts")
-    const content = [
-      "line 1",
-      "line 2",
-      "line 3",
-      "const target = 'value'",
-      "line 5",
-      "line 6",
-      "line 7",
-    ].join("\n") + "\n"
-    await writeFile(filePath, content)
-
-    const result = await registry.execute({
-      toolName: "edit",
-      args: { path: "context.ts", oldText: "const target = 'value'", newText: "const updated = 'new'" },
-      workspaceRoot,
-    })
-
-    expect(result.isError).toBeFalsy()
-    expect(result.output).toMatch(/lines? [0-9]+(?:-[0-9]+)?/i)
-    expect(result.output).toContain("Updated lines")
-  })
-
-  test("includes surrounding context lines in successful replacement output", async () => {
-    const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
-    const filePath = join(workspaceRoot, "ctx.ts")
-    const lines = [
-      "before2",
-      "before1",
-      "MATCH_ME",
-      "after1",
-      "after2",
-    ]
-    await writeFile(filePath, lines.join("\n") + "\n")
-
-    const result = await registry.execute({
-      toolName: "edit",
-      args: { path: "ctx.ts", oldText: "MATCH_ME", newText: "REPLACED" },
-      workspaceRoot,
-    })
-
-    expect(result.isError).toBeFalsy()
-    expect(result.output).toContain("Before:")
-    expect(result.output).toContain("After:")
-    expect(result.output).toContain("before1")
-    expect(result.output).toContain("after1")
-    expect(result.output).toContain("REPLACED")
-  })
-
-  test("includes before and after preview context for replaceAll output", async () => {
-    const workspaceRoot = await createTempWorkspace()
-    const { requestPermission } = createAllowPermission()
-    const registry = createToolRuntimeApi({
-      tools: [createEditTool({ requestPermission })],
-    })
-
-    const filePath = join(workspaceRoot, "replace-all.ts")
-    await writeFile(filePath, ["before", "target", "middle", "target", "after"].join("\n") + "\n")
-
-    const result = await registry.execute({
-      toolName: "edit",
-      args: { path: "replace-all.ts", oldText: "target", newText: "updated", replaceAll: true },
-      workspaceRoot,
-    })
-
-    expect(result.isError).toBeFalsy()
-    expect(result.output).toContain("Replaced 2 occurrences")
-    expect(result.output).toContain("First replacement preview (before):")
-    expect(result.output).toContain("First replacement preview (after):")
-    expect(result.output).toContain("updated")
+    expect(await readFile(filePath, "utf8")).toBe("hello\nreplaced\nworld\n")
   })
 })
 
