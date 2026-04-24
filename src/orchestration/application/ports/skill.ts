@@ -2,9 +2,16 @@ export type OrchestrationSkillCatalogEntry = {
   name: string
   description: string
   path: string
+  source?: OrchestrationSkillSource
+  overrides?: OrchestrationSkillCatalogOverride[]
 }
 
 export type OrchestrationSkillSource = "builtin" | "global" | "workspace"
+
+export type OrchestrationSkillCatalogOverride = {
+  source: OrchestrationSkillSource
+  path: string
+}
 
 export type OrchestrationSkillPackageMetadata = {
   entryPath?: string

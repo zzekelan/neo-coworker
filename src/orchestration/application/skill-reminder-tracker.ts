@@ -69,10 +69,7 @@ export function createSkillReminderTracker() {
         return []
       }
 
-      const skillsToInject =
-        input.reason === "recovery"
-          ? truncateRecoverySkills(freshSkills)
-          : freshSkills
+      const skillsToInject = input.reason === "recovery" ? truncateRecoverySkills(freshSkills) : freshSkills
 
       if (skillsToInject.length === 0) {
         return []
@@ -178,9 +175,22 @@ function renderSkillCatalogReminder(skillCatalog: OrchestrationSkillCatalogEntry
   return [
     "<system-reminder>",
     "Skill catalog:",
-    ...skillCatalog.map((skill) => `- ${skill.name}: ${skill.description} (${skill.path})`),
+    ...skillCatalog.map((skill) => `- ${formatSkillCatalogEntry(skill)} (${skill.path})`),
     "</system-reminder>",
   ].join("\n")
+}
+
+function formatSkillCatalogEntry(skill: OrchestrationSkillCatalogEntry) {
+  const metadata = [
+    skill.source ? `source: ${skill.source}` : null,
+    skill.overrides && skill.overrides.length > 0
+      ? `overrides: ${skill.overrides.map((entry) => `${entry.source} ${entry.path}`).join(", ")}`
+      : null,
+  ].filter((entry): entry is string => entry !== null)
+
+  return metadata.length > 0
+    ? `${skill.name}: ${skill.description} [${metadata.join("; ")}]`
+    : `${skill.name}: ${skill.description}`
 }
 
 function renderActiveSkillReminder(activeSkills: readonly OrchestrationActiveSkill[]) {

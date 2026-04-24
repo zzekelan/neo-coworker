@@ -11,9 +11,16 @@ export type ModelSkillCatalogEntry = {
   name: string
   description: string
   path: string
+  source?: ModelSkillSource
+  overrides?: ModelSkillCatalogOverride[]
 }
 
 export type ModelSkillSource = "builtin" | "global" | "workspace"
+
+export type ModelSkillCatalogOverride = {
+  source: ModelSkillSource
+  path: string
+}
 
 export type ModelSkillPackageMetadata = {
   entryPath?: string
