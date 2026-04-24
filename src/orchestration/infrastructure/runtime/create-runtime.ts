@@ -207,6 +207,9 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       },
       sessionId: session.id,
       runId: inputValue.runId,
+      forwardRuntimeEvent(event) {
+        queue.push(event as RuntimeEvent)
+      },
     })
     const promptBuildResult =
       input.systemPrompt

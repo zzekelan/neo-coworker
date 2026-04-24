@@ -75,6 +75,7 @@ import type {
   OrchestrationSkillPort,
   OrchestrationToolPort,
   OrchestrationToolPortFactory,
+  redactDiagnosticMessage,
 } from "../orchestration"
 import {
   buildAgentAwarePrompt,
@@ -299,7 +300,10 @@ export function createRuntime(input: RuntimeInput) {
           session: sessionPort,
           skill: skillPort,
           contextWindow,
-          runtimeObserver: observability?.runtimeObserver,
+          runtimeObserver: createForwardingRuntimeObserver({
+            observer: observability?.runtimeObserver,
+            forwardRuntimeEvent: subAgentInput.forwardRuntimeEvent,
+          }),
           now,
           buildAgentAwarePrompt,
           createStepService: createOrchestrationStepService,
@@ -651,6 +655,7 @@ function createToolPortFactory(config: {
     workspaceRoot: string
     parentTools: OrchestrationToolPort
     signal?: AbortSignal
+    forwardRuntimeEvent?(event: { type: string; [key: string]: unknown }): void
     createQueuedRun(input: {
       subRunId: string
       sessionId: string
@@ -693,6 +698,10 @@ function createToolPortFactory(config: {
           runId: input.runId,
         },
       )
+      const runtimeObserver = createForwardingRuntimeObserver({
+        observer: config.runtimeObserver,
+        forwardRuntimeEvent: input.forwardRuntimeEvent,
+      })
       const memory = createMemoryRuntime(join(workspaceRoot, ".ncoworker", "memory"), {
         memoryObserver: createMemoryObserver(config.memoryObserver),
         observerContext: {
@@ -729,7 +738,7 @@ function createToolPortFactory(config: {
         extraTools: [
           createSkillTool({
             repository: config.repository,
-            runtimeObserver: config.runtimeObserver,
+            runtimeObserver,
             session: config.session,
             skill: config.skill,
             sessionId: input.sessionId,
@@ -760,6 +769,7 @@ function createToolPortFactory(config: {
                 sessionId: input.sessionId,
                 parentRunId: input.runId,
                 workspaceRoot,
+                forwardRuntimeEvent: input.forwardRuntimeEvent,
                 parentTools: {
                   ...createToolProviderFromRuntime({ runtime }),
                   async executeBatch(batchInput) {
@@ -1180,6 +1190,57 @@ function createPermissionObserver(
   }
 }
 
+function createForwardingRuntimeObserver(input: {
+  observer?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
+  forwardRuntimeEvent?(event: { type: string; [key: string]: unknown }): void
+}) {
+  if (!input.observer && !input.forwardRuntimeEvent) {
+    return undefined
+  }
+
+  return {
+    recordRuntimeEvent(eventInput: {
+      sessionId: string
+      runId: string
+      event: { type: string; [key: string]: unknown }
+      occurredAt?: number
+    }) {
+      try {
+        input.observer?.recordRuntimeEvent?.(eventInput)
+      } catch {
+        // Runtime telemetry must not affect tool execution.
+      }
+
+      if (!isLifecycleRuntimeEvent(eventInput.event.type)) {
+        return
+      }
+
+      try {
+        input.forwardRuntimeEvent?.({
+          ...eventInput.event,
+          sessionId: eventInput.sessionId,
+          runId: eventInput.runId,
+        })
+      } catch {
+        // Live event forwarding is best-effort and must not alter runtime behavior.
+      }
+    },
+  }
+}
+
+function isLifecycleRuntimeEvent(type: string) {
+  return type === "subagent.started" ||
+    type === "subagent.completed" ||
+    type === "subagent.failed" ||
+    type === "skill.load.requested" ||
+    type === "skill.load.completed" ||
+    type === "skill.load.failed"
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
 function createSkillObserver(
   observer: Pick<ObservabilityRuntimeApi, "skillObserver">["skillObserver"] | undefined,
 ): SkillObserverPort | undefined {
@@ -1452,14 +1513,35 @@ function createSkillTool(input: {
         event: {
           type: "skill.load.requested",
           skillName: name!,
+          status: "requested",
           reason: "activation",
         },
         occurredAt: input.now(),
       })
-      const loaded = await input.skill.loadSkill({
-        workspaceRoot: toolInput.workspaceRoot,
-        name: name!,
-      })
+      let loaded
+      try {
+        loaded = await input.skill.loadSkill({
+          workspaceRoot: toolInput.workspaceRoot,
+          name: name!,
+        })
+      } catch (error) {
+        const errorMessage = redactDiagnosticMessage(getErrorMessage(error))
+        input.runtimeObserver?.recordRuntimeEvent?.({
+          sessionId: input.sessionId,
+          runId: input.runId,
+          event: {
+            type: "skill.load.failed",
+            skillName: name!,
+            status: "failed",
+            reason: "activation",
+            errorCode: "SKILL_LOAD_FAILED",
+            errorMessage,
+            error: errorMessage,
+          },
+          occurredAt: input.now(),
+        })
+        throw error
+      }
       throwIfToolAborted(toolInput.signal)
       input.runtimeObserver?.recordRuntimeEvent?.({
         sessionId: input.sessionId,
@@ -1468,6 +1550,7 @@ function createSkillTool(input: {
           type: "skill.load.completed",
           skillName: loaded.name,
           skillPath: loaded.path,
+          status: "completed",
           instructionsLength: loaded.instructions.length,
           reason: "activation",
         },
