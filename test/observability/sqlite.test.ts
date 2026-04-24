@@ -111,7 +111,7 @@ describe("observability sqlite repository", () => {
     }
   })
 
-  test("recreates stale run_event source constraints when new sources are inserted", () => {
+  test("recreates stale run_event source constraints without dropping existing events", () => {
     const database = new Database(":memory:")
 
     try {
@@ -184,7 +184,15 @@ describe("observability sqlite repository", () => {
           sequence: 0,
         }),
       ])
-      expect(repository.runEvents.listByRun("run_legacy")).toEqual([])
+      expect(repository.runEvents.listByRun("run_legacy")).toEqual([
+        expect.objectContaining({
+          id: "event_existing",
+          source: "tool",
+          eventType: "tool.executed",
+          data: { toolName: "read" },
+          sequence: 0,
+        }),
+      ])
 
       const createSqlRow = database
         .query(

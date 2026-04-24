@@ -156,8 +156,68 @@ function createRunEventTable(database: ObservabilityDatabase) {
 }
 
 function recreateRunEventTable(database: ObservabilityDatabase) {
-  database.exec(`DROP TABLE IF EXISTS run_event`)
-  createRunEventTable(database)
+  const originalCount = countRows(database, "run_event")
+  const migrateRunEventTable = database.transaction(() => {
+    database.exec(`DROP TABLE IF EXISTS run_event_migrated`)
+    database.exec(`
+      CREATE TABLE run_event_migrated (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        source TEXT NOT NULL CHECK (source IN (${runEventSourceCheck})),
+        event_type TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE (run_id, sequence)
+      )
+    `)
+    database.exec(`
+      INSERT INTO run_event_migrated (
+        id,
+        session_id,
+        run_id,
+        sequence,
+        source,
+        event_type,
+        data_json,
+        created_at
+      )
+      SELECT
+        id,
+        session_id,
+        run_id,
+        sequence,
+        source,
+        event_type,
+        data_json,
+        created_at
+      FROM run_event
+    `)
+
+    const migratedCount = countRows(database, "run_event_migrated")
+    if (migratedCount !== originalCount) {
+      throw new Error(
+        `run_event migration copied ${migratedCount} rows, expected ${originalCount}`,
+      )
+    }
+
+    database.exec(`DROP TABLE run_event`)
+    database.exec(`ALTER TABLE run_event_migrated RENAME TO run_event`)
+    database.exec(`
+      CREATE INDEX IF NOT EXISTS run_event_session_run_sequence_idx
+      ON run_event (session_id, run_id, sequence)
+    `)
+  })
+
+  migrateRunEventTable()
+}
+
+function countRows(database: ObservabilityDatabase, tableName: string) {
+  const row = database.query(`SELECT COUNT(*) AS count FROM ${tableName}`).get() as {
+    count: number
+  }
+  return row.count
 }
 
 function isStaleRunEventSourceConstraintError(error: unknown, source: CreateRunEventInput["source"]) {
