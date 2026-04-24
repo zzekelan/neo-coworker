@@ -12,6 +12,7 @@ import {
 import {
   type ContextUsageSnapshot,
   type OrchestrationRuntimeApi,
+  type RuntimeEvent,
 } from "../orchestration"
 import type { ExportedRunTrace } from "../observability"
 import type {
@@ -81,9 +82,39 @@ export type ServerEventPayload =
       utilizationPercent: number
       source: "provider" | "estimated" | null
     }
+  | SkillLoadServerEventPayload
+  | SubagentServerEventPayload
   | {
       type: "heartbeat"
     }
+
+export type SkillLoadServerEventPayload = {
+  type: "skill.load.requested" | "skill.load.completed" | "skill.load.failed"
+  sessionId: string
+  runId: string
+  skillName: string
+  status: "requested" | "completed" | "failed"
+  reason?: string
+  skillPath?: string
+  instructionsLength?: number
+  agentId?: string
+  displayName?: string
+  errorCode?: string
+  errorMessage?: string
+}
+
+export type SubagentServerEventPayload = {
+  type: "subagent.started" | "subagent.completed" | "subagent.failed"
+  sessionId?: string
+  runId?: string
+  parentRunId: string
+  subRunId: string
+  agentId: string
+  displayName: string
+  status: "started" | "completed" | "failed"
+  errorCode?: string
+  errorMessage?: string
+}
 
 export type ServerEvent = ServerEventPayload & {
   id: string
@@ -587,6 +618,8 @@ async function startRun(runInput: {
     const drained = drainRunHandle(handle, {
       events: eventBus,
       contextUsageBySession,
+      sessionId: runInput.sessionId,
+      runId: started.run.id,
     }).finally(() => {
       activeRuns.delete(started.run.id)
     })
@@ -630,6 +663,8 @@ async function startRun(runInput: {
       const drained = drainRunHandle(handle, {
         events: eventBus,
         contextUsageBySession,
+        sessionId,
+        runId: started.run.id,
       }).finally(() => {
         activeRuns.delete(started.run.id)
         if (activeCompactions.get(sessionId) === started.run.id) {
@@ -843,6 +878,8 @@ async function drainRunHandle(
   input: {
     events: ServerEventBus
     contextUsageBySession: Map<string, ContextUsageSnapshot>
+    sessionId: string
+    runId: string
   },
 ) {
   try {
@@ -875,11 +912,122 @@ async function drainRunHandle(
           })
           break
         }
+        case "skill.load.requested":
+        case "skill.load.completed":
+        case "skill.load.failed":
+        case "subagent.started":
+        case "subagent.completed":
+        case "subagent.failed": {
+          const lifecycleEvent = buildLifecycleServerEvent(event, {
+            sessionId: input.sessionId,
+            runId: input.runId,
+          })
+          if (lifecycleEvent) {
+            input.events.publish(lifecycleEvent)
+          }
+          break
+        }
         default:
           break
       }
     }
   } catch {
     // Runtime failures are persisted through repository updates.
+  }
+}
+
+function buildLifecycleServerEvent(
+  event: RuntimeEvent | ({ type: string; [key: string]: unknown }),
+  fallback: { sessionId: string; runId: string },
+): SkillLoadServerEventPayload | SubagentServerEventPayload | null {
+  if (isSkillLoadEventType(event.type)) {
+    const skillName = readString(event, "skillName")
+    if (!skillName) {
+      return null
+    }
+
+    const status = readLifecycleStatus(event, {
+      "skill.load.requested": "requested",
+      "skill.load.completed": "completed",
+      "skill.load.failed": "failed",
+    })
+    const payload: SkillLoadServerEventPayload = {
+      type: event.type,
+      sessionId: readString(event, "sessionId") ?? fallback.sessionId,
+      runId: readString(event, "runId") ?? fallback.runId,
+      skillName,
+      status,
+    }
+    assignOptionalString(payload, "reason", readString(event, "reason"))
+    assignOptionalString(payload, "skillPath", readString(event, "skillPath"))
+    assignOptionalNumber(payload, "instructionsLength", readNumber(event, "instructionsLength"))
+    assignOptionalString(payload, "agentId", readString(event, "agentId"))
+    assignOptionalString(payload, "displayName", readString(event, "displayName"))
+    assignOptionalString(payload, "errorCode", readString(event, "errorCode") ?? (event.type === "skill.load.failed" ? "SKILL_LOAD_FAILED" : null))
+    assignOptionalString(payload, "errorMessage", readString(event, "errorMessage") ?? readString(event, "error"))
+    return payload
+  }
+
+  if (isSubagentEventType(event.type)) {
+    const parentRunId = readString(event, "parentRunId")
+    const subRunId = readString(event, "subRunId")
+    const agentId = readString(event, "agentId") ?? readString(event, "agentName")
+    const displayName = readString(event, "displayName") ?? readString(event, "agentDisplayName") ?? agentId
+    if (!parentRunId || !subRunId || !agentId || !displayName) {
+      return null
+    }
+
+    const payload: SubagentServerEventPayload = {
+      type: event.type,
+      sessionId: readString(event, "sessionId") ?? fallback.sessionId,
+      runId: readString(event, "runId") ?? subRunId,
+      parentRunId,
+      subRunId,
+      agentId,
+      displayName,
+      status: readLifecycleStatus(event, {
+        "subagent.started": "started",
+        "subagent.completed": "completed",
+        "subagent.failed": "failed",
+      }),
+    }
+    assignOptionalString(payload, "errorCode", readString(event, "errorCode") ?? (event.type === "subagent.failed" ? "SUBAGENT_FAILED" : null))
+    assignOptionalString(payload, "errorMessage", readString(event, "errorMessage") ?? readString(event, "error"))
+    return payload
+  }
+
+  return null
+}
+
+function isSkillLoadEventType(type: string): type is SkillLoadServerEventPayload["type"] {
+  return type === "skill.load.requested" || type === "skill.load.completed" || type === "skill.load.failed"
+}
+
+function isSubagentEventType(type: string): type is SubagentServerEventPayload["type"] {
+  return type === "subagent.started" || type === "subagent.completed" || type === "subagent.failed"
+}
+
+function readLifecycleStatus<T extends string>(event: { type: string; [key: string]: unknown }, defaults: Record<string, T>) {
+  const status = readString(event, "status")
+  return (status ?? defaults[event.type]) as T
+}
+
+function readString(value: Record<string, unknown>, key: string) {
+  return typeof value[key] === "string" ? value[key] : null
+}
+
+function readNumber(value: Record<string, unknown>, key: string) {
+  return typeof value[key] === "number" ? value[key] : null
+}
+
+function assignOptionalString<T extends Record<string, unknown>>(target: T, key: string, value: string | null) {
+  if (value) {
+    target[key] = value
+  }
+}
+
+function assignOptionalNumber<T extends Record<string, unknown>>(target: T, key: string, value: number | null) {
+  if (value !== null) {
+    target[key] = value
   }
 }

@@ -1087,6 +1087,132 @@ describe("server HTTP API and SSE", () => {
     await subscriber.close()
   })
 
+  test("SSE forwards structured skill and subagent lifecycle events", async () => {
+    const harness = await createHarness(
+      "server-sse-lifecycle-events",
+      createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_skill_lifecycle",
+            name: "skill",
+            inputText: JSON.stringify({ name: "reviewer" }),
+          }
+        },
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_agent_lifecycle",
+            name: "agent",
+            inputText: JSON.stringify({
+              agent: "source-researcher",
+              prompt: "Collect one source note.",
+            }),
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Source note complete." }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Lifecycle events complete." }
+        },
+      ]),
+    )
+    const skillDirectory = join(harness.workspaceRoot, ".ncoworker", "skills", "reviewer")
+    await mkdir(skillDirectory, { recursive: true })
+    await Bun.write(
+      join(skillDirectory, "SKILL.md"),
+      [
+        "name: reviewer",
+        "description: Review code changes carefully",
+        "",
+        "Focus on lifecycle coverage.",
+      ].join("\n"),
+    )
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+    const subscriber = await connectSse(harness.server)
+    expect(await subscriber.next((event) => event.event === "heartbeat")).toMatchObject({
+      event: "heartbeat",
+      data: {
+        type: "heartbeat",
+      },
+    })
+
+    const startedRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Exercise lifecycle event bridge",
+      },
+    )
+    const runId = startedRun.body.data.run.id as string
+    const events = await collectEventsUntil(
+      subscriber,
+      (event) =>
+        event.event === "run.updated" &&
+        event.data.run.id === runId &&
+        event.data.run.status === "completed",
+    )
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "skill.load.requested",
+          data: expect.objectContaining({
+            type: "skill.load.requested",
+            sessionId,
+            runId,
+            skillName: "reviewer",
+            status: "requested",
+            reason: "activation",
+          }),
+        }),
+        expect.objectContaining({
+          event: "skill.load.completed",
+          data: expect.objectContaining({
+            type: "skill.load.completed",
+            sessionId,
+            runId,
+            skillName: "reviewer",
+            skillPath: ".ncoworker/skills/reviewer/SKILL.md",
+            status: "completed",
+            reason: "activation",
+          }),
+        }),
+        expect.objectContaining({
+          event: "subagent.started",
+          data: expect.objectContaining({
+            type: "subagent.started",
+            parentRunId: runId,
+            subRunId: expect.any(String),
+            agentId: "source-researcher",
+            displayName: "Source Researcher",
+            status: "started",
+          }),
+        }),
+        expect.objectContaining({
+          event: "subagent.completed",
+          data: expect.objectContaining({
+            type: "subagent.completed",
+            parentRunId: runId,
+            subRunId: expect.any(String),
+            agentId: "source-researcher",
+            displayName: "Source Researcher",
+            status: "completed",
+          }),
+        }),
+      ]),
+    )
+    expect(JSON.stringify(events)).not.toContain("OPENAI_API_KEY")
+
+    await subscriber.close()
+  })
+
   test("disables Bun idle timeout for SSE subscriptions", async () => {
     const harness = await createHarness("server-sse-timeout", createTurnProvider([]))
     const request = new Request("http://server.test/events", {
