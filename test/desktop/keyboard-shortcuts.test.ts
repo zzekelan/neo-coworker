@@ -12,6 +12,8 @@ describe("desktop keyboard shortcuts", () => {
     expect(source).toContain("toggleTheme()")
     expect(source).toContain('registerShortcut("meta+l"')
     expect(source).toContain("if (onClearTranscript) onClearTranscript()")
+    expect(source).toContain('registerShortcut("shift+tab"')
+    expect(source).toContain("if (onCycleAgent) onCycleAgent()")
     expect(source).toContain('import { useTheme } from "./ThemeProvider"')
   })
 

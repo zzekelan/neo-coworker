@@ -24,6 +24,7 @@ function AgentSelectorComponent({ isOpen, agents, currentAgent, onSelect }: Agen
         <div className="py-1">
           {agents.map((agent) => {
             const isActive = agent.name === currentAgent
+            const agentLabel = agent.description || agent.name
             return (
               <button
                 key={agent.name}
@@ -54,7 +55,7 @@ function AgentSelectorComponent({ isOpen, agents, currentAgent, onSelect }: Agen
                     isActive ? "text-ink" : "text-ink/80",
                   )}
                 >
-                  {agent.name}
+                  {agentLabel}
                 </span>
               </button>
             )

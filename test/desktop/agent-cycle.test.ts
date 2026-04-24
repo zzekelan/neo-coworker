@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { getNextPrimaryAgent } from "../../src/desktop/src/agent-cycle"
+import { listPrimaryBuiltinAgents } from "../../src/agent/domain/builtin-agents"
 
 describe("agent cycle logic", () => {
   test("cycles to next agent", () => {
@@ -11,6 +12,17 @@ describe("agent cycle logic", () => {
   test("wraps around at end of list", () => {
     const agents = [{ name: "default", description: "" }, { name: "plan", description: "" }]
     expect(getNextPrimaryAgent("plan", agents)).toBe("default")
+  })
+
+  test("cycles through Deep Research in primary agent order", () => {
+    const agents = [
+      { name: "default", description: "General-purpose assistant" },
+      { name: "plan", description: "Strategic planning mode — read-only, no code modifications" },
+      { name: "deep-research", description: "Deep Research" },
+    ]
+
+    expect(getNextPrimaryAgent("plan", agents)).toBe("deep-research")
+    expect(getNextPrimaryAgent("deep-research", agents)).toBe("default")
   })
 
   test("returns first agent when current is unknown", () => {
@@ -29,6 +41,18 @@ describe("agent cycle logic", () => {
 })
 
 describe("desktop agent cycling integration", () => {
+  test("built-in primary agents include Deep Research for desktop cycling", () => {
+    expect(listPrimaryBuiltinAgents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "deep-research",
+          description: "Deep Research",
+          isPrimary: true,
+        }),
+      ]),
+    )
+  })
+
   test("KeyboardShortcutProvider registers shift+tab for agent cycling", () => {
     const source = readFileSync("src/desktop/src/providers/KeyboardShortcutProvider.tsx", "utf8")
 

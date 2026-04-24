@@ -34,6 +34,7 @@ export default function App() {
     skillWarningMessage,
     contextUsage,
     refreshAppState,
+    continueWithoutThinking,
     cycleAgent,
     currentAgent,
     primaryAgents,
@@ -140,6 +141,11 @@ export default function App() {
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             errorMessage={errorMessage}
             skillWarningMessage={skillWarningMessage}
+            compatibilityPrompt={null}
+            onStartNewSessionFromCompatibility={() => {
+              void createSession()
+            }}
+            onContinueWithoutThinking={continueWithoutThinking}
             modelName={desktopSettings.settings.model || undefined}
             currentAgent={currentAgent}
             primaryAgents={primaryAgents}

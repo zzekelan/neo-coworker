@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
+import { listPrimaryBuiltinAgents } from "../../src/agent/domain/builtin-agents"
 
 describe("agent badge component", () => {
   const source = readFileSync("src/desktop/src/components/AgentBadge.tsx", "utf8")
@@ -8,7 +9,7 @@ describe("agent badge component", () => {
     expect(source).toContain('data-testid="agent-badge"')
   })
 
-  test("displays agent name from props", () => {
+  test("displays agent label from props", () => {
     expect(source).toContain("{agentName}")
   })
 
@@ -46,7 +47,8 @@ describe("agent selector component", () => {
 
   test("lists only agents passed via props (primary agents)", () => {
     expect(source).toContain("agents.map((agent)")
-    expect(source).toContain("{agent.name}")
+    expect(source).toContain("const agentLabel = agent.description || agent.name")
+    expect(source).toContain("{agentLabel}")
   })
 
   test("highlights current agent with accent color", () => {
@@ -69,9 +71,18 @@ describe("agent selector component", () => {
     expect(source).toContain("export const AgentSelector = React.memo(AgentSelectorComponent)")
   })
 
-  test("shows agent names without description text", () => {
-    expect(source).toContain("agent.name")
-    expect(source).not.toContain("agent.description")
+  test("shows user-facing agent descriptions while keeping stable ids", () => {
+    expect(source).toContain("const agentLabel = agent.description || agent.name")
+    expect(source).toContain("{agentLabel}")
+    expect(source).toContain("onClick={() => onSelect(agent.name)}")
+  })
+
+  test("Deep Research is available as a user-facing primary agent label", () => {
+    expect(listPrimaryBuiltinAgents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "deep-research", description: "Deep Research" }),
+      ]),
+    )
   })
 })
 
@@ -89,9 +100,10 @@ describe("agent badge and selector integration in ChatArea", () => {
     expect(source).toContain("onSetAgent: (agentName: string) => void")
   })
 
-  test("renders AgentBadge with current agent and toggle handler", () => {
+  test("renders AgentBadge with current agent label and toggle handler", () => {
     expect(source).toContain("<AgentBadge")
-    expect(source).toContain("agentName={currentAgent}")
+    expect(source).toContain("const currentAgentLabel =")
+    expect(source).toContain("agentName={currentAgentLabel}")
     expect(source).toContain("isOpen={isAgentSelectorOpen}")
   })
 
@@ -130,7 +142,7 @@ describe("agent badge and selector integration in ChatArea", () => {
     expect(source).toContain("setIsAgentSelectorOpen(false)")
   })
 
-  test("handleAgentSelect calls onSetAgent and closes selector", () => {
+  test("handleAgentSelect persists the stable agent id and closes selector", () => {
     expect(source).toContain("const handleAgentSelect = useCallback((agentName: string)")
     expect(source).toContain("onSetAgent(agentName)")
     expect(source).toContain("setIsAgentSelectorOpen(false)")

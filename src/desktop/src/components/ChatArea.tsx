@@ -164,6 +164,7 @@ export function ChatArea({
     session: sessionSummaryWithOptimisticSkills,
     activeRun: session?.activeRun,
   })
+  const currentAgentLabel = primaryAgents.find((agent) => agent.name === currentAgent)?.description || currentAgent
 
   useEffect(() => {
     sessionSkillQueueRef.current.queue?.reset()
@@ -577,7 +578,7 @@ export function ChatArea({
               <div className="flex items-center gap-2">
                 <div ref={agentSelectorShellRef} className="relative">
                   <AgentBadge
-                    agentName={currentAgent}
+                    agentName={currentAgentLabel}
                     isOpen={isAgentSelectorOpen}
                     onClick={() => setIsAgentSelectorOpen((prev) => !prev)}
                   />
