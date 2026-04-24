@@ -721,6 +721,11 @@ function createToolPortFactory(config: {
         },
         searchBackend: config.searchBackend,
         memory,
+        observer: config.observer,
+        observerContext: {
+          sessionId: input.sessionId,
+          runId: input.runId,
+        },
         extraTools: [
           createSkillTool({
             repository: config.repository,

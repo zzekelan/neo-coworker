@@ -89,6 +89,8 @@ export function createToolProvider(input: {
     input.runtime ??
     createBuiltinToolRuntime({
       requestPermission: input.requestPermission,
+      observer: input.observer,
+      observerContext: input.scope,
     })
 
   return createToolProviderFromRuntime({

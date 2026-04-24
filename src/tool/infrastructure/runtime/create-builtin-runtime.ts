@@ -1,4 +1,5 @@
 import type { RequestToolPermission, ToolDefinition } from "../../domain"
+import type { ToolObserverPort } from "../../application"
 import { createToolRuntimeApi } from "../../application/runtime-api"
 import { createCodesearchTool } from "../builtins/codesearch"
 import { createDatetimeTool } from "../builtins/datetime"
@@ -19,6 +20,11 @@ export type CreateBuiltinToolRuntimeInput = {
   requestPermission?: RequestToolPermission
   searchBackend?: SearchToolBackend
   memory?: MemoryToolStore
+  observer?: ToolObserverPort
+  observerContext?: {
+    sessionId: string
+    runId: string
+  }
   extraTools?: ToolDefinition[]
 }
 
@@ -70,7 +76,11 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
       annotateDefaults(createDatetimeTool()),
       ...(input.memory ? createMemoryTools({ memory: input.memory }).map(annotateDefaults) : []),
       annotateDefaults(createWriteTool({ requestPermission })),
-      annotateDefaults(createEditTool({ requestPermission })),
+      annotateDefaults(createEditTool({
+        requestPermission,
+        observer: input.observer,
+        observerContext: input.observerContext,
+      })),
       annotateDefaults(createShellTool({ requestPermission })),
       ...(input.extraTools ?? []),
     ],

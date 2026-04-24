@@ -7,6 +7,7 @@ import {
   type RequestToolPermission,
   type ToolDefinition,
 } from "../../domain"
+import { type ToolObserverPort } from "../../application"
 import { createToolPermissionDeniedError } from "./errors"
 import {
   detectEolStyle,
@@ -62,6 +63,7 @@ type MutationPlan = {
   previewAnchor?: string
   rangeStartLineNumber: number
   rangeEndLineNumber: number
+  rangeLength: number
 }
 
 type ParsedContentBlock = {
@@ -231,12 +233,61 @@ function buildMutationPlan(input: {
     previewAnchor: buildPreviewAnchor(updatedText, previewLineNumber),
     rangeStartLineNumber: range.startLineNumber,
     rangeEndLineNumber: range.endLineNumber,
+    rangeLength: range.lineCount,
+  }
+}
+
+type EditTelemetryContext = {
+  sessionId: string
+  runId: string
+}
+
+function emitAnchorTelemetry(input: {
+  observer?: ToolObserverPort
+  observerContext?: EditTelemetryContext
+  event:
+    | {
+        type: "edit.anchor.success"
+        path: string
+        operation: EditOperation
+        rangeLength: number
+        durationMs: number
+        fallbackUsed: false
+        fileSizeBytes?: number
+      }
+    | {
+        type: "edit.anchor.failure"
+        path: string
+        operation: EditOperation
+        rangeLength: number
+        durationMs: number
+        fallbackUsed: false
+        fileSizeBytes?: number
+        failureReason: string
+      }
+}) {
+  const sessionId = input.observerContext?.sessionId
+  const runId = input.observerContext?.runId
+  if (!input.observer || !sessionId || !runId) {
+    return
+  }
+
+  try {
+    input.observer.recordToolEvent?.({
+      sessionId,
+      runId,
+      ...input.event,
+    })
+  } catch {
+    // Observability must not change edit behavior.
   }
 }
 
 export function createEditTool(input: {
   requestPermission: RequestToolPermission
   atomicWrite?: AtomicUtf8FileWrite
+  observer?: ToolObserverPort
+  observerContext?: EditTelemetryContext
 }): ToolDefinition {
   const atomicWrite = input.atomicWrite ?? writeUtf8FileAtomically
 
@@ -270,6 +321,7 @@ export function createEditTool(input: {
 
       throwIfToolAborted(value.signal)
       const file = await resolveWorkspaceFile(value.workspaceRoot, path)
+      const startedAt = Date.now()
 
       return await withSerializedFileMutation(file, async () => {
         throwIfToolAborted(value.signal)
@@ -305,6 +357,20 @@ export function createEditTool(input: {
             await atomicWrite(file, mutation.updatedText)
           }
 
+          emitAnchorTelemetry({
+            observer: input.observer,
+            observerContext: input.observerContext,
+            event: {
+              type: "edit.anchor.success",
+              path,
+              operation,
+              rangeLength: mutation.rangeLength,
+              durationMs: Date.now() - startedAt,
+              fallbackUsed: false,
+              fileSizeBytes: fileStat.size,
+            },
+          })
+
           const previewSuffix = mutation.previewAnchor ? ` Preview: ${mutation.previewAnchor}` : ""
 
           return {
@@ -314,6 +380,20 @@ export function createEditTool(input: {
           }
         } catch (error) {
           if (error instanceof HashAnchorError) {
+            emitAnchorTelemetry({
+              observer: input.observer,
+              observerContext: input.observerContext,
+              event: {
+                type: "edit.anchor.failure",
+                path,
+                operation,
+                rangeLength: 1,
+                durationMs: Date.now() - startedAt,
+                fallbackUsed: false,
+                fileSizeBytes: fileStat.size,
+                failureReason: error.code,
+              },
+            })
             return {
               output: error.message,
               isError: true,
