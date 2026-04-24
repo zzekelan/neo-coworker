@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createSessionRunService } from "../../src/session"
@@ -21,6 +21,7 @@ import {
   createModelProvider,
 } from "../../src/model"
 import { createRuntime } from "../../src/bootstrap"
+import { formatAnchorLine } from "../../src/tool/infrastructure/builtins/hash-anchor"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -324,6 +325,141 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
+  test("uses a read-produced hash anchor in a follow-up edit call inside the same run", async () => {
+    const harness = await createHarness("hash-anchor-loop", false)
+    const filePath = join(harness.workspaceRoot, "notes.txt")
+    const expectedReadOutput = [
+      formatAnchorLine(1, "alpha"),
+      formatAnchorLine(2, "beta"),
+      formatAnchorLine(3, "gamma"),
+    ].join("\n")
+
+    await Bun.write(filePath, "alpha\nbeta\ngamma\n")
+
+    const started = startPromptRun({
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_hash_anchor_loop",
+      messageId: "message_hash_anchor_loop",
+      prompt: "Read notes.txt and replace beta using the read anchor",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_read_anchor",
+            name: "read",
+            inputText: '{"path":"notes.txt"}',
+          }
+        },
+        async function* (request) {
+          const readOutput = readRequestText(request).find((text) => text === expectedReadOutput)
+          const betaAnchor = readOutput?.split("\n")[1]
+
+          expect(readOutput).toBe(expectedReadOutput)
+          expect(betaAnchor).toBe(formatAnchorLine(2, "beta"))
+
+          yield {
+            type: "tool.call",
+            callId: "call_edit_anchor",
+            name: "edit",
+            inputText: JSON.stringify({
+              path: "notes.txt",
+              operation: "replace",
+              start: betaAnchor,
+              content: "BETA",
+            }),
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Anchor-only edit complete." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      permissionPolicy: {
+        edit: "allow",
+      },
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(requests).toHaveLength(3)
+    expect(requests[1]?.messages.slice(-2)).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool_call",
+            callId: "call_read_anchor",
+            toolName: "read",
+            inputText: '{"path":"notes.txt"}',
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_read_anchor",
+            toolName: "read",
+            output: expectedReadOutput,
+          },
+        ],
+      },
+    ])
+    expect(requests[2]?.messages.slice(-2)).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool_call",
+            callId: "call_edit_anchor",
+            toolName: "edit",
+            inputText: JSON.stringify({
+              path: "notes.txt",
+              operation: "replace",
+              start: formatAnchorLine(2, "beta"),
+              content: "BETA",
+            }),
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_edit_anchor",
+            toolName: "edit",
+            output: `Applied replace to notes.txt at line 2. Preview: ${formatAnchorLine(2, "BETA")}`,
+          },
+        ],
+      },
+    ])
+    expect(activeRunMessages).toHaveLength(4)
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(activeRunMessages[2]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(activeRunMessages[3]?.parts).toMatchObject([
+      { kind: "text", text: "Anchor-only edit complete." },
+    ])
+    expect(events.filter((event) => event.type === "tool.call.completed")).toHaveLength(2)
+    expect(await readFile(filePath, "utf8")).toBe("alpha\nBETA\ngamma\n")
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
   test("auto compacts prior transcript into a synthetic boundary summary before continuing", async () => {
     const harness = await createHarness("auto-compact", true)
     seedCompletedRunWithToolResults({
@@ -400,7 +536,7 @@ describe("agent loop", () => {
     const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
     const boundaryMessage = activeRunMessages.find((message) =>
-      message.parts.some((part) => part.kind === "compaction_boundary"),
+      message.parts.some((part) => hasPartKind(part, "compaction_boundary")),
     )
 
     expect(requests).toHaveLength(2)
@@ -506,7 +642,7 @@ describe("agent loop", () => {
     const compactBoundary = compactTranscript.find(
       (message) =>
         message.runId === compactRun.run.id &&
-        message.parts.some((part) => part.kind === "compaction_boundary"),
+        message.parts.some((part) => hasPartKind(part, "compaction_boundary")),
     )
 
     expect(harness.repository.runs.get(compactRun.run.id)).toMatchObject({
@@ -1945,7 +2081,7 @@ async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
 
 function startPromptRun(input: {
   repository: StorageRepository
-  permissionRepository: PermissionRepository
+  permissionRepository?: PermissionRepository
   service: ReturnType<typeof createSessionRunService>
   sessionId: string
   runId: string
@@ -2108,16 +2244,12 @@ function createTurnProvider(
   })
 }
 
-async function collectEvents(events: AsyncIterable<unknown>) {
-  const collected = []
+async function collectEvents<T>(events: AsyncIterable<T>) {
+  const collected: T[] = []
   for await (const event of events) {
     collected.push(event)
   }
   return collected
-}
-
-function readRequestContents(request: ProviderTurnRequest) {
-  return readRequestText(request)
 }
 
 function readRequestText(request: ProviderTurnRequest) {
@@ -2145,6 +2277,10 @@ function readMessageTexts(
       part.type === "text" && typeof part.text === "string" ? [part.text] : [],
     ),
   )
+}
+
+function hasPartKind(part: { kind?: unknown }, kind: string) {
+  return String(part.kind) === kind
 }
 
 function createMonotonicClock(start = 1) {
