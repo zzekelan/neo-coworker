@@ -35,7 +35,7 @@ describe("orchestration model port", () => {
         {
           name: "reviewer",
           description: "Review code changes carefully",
-          path: ".agents/skills/reviewer/SKILL.md",
+          path: ".ncoworker/skills/reviewer/SKILL.md",
         },
       ],
       activeSkills: [{ name: "reviewer", instructions: "Always explain the diff." }],
@@ -77,7 +77,7 @@ describe("orchestration model port", () => {
                 text: [
                   "<system-reminder>",
                   "Skill catalog:",
-                  "- reviewer: Review code changes carefully (.agents/skills/reviewer/SKILL.md)",
+                  "- reviewer: Review code changes carefully (.ncoworker/skills/reviewer/SKILL.md)",
                   "",
                   "Active skill instructions:",
                   "",

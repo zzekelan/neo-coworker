@@ -241,7 +241,7 @@ function createHarness(input: {
         sessionId,
         skills: activeSkillNames.map((name) => ({
           name,
-          path: `.agents/skills/${name}/SKILL.md`,
+          path: `.ncoworker/skills/${name}/SKILL.md`,
           instructions: `Recovered instructions for ${name}`,
         })),
         reason: "recovery",

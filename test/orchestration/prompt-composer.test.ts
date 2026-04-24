@@ -655,7 +655,7 @@ function createSkillPortStub(): OrchestrationSkillPort {
         {
           name: "reviewer",
           description: "Review changes before shipping.",
-          path: ".agents/skills/reviewer/SKILL.md",
+          path: ".ncoworker/skills/reviewer/SKILL.md",
         },
       ]
     },
@@ -663,7 +663,7 @@ function createSkillPortStub(): OrchestrationSkillPort {
       return {
         name: "reviewer",
         instructions: "Review every diff before accepting it.",
-        path: ".agents/skills/reviewer/SKILL.md",
+        path: ".ncoworker/skills/reviewer/SKILL.md",
       }
     },
   }

@@ -466,7 +466,7 @@ function createSkillPortStub(loadedSkillNames: string[] = []): OrchestrationSkil
         {
           name: "reviewer",
           description: "Review code changes carefully",
-          path: ".agents/skills/reviewer/SKILL.md",
+          path: ".ncoworker/skills/reviewer/SKILL.md",
         },
       ]
     },
@@ -475,7 +475,7 @@ function createSkillPortStub(loadedSkillNames: string[] = []): OrchestrationSkil
       return {
         name: input.name,
         instructions: "Focus on bugs first.",
-        path: `.agents/skills/${input.name}/SKILL.md`,
+        path: `.ncoworker/skills/${input.name}/SKILL.md`,
       }
     },
   }
