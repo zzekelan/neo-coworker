@@ -33,18 +33,6 @@
 - [Bun](https://bun.sh/)
 - 暂时仅支持 Linux, MacOS, Windows 建议使用 WSL。
 
-
-## 运行时路径
-
-Neo Coworker 区分 app-state root 和 workspace execution root。独立 server DB、桌面端 state、桌面端 settings，以及相邻的 `models.dev.json` cache 属于 app-state，使用 XDG 路径：
-
-- config root：`$XDG_CONFIG_HOME/neo-coworker`，回退到 `~/.config/neo-coworker`
-- data root：`$XDG_DATA_HOME/neo-coworker`，回退到 `~/.local/share/neo-coworker`
-
-Workspace runtime 和 session storage 仍然保存在 workspace 本地 `.ncoworker` 下，包括 `workspaceRoot/.ncoworker/agent.sqlite`。Deep Research artifacts 是 workspace-local plain files，路径是 `.ncoworker/research/<topic>/`；MVP 不包含 research UI、source viewer 或 artifact viewer。
-
-Skills 的加载优先级是 workspace `.ncoworker/skills`，user-global XDG config skills，然后是 materialized built-in skills，路径为 `$XDG_DATA_HOME/neo-coworker/builtin-skills/`。Skill create、patch、delete 只影响 workspace `.ncoworker/skills/**`。Built-in 和 user-global skills 仅可加载。
-
 ## 其它脚本
 
 | 脚本 | 说明 |
