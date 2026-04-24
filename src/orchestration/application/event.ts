@@ -46,6 +46,16 @@ export type OrchestrationRuntimeEvent =
       reason: "activation" | "prompt" | "recovery"
     }
   | {
+      type: "skill.load.failed"
+      status: "failed"
+      skillName: string
+      reason: "activation" | "prompt" | "recovery" | "startup"
+      error: string
+      agentId?: string
+      agentName?: string
+      agentDisplayName?: string
+    }
+  | {
       type: "skill.activated"
       skillName: string
       activeSkillNames: string[]

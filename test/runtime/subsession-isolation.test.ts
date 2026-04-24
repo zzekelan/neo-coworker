@@ -21,6 +21,7 @@ import {
 } from "../../src/model"
 import { estimateModelTurnUsage } from "../../src/model/application/token-usage"
 import { createRuntime } from "../../src/bootstrap"
+import { createSkillRuntimeApi, type SkillStore } from "../../src/skill"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -965,6 +966,105 @@ describe("subsession transcript isolation", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
     expect(harness.repository.runs.get(childA!.run.id).status).toBe("completed")
     expect(harness.repository.runs.get(childB!.run.id).status).toBe("completed")
+  })
+
+  test("source researcher loads builtin source-note without workspace fallback", async () => {
+    const harness = await createHarness("source-researcher-source-note-runtime", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_source_researcher_source_note",
+      messageId: "message_source_researcher_source_note",
+      prompt: "Delegate source collection through the source researcher.",
+    })
+    const loadByNameCalls: string[] = []
+    const loadByPathCalls: string[] = []
+    const providerRequests: ProviderTurnRequest[] = []
+    const store: SkillStore = {
+      async listCatalog() {
+        return [
+          {
+            name: "source-note",
+            description: "Source note collector contract",
+            path: "builtin:research/source-note/SKILL.md",
+          },
+        ]
+      },
+      async loadByPath(_workspaceRoot, skillPath) {
+        loadByPathCalls.push(skillPath)
+        return {
+          name: "source-note",
+          description: "Source note collector contract",
+          path: skillPath,
+          entryPath: "SKILL.md",
+          baseDir: "file:///builtin/research/source-note/",
+          source: "builtin",
+          files: [],
+          instructions: "Source note instructions",
+        }
+      },
+      async loadByName(workspaceRoot, skillName) {
+        loadByNameCalls.push(join(workspaceRoot, ".ncoworker", "skills", skillName, "SKILL.md"))
+        throw new Error(`Workspace fallback should not load ${skillName}`)
+      },
+      async writeSkill() {
+        throw new Error("test store should not write skills")
+      },
+      async deleteSkill() {
+        throw new Error("test store should not delete skills")
+      },
+    }
+    const runtime = createRuntime({
+      provider: createTurnProvider(providerRequests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_source_researcher",
+            name: "agent",
+            inputText:
+              '{"agent":"source-researcher","prompt":"Collect source notes for docs and weak claims."}',
+          }
+        },
+        async function* (request) {
+          const requestText = readRequestText(request).join("\n")
+          const systemText = request.system
+
+          expect(requestText).toContain("Collect source notes for docs and weak claims.")
+          expect(requestText).toContain("Source note instructions")
+          expect(systemText).toContain("active `source-note` skill")
+          expect(systemText).not.toContain("active `research/source-note` skill")
+
+          yield { type: "text.delta", text: "structured source notes" }
+        },
+        async function* (request) {
+          const requestText = readRequestText(request).join("\n")
+
+          expect(requestText).toContain("Delegate source collection through the source researcher.")
+          expect(requestText).toContain("structured source notes")
+
+          yield { type: "text.delta", text: "Parent finished after source collection." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      skillRuntime: createSkillRuntimeApi({ store }),
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+
+    expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
+    expect(loadByPathCalls).toContain("builtin:research/source-note/SKILL.md")
+    expect(loadByNameCalls).toEqual([])
+    expect(loadByNameCalls).not.toContain(
+      join(harness.workspaceRoot, ".ncoworker", "skills", "research/source-note", "SKILL.md"),
+    )
   })
 
 })

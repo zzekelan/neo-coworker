@@ -279,6 +279,7 @@ export type AgentModelEvent =
 
 export type AgentStepService = {
   isAbortError(error: unknown, signal: AbortSignal): boolean
+  isDetachedError(error: unknown): boolean
   initializeRun(input: {
     sessionId: string
     runId: string

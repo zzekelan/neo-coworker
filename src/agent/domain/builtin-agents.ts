@@ -25,7 +25,7 @@ const DEEP_RESEARCH_INSTRUCTIONS = [
 
 const SOURCE_NOTE_SUBAGENT_INSTRUCTIONS = [
   "# Source Note Subagent Contract",
-  "You are a Source Researcher subagent for Deep Research. Follow the active `research/source-note` skill instructions and return structured source notes; do not write `.ncoworker/research/**` or any durable research artifact directly.",
+  "You are a Source Researcher subagent for Deep Research. Follow the active `source-note` skill instructions and return structured source notes; do not write `.ncoworker/research/**` or any durable research artifact directly.",
   "Return only source-note candidates for the primary Deep Research agent to evaluate and write. Do not claim acceptance; the primary agent decides whether a note becomes an accepted source, rejected source, caveat, or open question.",
   "Each structured source note must define these fields exactly: proposed type, title, URL/URI/path, retrieved-at, publisher/author, reliability, relevance, supports, contradicts, key excerpts, caveats, suggested tags.",
   "Allowed proposed type values are limited to web, docs, and files. Do not invent source types outside the canonical research schema.",
@@ -77,7 +77,7 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
     tools: ["read", "grep", "glob", "webfetch", "get_current_datetime"],
     parallel: true,
     instructions: SOURCE_NOTE_SUBAGENT_INSTRUCTIONS,
-    skills: ["research/source-note"],
+    skills: ["source-note"],
   },
   explore: {
     name: "explore",

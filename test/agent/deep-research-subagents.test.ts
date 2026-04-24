@@ -291,7 +291,7 @@ describe("Deep Research source researcher subagents", () => {
       name: "source-researcher",
       displayName: "Source Researcher",
       description: "Source note collector",
-      skills: ["research/source-note"],
+      skills: ["source-note"],
       parallel: true,
     })
     expect(agent?.tools).not.toContain("write")
@@ -328,11 +328,11 @@ describe("Deep Research source researcher subagents", () => {
 
     expect(result).toEqual({ output: "source notes returned" })
     expect(delegatedProfiles).toEqual([
-      "source-researcher:research/source-note:Collect source notes for docs and weak claims.",
+      "source-researcher:source-note:Collect source notes for docs and weak claims.",
     ])
   })
 
-  test("source researcher subagent activates research/source-note instead of inheriting primary skills", async () => {
+  test("source researcher subagent activates source-note instead of inheriting primary skills", async () => {
     const loadedSkills: string[] = []
     const queuedActiveSkills: string[][] = []
     let builtPrompt = ""
@@ -364,10 +364,55 @@ describe("Deep Research source researcher subagents", () => {
       }),
     )
 
-    expect(queuedActiveSkills).toEqual([["research/source-note"]])
-    expect(loadedSkills).toEqual(["research/source-note"])
+    expect(queuedActiveSkills).toEqual([["source-note"]])
+    expect(loadedSkills).toEqual(["source-note"])
+    expect(loadedSkills).not.toContain("research/source-note")
     expect(builtPrompt).toContain("# Source Note Subagent Contract")
-    expect(builtPrompt).toContain("research/source-note")
+    expect(builtPrompt).toContain("active `source-note` skill")
+    expect(builtPrompt).not.toContain("research/source-note")
+  })
+
+  test("source researcher startup emits structured skill load failure when source-note is missing", async () => {
+    const events: Array<{ event: Record<string, unknown>; sessionId: string; runId: string }> = []
+
+    await expect(
+      createSubAgentRun(
+        createSubAgentInput({
+          skill: {
+            async listCatalog() {
+              return []
+            },
+            async loadSkill(input) {
+              throw new Error(`Required builtin skill missing: ${input.name}`)
+            },
+          },
+          runtimeObserver: {
+            recordRuntimeEvent(input) {
+              events.push({
+                event: input.event,
+                sessionId: input.sessionId,
+                runId: input.runId,
+              })
+            },
+          },
+        }),
+      ),
+    ).rejects.toThrow("Required builtin skill missing: source-note")
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        sessionId: "session-parent",
+        event: expect.objectContaining({
+          type: "skill.load.failed",
+          status: "failed",
+          skillName: "source-note",
+          agentId: "source-researcher",
+          agentName: "source-researcher",
+          agentDisplayName: "Source Researcher",
+          error: "Required builtin skill missing: source-note",
+        }),
+      }),
+    )
   })
 
   test("weak source contract quarantines low reliability as caveat/open-question candidate", () => {

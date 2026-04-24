@@ -149,6 +149,10 @@ function isAbortError(error: unknown, signal: AbortSignal) {
   return signal.aborted || (error instanceof Error && error.name === "AbortError")
 }
 
+function isDetachedError(error: unknown) {
+  return error instanceof Error && error.name === "RunDetachedError"
+}
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
@@ -324,10 +328,22 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         skillName,
         reason: inputValue.reason,
       })
-      const loadedSkill = await input.skill.loadSkill({
-        workspaceRoot: inputValue.workspaceRoot,
-        name: skillName,
-      })
+      let loadedSkill
+      try {
+        loadedSkill = await input.skill.loadSkill({
+          workspaceRoot: inputValue.workspaceRoot,
+          name: skillName,
+        })
+      } catch (error) {
+        inputValue.emit({
+          type: "skill.load.failed",
+          status: "failed",
+          skillName,
+          reason: inputValue.reason,
+          error: getErrorMessage(error),
+        })
+        throw error
+      }
       inputValue.emit({
         type: "skill.load.completed",
         skillName: loadedSkill.name,
@@ -369,6 +385,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
   return {
     isAbortError,
+    isDetachedError,
     getErrorMessage,
     initializeRun(runInput: {
       sessionId: string

@@ -68,11 +68,12 @@ describe("builtin agents", () => {
     expect(agent.name).toBe("source-researcher")
     expect(agent.displayName).toBe("Source Researcher")
     expect(agent.description).toBe("Source note collector")
-    expect(agent.skills).toEqual(["research/source-note"])
+    expect(agent.skills).toEqual(["source-note"])
     expect(agent.isPrimary).toBeUndefined()
     expect(agent.tools).toEqual(["read", "grep", "glob", "webfetch", "get_current_datetime"])
     expect(agent.parallel).toBe(true)
-    expect(agent.instructions).toContain("research/source-note")
+    expect(agent.instructions).toContain("source-note")
+    expect(agent.instructions).not.toContain("research/source-note")
   })
 
   test("keeps subagent definitions untouched", () => {

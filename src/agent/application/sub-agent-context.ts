@@ -84,12 +84,20 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     agentName: input.profile.name,
     workspaceRoot: input.workspaceRoot,
   })
+  const startupSkillPort = createStartupSkillFailureReportingPort({
+    skill: scopedSkillPort,
+    profile: input.profile,
+    sessionId: input.sessionId,
+    runId: context.subRunId,
+    runtimeObserver: input.runtimeObserver,
+    now,
+  })
   const skillTools = await loadSkillsForAgent(
     {
       ...input.profile,
       skills: activeSkills,
     },
-    scopedSkillPort,
+    startupSkillPort,
   )
   const tools = createScopedToolPort({
     parentTools: input.parentTools,
@@ -244,6 +252,48 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
 
     throw error
   }
+}
+
+function createStartupSkillFailureReportingPort(input: {
+  skill: AgentSkillPort
+  profile: AgentProfile
+  sessionId: string
+  runId: string
+  runtimeObserver?: AgentRuntimeObserverPort
+  now: () => number
+}): AgentSkillPort {
+  return {
+    listCatalog(workspaceRoot) {
+      return input.skill.listCatalog(workspaceRoot)
+    },
+    async loadSkill(value) {
+      try {
+        return await input.skill.loadSkill(value)
+      } catch (error) {
+        recordRuntimeEvent({
+          runtimeObserver: input.runtimeObserver,
+          sessionId: input.sessionId,
+          runId: input.runId,
+          occurredAt: input.now(),
+          event: {
+            type: "skill.load.failed",
+            status: "failed",
+            skillName: value.name,
+            agentId: input.profile.name,
+            agentName: input.profile.name,
+            agentDisplayName: input.profile.displayName,
+            error: getErrorMessage(error),
+            reason: "startup",
+          },
+        })
+        throw error
+      }
+    },
+  }
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function createScopedSkillPort(input: {
