@@ -229,6 +229,8 @@ export type LifecycleEvent =
       instructionsLength?: number
       agentId?: string
       displayName?: string
+      parentRunId?: string
+      subRunId?: string
       errorCode?: string
       errorMessage?: string
     }

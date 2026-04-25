@@ -403,12 +403,15 @@ describe("Deep Research source researcher subagents", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         sessionId: "session-parent",
+        runId: expect.stringMatching(/^run_/),
         event: expect.objectContaining({
           type: "skill.load.failed",
           status: "failed",
           skillName: "source-note",
           agentId: "source-researcher",
           displayName: "Source Researcher",
+          parentRunId: "parent-run",
+          subRunId: expect.stringMatching(/^run_/),
           errorCode: "SKILL_LOAD_FAILED",
           errorMessage: expect.stringContaining("Required builtin skill missing: source-note"),
           reason: "startup",

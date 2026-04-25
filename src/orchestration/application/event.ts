@@ -57,6 +57,8 @@ export type OrchestrationRuntimeEvent =
       error?: string
       agentId?: string
       displayName?: string
+      parentRunId?: string
+      subRunId?: string
     }
   | {
       type: "skill.activated"

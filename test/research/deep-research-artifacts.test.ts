@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { getBuiltinAgent } from "../../src/agent"
 import {
   validateFindingRecord,
   validateResearchIndex,
@@ -17,6 +19,20 @@ import {
 
 async function createWorkspace() {
   return mkdtemp(join(tmpdir(), "ncoworker-research-artifacts-"))
+}
+
+async function readBuiltinResearchSkill(name: "deep-research" | "source-note" | "finding-synthesis") {
+  const testDirectory = dirname(fileURLToPath(import.meta.url))
+  return readFile(
+    join(testDirectory, "../../src/skill/infrastructure/builtins/research", name, "SKILL.md"),
+    "utf8",
+  )
+}
+
+function positiveGuidanceLines(body: string, pattern: RegExp) {
+  return body
+    .split(/\r?\n/)
+    .filter((line) => pattern.test(line) && !/\bDo not\b/i.test(line))
 }
 
 describe("Deep Research artifact workflow", () => {
@@ -212,5 +228,31 @@ describe("Deep Research artifact workflow", () => {
     expect(() => assertResearchArtifactPath("/tmp/.ncoworker/research/topic/brief.md")).toThrow(
       "workspace-relative",
     )
+  })
+
+  test("builtin research prompts forbid workspace skill recovery and preserve primary artifact ownership", async () => {
+    const skillBodies = await Promise.all([
+      readBuiltinResearchSkill("deep-research"),
+      readBuiltinResearchSkill("source-note"),
+      readBuiltinResearchSkill("finding-synthesis"),
+    ])
+
+    for (const body of skillBodies) {
+      expect(body).toContain("Do not create skills.")
+      expect(body).toContain("Do not write `.ncoworker/skills/**`.")
+      expect(positiveGuidanceLines(body, /create\s+(?:a\s+)?(?:workspace\s+)?skill/i)).toEqual([])
+      expect(positiveGuidanceLines(body, /write\s+[^\n]*\.ncoworker\/skills/i)).toEqual([])
+    }
+
+    const sourceNoteBody = skillBodies[1]!
+    expect(positiveGuidanceLines(sourceNoteBody, /write\s+[^\n]*\.ncoworker\/research/i)).toEqual([])
+    expect(positiveGuidanceLines(sourceNoteBody, /create\s+[^\n]*\.ncoworker\/research/i)).toEqual([])
+
+    const primaryAgentPrompt = getBuiltinAgent("deep-research")?.instructions ?? ""
+    const sourceResearcherPrompt = getBuiltinAgent("source-researcher")?.instructions ?? ""
+    expect(primaryAgentPrompt).toContain("Only the primary Deep Research agent writes research artifacts")
+    expect(sourceResearcherPrompt).toContain("return structured source notes")
+    expect(positiveGuidanceLines(sourceResearcherPrompt, /write\s+[^\n]*\.ncoworker\/research/i)).toEqual([])
+    expect(sourceResearcherPrompt).not.toContain(".ncoworker/skills")
   })
 })

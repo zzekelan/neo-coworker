@@ -89,6 +89,8 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     profile: input.profile,
     sessionId: input.sessionId,
     runId: context.subRunId,
+    parentRunId: input.parentRunId,
+    subRunId: context.subRunId,
     runtimeObserver: input.runtimeObserver,
     now,
   })
@@ -280,6 +282,8 @@ function createStartupSkillFailureReportingPort(input: {
   profile: AgentProfile
   sessionId: string
   runId: string
+  parentRunId: string
+  subRunId: string
   runtimeObserver?: AgentRuntimeObserverPort
   now: () => number
 }): AgentSkillPort {
@@ -303,6 +307,8 @@ function createStartupSkillFailureReportingPort(input: {
             skillName: value.name,
             agentId: input.profile.name,
             displayName: input.profile.displayName ?? input.profile.name,
+            parentRunId: input.parentRunId,
+            subRunId: input.subRunId,
             errorCode: "SKILL_LOAD_FAILED",
             errorMessage,
             reason: "startup",

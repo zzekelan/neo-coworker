@@ -20,6 +20,12 @@ Use this skill to convert source notes into durable findings.
 4. Cite source IDs in Evidence and keep caveats in Notes.
 5. Leave unresolved or weakly supported points in open questions.
 
+## Guardrails
+
+- Do not create skills.
+- Do not write `.ncoworker/skills/**`.
+- Use only `.ncoworker/research/**` artifact paths when referencing durable research records.
+
 ## References
 
 - Read `references/finding-quality.md` for Claim, Evidence, and Confidence guidance.

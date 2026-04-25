@@ -99,6 +99,8 @@ export type SkillLoadServerEventPayload = {
   instructionsLength?: number
   agentId?: string
   displayName?: string
+  parentRunId?: string
+  subRunId?: string
   errorCode?: string
   errorMessage?: string
 }
@@ -963,6 +965,8 @@ function buildLifecycleServerEvent(
     assignOptionalNumber(payload, "instructionsLength", readNumber(event, "instructionsLength"))
     assignOptionalString(payload, "agentId", readString(event, "agentId"))
     assignOptionalString(payload, "displayName", readString(event, "displayName"))
+    assignOptionalString(payload, "parentRunId", readString(event, "parentRunId"))
+    assignOptionalString(payload, "subRunId", readString(event, "subRunId"))
     assignOptionalString(payload, "errorCode", readString(event, "errorCode") ?? (event.type === "skill.load.failed" ? "SKILL_LOAD_FAILED" : null))
     assignOptionalString(payload, "errorMessage", readString(event, "errorMessage") ?? readString(event, "error"))
     return payload

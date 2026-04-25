@@ -20,6 +20,12 @@ Use this skill to keep a durable research trail under `.ncoworker/research/`.
 4. Synthesize findings as claim records with scope, confidence, evidence IDs, and caveats.
 5. Keep artifacts concise. Don't paste large raw documents or private source bodies.
 
+## Guardrails
+
+- Do not create skills.
+- Do not write `.ncoworker/skills/**`.
+- Write durable research artifacts only under `.ncoworker/research/**`.
+
 ## References
 
 - Read `references/artifact-schema.md` for artifact paths and field order.
