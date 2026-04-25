@@ -518,6 +518,7 @@ function renderSkillPackageFiles(skill: ModelActiveSkill) {
   const baseDirPath = resolveReadableBaseDir(skill.baseDir)
   return [
     "Package files available on demand:",
+    "When instructions mention one of these package files, call the read tool with the exact absolute Read path shown below.",
     ...skill.files.map((file) => {
       const readPath = baseDirPath ? ` (Read path: ${join(baseDirPath, file)})` : ""
       return `- ${file}${readPath}`

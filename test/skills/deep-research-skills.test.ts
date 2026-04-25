@@ -124,6 +124,7 @@ describe("deep research built-in skills", () => {
       const sourceNoteSchemaPath = join(baseDirPath, "references", "source-note-schema.md")
 
       expect(rendered).toContain("Package files available on demand:")
+      expect(rendered).toContain("call the read tool with the exact absolute Read path shown below")
       expect(rendered).toContain("references/artifact-schema.md")
       expect(rendered).toContain("references/source-note-schema.md")
       expect(rendered).toContain("references/finding-quality.md")
