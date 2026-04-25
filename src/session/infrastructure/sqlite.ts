@@ -632,7 +632,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         directory: session.directory,
         workspaceRoot: session.workspaceRoot,
         createdAt,
-        currentAgent: session.parentSessionId == null ? "default" : undefined,
+        currentAgent: session.parentSessionId == null ? "general" : undefined,
         title: session.title ?? buildDefaultSessionTitle(),
         updatedAt: session.updatedAt ?? createdAt,
         latestUserMessagePreview: session.latestUserMessagePreview ?? null,

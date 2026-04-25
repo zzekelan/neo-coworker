@@ -153,7 +153,7 @@ function mapCurrentAgent(row: Pick<SessionRow, "current_agent" | "parent_session
     return undefined
   }
 
-  return row.current_agent ?? "default"
+  return row.current_agent ?? "general"
 }
 
 function parseJson(value: string | null) {

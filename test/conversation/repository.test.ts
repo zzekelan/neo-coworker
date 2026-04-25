@@ -1,4 +1,3 @@
-// @ts-expect-error Bun runtime module is provided by Bun.
 import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
@@ -33,7 +32,7 @@ describe("storage repository", () => {
     expect(CURRENT_SESSION_SCHEMA_VERSION).toBe(11)
   })
 
-  test("creates fresh databases with default top-level current agent and persists message agents", () => {
+  test("creates fresh databases with general top-level current agent and persists message agents", () => {
     const databasePath = createDatabasePath("schema-v11-fresh")
     const database = openStorageDatabase(databasePath)
     trackDatabase(database)
@@ -72,11 +71,11 @@ describe("storage repository", () => {
       .query("SELECT agent FROM message WHERE id = ?")
       .get(message.id) as { agent: string | null }
 
-    expect(rawSession.current_agent).toBe("default")
-    expect(rawMessage.agent).toBe("default")
-    expect(repository.sessions.get(session.id).currentAgent).toBe("default")
-    expect(repository.sessions.getCurrentAgent(session.id)).toBe("default")
-    expect(repository.messages.get(message.id).agent).toBe("default")
+    expect(rawSession.current_agent).toBe("general")
+    expect(rawMessage.agent).toBe("general")
+    expect(repository.sessions.get(session.id).currentAgent).toBe("general")
+    expect(repository.sessions.getCurrentAgent(session.id)).toBe("general")
+    expect(repository.messages.get(message.id).agent).toBe("general")
 
     repository.sessions.setCurrentAgent(session.id, "plan")
     const secondMessage = repository.messages.create({
@@ -92,10 +91,10 @@ describe("storage repository", () => {
     expect(rawSessionValue(database, session.id)).toBe("plan")
     expect(repository.sessions.get(session.id).currentAgent).toBe("plan")
     expect(repository.sessions.getCurrentAgent(session.id)).toBe("plan")
-    expect(repository.messages.get(message.id).agent).toBe("default")
+    expect(repository.messages.get(message.id).agent).toBe("general")
     expect(repository.messages.get(secondMessage.id).agent).toBe("plan")
     expect(repository.messages.listSessionTranscript(session.id)).toEqual([
-      expect.objectContaining({ id: message.id, agent: "default" }),
+      expect.objectContaining({ id: message.id, agent: "general" }),
       expect.objectContaining({ id: secondMessage.id, agent: "plan" }),
     ])
   })
@@ -153,11 +152,11 @@ describe("storage repository", () => {
     })
     expect(repository.sessions.get("session_1")).toMatchObject({
       id: "session_1",
-      currentAgent: "default",
+      currentAgent: "general",
       title: "Migrated session",
       activeSkills: ["reviewer"],
     })
-    expect(repository.sessions.getCurrentAgent("session_1")).toBe("default")
+    expect(repository.sessions.getCurrentAgent("session_1")).toBe("general")
     expect(repository.messages.get("message_1")).toMatchObject({
       id: "message_1",
       agent: undefined,
