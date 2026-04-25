@@ -158,6 +158,12 @@ type DesktopText = {
     cancelledSuffix: string
     failedSuffix: string
     reasoning: string
+    startingAgent(name: string): string
+    completedAgentLifecycle(name: string): string
+    failedAgent(name: string): string
+    loadingSkill(name: string): string
+    loadedSkill(name: string): string
+    failedToLoadSkill(name: string): string
   }
   settings: {
     title: string
@@ -391,6 +397,12 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       cancelledSuffix: "(cancelled)",
       failedSuffix: "failed",
       reasoning: "Reasoning",
+      startingAgent(name: string) { return `Starting agent: ${name}` },
+      completedAgentLifecycle(name: string) { return `Completed agent: ${name}` },
+      failedAgent(name: string) { return `Failed agent: ${name}` },
+      loadingSkill(name: string) { return `Loading skill: ${name}` },
+      loadedSkill(name: string) { return `Loaded skill: ${name}` },
+      failedToLoadSkill(name: string) { return `Failed to load skill: ${name}` },
     },
     settings: {
       title: "Settings",
@@ -624,6 +636,12 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       cancelledSuffix: "（已取消）",
       failedSuffix: "失败",
       reasoning: "推理",
+      startingAgent(name: string) { return `正在启动代理：${name}` },
+      completedAgentLifecycle(name: string) { return `代理已完成：${name}` },
+      failedAgent(name: string) { return `代理失败：${name}` },
+      loadingSkill(name: string) { return `正在加载技能：${name}` },
+      loadedSkill(name: string) { return `技能已加载：${name}` },
+      failedToLoadSkill(name: string) { return `技能加载失败：${name}` },
     },
     settings: {
       title: "设置",

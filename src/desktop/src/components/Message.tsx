@@ -338,6 +338,10 @@ const MessagePartRenderer: React.FC<{
     )
   }
 
+  if (part.type === "lifecycle") {
+    return <LifecycleDiagnostic part={part} partIndex={partIndex} />
+  }
+
   if (part.type === "compaction_boundary") {
     return (
       <CompactionDivider
@@ -630,6 +634,48 @@ const ToolStatusBadge: React.FC<{ status: ToolStatus }> = React.memo(({ status }
   )
 })
 
+const LifecycleDiagnostic: React.FC<{
+  part: Extract<MessagePart, { type: "lifecycle" }>
+  partIndex: number
+}> = React.memo(({ part, partIndex }) => {
+  const text = useDesktopText()
+  const detail = part.errorMessage ?? part.reason ?? part.errorCode
+  const status: ToolStatus = part.status === "failed"
+    ? "error"
+    : part.status === "completed"
+      ? "success"
+      : "pending"
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
+      className={cn(
+        "relative py-0.5",
+        part.status === "failed" && "border-l-2 border-danger pl-2",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className={cn(
+          "min-w-0 truncate text-[13px] leading-snug",
+          part.status === "failed" ? "text-danger/80" : "text-muted",
+        )}>
+          {describeLifecycleTitle(text, part)}
+        </span>
+        <span className="ml-1 shrink-0" role="status" aria-live="polite">
+          <ToolStatusBadge status={status} />
+        </span>
+      </div>
+      {detail ? (
+        <div className="mt-0.5 text-[12px] leading-snug text-danger/70">
+          {detail}
+        </div>
+      ) : null}
+    </motion.div>
+  )
+})
+
 const CompletedToolRow: React.FC<{
   toolName: string
   toolInput: unknown
@@ -761,6 +807,31 @@ function describeToolCallTitle(text: ReturnType<typeof useDesktopText>, toolName
     default:
       return text.message.usingTool(formatToolDisplayName(toolName))
   }
+}
+
+function describeLifecycleTitle(
+  text: ReturnType<typeof useDesktopText>,
+  part: Extract<MessagePart, { type: "lifecycle" }>,
+) {
+  if (part.category === "agent") {
+    const name = part.displayName ?? part.agentId ?? "agent"
+    if (part.status === "completed") {
+      return text.message.completedAgentLifecycle(name)
+    }
+    if (part.status === "failed") {
+      return text.message.failedAgent(name)
+    }
+    return text.message.startingAgent(part.displayName ?? name)
+  }
+
+  const skillName = part.skillName ?? "skill"
+  if (part.status === "completed") {
+    return text.message.loadedSkill(skillName)
+  }
+  if (part.status === "failed") {
+    return text.message.failedToLoadSkill(part.skillName ?? skillName)
+  }
+  return text.message.loadingSkill(skillName)
 }
 
 function describeToolCallSummary(
@@ -1101,5 +1172,3 @@ function readRecordString(value: Record<string, unknown> | null, key: string) {
   const candidate = value[key]
   return typeof candidate === "string" ? candidate : null
 }
-
-
