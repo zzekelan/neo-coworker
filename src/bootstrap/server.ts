@@ -140,7 +140,11 @@ export async function createStandaloneServerComposition(input: {
       },
       async listPrimaryAgents(workspaceRoot?: string) {
         const agents = await getAgentProfileService(workspaceRoot ?? cwd).listPrimaryAgents()
-        return agents.map((agent) => ({ name: agent.name, description: agent.description ?? "" }))
+        return agents.map((agent) => ({
+          name: agent.name,
+          displayName: agent.displayName,
+          description: agent.description ?? "",
+        }))
       },
       createRuntimeImpl(runtimeInput: {
         repository: SessionRepository
@@ -183,7 +187,7 @@ export async function createStandaloneServerComposition(input: {
       observabilityRepository: ObservabilityRepository
       exportRunTrace(runId: string): ReturnType<typeof observability.exportRunTrace>
       listSkillCatalog(workspaceRoot: string): ReturnType<typeof skillRuntime.listCatalog>
-      listPrimaryAgents(workspaceRoot?: string): Promise<Array<{ name: string; description: string }>>
+      listPrimaryAgents(workspaceRoot?: string): Promise<Array<{ name: string; displayName?: string; description: string }>>
       createRuntimeImpl(input: {
         repository: SessionRepository
         permissionRepository: PermissionRepository

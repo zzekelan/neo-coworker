@@ -119,7 +119,7 @@ export function createAgentServer(input: {
   permissionRepository: PermissionRepository
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
   listSkillCatalogImpl?: Parameters<typeof createServerApp>[0]["listSkillCatalogImpl"]
-  listPrimaryAgentsImpl?: (workspaceRoot?: string) => Promise<Array<{ name: string; description: string }>>
+  listPrimaryAgentsImpl?: (workspaceRoot?: string) => Promise<Array<{ name: string; displayName?: string; description: string }>>
   deleteSessionImpl?: (sessionId: string) => void
   now?: () => number
   heartbeatIntervalMs?: number

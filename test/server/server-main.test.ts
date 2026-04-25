@@ -216,13 +216,32 @@ describe("server main entrypoint", () => {
 
         expect(body.data.agents).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ name: "general", description: "General-purpose assistant" }),
-            expect.objectContaining({ name: "plan" }),
+            expect.objectContaining({
+              name: "general",
+              displayName: "General",
+              description: "General-purpose assistant",
+            }),
+            expect.objectContaining({
+              name: "plan",
+              displayName: "Plan",
+              description: "Strategic planning mode — read-only, no code modifications",
+            }),
+            expect.objectContaining({
+              name: "deep-research",
+              displayName: "Deep Research",
+              description: "Deep Research",
+            }),
             expect.objectContaining({ name: "reviewer", description: "Markdown primary agent" }),
+          ]),
+        )
+        expect(body.data.agents.filter((agent) => agent.name !== "reviewer")).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ displayName: expect.any(String) }),
           ]),
         )
         expect(body.data.agents.map((agent) => agent.name)).not.toContain("default")
         expect(body.data.agents.map((agent) => agent.name)).not.toContain("source-researcher")
+        expect(body.data.agents.map((agent) => agent.displayName)).not.toContain("Source Researcher")
       } finally {
         await standaloneServer.stop()
       }
