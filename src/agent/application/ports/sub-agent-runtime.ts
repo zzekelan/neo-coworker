@@ -6,13 +6,13 @@ export type AgentToolCatalogEntry = {
   inputSchema?: ZodTypeAny
   concurrency?: "read-only" | "mutating"
   isConcurrencySafe?: (input: unknown) => boolean
+  usageGuidance?: string
+  resultSizeLimit?: number
+  isCompressible?: boolean
 }
 
 export type AgentToolDefinition = AgentToolCatalogEntry & {
   execute(input: AgentToolExecutionInput): Promise<AgentToolExecutionResult> | AgentToolExecutionResult
-  usageGuidance?: string
-  resultSizeLimit?: number
-  isCompressible?: boolean
   timeout?: number
 }
 

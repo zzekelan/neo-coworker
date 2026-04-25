@@ -25,7 +25,7 @@ import {
 } from "../permission"
 import {
   createBuiltinToolRuntime,
-  createResultStore,
+  createResultStore as createToolResultStore,
   createShadowGitCheckpointStore,
   createToolProviderFromRuntime,
   createToolProvider,
@@ -304,6 +304,16 @@ export function createRuntime(input: RuntimeInput) {
             observer: observability?.runtimeObserver,
             forwardRuntimeEvent: subAgentInput.forwardRuntimeEvent,
           }),
+          toolObserver: observability?.toolObserver,
+          createResultStore({ workspaceRoot, sessionId, runId }) {
+            return createToolResultStore({
+              workspaceRoot,
+              basePath: ".ncoworker/tool-results",
+              observer: observability?.toolObserver,
+              sessionId,
+              runId,
+            })
+          },
           now,
           buildAgentAwarePrompt,
           createStepService: createOrchestrationStepService,
@@ -709,7 +719,7 @@ function createToolPortFactory(config: {
           runId: input.runId,
         },
       })
-      const resultStore = createResultStore({
+      const resultStore = createToolResultStore({
         workspaceRoot,
         basePath: ".ncoworker/tool-results",
         observer: config.observer,

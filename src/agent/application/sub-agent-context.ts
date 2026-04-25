@@ -1,4 +1,10 @@
 import type { AgentProfile } from "../domain/agent-profile"
+import {
+  manageResultSize,
+  TurnBudget,
+  type ResultStore,
+  type ToolObserverPort,
+} from "../../tool"
 import type {
   AgentContextWindowPort,
   AgentModelPort,
@@ -7,6 +13,7 @@ import type {
   AgentSessionPort,
   AgentSkillPort,
   AgentToolBatchExecutor,
+  AgentToolBatchResult,
   AgentToolDefinition,
   AgentToolPort,
   CreateAgentStepService,
@@ -17,6 +24,7 @@ import type {
 import { filterToolsForAgent, loadSkillsForAgent } from "./tool-filter"
 
 const DEFAULT_SUBAGENT_MAX_TURNS = 50
+const SUBAGENT_TOOL_RESULT_SIZE_LIMIT = 50_000
 
 export function createSubAgentContext(input: { sessionId: string; signal?: AbortSignal }) {
   const controller = new AbortController()
@@ -67,6 +75,12 @@ export type CreateSubAgentRunInput = {
   createToolBatchExecutor: CreateAgentToolBatchExecutor
   createToolRuntime: CreateAgentToolRuntime
   createToolProvider: CreateAgentToolProvider
+  toolObserver?: ToolObserverPort
+  createResultStore?(input: {
+    workspaceRoot: string
+    sessionId: string
+    runId: string
+  }): ResultStore
 }
 
 export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<string> {
@@ -103,14 +117,6 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     },
     startupSkillPort,
   )
-  const tools = createScopedToolPort({
-    parentTools: input.parentTools,
-    profile: input.profile,
-    skillTools,
-    createToolBatchExecutor: input.createToolBatchExecutor,
-    createToolRuntime: input.createToolRuntime,
-    createToolProvider: input.createToolProvider,
-  })
   const stepService = input.createStepService({
     session: input.session,
     model: input.model,
@@ -130,6 +136,24 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     activeSkills,
     createdAt: now(),
     parentRunId: input.parentRunId,
+  })
+  const resultStore = input.createResultStore?.({
+    workspaceRoot: input.workspaceRoot,
+    sessionId: subSessionId,
+    runId: context.subRunId,
+  })
+  const tools = createScopedToolPort({
+    parentTools: input.parentTools,
+    profile: input.profile,
+    skillTools,
+    createToolBatchExecutor: input.createToolBatchExecutor,
+    createToolRuntime: input.createToolRuntime,
+    createToolProvider: input.createToolProvider,
+    workspaceRoot: input.workspaceRoot,
+    sessionId: subSessionId,
+    runId: context.subRunId,
+    toolObserver: input.toolObserver,
+    resultStore,
   })
   const emit = (event: AgentRuntimeEvent) => {
     recordRuntimeEvent({
@@ -369,11 +393,19 @@ function createScopedToolPort(input: {
   createToolBatchExecutor: () => AgentToolBatchExecutor
   createToolRuntime: CreateAgentToolRuntime
   createToolProvider: CreateAgentToolProvider
+  workspaceRoot: string
+  sessionId: string
+  runId: string
+  toolObserver?: ToolObserverPort
+  resultStore?: ResultStore
 }): AgentToolPort {
   const batchExecutor = input.createToolBatchExecutor()
-  const filteredTools = filterToolsForAgent(createForwardedTools(input.parentTools), input.profile)
+  const scopedTools = dedupeToolsByName([
+    ...filterToolsForAgent(createForwardedTools(input.parentTools), input.profile),
+    ...input.skillTools,
+  ])
   const runtime = input.createToolRuntime({
-    tools: dedupeToolsByName([...filteredTools, ...input.skillTools]),
+    tools: scopedTools,
   })
   const provider = input.createToolProvider({ runtime })
 
@@ -385,15 +417,120 @@ function createScopedToolPort(input: {
       return provider.execute(value)
     },
     async executeBatch(batchInput) {
-      return batchExecutor.execute({
+      const results = await batchExecutor.execute({
         calls: batchInput.calls,
         tools: provider,
         availableTools: runtime.list(),
         workspaceRoot: batchInput.workspaceRoot,
         signal: batchInput.signal,
       })
+
+      return applyScopedTurnBudget({
+        rawResults: results,
+        managedResults: results.map((result) => manageScopedBatchResult({
+          result,
+          tools: scopedTools,
+          workspaceRoot: input.workspaceRoot,
+          sessionId: input.sessionId,
+          runId: input.runId,
+          toolObserver: input.toolObserver,
+          resultStore: input.resultStore,
+        })),
+        sessionId: input.sessionId,
+        runId: input.runId,
+        toolObserver: input.toolObserver,
+        resultStore: input.resultStore,
+      })
     },
   }
+}
+
+function manageScopedBatchResult(input: {
+  result: AgentToolBatchResult
+  tools: AgentToolDefinition[]
+  workspaceRoot: string
+  sessionId: string
+  runId: string
+  toolObserver?: ToolObserverPort
+  resultStore?: ResultStore
+}): AgentToolBatchResult {
+  const tool = input.tools.find((candidate) => candidate.name === input.result.toolName)
+
+  return {
+    ...input.result,
+    ...manageResultSize(
+      {
+        output: input.result.output,
+        isError: input.result.isError,
+        metadata: input.result.metadata,
+      },
+      {
+        limit: SUBAGENT_TOOL_RESULT_SIZE_LIMIT,
+        tool,
+        toolName: input.result.toolName,
+        workspaceRoot: input.workspaceRoot,
+        observer: input.toolObserver,
+        sessionId: input.sessionId,
+        runId: input.runId,
+        resultStore: input.resultStore,
+      },
+    ),
+  }
+}
+
+function applyScopedTurnBudget(input: {
+  rawResults: AgentToolBatchResult[]
+  managedResults: AgentToolBatchResult[]
+  sessionId: string
+  runId: string
+  toolObserver?: ToolObserverPort
+  resultStore?: ResultStore
+}) {
+  const turnBudget = new TurnBudget({
+    observer: input.toolObserver,
+    observerContext: {
+      sessionId: input.sessionId,
+      runId: input.runId,
+    },
+  })
+
+  for (const result of input.rawResults) {
+    if (result.isError) {
+      continue
+    }
+
+    turnBudget.track(result.toolName, result.output)
+  }
+
+  if (!turnBudget.isOverBudget() || !input.resultStore) {
+    return input.managedResults
+  }
+
+  const spilledResults = turnBudget.spillLargest(input.resultStore)
+  if (spilledResults.length === 0) {
+    return input.managedResults
+  }
+
+  const spilledByPosition = new Map(spilledResults.map((entry) => [entry.position, entry]))
+
+  return input.managedResults.map((result, index) => {
+    const spilled = spilledByPosition.get(index)
+    if (!spilled) {
+      return result
+    }
+
+    return {
+      ...result,
+      output: spilled.output,
+      metadata: {
+        ...result.metadata,
+        spilledToDisk: true,
+        savedPath: spilled.path,
+        originalSize: spilled.originalSize,
+        truncatedSize: spilled.previewSize,
+      },
+    }
+  })
 }
 
 function createForwardedTools(parentTools: AgentToolPort): AgentToolDefinition[] {
