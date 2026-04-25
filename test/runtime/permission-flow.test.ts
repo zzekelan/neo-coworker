@@ -54,6 +54,22 @@ afterEach(async () => {
 })
 
 describe("runtime permission flow", () => {
+  test("plan_exit tool contract names general instead of removed default agent", async () => {
+    const source = await readFile("src/bootstrap/runtime.ts", "utf8")
+    const planExitBlock = source.slice(
+      source.indexOf("const PlanExitToolArgsSchema"),
+      source.indexOf("async function requestSkillWritePermission"),
+    )
+
+    expect(planExitBlock).toContain("returning to the general agent")
+    expect(planExitBlock).toContain("switch back to general")
+    expect(planExitBlock).toContain('input.repository.sessions.setCurrentAgent(input.sessionId, "general")')
+    expect(planExitBlock).toContain('output: "Switched back to general mode."')
+    expect(planExitBlock).toContain('toAgent: "general"')
+    expect(planExitBlock).not.toContain("default agent")
+    expect(planExitBlock).not.toContain("Switched back to default")
+  })
+
   test("lists the plan_exit tool for main-agent runs", async () => {
     const harness = await createHarness("plan-exit-listed", false)
     const requests: ProviderTurnRequest[] = []

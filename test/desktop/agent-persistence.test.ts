@@ -53,7 +53,7 @@ describe("desktop agent persistence", () => {
     ).toBe("plan")
   })
 
-  test("new top-level sessions fall back to the default agent when backend data has no explicit agent yet", () => {
+  test("new top-level sessions fall back to general when backend data has no explicit agent yet", () => {
     expect(
       resolveCurrentAgent({
         activeSessionId: "session-new",

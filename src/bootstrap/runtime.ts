@@ -1469,10 +1469,10 @@ const DeleteSkillToolArgsSchema = z.object({
 
 const PlanExitToolArgsSchema = z.object({
   reason: z.string().trim().min(1).optional().describe(
-    "Optional reason for exiting plan mode and returning to the default agent.",
+    "Optional reason for exiting plan mode and returning to the general agent.",
   ),
 }).describe(
-  "Exit plan mode and return to default mode. Use this when planning is complete and the main agent should switch back to default.",
+  "Exit plan mode and return to general mode. Use this when planning is complete and the main agent should switch back to general.",
 )
 
 function createSkillTool(input: {
@@ -1729,12 +1729,12 @@ function createPlanExitTool(input: {
   return {
     name: "plan_exit",
     description:
-      "Exit plan mode and return to default mode. Use this when you've completed planning and the user should switch back to the default agent.",
+      "Exit plan mode and return to general mode. Use this when you've completed planning and the user should switch back to the general agent.",
     inputSchema: PlanExitToolArgsSchema,
     concurrency: "mutating",
     isCompressible: false,
     usageGuidance:
-      "Use this only when the current session is in plan mode and planning is complete. It requires user approval before switching back to the default agent.",
+      "Use this only when the current session is in plan mode and planning is complete. It requires user approval before switching back to the general agent.",
     async execute(toolInput) {
       throwIfToolAborted(toolInput.signal)
       const parsed = PlanExitToolArgsSchema.parse(toolInput.args)
