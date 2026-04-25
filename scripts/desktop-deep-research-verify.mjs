@@ -579,6 +579,9 @@ function assertNoResearchSourceNoteEnoent(input) {
   const serialized = JSON.stringify(input)
   assert(/research\/source-note[^\n]{0,240}ENOENT|ENOENT[^\n]{0,240}research\/source-note/u.test(serialized) === false, "Found research/source-note ENOENT fallback signature.")
   assert(/\.ncoworker\/skills\/research\/source-note\/SKILL\.md[^\n]{0,240}ENOENT|ENOENT[^\n]{0,240}\.ncoworker\/skills\/research\/source-note\/SKILL\.md/u.test(serialized) === false, "Found workspace source-note ENOENT fallback signature.")
+  assert(/\.ncoworker\/skills\/research\/deep-research\/references\/[^\n]{0,120}\.md[^\n]{0,240}ENOENT|ENOENT[^\n]{0,240}\.ncoworker\/skills\/research\/deep-research\/references\/[^\n]{0,120}\.md/u.test(serialized) === false, "Found workspace deep-research reference ENOENT signature for .ncoworker/skills/research/deep-research/references/*.md.")
+  assert(/references\/source-note-schema\.md[^\n]{0,240}ENOENT|ENOENT[^\n]{0,240}references\/source-note-schema\.md/u.test(serialized) === false, "Found reference ENOENT signature for references/source-note-schema.md.")
+  assert(serialized.includes("webfetch builtin:research/source-note/SKILL.md") === false, "Found forbidden webfetch builtin:research/source-note/SKILL.md guidance.")
 }
 
 function assertReasonableFinalOutput(finalText) {

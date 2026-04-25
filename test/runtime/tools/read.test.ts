@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
+import { createPermissionCoordinator } from "../../../src/permission"
+import { materializeBuiltinSkills } from "../../../src/skill"
 import {
   HashAnchorError,
   detectEolStyle,
@@ -10,12 +12,21 @@ import {
   splitLinesWithMetadata,
   validateInclusiveRange,
 } from "../../../src/tool/infrastructure/builtins/hash-anchor"
-import { createReadTool, createToolRuntimeApi } from "../../../src/tool"
+import { createEditTool, createReadTool, createToolRuntimeApi, createWriteTool } from "../../../src/tool"
 
 function createRegistry() {
   return createToolRuntimeApi({
     tools: [createReadTool()],
   })
+}
+
+function createAllowPermission() {
+  const coordinator = createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" })
+  return {
+    requestPermission(input: { toolName: string; reason: string }) {
+      return coordinator.request(input)
+    },
+  }
 }
 
 async function makeTmpWorkspace() {
@@ -33,6 +44,59 @@ function expectHashAnchorError(fn: () => unknown, code: string) {
 }
 
 describe("read tool enhancements", () => {
+  test("allows read-only access to materialized builtin skill reference paths", async () => {
+    const workspaceRoot = await makeTmpWorkspace()
+    const xdgDataHome = await makeTmpWorkspace()
+
+    await withEnv({ XDG_DATA_HOME: xdgDataHome }, async () => {
+      const materialized = await materializeBuiltinSkills()
+      const referencePath = join(
+        materialized.root,
+        "research",
+        "source-note",
+        "references",
+        "source-note-schema.md",
+      )
+      const { requestPermission } = createAllowPermission()
+      const registry = createToolRuntimeApi({
+        tools: [
+          createReadTool(),
+          createWriteTool({ requestPermission }),
+          createEditTool({ requestPermission }),
+        ],
+      })
+
+      const result = await registry.execute({
+        toolName: "read",
+        args: { path: referencePath },
+        workspaceRoot,
+      })
+
+      expect(result.output).toContain("Store source notes with these exact fields")
+
+      await expect(
+        registry.execute({
+          toolName: "write",
+          args: { path: referencePath, content: "blocked" },
+          workspaceRoot,
+        }),
+      ).rejects.toThrow("Path must stay inside workspace")
+
+      await expect(
+        registry.execute({
+          toolName: "edit",
+          args: {
+            path: referencePath,
+            operation: "replace",
+            start: formatAnchorLine(1, "# Source note schema"),
+            content: "blocked",
+          },
+          workspaceRoot,
+        }),
+      ).rejects.toThrow("Path must stay inside workspace")
+    })
+  })
+
   test("allows reading explicit .ncoworker/research artifacts while blocking runtime files", async () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()
@@ -323,3 +387,28 @@ describe("read tool enhancements", () => {
     expect(result.output.toLowerCase()).toMatch(/device|blocked|cannot read|forbidden/)
   })
 })
+
+async function withEnv<T>(env: Record<string, string | undefined>, run: () => Promise<T>) {
+  const previous = new Map<string, string | undefined>()
+
+  for (const [key, value] of Object.entries(env)) {
+    previous.set(key, process.env[key])
+    if (value === undefined) {
+      delete process.env[key]
+    } else {
+      process.env[key] = value
+    }
+  }
+
+  try {
+    return await run()
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+  }
+}

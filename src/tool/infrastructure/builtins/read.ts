@@ -1,6 +1,7 @@
 import { realpath } from "node:fs/promises"
-import { extname, relative, resolve, sep } from "node:path"
+import { extname, isAbsolute, relative, resolve, sep } from "node:path"
 import { z } from "zod"
+import { getBuiltinSkillsDirectory } from "../../../skill/infrastructure/builtin-materializer"
 import {
   assertWorkspacePathNotReserved,
   throwIfToolAborted,
@@ -57,6 +58,10 @@ function isBlockedDevicePath(filePath: string): boolean {
 }
 
 async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string) {
+  if (isAbsolute(relativePath)) {
+    return await resolveAbsoluteReadableFile(relativePath)
+  }
+
   assertWorkspacePathNotReserved(relativePath)
 
   const root = await realpath(resolve(workspaceRoot))
@@ -67,6 +72,17 @@ async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string)
   }
 
   assertWorkspacePathNotReserved(relative(root, file))
+
+  return file
+}
+
+async function resolveAbsoluteReadableFile(path: string) {
+  const builtinRoot = await realpath(getBuiltinSkillsDirectory())
+  const file = await realpath(path)
+
+  if (file !== builtinRoot && !file.startsWith(`${builtinRoot}${sep}`)) {
+    throw new Error(`Path must stay inside workspace: ${path}`)
+  }
 
   return file
 }

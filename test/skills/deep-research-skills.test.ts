@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { buildModelPromptSections } from "../../src/model"
 import { createLayeredSkillRuntime, materializeBuiltinSkills } from "../../src/skill"
 
@@ -119,10 +120,17 @@ describe("deep research built-in skills", () => {
         activeSkills: [skill],
       })
       const rendered = sections.systemReminderMessages.join("\n\n")
+      const baseDirPath = fileURLToPath(skill.baseDir!)
+      const sourceNoteSchemaPath = join(baseDirPath, "references", "source-note-schema.md")
 
+      expect(rendered).toContain("Package files available on demand:")
       expect(rendered).toContain("references/artifact-schema.md")
       expect(rendered).toContain("references/source-note-schema.md")
       expect(rendered).toContain("references/finding-quality.md")
+      expect(rendered).toContain(`Read path: ${sourceNoteSchemaPath}`)
+      expect(sourceNoteSchemaPath).toContain(`${join("builtin-skills", "research", "deep-research", "references", "source-note-schema.md")}`)
+      expect(rendered).not.toContain(`Read path: file://`)
+      expect(rendered).not.toContain(`${join(".ncoworker", "skills", "research", "deep-research", "references", "source-note-schema.md")}`)
       expect(rendered).not.toContain("Claim, Scope, Confidence, Verified at, Evidence, Notes")
       expect(rendered).not.toContain("Store source notes with these exact fields")
       expect(rendered).not.toContain("Every finding needs evidence")

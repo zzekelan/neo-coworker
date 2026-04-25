@@ -4,6 +4,8 @@ import type {
   OrchestrationSkillCatalogEntry,
 } from "./ports/skill"
 import { countTokens } from "gpt-tokenizer/model/gpt-4o"
+import { isAbsolute, join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 const MAX_SKILL_RECOVERY_TOKENS = 25_000
 const MAX_TOKENS_PER_SKILL = 5_000
@@ -204,17 +206,36 @@ function renderActiveSkillReminder(activeSkills: readonly OrchestrationActiveSki
 }
 
 function renderActiveSkill(skill: OrchestrationActiveSkill) {
-  return [`## ${skill.name}`, skill.instructions, renderSkillPackageFiles(skill.files)].filter(
+  return [`## ${skill.name}`, skill.instructions, renderSkillPackageFiles(skill)].filter(
     (section): section is string => section !== null,
   ).join("\n")
 }
 
-function renderSkillPackageFiles(files: readonly string[] | undefined) {
-  if (!files || files.length === 0) {
+function renderSkillPackageFiles(skill: OrchestrationActiveSkill) {
+  if (!skill.files || skill.files.length === 0) {
     return null
   }
 
-  return ["Package files:", ...files.map((file) => `- ${file}`)].join("\n")
+  const baseDirPath = resolveReadableBaseDir(skill.baseDir)
+  return [
+    "Package files available on demand:",
+    ...skill.files.map((file) => {
+      const readPath = baseDirPath ? ` (Read path: ${join(baseDirPath, file)})` : ""
+      return `- ${file}${readPath}`
+    }),
+  ].join("\n")
+}
+
+function resolveReadableBaseDir(baseDir: string | undefined) {
+  if (!baseDir) {
+    return null
+  }
+
+  if (baseDir.startsWith("file://")) {
+    return fileURLToPath(baseDir)
+  }
+
+  return isAbsolute(baseDir) ? baseDir : null
 }
 
 function truncateRecoverySkills(skills: readonly OrchestrationLoadedSkill[]) {
