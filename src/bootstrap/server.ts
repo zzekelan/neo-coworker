@@ -189,6 +189,7 @@ export async function createStandaloneServerComposition(input: {
       permissionRepository: PermissionRepository
       observabilityRepository: ObservabilityRepository
       exportRunTrace(runId: string): ReturnType<typeof observability.exportRunTrace>
+      recordRunEvent(inputValue: Parameters<typeof observability.recordRunEvent>[0]): ReturnType<typeof observability.recordRunEvent>
       listSkillCatalog(workspaceRoot: string): ReturnType<typeof skillRuntime.listCatalog>
       listPrimaryAgents(workspaceRoot?: string): Promise<Array<{ name: string; displayName?: string; description: string }>>
       createRuntimeImpl(input: {

@@ -2,6 +2,7 @@ export type OrchestrationRuntimeEvent =
   | {
       type: "run.started"
       runId: string
+      currentAgent: string | null
     }
   | {
       type: "capability.resolution.recorded"

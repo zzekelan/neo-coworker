@@ -14,6 +14,8 @@ export type ModelObserverEvent = {
   sessionId: string
   runId: string
   turnKey?: string
+  toolNames: string[]
+  toolCount: number
 } | {
   type: "microcompact.applied"
   sessionId: string
