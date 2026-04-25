@@ -7,10 +7,13 @@ import { join } from "node:path"
 const cwd = process.cwd()
 const prompt =
   process.env.DESKTOP_DEEP_RESEARCH_VERIFY_PROMPT?.trim() ||
-  "帮我搜索10条过去3个月内的英文AI前沿资讯并总结，只要英文来源，用中文汇报。请使用subagent完成这项任务。"
+  "请验证 Deep Research 真实路径：必须调用 agent 工具启动至少一个 source-researcher subagent；要求该 subagent 先按 source-note 技能提示用 read 读取 source-note-schema.md 参考文件，再用 websearch 查找过去3个月内2条英文AI前沿资讯来源；随后必须调用 webfetch 获取这个大型公开原始文件 https://raw.githubusercontent.com/microsoft/TypeScript/main/src/compiler/checker.ts 以验证超大工具结果截断/落盘 telemetry；最后用中文给出简短总结，不要粘贴大型文件内容。"
 const timeoutMs = parsePositiveInt(process.env.DESKTOP_DEEP_RESEARCH_VERIFY_TIMEOUT_MS, 900_000)
+const SUMMARY_PREVIEW_LIMIT = 500
+const SUBAGENT_RESULT_SIZE_LIMIT = 50_000
+const WEBFETCH_TRUNCATED_RESULT_MAX = 55_000
 
-const evidenceRoot = join(cwd, ".sisyphus", "evidence", "task-8-deep-research-real-path")
+const evidenceRoot = join(cwd, ".sisyphus", "evidence", "task-7-deep-research-real-path")
 const tracePath = join(evidenceRoot, "trace.zip")
 const screenshotPath = join(evidenceRoot, "screenshot.png")
 const sessionSummaryPath = join(evidenceRoot, "session-summary.json")
@@ -84,7 +87,7 @@ try {
   assert(settingsSnapshot.apiKeyConfigured, "Desktop Deep Research verifier needs a real LLM API key in settings/.env.")
 
   await page.context().tracing.start({
-    name: "task-8-deep-research-real-path",
+    name: "task-7-deep-research-real-path",
     screenshots: true,
     snapshots: true,
     sources: false,
@@ -156,6 +159,7 @@ try {
 
   const sqliteTelemetry = readSqliteTelemetrySummary({
     databasePath,
+    workspaceRoot,
     parentSessionId,
     parentRunId: runResult.latestRunId,
   })
@@ -183,7 +187,7 @@ try {
   const sessionSummary = {
     workspaceRoot,
     databasePath,
-    prompt,
+    promptLength: prompt.length,
     provider: settingsSnapshot.provider,
     model: settingsSnapshot.model,
     baseURLConfigured: Boolean(settingsSnapshot.baseURL),
@@ -201,7 +205,11 @@ try {
   assertSourceNoteSkillLoadSucceeded({ lifecycleSummary, sqliteTelemetry })
   assertNoWorkspaceSkillFallback({ workspaceRoot, lifecycleSummary, transcriptSummary, sqliteTelemetry })
   assertNoResearchSourceNoteEnoent({ lifecycleSummary, transcriptSummary, sqliteTelemetry })
-  assertReasonableFinalOutput(transcriptSummary.parent.finalAssistantText)
+  assertNoUnknownWebsearchError({ lifecycleSummary, transcriptSummary, sqliteTelemetry })
+  assertSourceResearcherWebsearchAvailable({ transcriptSummary, sqliteTelemetry })
+  assertBuiltinReferenceReadPaths({ sqliteTelemetry })
+  assertToolResultStorageAndTelemetry({ workspaceRoot, sqliteTelemetry })
+  assertReasonableFinalOutput(transcriptSummary.parent.finalAssistantLength)
 
   await page.screenshot({ path: screenshotPath, fullPage: true })
   if (traceStarted) {
@@ -356,6 +364,7 @@ function assertPrimaryAgentDisplayNames(agents) {
 function readSqliteTelemetrySummary(input) {
   const db = new DatabaseSync(input.databasePath)
   try {
+    db.exec("PRAGMA query_only = ON")
     const childSessions = db
       .prepare(
         `
@@ -392,9 +401,17 @@ function readSqliteTelemetrySummary(input) {
           )
           .all(...runIds)
           .map((event) => ({
-            ...event,
-            data: parseJson(event.dataJson),
-            dataJson: undefined,
+            sessionId: event.sessionId,
+            runId: event.runId,
+            sequence: event.sequence,
+            source: event.source,
+            eventType: event.eventType,
+            data: summarizeEventData(parseJson(event.dataJson), {
+              eventType: event.eventType,
+              sessionId: event.sessionId,
+              runId: event.runId,
+            }),
+            createdAt: event.createdAt,
           }))
     const messageRows = db
       .prepare(
@@ -418,7 +435,7 @@ function readSqliteTelemetrySummary(input) {
         `,
       )
       .all(...sessionIds)
-    const toolCalls = db
+    const toolParts = db
       .prepare(
         `
           SELECT session_id AS sessionId, run_id AS runId, kind, text_value AS textValue, data_json AS dataJson
@@ -429,24 +446,21 @@ function readSqliteTelemetrySummary(input) {
         `,
       )
       .all(...sessionIds)
-      .map((part) => ({
-        sessionId: part.sessionId,
-        runId: part.runId,
-        kind: part.kind,
-        textPreview: preview(part.textValue),
-        data: parseJson(part.dataJson),
-      }))
+      .map(summarizeToolPart)
+    const toolCalls = toolParts.filter((part) => part.kind === "tool_call")
+    const toolResults = toolParts.filter((part) => part.kind === "tool_result")
 
     return {
       databasePath: input.databasePath,
       parentSessionId: input.parentSessionId,
       parentRunId: input.parentRunId,
-      childSessions,
+      childSessions: childSessions.map(summarizeSessionRecord),
       runs,
       runEvents,
       messageCounts: messageRows,
       partCounts: partRows,
       toolCalls,
+      toolResults,
       eventTypes: runEvents.map((event) => event.eventType),
     }
   } finally {
@@ -469,9 +483,20 @@ function buildTranscriptSummary(input) {
   return {
     parent: summarizeTranscript(input.parentTranscript),
     children: input.childTranscripts.map((child) => ({
-      session: child.session,
+      session: summarizeSessionRecord(child.session),
       ...summarizeTranscript(child.transcript),
     })),
+  }
+}
+
+function summarizeSessionRecord(session) {
+  return {
+    id: session.id,
+    titleLength: typeof session.title === "string" ? session.title.length : 0,
+    currentAgent: session.currentAgent ?? null,
+    parentSessionId: session.parentSessionId ?? null,
+    createdAt: session.createdAt ?? null,
+    updatedAt: session.updatedAt ?? null,
   }
 }
 
@@ -480,8 +505,9 @@ function summarizeTranscript(transcript) {
   const visibleText = readTranscriptVisibleText(transcript)
   const assistantTexts = transcript
     .filter((message) => message.role === "assistant")
-    .map((message) => readMessageText(message))
+    .map((message) => readMessageText(message, { includeToolResults: false }))
     .filter(Boolean)
+  const finalText = assistantTexts.at(-1) ?? ""
   return {
     messageCount: transcript.length,
     partKinds: countBy(parts.map((part) => part.kind)),
@@ -492,9 +518,158 @@ function summarizeTranscript(transcript) {
     lifecycleEvents: parts
       .filter((part) => part.kind === "lifecycle")
       .map((part) => summarizeLifecycleEvent({ eventType: part.data?.type, data: part.data })),
-    visibleTextPreview: preview(visibleText, 1_500),
-    finalAssistantText: assistantTexts.at(-1) ?? "",
+    visibleTextLength: visibleText.length,
+    finalAssistantLength: finalText.length,
+    finalAssistantPreview: preview(finalText),
   }
+}
+
+function summarizeEventData(data, context) {
+  if (!data || typeof data !== "object") {
+    return data
+  }
+
+  const sanitized = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (key === "output" && typeof value === "string") {
+      sanitized.outputLength = value.length
+      sanitized.outputPreview = preview(value)
+      continue
+    }
+    if (key === "inputText" && typeof value === "string") {
+      sanitized.inputLength = value.length
+      appendSafeToolInputFields({ target: sanitized, inputText: value })
+      continue
+    }
+    if (key === "prompt" && typeof value === "string") {
+      sanitized.promptLength = value.length
+      continue
+    }
+    if (key === "fullPromptText" && typeof value === "string") {
+      sanitized.fullPromptLength = value.length
+      continue
+    }
+    if (key === "metadata") {
+      sanitized.metadata = sanitizeMetadata(value)
+      continue
+    }
+    appendSanitizedNestedSummaryValue({ target: sanitized, key, value })
+  }
+
+  sanitized.sessionId ??= context.sessionId
+  sanitized.runId ??= context.runId
+  sanitized.eventType ??= context.eventType
+  return sanitized
+}
+
+function summarizeToolPart(part) {
+  const data = parseJson(part.dataJson)
+  const toolName = readToolName({ data })
+  if (part.kind === "tool_result") {
+    const output = readToolResultOutput({ textValue: part.textValue, data })
+    return {
+      sessionId: part.sessionId,
+      runId: part.runId,
+      kind: part.kind,
+      toolName,
+      outputLength: output.length,
+      outputPreview: preview(output),
+      metadata: sanitizeMetadata(data?.metadata),
+    }
+  }
+
+  return {
+    sessionId: part.sessionId,
+    runId: part.runId,
+    kind: part.kind,
+    toolName,
+    inputLength: typeof part.textValue === "string" ? part.textValue.length : 0,
+    path: readToolCallPath(data),
+  }
+}
+
+function sanitizeMetadata(value) {
+  if (!value || typeof value !== "object") {
+    return {}
+  }
+
+  const allowedKeys = new Set([
+    "truncated",
+    "originalSize",
+    "truncatedSize",
+    "resultSizeLimit",
+    "savedPath",
+    "isCompressible",
+  ])
+  const sanitized = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (allowedKeys.has(key)) {
+      sanitized[key] = item
+    }
+  }
+  return sanitized
+}
+
+function appendSanitizedNestedSummaryValue(input) {
+  if (isSensitiveTextKey(input.key) && typeof input.value === "string") {
+    input.target[lengthKeyForSensitiveText(input.key)] = input.value.length
+    return
+  }
+  input.target[input.key] = sanitizeNestedSummaryValue(input.value)
+}
+
+function sanitizeNestedSummaryValue(value) {
+  if (typeof value === "string") {
+    return value.length > SUMMARY_PREVIEW_LIMIT ? preview(value) : value
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeNestedSummaryValue)
+  }
+  if (!value || typeof value !== "object") {
+    return value
+  }
+  const sanitized = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (isSensitiveTextKey(key) && typeof item === "string") {
+      sanitized[lengthKeyForSensitiveText(key)] = item.length
+      continue
+    }
+    if (key === "output" && typeof item === "string") {
+      sanitized.outputLength = item.length
+      sanitized.outputPreview = preview(item)
+      continue
+    }
+    sanitized[key] = sanitizeNestedSummaryValue(item)
+  }
+  return sanitized
+}
+
+function appendSafeToolInputFields(input) {
+  const parsed = parseJson(input.inputText)
+  const path = readToolCallPath({ inputText: input.inputText })
+  if (typeof path === "string") {
+    input.target.path = path
+  }
+  if (parsed && typeof parsed === "object" && typeof parsed.url === "string" && typeof parsed.prompt !== "string") {
+    input.target.urlLength = parsed.url.length
+  }
+  if (parsed && typeof parsed === "object" && typeof parsed.query === "string" && typeof parsed.prompt !== "string") {
+    input.target.queryLength = parsed.query.length
+  }
+}
+
+function isSensitiveTextKey(key) {
+  return key === "inputText" || key === "prompt" || key === "fullPromptText"
+}
+
+function lengthKeyForSensitiveText(key) {
+  if (key === "inputText") {
+    return "inputLength"
+  }
+  if (key === "fullPromptText") {
+    return "fullPromptLength"
+  }
+  return "promptLength"
 }
 
 function summarizeLifecycleEvent(event) {
@@ -507,9 +682,11 @@ function summarizeLifecycleEvent(event) {
     skillName: data.skillName ?? null,
     parentRunId: data.parentRunId ?? null,
     subRunId: data.subRunId ?? null,
+    maxTurns: data.maxTurns ?? null,
     reason: data.reason ?? null,
     errorCode: data.errorCode ?? null,
     errorMessage: data.errorMessage ?? null,
+    skillPath: data.skillPath ?? null,
   }
 }
 
@@ -518,10 +695,14 @@ function assertSubagentUsage(input) {
   const hasSourceResearcherStarted = lifecycleEvents.some(
     (event) => event.eventType === "subagent.started" && event.agentId === "source-researcher" && event.displayName === "Source Researcher" && event.parentRunId && event.subRunId,
   )
+  const invalidMaxTurns = lifecycleEvents.some(
+    (event) => event.eventType === "subagent.started" && event.agentId === "source-researcher" && event.maxTurns != null && (!Number.isInteger(event.maxTurns) || event.maxTurns <= 0),
+  )
   const hasSourceResearcherCompleted = lifecycleEvents.some(
     (event) => event.eventType === "subagent.completed" && event.agentId === "source-researcher" && event.displayName === "Source Researcher" && event.parentRunId && event.subRunId,
   )
   assert(hasSourceResearcherStarted, "Deep Research lifecycle did not record source-researcher subagent.started.")
+  assert(invalidMaxTurns === false, "Deep Research lifecycle recorded invalid source-researcher maxTurns telemetry.")
   assert(hasSourceResearcherCompleted, "Deep Research lifecycle did not record source-researcher subagent.completed.")
 
   assert(
@@ -531,8 +712,7 @@ function assertSubagentUsage(input) {
   )
   const optionalToolEventTypes = ["tool.call.requested", "tool.call.completed"]
   const hasToolRunEvent = optionalToolEventTypes.some((eventType) => input.sqliteTelemetry.eventTypes.includes(eventType))
-  const hasDurableToolParts = input.sqliteTelemetry.toolCalls.some((part) => part.kind === "tool_call") &&
-    input.sqliteTelemetry.toolCalls.some((part) => part.kind === "tool_result")
+  const hasDurableToolParts = input.sqliteTelemetry.toolCalls.length > 0 && input.sqliteTelemetry.toolResults.length > 0
   assert(
     hasToolRunEvent || hasDurableToolParts,
     "SQLite telemetry did not include durable tool-call evidence for the Deep Research path.",
@@ -569,7 +749,10 @@ function assertNoWorkspaceSkillFallback(input) {
     "patch_skill",
     "delete_skill",
   ]
-  const calledToolNames = new Set(input.sqliteTelemetry.toolCalls.map(readToolName).filter(Boolean))
+  const calledToolNames = new Set([
+    ...input.sqliteTelemetry.toolCalls.map(readToolName),
+    ...input.sqliteTelemetry.toolResults.map(readToolName),
+  ].filter(Boolean))
   for (const operation of forbiddenSkillOperations) {
     assert(calledToolNames.has(operation) === false, `Telemetry recorded forbidden workspace skill operation ${operation}.`)
   }
@@ -584,9 +767,109 @@ function assertNoResearchSourceNoteEnoent(input) {
   assert(serialized.includes("webfetch builtin:research/source-note/SKILL.md") === false, "Found forbidden webfetch builtin:research/source-note/SKILL.md guidance.")
 }
 
-function assertReasonableFinalOutput(finalText) {
-  const compact = String(finalText ?? "").replace(/\s+/gu, "").trim()
-  assert(compact.length >= 40, "Deep Research final output was not a reasonable final output.")
+function assertNoUnknownWebsearchError(input) {
+  const serialized = JSON.stringify(input)
+  assert(serialized.includes("Unknown tool: websearch") === false, "Found Unknown tool: websearch lifecycle/run error signature.")
+}
+
+function assertSourceResearcherWebsearchAvailable(input) {
+  const childSessionIds = new Set(input.sqliteTelemetry.childSessions.map((session) => session.id))
+  const hasChildWebsearchToolCall = input.sqliteTelemetry.toolCalls.some(
+    (part) => childSessionIds.has(part.sessionId) && part.toolName === "websearch",
+  )
+  const hasTranscriptWebsearch = input.transcriptSummary.children.some((child) => child.toolNames.includes("websearch"))
+  assert(
+    hasChildWebsearchToolCall || hasTranscriptWebsearch,
+    "Source Researcher did not exercise websearch through the real Deep Research path.",
+  )
+}
+
+function assertBuiltinReferenceReadPaths(input) {
+  const readPaths = input.sqliteTelemetry.toolCalls
+    .filter((part) => part.toolName === "read" && typeof part.path === "string")
+    .map((part) => part.path)
+  assert(
+    readPaths.some((path) => path.includes("/builtin-skills/") && path.endsWith("/references/source-note-schema.md")),
+    "Verifier did not observe an absolute builtin-skills read path for references/source-note-schema.md.",
+  )
+  assert(
+    readPaths.some((path) => path.includes("/.ncoworker/skills/research/deep-research/references/")) === false,
+    "Verifier observed an old workspace deep-research reference read path.",
+  )
+}
+
+function assertToolResultStorageAndTelemetry(input) {
+  const childSessionIds = new Set(input.sqliteTelemetry.childSessions.map((session) => session.id))
+  const sourceResearcherChildSessionIds = new Set(
+    input.sqliteTelemetry.runEvents
+      .filter((event) => event.eventType === "subagent.started" && event.data?.agentId === "source-researcher" && childSessionIds.has(event.sessionId))
+      .map((event) => event.sessionId),
+  )
+  assert(sourceResearcherChildSessionIds.size > 0, "SQLite telemetry did not identify a source-researcher child session.")
+  const sourceResearcherChildRunIds = new Set(input.sqliteTelemetry.runs.filter((run) => sourceResearcherChildSessionIds.has(run.sessionId)).map((run) => run.id))
+  const childToolResults = input.sqliteTelemetry.toolResults.filter((part) => sourceResearcherChildSessionIds.has(part.sessionId))
+  assert(childToolResults.length > 0, "SQLite telemetry did not include child/source-researcher tool results.")
+
+  const managedChildResults = []
+  for (const result of childToolResults) {
+    assert(
+      typeof result.outputPreview !== "string" || result.outputPreview.length <= SUMMARY_PREVIEW_LIMIT + 1,
+      `Sanitized ${result.toolName ?? "tool"} result preview exceeded ${SUMMARY_PREVIEW_LIMIT} characters.`,
+    )
+
+    if (result.toolName === "webfetch") {
+      assert(
+        result.outputLength <= WEBFETCH_TRUNCATED_RESULT_MAX,
+        `Child webfetch result retained ${result.outputLength} characters after truncation allowance.`,
+      )
+    }
+
+    if (result.outputLength > SUBAGENT_RESULT_SIZE_LIMIT) {
+      assert(
+        result.metadata?.truncated === true && typeof result.metadata?.savedPath === "string",
+        `Oversized ${result.toolName ?? "tool"} result lacked truncation metadata and savedPath.`,
+      )
+    }
+
+    if (typeof result.metadata?.savedPath === "string") {
+      managedChildResults.push(result)
+      const expectedPrefix = `.ncoworker/tool-results/${result.sessionId}/${result.toolName}/`
+      assert(
+        result.metadata.savedPath.startsWith(expectedPrefix),
+        `Saved result path ${result.metadata.savedPath} did not use session-scoped ${expectedPrefix} layout.`,
+      )
+      assert(existsSync(join(input.workspaceRoot, result.metadata.savedPath)), `Saved result path did not exist before cleanup: ${result.metadata.savedPath}`)
+      assert(
+        existsSync(join(input.workspaceRoot, ".ncoworker", "tool-results", result.toolName)) === false,
+        `Old tool-scoped result directory was created for ${result.toolName}.`,
+      )
+    }
+  }
+
+  assert(managedChildResults.length > 0, "Real Task 7 path did not record any managed child/source-researcher tool result with metadata.savedPath.")
+  assert(
+    managedChildResults.some(
+      (result) =>
+        result.metadata?.truncated === true &&
+        Number.isFinite(result.metadata?.originalSize) &&
+        result.metadata.originalSize > SUBAGENT_RESULT_SIZE_LIMIT &&
+        Number.isFinite(result.metadata?.truncatedSize) &&
+        result.metadata.truncatedSize <= SUBAGENT_RESULT_SIZE_LIMIT &&
+        result.metadata.resultSizeLimit === SUBAGENT_RESULT_SIZE_LIMIT,
+    ),
+    "Managed child tool result did not include expected 50KB truncation metadata.",
+  )
+
+  const managedBudgetEvents = input.sqliteTelemetry.runEvents.filter(
+    (event) =>
+      sourceResearcherChildRunIds.has(event.runId) &&
+      (event.eventType === "budget.result_truncated" || event.eventType === "budget.spill_largest"),
+  )
+  assert(managedBudgetEvents.length > 0, "Real Task 7 path did not record child budget.result_truncated or budget.spill_largest telemetry.")
+}
+
+function assertReasonableFinalOutput(finalLength) {
+  assert(Number.isFinite(finalLength) && finalLength >= 40, "Deep Research final output was not a reasonable final output.")
 }
 
 function allLifecycleEvents(summary) {
@@ -614,22 +897,17 @@ function unwrapTranscript(response, label) {
   return data.transcript
 }
 
-function hasTranscriptPart(transcript, kind, toolName) {
-  return transcript.some((message) =>
-    (message.parts ?? []).some(
-      (part) => part.kind === kind && (part.data?.toolName ?? part.data?.name ?? null) === toolName,
-    ),
-  )
-}
-
 function readTranscriptVisibleText(transcript) {
   return transcript.map(readMessageText).filter(Boolean).join("\n")
 }
 
-function readMessageText(message) {
+function readMessageText(message, options = { includeToolResults: true }) {
   return (message.parts ?? [])
     .flatMap((part) => {
-      if ((part.kind === "text" || part.kind === "tool_result") && typeof part.text === "string") {
+      if (part.kind === "text" && typeof part.text === "string") {
+        return [part.text]
+      }
+      if (options.includeToolResults && part.kind === "tool_result" && typeof part.text === "string") {
         return [part.text]
       }
       return []
@@ -637,8 +915,32 @@ function readMessageText(message) {
     .join("\n")
 }
 
+function readToolResultOutput(input) {
+  if (typeof input.textValue === "string") {
+    return input.textValue
+  }
+  if (input.data && typeof input.data === "object" && typeof input.data.output === "string") {
+    return input.data.output
+  }
+  return ""
+}
+
+function readToolCallPath(data) {
+  if (!data || typeof data !== "object") {
+    return null
+  }
+  let args = null
+  if (typeof data.inputText === "string") {
+    args = parseJson(data.inputText)
+  }
+  if (!args || typeof args !== "object") {
+    return null
+  }
+  return typeof args.path === "string" ? args.path : null
+}
+
 function readToolName(part) {
-  return part.data?.toolName ?? part.data?.name ?? part.data?.tool ?? null
+  return part.toolName ?? part.data?.toolName ?? part.data?.name ?? part.data?.tool ?? null
 }
 
 function countBy(values) {
