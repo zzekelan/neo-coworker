@@ -565,9 +565,9 @@ function assertNoWorkspaceSkillFallback(input) {
   const skillsRoot = join(input.workspaceRoot, ".ncoworker", "skills")
   assert(countFiles(skillsRoot) === 0, "Verifier found workspace skill creation under .ncoworker/skills/**.")
   const forbiddenSkillOperations = [
-    ["write", "Workspace", "Skill"].join(""),
-    ["create", "skill"].join("_"),
-    ["patch", "skill"].join("_"),
+    "create_skill",
+    "patch_skill",
+    "delete_skill",
   ]
   const calledToolNames = new Set(input.sqliteTelemetry.toolCalls.map(readToolName).filter(Boolean))
   for (const operation of forbiddenSkillOperations) {
