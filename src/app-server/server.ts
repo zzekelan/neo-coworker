@@ -118,6 +118,7 @@ export function createAgentServer(input: {
   repository: StorageRepository
   permissionRepository: PermissionRepository
   exportRunTraceImpl?: Parameters<typeof createServerApp>[0]["exportRunTraceImpl"]
+  recordRunEventImpl?: Parameters<typeof createServerApp>[0]["recordRunEventImpl"]
   listSkillCatalogImpl?: Parameters<typeof createServerApp>[0]["listSkillCatalogImpl"]
   listPrimaryAgentsImpl?: (workspaceRoot?: string) => Promise<Array<{ name: string; displayName?: string; description: string }>>
   deleteSessionImpl?: (sessionId: string) => void
@@ -132,6 +133,7 @@ export function createAgentServer(input: {
     permissionRepository: input.permissionRepository,
     deleteSessionImpl: input.deleteSessionImpl,
     exportRunTraceImpl: input.exportRunTraceImpl,
+    recordRunEventImpl: input.recordRunEventImpl,
     listSkillCatalogImpl: input.listSkillCatalogImpl,
     now,
   })

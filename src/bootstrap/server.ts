@@ -135,6 +135,9 @@ export async function createStandaloneServerComposition(input: {
       exportRunTrace(runId: string) {
         return observability.exportRunTrace(runId)
       },
+      recordRunEvent(inputValue: Parameters<typeof observability.recordRunEvent>[0]) {
+        return observability.recordRunEvent(inputValue)
+      },
       listSkillCatalog(workspaceRoot: string) {
         return skillRuntime.listCatalog(workspaceRoot)
       },

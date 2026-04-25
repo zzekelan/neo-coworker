@@ -2600,6 +2600,18 @@ function assertSubagentProtocolTelemetryBaseline(input: {
   expect(parentPromptEvent.data.systemPromptHash).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/))
   expect(typeof parentPromptEvent.data.systemPromptLength).toBe("number")
   expect(parentPromptEvent.data.systemPromptLength as number).toBeGreaterThan(0)
+  const childModelRequest = input.childTraceEvents.find((event) => event.eventType === "model.turn.requested")
+  expect(childModelRequest?.data).toMatchObject({
+    toolNames: expect.arrayContaining([
+      "read",
+      "grep",
+      "glob",
+      "webfetch",
+      "websearch",
+      "get_current_datetime",
+    ]),
+    toolCount: expect.any(Number),
+  })
 
   expect(input.childTraceEvents.find((event) => event.eventType === "subagent.started")?.data)
     .toMatchObject({

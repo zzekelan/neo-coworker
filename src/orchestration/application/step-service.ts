@@ -407,8 +407,13 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         throw new Error(`Run ${runInput.runId} cannot start from status ${run.status}`)
       }
 
+      const currentAgent = resolveCurrentAgentName({
+        session: input.session,
+        sessionId: runInput.sessionId,
+      }) ?? null
+
       input.session.transitionRunToRunning(runInput.runId)
-      runInput.emit({ type: "run.started", runId: runInput.runId })
+      runInput.emit({ type: "run.started", runId: runInput.runId, currentAgent })
       if (input.telemetry?.capabilityResolution) {
         runInput.emit({
           type: "capability.resolution.recorded",

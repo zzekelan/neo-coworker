@@ -35,8 +35,11 @@ const desktopSettingsStatePath =
 const desktopServerDatabasePath =
   process.env.NCOWORKER_SERVER_DB_PATH?.trim() || getServerStoragePath()
 const persistedSelection = readDesktopSelectionState(desktopSelectionStatePath)
+const desktopSettingsEnvDefaults = process.env.DESKTOP_DEEP_RESEARCH_VERIFY_IGNORE_ENV_FILES === "1"
+  ? {}
+  : readDesktopSettingsEnvFiles(repositoryRoot)
 const defaultDesktopSettings = createDefaultDesktopSettings({
-  ...readDesktopSettingsEnvFiles(repositoryRoot),
+  ...desktopSettingsEnvDefaults,
   ...process.env,
 })
 let desktopSettings = readDesktopSettingsState(desktopSettingsStatePath, defaultDesktopSettings)

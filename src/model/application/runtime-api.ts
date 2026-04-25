@@ -100,6 +100,8 @@ export function createModelProvider(input: {
             sessionId: request.sessionId,
             runId: request.runId,
             turnKey: request.turnKey,
+            toolNames: request.tools.map((tool) => tool.name),
+            toolCount: request.tools.length,
           })
           const projected = buildModelTurnProjection(request)
           const sections = buildModelPromptSections({

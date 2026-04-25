@@ -12,8 +12,14 @@ const timeoutMs = parsePositiveInt(process.env.DESKTOP_DEEP_RESEARCH_VERIFY_TIME
 const SUMMARY_PREVIEW_LIMIT = 500
 const SUBAGENT_RESULT_SIZE_LIMIT = 50_000
 const WEBFETCH_TRUNCATED_RESULT_MAX = 55_000
+const verifyMode = resolveVerifyMode(process.env.DESKTOP_DEEP_RESEARCH_VERIFY_MODE)
+const expectedModelByMode = {
+  deepseek: "deepseek-v4-flash",
+  doubao: "doubao-seed-2-0-code-preview-260215",
+}
+const expectedModel = expectedModelByMode[verifyMode]
 
-const evidenceRoot = join(cwd, ".sisyphus", "evidence", "task-7-deep-research-real-path")
+const evidenceRoot = join(cwd, ".sisyphus", "evidence", `task-6-deep-research-real-path-${verifyMode}`)
 const tracePath = join(evidenceRoot, "trace.zip")
 const screenshotPath = join(evidenceRoot, "screenshot.png")
 const sessionSummaryPath = join(evidenceRoot, "session-summary.json")
@@ -82,12 +88,13 @@ try {
     }
   })
   assert(settingsSnapshot.serverMode === "managed-local", "Deep Research verifier must use managed-local desktop/server state.")
-  assert(settingsSnapshot.provider, "Desktop Deep Research verifier needs a real LLM provider in settings/.env.")
-  assert(settingsSnapshot.model, "Desktop Deep Research verifier needs a real LLM model in settings/.env.")
-  assert(settingsSnapshot.apiKeyConfigured, "Desktop Deep Research verifier needs a real LLM API key in settings/.env.")
+  assert(settingsSnapshot.provider, `Desktop Deep Research ${verifyMode} verifier is missing provider settings; configure a real provider in desktop settings/.env.`)
+  assert(settingsSnapshot.model, `Desktop Deep Research ${verifyMode} verifier is missing model settings; expected ${expectedModel} with no fallback.`)
+  assert(settingsSnapshot.model === expectedModel, `Desktop Deep Research ${verifyMode} verifier expected model ${expectedModel} with no fallback, got ${settingsSnapshot.model}.`)
+  assert(settingsSnapshot.apiKeyConfigured, `Desktop Deep Research ${verifyMode} verifier is missing real API credentials/settings; configure an API key instead of skipping.`)
 
   await page.context().tracing.start({
-    name: "task-7-deep-research-real-path",
+    name: `task-6-deep-research-real-path-${verifyMode}`,
     screenshots: true,
     snapshots: true,
     sources: false,
@@ -188,6 +195,8 @@ try {
     workspaceRoot,
     databasePath,
     promptLength: prompt.length,
+    verifyMode,
+    expectedModel,
     provider: settingsSnapshot.provider,
     model: settingsSnapshot.model,
     baseURLConfigured: Boolean(settingsSnapshot.baseURL),
@@ -202,6 +211,7 @@ try {
   }
 
   assertSubagentUsage({ lifecycleSummary, transcriptSummary, sqliteTelemetry })
+  assertAgentSelectionTelemetry({ parentSessionId, parentRunId: runResult.latestRunId, sqliteTelemetry })
   assertSourceNoteSkillLoadSucceeded({ lifecycleSummary, sqliteTelemetry })
   assertNoWorkspaceSkillFallback({ workspaceRoot, lifecycleSummary, transcriptSummary, sqliteTelemetry })
   assertNoResearchSourceNoteEnoent({ lifecycleSummary, transcriptSummary, sqliteTelemetry })
@@ -209,6 +219,9 @@ try {
   assertSourceResearcherWebsearchAvailable({ transcriptSummary, sqliteTelemetry })
   assertBuiltinReferenceReadPaths({ sqliteTelemetry })
   assertToolResultStorageAndTelemetry({ workspaceRoot, sqliteTelemetry })
+  assertPromptAndToolTelemetry({ sqliteTelemetry })
+  assertReasoningReplayTelemetry({ sqliteTelemetry, transcriptSummary })
+  await assertNoHiddenReasoningInFinalUiText({ page, transcriptSummary })
   assertReasonableFinalOutput(transcriptSummary.parent.finalAssistantLength)
 
   await page.screenshot({ path: screenshotPath, fullPage: true })
@@ -416,11 +429,11 @@ function readSqliteTelemetrySummary(input) {
     const messageRows = db
       .prepare(
         `
-          SELECT session_id AS sessionId, run_id AS runId, role, COUNT(*) AS count
+          SELECT session_id AS sessionId, run_id AS runId, agent, role, COUNT(*) AS count
           FROM message
           WHERE session_id IN (${sessionIds.map(() => "?").join(",")})
-          GROUP BY session_id, run_id, role
-          ORDER BY session_id ASC, run_id ASC, role ASC
+          GROUP BY session_id, run_id, agent, role
+          ORDER BY session_id ASC, run_id ASC, role ASC, agent ASC
         `,
       )
       .all(...sessionIds)
@@ -503,6 +516,9 @@ function summarizeSessionRecord(session) {
 function summarizeTranscript(transcript) {
   const parts = transcript.flatMap((message) => message.parts ?? [])
   const visibleText = readTranscriptVisibleText(transcript)
+  const reasoningTexts = parts
+    .filter((part) => part.kind === "reasoning" && typeof part.text === "string" && part.text.trim().length > 0)
+    .map((part) => part.text)
   const assistantTexts = transcript
     .filter((message) => message.role === "assistant")
     .map((message) => readMessageText(message, { includeToolResults: false }))
@@ -519,6 +535,9 @@ function summarizeTranscript(transcript) {
       .filter((part) => part.kind === "lifecycle")
       .map((part) => summarizeLifecycleEvent({ eventType: part.data?.type, data: part.data })),
     visibleTextLength: visibleText.length,
+    visibleTextPreview: preview(visibleText),
+    reasoningPartCount: reasoningTexts.length,
+    reasoningPreviews: reasoningTexts.map((text) => preview(text, 120)).filter(Boolean),
     finalAssistantLength: finalText.length,
     finalAssistantPreview: preview(finalText),
   }
@@ -572,6 +591,7 @@ function summarizeToolPart(part) {
       runId: part.runId,
       kind: part.kind,
       toolName,
+      isError: data?.isError === true,
       outputLength: output.length,
       outputPreview: preview(output),
       metadata: sanitizeMetadata(data?.metadata),
@@ -718,6 +738,40 @@ function assertSubagentUsage(input) {
     "SQLite telemetry did not include durable tool-call evidence for the Deep Research path.",
   )
   assert(input.sqliteTelemetry.childSessions.length > 0, "SQLite session table did not record a child session.")
+  const childSessionIds = new Set(input.sqliteTelemetry.childSessions.map((session) => session.id))
+  const childRuns = input.sqliteTelemetry.runs.filter((run) => childSessionIds.has(run.sessionId))
+  assert(childRuns.length > 0, "SQLite run table did not record a child run.")
+  assert(childRuns.every((run) => run.status !== "failed"), "At least one child SubSession run failed.")
+  assert(
+    input.sqliteTelemetry.runEvents.some((event) => event.eventType === "subagent.failed") === false,
+    "SQLite telemetry recorded subagent.failed.",
+  )
+  assert(
+    input.sqliteTelemetry.toolResults.some((part) => part.toolName === "agent" && part.isError === true) === false,
+    "Parent agent tool result was marked failed/isError.",
+  )
+}
+
+function assertAgentSelectionTelemetry(input) {
+  const parentRunEvents = input.sqliteTelemetry.runEvents.filter((event) => event.runId === input.parentRunId)
+  const resolvedEvent = parentRunEvents.find((event) => event.eventType === "agent.selection.resolved")
+  assert(resolvedEvent, "SQLite telemetry did not record agent.selection.resolved for the parent run.")
+  assert(resolvedEvent.data?.requestedAgent === null, "Unexpected explicit requested agent override; verifier must use real UI selection.")
+  assert(resolvedEvent.data?.selectedAgent === "deep-research", "agent.selection.resolved did not record selectedAgent=deep-research.")
+  assert(resolvedEvent.data?.currentAgent === "deep-research", "agent.selection.resolved did not record currentAgent=deep-research.")
+
+  const startedEvent = parentRunEvents.find((event) => event.eventType === "run.started")
+  assert(startedEvent?.data?.currentAgent === "deep-research", "run.started did not record resolved session.currentAgent=deep-research.")
+
+  const parentMessages = input.sqliteTelemetry.messageCounts.filter((message) => message.sessionId === input.parentSessionId)
+  assert(
+    parentMessages.some((message) => message.role === "user" && message.agent === "deep-research"),
+    "SQLite message telemetry did not record user message agent=deep-research.",
+  )
+  assert(
+    parentMessages.some((message) => message.role === "assistant" && message.agent === "deep-research"),
+    "SQLite message telemetry did not record assistant message agent=deep-research.",
+  )
 }
 
 function assertSourceNoteSkillLoadSucceeded(input) {
@@ -846,7 +900,7 @@ function assertToolResultStorageAndTelemetry(input) {
     }
   }
 
-  assert(managedChildResults.length > 0, "Real Task 7 path did not record any managed child/source-researcher tool result with metadata.savedPath.")
+  assert(managedChildResults.length > 0, "Real Task 6 path did not record any managed child/source-researcher tool result with metadata.savedPath.")
   assert(
     managedChildResults.some(
       (result) =>
@@ -865,7 +919,68 @@ function assertToolResultStorageAndTelemetry(input) {
       sourceResearcherChildRunIds.has(event.runId) &&
       (event.eventType === "budget.result_truncated" || event.eventType === "budget.spill_largest"),
   )
-  assert(managedBudgetEvents.length > 0, "Real Task 7 path did not record child budget.result_truncated or budget.spill_largest telemetry.")
+  assert(managedBudgetEvents.length > 0, "Real Task 6 path did not record child budget.result_truncated or budget.spill_largest telemetry.")
+}
+
+function assertPromptAndToolTelemetry(input) {
+  const promptEvents = input.sqliteTelemetry.runEvents.filter((event) => event.eventType === "model.prompt.assembled")
+  assert(promptEvents.length > 0, "SQLite telemetry did not record model.prompt.assembled prompt telemetry.")
+  assert(
+    promptEvents.every(
+      (event) => typeof event.data?.systemPromptHash === "string" && /^[a-f0-9]{64}$/u.test(event.data.systemPromptHash),
+    ),
+    "At least one model.prompt.assembled event is missing systemPromptHash.",
+  )
+  assert(
+    promptEvents.every((event) => Number.isFinite(event.data?.systemPromptLength) && event.data.systemPromptLength > 0),
+    "At least one model.prompt.assembled event is missing systemPromptLength.",
+  )
+
+  const childSessionIds = new Set(input.sqliteTelemetry.childSessions.map((session) => session.id))
+  const childModelRequests = input.sqliteTelemetry.runEvents.filter(
+    (event) => childSessionIds.has(event.sessionId) && event.eventType === "model.turn.requested",
+  )
+  assert(childModelRequests.length > 0, "SQLite telemetry did not record child model.turn.requested events.")
+  assert(
+    childModelRequests.some(
+      (event) =>
+        Array.isArray(event.data?.toolNames) &&
+        ["read", "grep", "glob", "webfetch", "websearch", "get_current_datetime"].every((toolName) => event.data.toolNames.includes(toolName)) &&
+        event.data.toolNames.includes("agent") === false &&
+        event.data.toolNames.includes("shell") === false &&
+        event.data.toolNames.includes("write") === false,
+    ),
+    "SQLite telemetry did not record the bounded source-researcher allowed tool set.",
+  )
+}
+
+function assertReasoningReplayTelemetry(input) {
+  const capabilityEvents = input.sqliteTelemetry.runEvents.filter((event) => event.eventType === "capability.resolution.recorded")
+  const reasoningEnabled = capabilityEvents.some((event) => event.data?.reasoning === true || event.data?.interleavedField)
+  if (!reasoningEnabled) {
+    return
+  }
+
+  const childHasReasoning = input.transcriptSummary.children.some((child) => child.reasoningPartCount > 0)
+  assert(childHasReasoning, "Reasoning-enabled provider did not persist child reasoning replay telemetry.")
+}
+
+async function assertNoHiddenReasoningInFinalUiText(input) {
+  const hiddenReasoningPreviews = input.transcriptSummary.children.flatMap((child) => child.reasoningPreviews)
+  if (hiddenReasoningPreviews.length === 0) {
+    return
+  }
+
+  const visibleUiText = await input.page.locator("body").innerText({ timeout: 10_000 })
+  for (const reasoningPreview of hiddenReasoningPreviews) {
+    const comparable = reasoningPreview.length > 80 ? reasoningPreview.slice(0, 80) : reasoningPreview
+    if (comparable.length >= 20) {
+      assert(
+        visibleUiText.includes(comparable) === false,
+        "Hidden child reasoning appeared in final desktop UI text.",
+      )
+    }
+  }
 }
 
 function assertReasonableFinalOutput(finalLength) {
@@ -984,6 +1099,14 @@ function countFiles(path) {
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function resolveVerifyMode(value) {
+  const normalized = String(value ?? "deepseek").trim().toLowerCase()
+  if (normalized === "deepseek" || normalized === "doubao") {
+    return normalized
+  }
+  throw new Error("DESKTOP_DEEP_RESEARCH_VERIFY_MODE must be either deepseek or doubao.")
 }
 
 function assert(condition, message) {

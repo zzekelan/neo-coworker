@@ -198,6 +198,18 @@ describe("server HTTP API and SSE", () => {
 
     expect(startedRun.status).toBe(201)
     expect(harness.repository.sessions.getCurrentAgent(sessionId)).toBe("plan")
+    const runId = startedRun.body.data.run.id as string
+    await waitForRunStatus(harness.server, runId, "completed")
+
+    const traceEvents = harness.observabilityRepository.runEvents.listByRun(runId)
+    expect(traceEvents.find((event) => event.eventType === "agent.selection.resolved")?.data).toMatchObject({
+      requestedAgent: "plan",
+      selectedAgent: "plan",
+      currentAgent: "plan",
+    })
+    expect(traceEvents.find((event) => event.eventType === "run.started")?.data).toMatchObject({
+      currentAgent: "plan",
+    })
 
     const sessionState = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
 
@@ -248,6 +260,13 @@ describe("server HTTP API and SSE", () => {
       },
     })
     expect(harness.repository.sessions.getCurrentAgent(sessionId)).toBe("plan")
+    expect(harness.observabilityRepository.runEvents.listByRun(runId).find((event) => event.eventType === "agent.change.rejected")?.data).toMatchObject({
+      requestedAgent: "default",
+      selectedAgent: "plan",
+      currentAgent: "plan",
+      activeRunId: runId,
+      reason: "active_run",
+    })
 
     releasePrompt()
     await waitForRunStatus(harness.server, runId, "completed")
@@ -2216,6 +2235,7 @@ async function createHarness(
     repository,
     permissionRepository,
     exportRunTraceImpl: observability.exportRunTrace,
+    recordRunEventImpl: observability.recordRunEvent,
     listSkillCatalogImpl(workspaceRoot) {
       return skillRuntime.listCatalog(workspaceRoot)
     },
@@ -2234,6 +2254,7 @@ async function createHarness(
     workspaceRoot,
     server,
     repository,
+    observabilityRepository,
     permissionRepository,
     now,
   }

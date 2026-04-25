@@ -14,7 +14,7 @@ import {
   type OrchestrationRuntimeApi,
   type RuntimeEvent,
 } from "../orchestration"
-import type { ExportedRunTrace } from "../observability"
+import type { ExportedRunTrace, RunEventData, RunEventSource } from "../observability"
 import type {
   PermissionRepository,
   PermissionResponse,
@@ -543,6 +543,14 @@ export function createServerApp(input: {
   createRuntimeImpl: CreateServerAppRuntime
   deleteSessionImpl?: (sessionId: string) => void
   exportRunTraceImpl?: (runId: string) => ExportedRunTrace | null
+  recordRunEventImpl?: (input: {
+    sessionId: string
+    runId: string
+    source: RunEventSource
+    eventType: string
+    data?: RunEventData
+    occurredAt?: number
+  }) => unknown
   listSkillCatalogImpl?: (workspaceRoot: string) => Promise<
     Array<{
       name: string
@@ -610,6 +618,18 @@ async function startRun(runInput: {
       promptText: runInput.prompt,
       promptPartCreatedAt: now(),
       agent: runInput.agent,
+    })
+    const resolvedSession = repository.sessions.get(runInput.sessionId)
+    recordTelemetryRunEvent({
+      sessionId: runInput.sessionId,
+      runId: started.run.id,
+      source: "orchestration",
+      eventType: "agent.selection.resolved",
+      data: {
+        requestedAgent: runInput.agent ?? null,
+        selectedAgent: resolvedSession.currentAgent ?? null,
+        currentAgent: resolvedSession.currentAgent ?? null,
+      },
     })
 
     const handle = await runtime.run({
@@ -759,13 +779,43 @@ async function startRun(runInput: {
       setCurrentAgent(inputValue: { sessionId: string; agent: string }) {
         const activeRun = repository.runs.getActiveBySession(inputValue.sessionId)
         if (activeRun) {
+          recordTelemetryRunEvent({
+            sessionId: inputValue.sessionId,
+            runId: activeRun.id,
+            source: "orchestration",
+            eventType: "agent.change.rejected",
+            data: {
+              requestedAgent: inputValue.agent,
+              selectedAgent: repository.sessions.get(inputValue.sessionId).currentAgent ?? null,
+              currentAgent: repository.sessions.get(inputValue.sessionId).currentAgent ?? null,
+              activeRunId: activeRun.id,
+              reason: "active_run",
+            },
+          })
           throw new SessionBusyError({
             sessionId: inputValue.sessionId,
             activeRunId: activeRun.id,
           })
         }
 
+        const before = repository.sessions.get(inputValue.sessionId)
         const updated = repository.sessions.setCurrentAgent(inputValue.sessionId, inputValue.agent)
+        const latestRun = getLatestVisibleRunBySession(repository, updated.id)
+        if (latestRun) {
+          recordTelemetryRunEvent({
+            sessionId: updated.id,
+            runId: latestRun.id,
+            source: "orchestration",
+            eventType: "agent.selection.updated",
+            data: {
+              requestedAgent: inputValue.agent,
+              selectedAgent: updated.currentAgent ?? null,
+              currentAgent: updated.currentAgent ?? null,
+              previousAgent: before.currentAgent ?? null,
+              trigger: "user",
+            },
+          })
+        }
         return {
           ...updated,
           latestRunStatus: getLatestVisibleRunBySession(repository, updated.id)?.status ?? null,
@@ -872,6 +922,23 @@ async function startRun(runInput: {
 
       await closing
     },
+  }
+
+  function recordTelemetryRunEvent(inputValue: {
+    sessionId: string
+    runId: string
+    source: RunEventSource
+    eventType: string
+    data?: RunEventData
+  }) {
+    try {
+      input.recordRunEventImpl?.({
+        ...inputValue,
+        occurredAt: now(),
+      })
+    } catch {
+      // Observability must not alter session switching or run semantics.
+    }
   }
 }
 
