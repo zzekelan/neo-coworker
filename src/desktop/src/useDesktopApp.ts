@@ -903,7 +903,7 @@ export function useDesktopApp() {
   }
 }
 
-export const DEFAULT_AGENT_NAME = "default"
+export const DEFAULT_AGENT_NAME = "general"
 
 function createInitialState(input: {
   defaultWorkspaceRoot?: string | null

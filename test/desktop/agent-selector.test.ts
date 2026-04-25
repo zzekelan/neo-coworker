@@ -170,6 +170,25 @@ describe("agent badge and selector integration in ChatArea", () => {
   })
 })
 
+describe("desktop current agent fallback", () => {
+  const desktopAppSource = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+  const chatAreaSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+  test("falls back to canonical general agent instead of removed default alias", () => {
+    expect(desktopAppSource).toContain('export const DEFAULT_AGENT_NAME = "general"')
+    expect(desktopAppSource).not.toContain('export const DEFAULT_AGENT_NAME = "default"')
+    expect(desktopAppSource).toContain("return DEFAULT_AGENT_NAME")
+  })
+
+  test("fallback badge resolves through displayName so it renders General", () => {
+    const generalAgent = listPrimaryBuiltinAgents().find((agent) => agent.name === "general")
+
+    expect(generalAgent?.displayName).toBe("General")
+    expect(chatAreaSource).toContain("?.displayName || currentAgent")
+    expect(chatAreaSource).toContain("agentLabel={currentAgentLabel}")
+  })
+})
+
 describe("agent props wiring in App.tsx", () => {
   const source = readFileSync("src/desktop/src/App.tsx", "utf8")
 
