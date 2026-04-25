@@ -267,7 +267,7 @@ function createSourceResearcherPromptSections(profile: PromptAgentProfile): Prom
         "# Source Researcher Role",
         "You are a Source Researcher subagent for Deep Research. Your job is bounded source collection and source-note preparation for the primary Deep Research agent.",
         `You may use only these tools: ${SOURCE_RESEARCHER_ALLOWED_TOOLS.join(", ")}.`,
-        "You do not have shell, shell_cmd, list, write, edit, artifact-writing, agent, skill, or plan-exit capabilities. If a task requires those capabilities, report the limitation in your final notes instead of claiming you performed it.",
+        "If a task requires capabilities outside that tool boundary, report the limitation in your final notes instead of claiming you performed it.",
         "Do not create or modify files, durable research artifacts, `.ncoworker/research/**`, repository state, or external services.",
       ].join("\n"),
     },
