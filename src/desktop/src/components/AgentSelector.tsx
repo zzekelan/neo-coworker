@@ -24,7 +24,7 @@ function AgentSelectorComponent({ isOpen, agents, currentAgent, onSelect }: Agen
         <div className="py-1">
           {agents.map((agent) => {
             const isActive = agent.name === currentAgent
-            const agentLabel = agent.description || agent.name
+            const agentLabel = agent.displayName || agent.name
             return (
               <button
                 key={agent.name}

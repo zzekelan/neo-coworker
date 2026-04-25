@@ -3,12 +3,12 @@ import { ChevronDown } from "lucide-react"
 import { cn } from "../lib/utils"
 
 interface AgentBadgeProps {
-  agentName: string
+  agentLabel: string
   isOpen: boolean
   onClick: () => void
 }
 
-function AgentBadgeComponent({ agentName, isOpen, onClick }: AgentBadgeProps) {
+function AgentBadgeComponent({ agentLabel, isOpen, onClick }: AgentBadgeProps) {
   return (
     <button
       type="button"
@@ -22,7 +22,7 @@ function AgentBadgeComponent({ agentName, isOpen, onClick }: AgentBadgeProps) {
       )}
     >
       <span className="h-2 w-2 rounded-full bg-highlight" aria-hidden="true" />
-      {agentName}
+      {agentLabel}
       <ChevronDown
         className={cn(
           "h-3 w-3 text-muted transition-transform duration-150",
