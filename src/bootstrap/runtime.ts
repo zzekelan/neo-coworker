@@ -75,7 +75,6 @@ import type {
   OrchestrationSkillPort,
   OrchestrationToolPort,
   OrchestrationToolPortFactory,
-  redactDiagnosticMessage,
 } from "../orchestration"
 import {
   buildAgentAwarePrompt,
@@ -84,6 +83,7 @@ import {
   createOrchestrationStepService,
   createOrchestrationToolBatchExecutor,
   DEFAULT_CONTEXT_WINDOW_SIZE,
+  redactDiagnosticMessage,
   resolvePermissionPolicy,
   type OrchestrationActiveRunRegistry,
   type RunHandle,
@@ -1477,7 +1477,7 @@ const PlanExitToolArgsSchema = z.object({
 
 function createSkillTool(input: {
   repository: StorageRepository
-  runtimeObserver?: Pick<ObservabilityRuntimeApi, "runtimeObserver">["runtimeObserver"]
+  runtimeObserver?: ReturnType<typeof createForwardingRuntimeObserver>
   session: Pick<SessionProvider["runs"], "addActiveSkills">
   skill: OrchestrationSkillPort
   sessionId: string
@@ -1756,13 +1756,13 @@ function createPlanExitTool(input: {
         throw createToolPermissionDeniedError()
       }
 
-      input.repository.sessions.setCurrentAgent(input.sessionId, "default")
+      input.repository.sessions.setCurrentAgent(input.sessionId, "general")
 
       return {
-        output: "Switched back to default mode.",
+        output: "Switched back to general mode.",
         metadata: {
           fromAgent: "plan",
-          toAgent: "default",
+          toAgent: "general",
           reason: parsed.reason ?? null,
         },
       }

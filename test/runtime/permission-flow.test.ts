@@ -194,7 +194,7 @@ describe("runtime permission flow", () => {
           }
         },
         async function* () {
-          yield { type: "text.delta", text: "Still on default agent." }
+          yield { type: "text.delta", text: "Still on general agent." }
         },
       ]),
       harness,
@@ -214,7 +214,7 @@ describe("runtime permission flow", () => {
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
 
     expect(harness.permissionRepository.requests.listByRun(started.run.id)).toEqual([])
-    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("default")
+    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("general")
     expect(activeRunMessages[1]?.parts).toMatchObject([
       {
         kind: "tool_call",
@@ -234,12 +234,12 @@ describe("runtime permission flow", () => {
         },
       },
     ])
-    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Still on default agent." }])
+    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Still on general agent." }])
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
     expect(requests).toHaveLength(2)
   })
 
-  test("approval switches the session from plan mode back to default", async () => {
+  test("approval switches the session from plan mode back to general", async () => {
     const harness = await createHarness("plan-exit-approve", false)
     harness.service.setSessionCurrentAgent(harness.session.id, "plan")
     const requests: ProviderTurnRequest[] = []
@@ -262,7 +262,7 @@ describe("runtime permission flow", () => {
           }
         },
         async function* () {
-          yield { type: "text.delta", text: "Returned to default." }
+          yield { type: "text.delta", text: "Returned to general." }
         },
       ]),
       harness,
@@ -291,7 +291,7 @@ describe("runtime permission flow", () => {
     const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
     const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
 
-    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("default")
+    expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("general")
     expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
       id: permissionEvent.requestId,
       toolName: "plan_exit",
@@ -307,15 +307,15 @@ describe("runtime permission flow", () => {
       },
       {
         kind: "tool_result",
-        text: "Switched back to default mode.",
+        text: "Switched back to general mode.",
         data: {
           callId: "call_plan_exit_approve",
           toolName: "plan_exit",
-          output: "Switched back to default mode.",
+          output: "Switched back to general mode.",
         },
       },
     ])
-    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Returned to default." }])
+    expect(activeRunMessages[2]?.parts).toMatchObject([{ kind: "text", text: "Returned to general." }])
     expect(remainingEvents.at(-1)).toMatchObject({
       type: "run.completed",
       runId: started.run.id,
