@@ -46,9 +46,10 @@ export function createResultStore(input: CreateResultStoreInput): ResultStore {
 
   function save(content: string, toolName: string, hash = createContentHash(content)) {
     try {
+      const safeSessionId = normalizeSessionId(input.sessionId)
       const safeToolName = normalizeToolName(toolName)
-      const savedPath = `${basePath}/${safeToolName}/${hash}.txt`
-      const absolutePath = resolveWithinBase(baseDirectory, workspaceRoot, savedPath)
+      const savedPath = `${basePath}/${safeSessionId}/${safeToolName}/${hash}.txt`
+      const absolutePath = resolveStoredPath(baseDirectory, workspaceRoot, basePath, savedPath)
       const createdAt = now()
       const deduplicated = existsSync(absolutePath)
 
@@ -81,7 +82,7 @@ export function createResultStore(input: CreateResultStoreInput): ResultStore {
 
   function load(path: string) {
     try {
-      const absolutePath = resolveWithinBase(baseDirectory, workspaceRoot, path)
+      const absolutePath = resolveStoredPath(baseDirectory, workspaceRoot, basePath, path)
       return readFileSync(absolutePath, "utf8")
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -107,32 +108,45 @@ export function createResultStore(input: CreateResultStoreInput): ResultStore {
       return 0
     }
 
-    for (const toolDirectory of toolDirectories) {
-      if (!toolDirectory.isDirectory()) {
+    for (const sessionDirectory of toolDirectories) {
+      if (!sessionDirectory.isDirectory()) {
         continue
       }
 
-      const absoluteToolDirectory = resolve(baseDirectory, toolDirectory.name)
-      const files = readdirSync(absoluteToolDirectory, { withFileTypes: true })
+      const absoluteSessionDirectory = resolve(baseDirectory, sessionDirectory.name)
+      const toolDirectories = readdirSync(absoluteSessionDirectory, { withFileTypes: true })
 
-      for (const file of files) {
-        if (!file.isFile()) {
+      for (const toolDirectory of toolDirectories) {
+        if (!toolDirectory.isDirectory()) {
           continue
         }
 
-        const absolutePath = resolve(absoluteToolDirectory, file.name)
-        const fileStats = statSync(absolutePath)
+        const absoluteToolDirectory = resolve(absoluteSessionDirectory, toolDirectory.name)
+        const files = readdirSync(absoluteToolDirectory, { withFileTypes: true })
 
-        if (fileStats.mtime.getTime() >= cutoff) {
-          continue
+        for (const file of files) {
+          if (!file.isFile()) {
+            continue
+          }
+
+          const absolutePath = resolve(absoluteToolDirectory, file.name)
+          const fileStats = statSync(absolutePath)
+
+          if (fileStats.mtime.getTime() >= cutoff) {
+            continue
+          }
+
+          rmSync(absolutePath, { force: true })
+          removed += 1
         }
 
-        rmSync(absolutePath, { force: true })
-        removed += 1
+        if (readdirSync(absoluteToolDirectory).length === 0) {
+          rmSync(absoluteToolDirectory, { recursive: true, force: true })
+        }
       }
 
-      if (readdirSync(absoluteToolDirectory).length === 0) {
-        rmSync(absoluteToolDirectory, { recursive: true, force: true })
+      if (readdirSync(absoluteSessionDirectory).length === 0) {
+        rmSync(absoluteSessionDirectory, { recursive: true, force: true })
       }
     }
 
@@ -164,6 +178,35 @@ function normalizeToolName(toolName: string) {
   }
 
   return toolName
+}
+
+function normalizeSessionId(sessionId: string | undefined) {
+  if (!sessionId || !/^[a-z0-9][a-z0-9._-]*$/iu.test(sessionId)) {
+    throw new Error(`Invalid session id for result store: ${sessionId}`)
+  }
+
+  return sessionId
+}
+
+function resolveStoredPath(baseDirectory: string, workspaceRoot: string, basePath: string, path: string) {
+  const normalizedPath = normalizeRelativePath(path)
+  const normalizedBasePath = normalizeRelativePath(basePath)
+  const pathSegments = normalizedPath.split("/")
+  const baseSegments = normalizedBasePath.split("/")
+  const scopedSegments = pathSegments.slice(baseSegments.length)
+
+  if (
+    pathSegments.slice(0, baseSegments.length).join("/") !== normalizedBasePath ||
+    scopedSegments.length !== 3 ||
+    !/^[a-f0-9]{64}\.txt$/u.test(scopedSegments[2] ?? "")
+  ) {
+    throw new Error(`Result path must be session-scoped inside ${normalizedBasePath}: ${path}`)
+  }
+
+  normalizeSessionId(scopedSegments[0])
+  normalizeToolName(scopedSegments[1] ?? "")
+
+  return resolveWithinBase(baseDirectory, workspaceRoot, normalizedPath)
 }
 
 function resolveWithinBase(baseDirectory: string, workspaceRoot: string, path: string) {

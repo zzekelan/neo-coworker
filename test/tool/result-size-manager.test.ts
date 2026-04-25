@@ -44,13 +44,14 @@ describe("manageResultSize", () => {
       {
         tool: { name: "read", resultSizeLimit: 50_000 },
         workspaceRoot,
+        sessionId: "session-1",
       },
     )
 
     const savedPath = managed.metadata?.savedPath
 
     expect(typeof savedPath).toBe("string")
-    expect(savedPath).toMatch(/^\.ncoworker\/tool-results\/read\/[a-f0-9]{64}\.txt$/)
+    expect(savedPath).toMatch(/^\.ncoworker\/tool-results\/session-1\/read\/[a-f0-9]{64}\.txt$/)
     expect(managed.output).toContain(`[Result truncated: 75000B → 50000B. Full result saved to ${savedPath}]`)
     expect(managed.metadata).toMatchObject({
       truncated: true,

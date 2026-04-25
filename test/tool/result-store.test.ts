@@ -16,21 +16,21 @@ afterEach(async () => {
 })
 
 describe("result store", () => {
-  test("saves and loads content with a tool-scoped content-addressed path", async () => {
+  test("saves and loads content with a session-scoped content-addressed path", async () => {
     const workspaceRoot = await createWorkspaceRoot()
-    const store = createResultStore({ workspaceRoot })
+    const store = createResultStore({ workspaceRoot, sessionId: "session-1" })
 
     const saved = store.save("hello world", "read")
 
     expect(saved).toBeDefined()
-    expect(saved?.path).toMatch(/^\.ncoworker\/tool-results\/read\/[a-f0-9]{64}\.txt$/)
+    expect(saved?.path).toMatch(/^\.ncoworker\/tool-results\/session-1\/read\/[a-f0-9]{64}\.txt$/)
     expect(saved?.deduplicated).toBe(false)
     expect(store.load(saved?.path ?? "")).toBe("hello world")
   })
 
-  test("deduplicates repeated content for the same tool", async () => {
+  test("deduplicates repeated content for the same session and tool", async () => {
     const workspaceRoot = await createWorkspaceRoot()
-    const store = createResultStore({ workspaceRoot })
+    const store = createResultStore({ workspaceRoot, sessionId: "session-1" })
 
     const first = store.save("same content", "read")
     const second = store.save("same content", "read")
@@ -42,13 +42,13 @@ describe("result store", () => {
       deduplicated: true,
     })
 
-    const savedFiles = await readdir(join(workspaceRoot, ".ncoworker/tool-results/read"))
+    const savedFiles = await readdir(join(workspaceRoot, ".ncoworker/tool-results/session-1/read"))
     expect(savedFiles).toHaveLength(1)
   })
 
   test("cleanup removes stale files older than the cutoff", async () => {
     const workspaceRoot = await createWorkspaceRoot()
-    const store = createResultStore({ workspaceRoot })
+    const store = createResultStore({ workspaceRoot, sessionId: "session-1" })
     const oldEntry = store.save("old content", "read")
     const freshEntry = store.save("fresh content", "read")
 
@@ -67,9 +67,9 @@ describe("result store", () => {
 
   test("returns null when loading a missing file", async () => {
     const workspaceRoot = await createWorkspaceRoot()
-    const store = createResultStore({ workspaceRoot })
+    const store = createResultStore({ workspaceRoot, sessionId: "session-1" })
 
-    expect(store.load(".ncoworker/tool-results/read/missing.txt")).toBeNull()
+    expect(store.load(".ncoworker/tool-results/session-1/read/missing.txt")).toBeNull()
   })
 
   test("emits budget.persisted_to_disk telemetry for saves and deduplicated re-saves", async () => {
