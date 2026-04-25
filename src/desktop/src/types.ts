@@ -55,6 +55,7 @@ export type PartKind =
   | "error"
   | "patch"
   | "compaction_boundary"
+  | "lifecycle"
 
 export type DesktopRun = {
   id: string
