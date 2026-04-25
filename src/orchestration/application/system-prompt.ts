@@ -26,7 +26,10 @@ export {
 
 export const DEFAULT_SYSTEM_PROMPT: string = getStaticPrompt()
 
-export function buildAgentAwarePrompt(profile?: PromptAgentProfile) {
+export function buildAgentAwarePrompt(
+  profile?: PromptAgentProfile,
+  toolGuidances?: ToolGuidanceEntry[],
+) {
   return composeAgentAwarePrompt(
     {
       environment: {
@@ -36,5 +39,6 @@ export function buildAgentAwarePrompt(profile?: PromptAgentProfile) {
       },
     },
     profile,
+    toolGuidances,
   )
 }

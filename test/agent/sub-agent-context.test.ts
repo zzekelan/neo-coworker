@@ -474,6 +474,56 @@ describe("createSubAgentRun", () => {
     )
   })
 
+  test("passes filtered subagent tool guidance into the system prompt builder", async () => {
+    let observedGuidances: Parameters<CreateSubAgentRunInput["buildAgentAwarePrompt"]>[1]
+
+    await createSubAgentRun(
+      createSubAgentRunInput({
+        profile: {
+          name: "source-researcher",
+          tools: ["read"],
+          skills: [],
+        },
+        parentTools: {
+          list() {
+            return [
+              {
+                name: "read",
+                description: "Read files",
+                concurrency: "read-only" as const,
+                usageGuidance: "Use offset and limit for source excerpts.",
+              },
+              {
+                name: "shell",
+                description: "Run shell commands",
+                concurrency: "mutating" as const,
+                usageGuidance: "Run shell commands.",
+              },
+            ]
+          },
+          async execute() {
+            throw new Error("parent tools should not execute in this test")
+          },
+          async executeBatch() {
+            return []
+          },
+        },
+        buildAgentAwarePrompt(_profile, toolGuidances) {
+          observedGuidances = toolGuidances
+          return "system prompt"
+        },
+      }),
+    )
+
+    expect(observedGuidances).toEqual([
+      {
+        name: "read",
+        guidance: "Use offset and limit for source excerpts.",
+        isReadOnly: true,
+      },
+    ])
+  })
+
   test("inherits parent activeSkills when profile.skills is empty", async () => {
     const session = createSessionPortStub({
       sessionId: "session-parent",

@@ -1,5 +1,6 @@
 /** Minimal structural type for agent profile — avoids cross-module imports. */
 export type PromptAgentProfile = {
+  name?: string
   systemPromptOverride?: string
   instructions?: string
 }
@@ -224,6 +225,86 @@ function formatToolGuidances(toolGuidances?: ToolGuidanceEntry[]): string {
     .join("\n\n")
 }
 
+const SOURCE_RESEARCHER_AGENT_NAME = "source-researcher"
+const SOURCE_RESEARCHER_ALLOWED_TOOLS = [
+  "read",
+  "glob",
+  "grep",
+  "webfetch",
+  "websearch",
+  "get_current_datetime",
+] as const
+
+const SOURCE_RESEARCHER_TOOL_GUIDANCE: Record<typeof SOURCE_RESEARCHER_ALLOWED_TOOLS[number], string> = {
+  read: "Read known workspace files by absolute path. Use offset and limit to inspect only the relevant source excerpts needed for structured notes.",
+  glob: "Discover candidate workspace files by name pattern before reading them. Narrow the path when the workspace is large.",
+  grep: "Search workspace file contents for claim-specific terms. Prefer files_with_matches for broad discovery, then content output for exact excerpts.",
+  webfetch: "Fetch a specific verified URL when you already have it. Use markdown or text output to capture attributable excerpts for source notes.",
+  websearch: "Discover candidate web sources with natural-language queries. Use varied parallel searches for broad topics, then verify promising URLs with webfetch.",
+  get_current_datetime: "Use this for retrieved-at timestamps when producing source-note candidates. Do not estimate the current time from memory.",
+}
+
+function createSourceResearcherToolGuidances(): ToolGuidanceEntry[] {
+  return SOURCE_RESEARCHER_ALLOWED_TOOLS.map((tool) => ({
+    name: tool,
+    guidance: SOURCE_RESEARCHER_TOOL_GUIDANCE[tool],
+    isReadOnly: true,
+  }))
+}
+
+function createSourceResearcherPromptSections(profile: PromptAgentProfile): PromptSection[] {
+  const instructions = profile.instructions?.trim()
+  const formattedToolGuidances = formatToolGuidances(createSourceResearcherToolGuidances())
+  const sourceNoteContract = instructions
+    ? [{ id: "source_researcher_contract", content: instructions, isStatic: true }]
+    : []
+
+  return [
+    {
+      id: "source_researcher_identity",
+      isStatic: true,
+      content: [
+        "# Source Researcher Role",
+        "You are a Source Researcher subagent for Deep Research. Your job is bounded source collection and source-note preparation for the primary Deep Research agent.",
+        `You may use only these tools: ${SOURCE_RESEARCHER_ALLOWED_TOOLS.join(", ")}.`,
+        "You do not have shell, shell_cmd, list, write, edit, artifact-writing, agent, skill, or plan-exit capabilities. If a task requires those capabilities, report the limitation in your final notes instead of claiming you performed it.",
+        "Do not create or modify files, durable research artifacts, `.ncoworker/research/**`, repository state, or external services.",
+      ].join("\n"),
+    },
+    {
+      id: "source_researcher_workflow",
+      isStatic: true,
+      content: [
+        "# Source Collection Workflow",
+        "- Use read, glob, and grep for workspace-local file evidence.",
+        "- Use websearch to discover web sources, then webfetch to verify and extract content from specific URLs.",
+        "- Use get_current_datetime for retrieved-at values in source-note candidates.",
+        "- Run independent read/search/fetch calls in parallel when they do not depend on each other.",
+        "- Return concise structured source-note candidates and cite exact URLs, paths, or excerpts you actually inspected.",
+      ].join("\n"),
+    },
+    {
+      id: "source_researcher_tool_usage",
+      isStatic: true,
+      content: ["# Using Your Tools", formattedToolGuidances].filter(Boolean).join("\n"),
+    },
+    ...sourceNoteContract,
+    {
+      id: "source_researcher_output",
+      isStatic: true,
+      content: [
+        "# Output Style",
+        "Return only source-note candidates, caveats, and open-question notes for the primary Deep Research agent to evaluate.",
+        "Do not present accepted findings or claim that any source has been written to the durable research record.",
+      ].join("\n"),
+    },
+  ]
+}
+
+function composeSourceResearcherPrompt(profile: PromptAgentProfile) {
+  return composeSystemPrompt(createSourceResearcherPromptSections(profile))
+}
+
 function createMemorySnapshotSection(memorySnapshot?: string | null): PromptSection | null {
   const snapshot = memorySnapshot?.trim()
 
@@ -344,6 +425,10 @@ export function composeAgentAwarePrompt(
   const override = profile?.systemPromptOverride?.trim()
   if (override) {
     return override
+  }
+
+  if (profile?.name === SOURCE_RESEARCHER_AGENT_NAME) {
+    return composeSourceResearcherPrompt(profile)
   }
 
   const basePrompt = composeFullPrompt(context, toolGuidances, options)

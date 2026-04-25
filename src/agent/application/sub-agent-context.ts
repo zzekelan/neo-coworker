@@ -14,6 +14,7 @@ import type {
   AgentSkillPort,
   AgentToolBatchExecutor,
   AgentToolBatchResult,
+  AgentToolCatalogEntry,
   AgentToolDefinition,
   AgentToolPort,
   CreateAgentStepService,
@@ -72,7 +73,7 @@ export type CreateSubAgentRunInput = {
   runtimeObserver?: AgentRuntimeObserverPort
   now?: () => number
   signal?: AbortSignal
-  buildAgentAwarePrompt(profile?: AgentProfile): string
+  buildAgentAwarePrompt(profile?: AgentProfile, toolGuidances?: AgentToolGuidanceEntry[]): string
   createStepService: CreateAgentStepService
   createToolBatchExecutor: CreateAgentToolBatchExecutor
   createToolRuntime: CreateAgentToolRuntime
@@ -83,6 +84,12 @@ export type CreateSubAgentRunInput = {
     sessionId: string
     runId: string
   }): ResultStore
+}
+
+type AgentToolGuidanceEntry = {
+  name: string
+  guidance: string
+  isReadOnly: boolean
 }
 
 export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<string> {
@@ -187,7 +194,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     },
   })
 
-  const systemPrompt = input.buildAgentAwarePrompt(input.profile)
+  const systemPrompt = input.buildAgentAwarePrompt(input.profile, deriveToolGuidanceEntries(tools.list()))
 
   try {
     if (context.signal.aborted) {
@@ -562,6 +569,22 @@ function dedupeToolsByName(tools: AgentToolDefinition[]) {
   }
 
   return [...byName.values()]
+}
+
+function deriveToolGuidanceEntries(tools: AgentToolCatalogEntry[]): AgentToolGuidanceEntry[] {
+  return tools.flatMap((tool) => {
+    const guidance = tool.usageGuidance?.trim()
+
+    if (!guidance) {
+      return []
+    }
+
+    return [{
+      name: tool.name,
+      guidance,
+      isReadOnly: tool.concurrency === "read-only",
+    } satisfies AgentToolGuidanceEntry]
+  })
 }
 
 function getFinalAssistantText(input: {
