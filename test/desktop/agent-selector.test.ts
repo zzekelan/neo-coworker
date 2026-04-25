@@ -10,7 +10,8 @@ describe("agent badge component", () => {
   })
 
   test("displays agent label from props", () => {
-    expect(source).toContain("{agentName}")
+    expect(source).toContain("agentLabel: string")
+    expect(source).toContain("{agentLabel}")
   })
 
   test("fires onClick callback when clicked", () => {
@@ -47,7 +48,7 @@ describe("agent selector component", () => {
 
   test("lists only agents passed via props (primary agents)", () => {
     expect(source).toContain("agents.map((agent)")
-    expect(source).toContain("const agentLabel = agent.description || agent.name")
+    expect(source).toContain("const agentLabel = agent.displayName || agent.name")
     expect(source).toContain("{agentLabel}")
   })
 
@@ -71,17 +72,35 @@ describe("agent selector component", () => {
     expect(source).toContain("export const AgentSelector = React.memo(AgentSelectorComponent)")
   })
 
-  test("shows user-facing agent descriptions while keeping stable ids", () => {
-    expect(source).toContain("const agentLabel = agent.description || agent.name")
+  test("shows user-facing display names while keeping stable ids", () => {
+    expect(source).toContain("const agentLabel = agent.displayName || agent.name")
     expect(source).toContain("{agentLabel}")
     expect(source).toContain("onClick={() => onSelect(agent.name)}")
+    expect(source).not.toContain("agent.description || agent.name")
   })
 
-  test("Deep Research is available as a user-facing primary agent label", () => {
-    expect(listPrimaryBuiltinAgents()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "deep-research", description: "Deep Research" }),
-      ]),
+  test("primary agent options have exact display labels and exclude source researcher", () => {
+    const primaryAgents = listPrimaryBuiltinAgents()
+
+    expect(primaryAgents.map((agent) => ({ name: agent.name, displayName: agent.displayName }))).toEqual([
+      { name: "general", displayName: "General" },
+      { name: "plan", displayName: "Plan" },
+      { name: "deep-research", displayName: "Deep Research" },
+    ])
+    expect(primaryAgents.map((agent) => agent.name)).not.toContain("source-researcher")
+    expect(primaryAgents.map((agent) => agent.displayName)).not.toContain("Source Researcher")
+  })
+
+  test("primary selector labels do not use long descriptions as option text", () => {
+    const primaryAgents = listPrimaryBuiltinAgents()
+
+    expect(primaryAgents.map((agent) => agent.description)).toEqual([
+      "General-purpose assistant",
+      "Strategic planning mode — read-only, no code modifications",
+      "Deep Research",
+    ])
+    expect(primaryAgents.map((agent) => agent.description)).not.toEqual(
+      primaryAgents.map((agent) => agent.displayName),
     )
   })
 })
@@ -103,8 +122,10 @@ describe("agent badge and selector integration in ChatArea", () => {
   test("renders AgentBadge with current agent label and toggle handler", () => {
     expect(source).toContain("<AgentBadge")
     expect(source).toContain("const currentAgentLabel =")
-    expect(source).toContain("agentName={currentAgentLabel}")
+    expect(source).toContain("agentLabel={currentAgentLabel}")
     expect(source).toContain("isOpen={isAgentSelectorOpen}")
+    expect(source).toContain("?.displayName || currentAgent")
+    expect(source).not.toContain("?.description || currentAgent")
   })
 
   test("renders AgentSelector with agents and selection handler", () => {
