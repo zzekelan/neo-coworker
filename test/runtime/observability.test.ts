@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import type OpenAI from "openai"
 import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -17,6 +18,7 @@ import { createPermissionRepository, type PermissionRepository } from "../../src
 import {
   createModelProvider,
   createModelRuntimeApi,
+  createOpenAICompatibleModelProvider,
   type ProviderEvent,
   type ProviderTurnRequest,
 } from "../../src/model"
@@ -190,6 +192,138 @@ describe("runtime observability", () => {
       expectedProvider: "openai-compatible",
       expectedModel: "deepseek-reasoner",
     })
+  })
+
+  test("replays child reasoning for DeepSeek-compatible subagent tool turns without visible leaks", async () => {
+    const harness = await createHarness("trace-subagent-reasoning-replay", true)
+    const childPrompt = "Read README.md for a source note."
+    const childReasoning = "Need to read README before writing the source note."
+    const childOutput = "proposed type: files\ntitle: README\nkey excerpts: Neo Coworker"
+    const receivedBodies: unknown[] = []
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_subagent_reasoning_replay_parent",
+      messageId: "message_trace_subagent_reasoning_replay_parent",
+      prompt: "Delegate README source collection through the source researcher.",
+    })
+    const provider = createOrchestrationModelPort(createOpenAICompatibleModelProvider({
+      model: "deepseek-reasoner",
+      observer: harness.observability.modelObserver,
+      requestConfig: {
+        replayedReasoningField: "reasoning_content",
+      },
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBodies.push(body)
+
+        return (async function* () {
+          switch (receivedBodies.length) {
+            case 1:
+              yield createOpenAICompatibleChunk({
+                tool_calls: [createOpenAICompatibleToolCallChunk({
+                  index: 0,
+                  id: "call_source_researcher",
+                  name: "agent",
+                  argumentsText: JSON.stringify({
+                    agent: "source-researcher",
+                    prompt: childPrompt,
+                  }),
+                })],
+              })
+              yield createOpenAICompatibleChunk({}, "tool_calls")
+              return
+            case 2:
+              yield createOpenAICompatibleChunk({
+                reasoning_content: childReasoning,
+              })
+              yield createOpenAICompatibleChunk({
+                tool_calls: [createOpenAICompatibleToolCallChunk({
+                  index: 0,
+                  id: "call_child_read",
+                  name: "read",
+                  argumentsText: JSON.stringify({ path: "README.md" }),
+                })],
+              })
+              yield createOpenAICompatibleChunk({}, "tool_calls")
+              return
+            case 3:
+              yield createOpenAICompatibleChunk({ content: childOutput })
+              return
+            case 4:
+              yield createOpenAICompatibleChunk({ content: "Parent observed source researcher output." })
+              return
+            default:
+              throw new Error(`Unexpected OpenAI-compatible provider turn ${receivedBodies.length}`)
+          }
+        })()
+      }),
+    }))
+    const runtime = createRuntime({
+      provider,
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      thinking: {
+        enabled: true,
+      },
+      telemetry: createProtocolTelemetryFixture(),
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    expect(receivedBodies).toHaveLength(4)
+    const childReplayAssistant = readAssistantReplayWithToolCalls(receivedBodies[2])
+    expect(childReplayAssistant).toMatchObject({
+      role: "assistant",
+      content: null,
+      reasoning_content: childReasoning,
+      tool_calls: [
+        expect.objectContaining({
+          id: "call_child_read",
+          function: expect.objectContaining({
+            name: "read",
+            arguments: JSON.stringify({ path: "README.md" }),
+          }),
+        }),
+      ],
+    })
+
+    const subSessions = harness.repository.sessions.listSubSessions(harness.session.id)
+    expect(subSessions).toHaveLength(1)
+    const childSession = subSessions[0]!
+    const childRun = harness.repository.runs.listBySession(childSession.id)[0]!
+    const parentTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const childTranscript = harness.repository.messages.listSessionTranscript(childSession.id)
+    const childReasoningPart = childTranscript
+      .flatMap((message) => message.parts)
+      .find((part) => part.kind === "reasoning")
+    const parentVisibleText = readVisibleTranscriptText(parentTranscript)
+    const childVisibleText = readVisibleTranscriptText(childTranscript)
+    const parentAgentResult = parentTranscript
+      .flatMap((message) => message.parts)
+      .find(
+        (part) =>
+          part.kind === "tool_result" &&
+          (part.data as { callId?: string } | undefined)?.callId === "call_source_researcher",
+      )
+
+    expect(childRun.status).toBe("completed")
+    expect(childReasoningPart).toMatchObject({
+      kind: "reasoning",
+      text: childReasoning,
+    })
+    expect(parentAgentResult?.text).toBe(childOutput)
+    expect(parentAgentResult?.text).not.toContain(childReasoning)
+    expect(parentVisibleText).toContain(childOutput)
+    expect(parentVisibleText).not.toContain(childReasoning)
+    expect(childVisibleText).toContain(childOutput)
+    expect(childVisibleText).not.toContain(childReasoning)
   })
 
   test("persists per-request permission lifecycle events for multi-pending ask-mode tools", async () => {
@@ -2522,10 +2656,94 @@ function assertSubagentProtocolTelemetryBaseline(input: {
     .flatMap((message) => message.parts)
     .map((part) => part.text ?? "")
     .join("\n")
+  const childReasoningPart = input.childTranscript
+    .flatMap((message) => message.parts)
+    .find((part) => part.kind === "reasoning")
   expect(childText).toContain(input.childPrompt)
   expect(childText).toContain(input.childOutput)
+  expect(childReasoningPart).toMatchObject({
+    kind: "reasoning",
+    text: input.childReasoning,
+  })
   expect(parentText).toContain(input.childOutput)
   expect(parentText).not.toContain(input.childReasoning)
+  expect(readVisibleTranscriptText(input.parentTranscript)).not.toContain(input.childReasoning)
+  expect(readVisibleTranscriptText(input.childTranscript)).not.toContain(input.childReasoning)
+}
+
+type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming
+type OpenAICompatibleCreate = (
+  body: OpenAICompatibleRequest,
+  options?: OpenAI.RequestOptions,
+) =>
+  | AsyncIterable<OpenAI.Chat.ChatCompletionChunk>
+  | Promise<AsyncIterable<OpenAI.Chat.ChatCompletionChunk>>
+
+function createMockOpenAICompatibleClient(create: OpenAICompatibleCreate): OpenAI {
+  return {
+    chat: {
+      completions: {
+        create: create as OpenAI["chat"]["completions"]["create"],
+      },
+    },
+  } as OpenAI
+}
+
+function createOpenAICompatibleChunk(
+  partial: Record<string, unknown>,
+  finishReason: "stop" | "length" | "tool_calls" | "content_filter" | "function_call" | null = null,
+): OpenAI.Chat.ChatCompletionChunk {
+  return {
+    id: "chatcmpl_subagent_reasoning_fixture",
+    object: "chat.completion.chunk",
+    created: 1,
+    model: "deepseek-reasoner",
+    choices: [
+      {
+        index: 0,
+        finish_reason: finishReason,
+        delta: partial,
+      },
+    ],
+  } as OpenAI.Chat.ChatCompletionChunk
+}
+
+function createOpenAICompatibleToolCallChunk(input: {
+  index: number
+  id: string
+  name: string
+  argumentsText: string
+}) {
+  return {
+    index: input.index,
+    id: input.id,
+    type: "function" as const,
+    function: {
+      name: input.name,
+      arguments: input.argumentsText,
+    },
+  }
+}
+
+function readAssistantReplayWithToolCalls(body: unknown): Record<string, unknown> | undefined {
+  const messages = (body as { messages?: unknown[] } | null | undefined)?.messages
+  return messages?.find(
+    (message): message is Record<string, unknown> =>
+      typeof message === "object" &&
+      message !== null &&
+      (message as { role?: unknown }).role === "assistant" &&
+      Array.isArray((message as { tool_calls?: unknown }).tool_calls),
+  )
+}
+
+function readVisibleTranscriptText(
+  transcript: ReturnType<SessionRepository["messages"]["listSessionTranscript"]>,
+) {
+  return transcript
+    .flatMap((message) => message.parts)
+    .filter((part) => part.kind !== "reasoning")
+    .map((part) => part.text ?? "")
+    .join("\n")
 }
 
 function createTurnProvider(

@@ -300,6 +300,7 @@ export function createRuntime(input: RuntimeInput) {
           session: sessionPort,
           skill: skillPort,
           contextWindow,
+          thinking: input.thinking,
           runtimeObserver: createForwardingRuntimeObserver({
             observer: observability?.runtimeObserver,
             forwardRuntimeEvent: subAgentInput.forwardRuntimeEvent,
@@ -380,10 +381,6 @@ function createAgentModelPort(model: OrchestrationModelPort): AgentModelPort {
   const agentModel: AgentModelPort = {
     async *streamTurn(request: AgentModelTurnRequest) {
       for await (const event of model.streamTurn(request)) {
-        if (event.type === "reasoning.delta") {
-          continue
-        }
-
         yield event
       }
     },
@@ -666,6 +663,7 @@ function createToolPortFactory(config: {
     parentTools: OrchestrationToolPort
     signal?: AbortSignal
     forwardRuntimeEvent?(event: { type: string; [key: string]: unknown }): void
+    resolveThinking?: (sessionId: string) => OrchestrationModelTurnRequest["thinking"] | undefined
     createQueuedRun(input: {
       subRunId: string
       sessionId: string
@@ -779,6 +777,7 @@ function createToolPortFactory(config: {
                 sessionId: input.sessionId,
                 parentRunId: input.runId,
                 workspaceRoot,
+                resolveThinking: input.resolveThinking,
                 forwardRuntimeEvent: input.forwardRuntimeEvent,
                 parentTools: {
                   ...createToolProviderFromRuntime({ runtime }),

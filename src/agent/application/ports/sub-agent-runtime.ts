@@ -239,6 +239,10 @@ export type AgentModelPort = {
 }
 
 export type AgentModelTurnRequest = {
+  thinking?: {
+    enabled: boolean
+    effort?: "default" | "low" | "medium" | "high"
+  }
   systemPrompt: string
   lateContextMessage?: string
   skillCatalog: AgentSkillCatalogEntry[]
@@ -262,6 +266,10 @@ export type AgentModelTurnRequest = {
 export type AgentModelEvent =
   | {
       type: "text.delta"
+      text: string
+    }
+  | {
+      type: "reasoning.delta"
       text: string
     }
   | {
@@ -317,6 +325,8 @@ export type CreateAgentStepService = (input: {
   model: AgentModelPort
   contextWindow: AgentContextWindowPort
   skill: AgentSkillPort
+  thinking?: AgentModelTurnRequest["thinking"]
+  resolveThinking?: (sessionId: string) => AgentModelTurnRequest["thinking"] | undefined
   runtimeObserver?: AgentRuntimeObserverPort
   now?: () => number
 }) => AgentStepService

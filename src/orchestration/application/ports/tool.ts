@@ -68,6 +68,10 @@ export type OrchestrationToolPortFactory = {
     requestPermission: RequestOrchestrationToolPermission
     sessionId: string
     runId: string
+    resolveThinking?: (sessionId: string) => {
+      enabled: boolean
+      effort?: "default" | "low" | "medium" | "high"
+    } | undefined
     forwardRuntimeEvent?(event: { type: string; [key: string]: unknown }): void
   }): OrchestrationToolPort
 }

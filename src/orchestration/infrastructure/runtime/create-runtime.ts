@@ -207,6 +207,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
       },
       sessionId: session.id,
       runId: inputValue.runId,
+      resolveThinking,
       forwardRuntimeEvent(event) {
         queue.push(event as RuntimeEvent)
       },

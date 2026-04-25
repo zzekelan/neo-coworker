@@ -59,6 +59,8 @@ export type CreateSubAgentRunInput = {
   session: AgentSessionPort
   skill: AgentSkillPort
   contextWindow: AgentContextWindowPort
+  thinking?: Parameters<CreateAgentStepService>[0]["thinking"]
+  resolveThinking?: Parameters<CreateAgentStepService>[0]["resolveThinking"]
   createQueuedRun(input: {
     subRunId: string
     sessionId: string
@@ -122,6 +124,10 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     model: input.model,
     contextWindow: input.contextWindow,
     skill: scopedSkillPort,
+    thinking: input.thinking,
+    resolveThinking: input.resolveThinking
+      ? () => input.resolveThinking?.(input.sessionId)
+      : undefined,
     runtimeObserver: createCorrelatedRuntimeObserver({
       runtimeObserver: input.runtimeObserver,
     }),
