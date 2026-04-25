@@ -46,6 +46,101 @@ function createProvider(input: ProviderInput) {
   return createOpenAICompatibleProvider(input)
 }
 
+function createDeepSeekToolReplayFixture() {
+  const reasoningText = "Need to preserve DeepSeek reasoning before replaying the read tool call."
+
+  return {
+    model: "deepseek-reasoner",
+    requiredReasoningField: "reasoning_content" as const,
+    reasoningText,
+    messages: [
+      {
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "inspect README.md" }],
+      },
+      {
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "reasoning" as const,
+            text: reasoningText,
+          },
+          {
+            type: "tool_call" as const,
+            callId: "call_deepseek_read",
+            toolName: "read",
+            inputText: '{"path":"README.md"}',
+          },
+        ],
+      },
+    ],
+  }
+}
+
+function assertOpenAICompatibleToolReplayFixtureRequiresReasoning(
+  input: ReturnType<typeof createDeepSeekToolReplayFixture>,
+) {
+  const assistantWithToolCall = input.messages.find(
+    (message) =>
+      message.role === "assistant" &&
+      message.parts.some((part) => part.type === "tool_call"),
+  )
+  const reasoningPart = assistantWithToolCall?.parts.find((part) => part.type === "reasoning")
+
+  expect(input.requiredReasoningField).toBe("reasoning_content")
+  expect(reasoningPart).toEqual({
+    type: "reasoning",
+    text: input.reasoningText,
+  })
+  expect(input.reasoningText.trim().length).toBeGreaterThan(0)
+}
+
+function createDoubaoUnknownToolCallFixture() {
+  const modelEmittedToolCalls = [
+    {
+      callId: "call_doubao_shell_cmd",
+      name: "shell_cmd",
+      inputText: '{"cmd":"pwd"}',
+    },
+    {
+      callId: "call_doubao_list",
+      name: "list",
+      inputText: '{"path":"."}',
+    },
+  ]
+
+  return {
+    providerFamily: "doubao-compatible",
+    scope: "model-emitted" as const,
+    availableToolNames: ["read", "grep", "glob"],
+    modelEmittedToolCalls,
+    expectedToolResultErrors: modelEmittedToolCalls.map((call) => ({
+      callId: call.callId,
+      toolName: call.name,
+      output: `Unknown tool: ${call.name}`,
+      isError: true,
+    })),
+    internalExecutorConfigBugsRemainFatal: true,
+  }
+}
+
+function assertDoubaoUnknownToolFixture(input: ReturnType<typeof createDoubaoUnknownToolCallFixture>) {
+  const availableToolNames = new Set(input.availableToolNames)
+
+  expect(input.scope).toBe("model-emitted")
+  expect(input.modelEmittedToolCalls.every((call) => !availableToolNames.has(call.name))).toBe(true)
+  expect(input.modelEmittedToolCalls.every((call) => call.inputText.trim().startsWith("{"))).toBe(true)
+  expect(input.expectedToolResultErrors).toEqual(
+    input.modelEmittedToolCalls.map((call) => ({
+      callId: call.callId,
+      toolName: call.name,
+      output: `Unknown tool: ${call.name}`,
+      isError: true,
+    })),
+  )
+  expect(input.internalExecutorConfigBugsRemainFatal).toBe(true)
+}
+
 describe("openai-compatible provider", () => {
   test("streams text, assembles one tool call, and forwards the abort signal", async () => {
     const signal = new AbortController().signal
@@ -528,6 +623,90 @@ describe("openai-compatible provider", () => {
       parallel_tool_calls: true,
       tools: [],
     })
+  })
+
+  test("replays DeepSeek-compatible assistant tool calls with non-empty reasoning_content", async () => {
+    let receivedBody: unknown
+    const fixture = createDeepSeekToolReplayFixture()
+    assertOpenAICompatibleToolReplayFixtureRequiresReasoning(fixture)
+
+    const provider = createProvider({
+      model: fixture.model,
+      requestConfig: {
+        replayedReasoningField: fixture.requiredReasoningField,
+      },
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
+    })
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: fixture.messages,
+      tools: [],
+      signal: new AbortController().signal,
+      thinking: {
+        enabled: true,
+      },
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toEqual({
+      model: "deepseek-reasoner",
+      messages: [
+        { role: "system", content: "system" },
+        { role: "user", content: "inspect README.md" },
+        {
+          role: "assistant",
+          content: null,
+          reasoning_content: fixture.reasoningText,
+          tool_calls: [
+            {
+              id: "call_deepseek_read",
+              type: "function",
+              function: {
+                name: "read",
+                arguments: '{"path":"README.md"}',
+              },
+            },
+          ],
+        },
+      ],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
+  test("documents Doubao model-emitted unknown tool names as recoverable protocol fixture", () => {
+    const fixture = createDoubaoUnknownToolCallFixture()
+
+    assertDoubaoUnknownToolFixture(fixture)
+
+    expect(fixture.modelEmittedToolCalls.map((call) => call.name)).toEqual(["shell_cmd", "list"])
+    expect(fixture.availableToolNames).toEqual(["read", "grep", "glob"])
+    expect(fixture.expectedToolResultErrors).toEqual([
+      {
+        callId: "call_doubao_shell_cmd",
+        toolName: "shell_cmd",
+        output: "Unknown tool: shell_cmd",
+        isError: true,
+      },
+      {
+        callId: "call_doubao_list",
+        toolName: "list",
+        output: "Unknown tool: list",
+        isError: true,
+      },
+    ])
+    expect(fixture.scope).toBe("model-emitted")
+    expect(fixture.internalExecutorConfigBugsRemainFatal).toBe(true)
   })
 
   test("omits replayed provider-specific reasoning fields for unknown models by default", async () => {

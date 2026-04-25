@@ -108,6 +108,90 @@ describe("runtime observability", () => {
     ])
   })
 
+  test("captures subagent protocol telemetry across parent and child runs", async () => {
+    const harness = await createHarness("trace-subagent-protocol", true)
+    const childPrompt = "Collect a structured source note from README.md."
+    const childReasoning = "Need to inspect allowed source-researcher tools before answering."
+    const childOutput = "proposed type: files\ntitle: README\nkey excerpts: demo workspace"
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_subagent_protocol_parent",
+      messageId: "message_trace_subagent_protocol_parent",
+      prompt: "Delegate README source collection through the source researcher.",
+    })
+    const providerRequests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* (request) {
+            providerRequests.push(request)
+            yield {
+              type: "tool.call",
+              callId: "call_source_researcher",
+              name: "agent",
+              inputText: JSON.stringify({
+                agent: "source-researcher",
+                prompt: childPrompt,
+              }),
+            }
+          },
+          async function* (request) {
+            providerRequests.push(request)
+            yield { type: "reasoning.delta", text: childReasoning }
+            yield { type: "text.delta", text: childOutput }
+          },
+          async function* (request) {
+            providerRequests.push(request)
+            yield { type: "text.delta", text: "Parent observed source researcher output." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      telemetry: createProtocolTelemetryFixture(),
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const subSessions = harness.repository.sessions.listSubSessions(harness.session.id)
+    expect(subSessions).toHaveLength(1)
+    const childSession = subSessions[0]!
+    const childRuns = harness.repository.runs.listBySession(childSession.id)
+    expect(childRuns).toHaveLength(1)
+    const childRun = childRuns[0]!
+
+    const parentTrace = harness.observability.exportRunTrace(started.run.id)
+    const childTrace = harness.observability.exportRunTrace(childRun.id)
+    expect(parentTrace).not.toBeNull()
+    expect(childTrace).not.toBeNull()
+    expect(providerRequests).toHaveLength(3)
+
+    assertSubagentProtocolTelemetryBaseline({
+      parentRunId: started.run.id,
+      childRun,
+      parentTraceEvents: parentTrace?.events ?? [],
+      childTraceEvents: childTrace?.events ?? [],
+      parentTranscript: harness.repository.messages.listSessionTranscript(harness.session.id),
+      childTranscript: harness.repository.messages.listSessionTranscript(childSession.id),
+      parentAgentCallId: "call_source_researcher",
+      childPrompt,
+      childReasoning,
+      childOutput,
+      childAllowedToolNames: providerRequests[1]!.tools.map((tool) => tool.name),
+      expectedProvider: "openai-compatible",
+      expectedModel: "deepseek-reasoner",
+    })
+  })
+
   test("persists per-request permission lifecycle events for multi-pending ask-mode tools", async () => {
     const harness = await createHarness("trace-permission", false)
     const firstUrl = "data:text/plain,Hello%20from%20the%20first%20observability%20fetch."
@@ -2294,6 +2378,154 @@ function readPersistedRunEventJson(input: { databasePath: string; runId: string 
   } finally {
     database.close(false)
   }
+}
+
+function createProtocolTelemetryFixture() {
+  return {
+    capabilityResolution: {
+      model: "deepseek-reasoner",
+      provider: "openai-compatible" as const,
+      providerFamily: "generic" as const,
+      catalogSource: "models.dev" as const,
+      catalogMiss: false,
+      reasoningSource: "models.dev" as const,
+      toolCallSource: "models.dev" as const,
+      interleavedSource: "models.dev" as const,
+      interleavedField: "reasoning_content" as const,
+      reasoningEffortSource: "models.dev" as const,
+      thinkingSource: "models.dev" as const,
+      thinkingEffortSource: "models.dev" as const,
+    },
+    contextWindow: {
+      contextWindow: 131_072,
+      source: "models.dev" as const,
+    },
+    modelClassification: {
+      model: "deepseek-reasoner",
+      providerFamily: "generic" as const,
+    },
+  } as const
+}
+
+function assertSubagentProtocolTelemetryBaseline(input: {
+  parentRunId: string
+  childRun: ReturnType<SessionRepository["runs"]["listBySession"]>[number]
+  parentTraceEvents: StoredRunEvent[]
+  childTraceEvents: StoredRunEvent[]
+  parentTranscript: ReturnType<SessionRepository["messages"]["listSessionTranscript"]>
+  childTranscript: ReturnType<SessionRepository["messages"]["listSessionTranscript"]>
+  parentAgentCallId: string
+  childPrompt: string
+  childReasoning: string
+  childOutput: string
+  childAllowedToolNames: string[]
+  expectedProvider: string
+  expectedModel: string
+}) {
+  expect(input.childRun.parentRunId).toBe(input.parentRunId)
+  expect(input.childRun.status).toBe("completed")
+
+  const parentEventTypes = readEventTypes(input.parentTraceEvents)
+  const childEventTypes = readEventTypes(input.childTraceEvents)
+  expect(parentEventTypes).toEqual(expect.arrayContaining([
+    "model.turn.requested",
+    "model.prompt.assembled",
+    "tool.call.completed",
+    "run.completed",
+  ]))
+  expect(childEventTypes).toEqual(expect.arrayContaining([
+    "run.started",
+    "subagent.started",
+    "model.turn.requested",
+    "model.prompt.assembled",
+    "subagent.completed",
+    "run.completed",
+  ]))
+  expect(childEventTypes).not.toContain("subagent.failed")
+  expect([...parentEventTypes, ...childEventTypes]).not.toContain("error.classified")
+  expect([...parentEventTypes, ...childEventTypes]).not.toContain("credential.rotated")
+
+  expect(input.parentTraceEvents.find((event) => event.eventType === "capability.resolution.recorded")?.data)
+    .toMatchObject({
+      provider: input.expectedProvider,
+      model: input.expectedModel,
+      catalogMiss: false,
+      catalogSource: "models.dev",
+      interleavedField: "reasoning_content",
+    })
+  const parentPromptEvent = input.parentTraceEvents.find(
+    (event) =>
+      event.source === "model" &&
+      event.eventType === "model.prompt.assembled" &&
+      typeof event.data.systemPromptLength === "number",
+  )
+  expect(parentPromptEvent).toBeDefined()
+  if (!parentPromptEvent) {
+    return
+  }
+  expect(parentPromptEvent.data.systemPromptHash).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/))
+  expect(typeof parentPromptEvent.data.systemPromptLength).toBe("number")
+  expect(parentPromptEvent.data.systemPromptLength as number).toBeGreaterThan(0)
+
+  expect(input.childTraceEvents.find((event) => event.eventType === "subagent.started")?.data)
+    .toMatchObject({
+      agentId: "source-researcher",
+      displayName: "Source Researcher",
+      status: "started",
+      parentRunId: input.parentRunId,
+      subRunId: input.childRun.id,
+    })
+  expect(input.childTraceEvents.find((event) => event.eventType === "subagent.completed")?.data)
+    .toMatchObject({
+      agentId: "source-researcher",
+      displayName: "Source Researcher",
+      status: "completed",
+      parentRunId: input.parentRunId,
+      subRunId: input.childRun.id,
+      outputLength: input.childOutput.length,
+    })
+
+  expect(input.childAllowedToolNames).toEqual(expect.arrayContaining([
+    "read",
+    "grep",
+    "glob",
+    "webfetch",
+    "websearch",
+    "get_current_datetime",
+  ]))
+  expect(input.childAllowedToolNames).not.toContain("agent")
+  expect(input.childAllowedToolNames).not.toContain("shell")
+  expect(input.childAllowedToolNames).not.toContain("write")
+
+  const parentAgentResult = input.parentTranscript
+    .flatMap((message) => message.parts)
+    .find(
+      (part) =>
+        part.kind === "tool_result" &&
+        (part.data as { callId?: string } | undefined)?.callId === input.parentAgentCallId,
+    )
+  expect(parentAgentResult).toMatchObject({
+    kind: "tool_result",
+    text: input.childOutput,
+    data: expect.objectContaining({
+      callId: input.parentAgentCallId,
+      toolName: "agent",
+      output: input.childOutput,
+    }),
+  })
+
+  const childText = input.childTranscript
+    .flatMap((message) => message.parts)
+    .map((part) => part.text ?? "")
+    .join("\n")
+  const parentText = input.parentTranscript
+    .flatMap((message) => message.parts)
+    .map((part) => part.text ?? "")
+    .join("\n")
+  expect(childText).toContain(input.childPrompt)
+  expect(childText).toContain(input.childOutput)
+  expect(parentText).toContain(input.childOutput)
+  expect(parentText).not.toContain(input.childReasoning)
 }
 
 function createTurnProvider(
