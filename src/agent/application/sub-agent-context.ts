@@ -16,6 +16,8 @@ import type {
 } from "./ports/sub-agent-runtime"
 import { filterToolsForAgent, loadSkillsForAgent } from "./tool-filter"
 
+const DEFAULT_SUBAGENT_MAX_TURNS = 50
+
 export function createSubAgentContext(input: { sessionId: string; signal?: AbortSignal }) {
   const controller = new AbortController()
 
@@ -119,7 +121,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     }),
     now,
   })
-  const maxTurns = input.profile.maxTurns ?? 10
+  const maxTurns = input.profile.maxTurns ?? DEFAULT_SUBAGENT_MAX_TURNS
 
   const { subSessionId } = input.createQueuedRun({
     subRunId: context.subRunId,

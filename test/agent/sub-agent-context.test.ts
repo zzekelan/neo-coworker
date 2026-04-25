@@ -1,4 +1,3 @@
-// @ts-expect-error Bun test types are provided by the Bun runtime.
 import { describe, expect, test } from "bun:test"
 import {
   createSubAgentContext,
@@ -427,6 +426,54 @@ describe("createSubAgentContext", () => {
 })
 
 describe("createSubAgentRun", () => {
+  test("emits the default maxTurns when the profile omits an override", async () => {
+    const events: Array<Record<string, unknown>> = []
+
+    await createSubAgentRun(
+      createSubAgentRunInput({
+        runtimeObserver: {
+          recordRuntimeEvent(input) {
+            events.push(input.event as Record<string, unknown>)
+          },
+        },
+      }),
+    )
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "subagent.started",
+        maxTurns: 50,
+      }),
+    )
+  })
+
+  test("emits the explicit profile maxTurns override", async () => {
+    const events: Array<Record<string, unknown>> = []
+
+    await createSubAgentRun(
+      createSubAgentRunInput({
+        profile: {
+          name: "explore",
+          tools: ["read"],
+          skills: [],
+          maxTurns: 7,
+        },
+        runtimeObserver: {
+          recordRuntimeEvent(input) {
+            events.push(input.event as Record<string, unknown>)
+          },
+        },
+      }),
+    )
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "subagent.started",
+        maxTurns: 7,
+      }),
+    )
+  })
+
   test("inherits parent activeSkills when profile.skills is empty", async () => {
     const session = createSessionPortStub({
       sessionId: "session-parent",
