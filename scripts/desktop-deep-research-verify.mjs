@@ -19,7 +19,7 @@ const expectedModelByMode = {
 }
 const expectedModel = expectedModelByMode[verifyMode]
 
-const evidenceRoot = join(cwd, ".sisyphus", "evidence", `task-6-deep-research-real-path-${verifyMode}`)
+const evidenceRoot = join(cwd, ".sisyphus", "evidence", `task-7-deep-research-real-path-${verifyMode}`)
 const tracePath = join(evidenceRoot, "trace.zip")
 const screenshotPath = join(evidenceRoot, "screenshot.png")
 const sessionSummaryPath = join(evidenceRoot, "session-summary.json")
@@ -94,7 +94,7 @@ try {
   assert(settingsSnapshot.apiKeyConfigured, `Desktop Deep Research ${verifyMode} verifier is missing real API credentials/settings; configure an API key instead of skipping.`)
 
   await page.context().tracing.start({
-    name: `task-6-deep-research-real-path-${verifyMode}`,
+    name: `task-7-deep-research-real-path-${verifyMode}`,
     screenshots: true,
     snapshots: true,
     sources: false,
@@ -900,7 +900,7 @@ function assertToolResultStorageAndTelemetry(input) {
     }
   }
 
-  assert(managedChildResults.length > 0, "Real Task 6 path did not record any managed child/source-researcher tool result with metadata.savedPath.")
+  assert(managedChildResults.length > 0, "Real Task 7 path did not record any managed child/source-researcher tool result with metadata.savedPath.")
   assert(
     managedChildResults.some(
       (result) =>
@@ -919,7 +919,7 @@ function assertToolResultStorageAndTelemetry(input) {
       sourceResearcherChildRunIds.has(event.runId) &&
       (event.eventType === "budget.result_truncated" || event.eventType === "budget.spill_largest"),
   )
-  assert(managedBudgetEvents.length > 0, "Real Task 6 path did not record child budget.result_truncated or budget.spill_largest telemetry.")
+  assert(managedBudgetEvents.length > 0, "Real Task 7 path did not record child budget.result_truncated or budget.spill_largest telemetry.")
 }
 
 function assertPromptAndToolTelemetry(input) {
