@@ -331,7 +331,7 @@ describe("session run service", () => {
       createdAt: 1,
     })
 
-    expect(service.getSessionCurrentAgent(session.id)).toBe("default")
+    expect(service.getSessionCurrentAgent(session.id)).toBe("general")
 
     const updated = service.setSessionCurrentAgent(session.id, "plan")
 
@@ -396,12 +396,12 @@ describe("session run service", () => {
       agent: "plan",
     })
 
-    expect(first.message.agent).toBe("default")
+    expect(first.message.agent).toBe("general")
     expect(second.message.agent).toBe("plan")
-    expect(repository.messages.get(first.message.id).agent).toBe("default")
+    expect(repository.messages.get(first.message.id).agent).toBe("general")
     expect(repository.messages.get(second.message.id).agent).toBe("plan")
     expect(repository.messages.listSessionTranscript(session.id).map((message) => message.agent)).toEqual([
-      "default",
+      "general",
       "plan",
     ])
   })

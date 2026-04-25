@@ -167,8 +167,8 @@ describe("CLI --agent flag", () => {
 
     try {
       const sessionId = storage.repository.sessions.list()[0]!.id
-      expect(storage.repository.sessions.getCurrentAgent(sessionId)).toBe("default")
-      expect(storage.repository.messages.listSessionTranscript(sessionId)[0]?.agent).toBe("default")
+      expect(storage.repository.sessions.getCurrentAgent(sessionId)).toBe("general")
+      expect(storage.repository.messages.listSessionTranscript(sessionId)[0]?.agent).toBe("general")
     } finally {
       storage.close()
     }
