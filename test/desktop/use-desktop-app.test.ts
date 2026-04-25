@@ -68,6 +68,18 @@ describe("desktop app state flow", () => {
     expect(source).toContain("void loadPrimaryAgents(refreshData.resolvedWorkspaceRoot ?? undefined)")
   })
 
+  test("appends structured lifecycle events to the active transcript", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+
+    expect(source).toContain("isLifecycleEvent(event)")
+    expect(source).toContain("appendLifecycleDiagnostic")
+    expect(source).toContain('kind: "lifecycle"')
+    expect(source).toContain("data: event")
+    expect(source).toContain("event.sessionId === activeSessionId")
+    expect(source).toContain("event.runId === activeRunId")
+    expect(source).toContain("event.parentRunId === activeRunId")
+  })
+
   test("intercepts /compact as a command instead of sending it as a prompt", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 
