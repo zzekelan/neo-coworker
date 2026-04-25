@@ -63,11 +63,13 @@ describe("workflow telemetry contract", () => {
     const deepResearchPackage = materialized.packages.find(
       (pkg) => pkg.category === "research" && pkg.name === "deep-research",
     )
-    const defaultAgent = getBuiltinAgent("default")
+    const generalAgent = getBuiltinAgent("general")
     const deepResearchAgent = getBuiltinAgent("deep-research")
 
     expect(deepResearchPackage).toBeDefined()
-    expect(defaultAgent?.name).toBe("default")
+    expect(getBuiltinAgent("default")).toBeUndefined()
+    expect(generalAgent?.name).toBe("general")
+    expect(generalAgent?.displayName).toBe("General")
     expect(deepResearchAgent?.name).toBe("deep-research")
     expect(deepResearchAgent?.description).toBe("Deep Research")
     expect(deepResearchAgent?.skills).toEqual(["research/deep-research", "research/finding-synthesis"])
@@ -106,7 +108,7 @@ describe("workflow telemetry contract", () => {
       event: {
         type: TELEMETRY_CONTRACT_EVENTS.agentSwitched,
         ...createAgentSwitchedPayload({
-          fromAgent: defaultAgent?.name ?? "default",
+          fromAgent: generalAgent?.name ?? "general",
           toAgent: deepResearchAgent?.name ?? "deep-research",
           trigger: "user",
         }),
@@ -143,7 +145,7 @@ describe("workflow telemetry contract", () => {
       expect.objectContaining({
         source: "orchestration",
         data: {
-          fromAgent: "default",
+          fromAgent: "general",
           toAgent: "deep-research",
           trigger: "user",
         },

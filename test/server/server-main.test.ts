@@ -210,17 +210,19 @@ describe("server main entrypoint", () => {
 
         const body = (await response.json()) as {
           data: {
-            agents: Array<{ name: string; description: string }>
+            agents: Array<{ name: string; description: string; displayName?: string }>
           }
         }
 
         expect(body.data.agents).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ name: "default" }),
+            expect.objectContaining({ name: "general", description: "General-purpose assistant" }),
             expect.objectContaining({ name: "plan" }),
-            { name: "reviewer", description: "Markdown primary agent" },
+            expect.objectContaining({ name: "reviewer", description: "Markdown primary agent" }),
           ]),
         )
+        expect(body.data.agents.map((agent) => agent.name)).not.toContain("default")
+        expect(body.data.agents.map((agent) => agent.name)).not.toContain("source-researcher")
       } finally {
         await standaloneServer.stop()
       }
