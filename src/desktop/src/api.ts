@@ -310,7 +310,7 @@ export async function replyPermission(input: { requestId: string; decision: "all
 }
 
 export async function loadPrimaryAgents(workspaceRoot?: string) {
-  return requestApi<{ agents: Array<{ name: string; description: string }> }>(
+  return requestApi<{ agents: Array<{ name: string; displayName?: string; description: string }> }>(
     workspaceRoot ? `/agents/primary?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : "/agents/primary",
   )
 }

@@ -44,7 +44,7 @@ type AppState = {
   workspaces: DesktopWorkspaceSummary[]
   skills: DesktopSkillCatalogEntry[]
   sessions: DesktopSessionSummary[]
-  primaryAgents: Array<{ name: string; description: string }>
+  primaryAgents: Array<{ name: string; displayName?: string; description: string }>
   activeWorkspaceRoot: string | null
   activeSessionId: string | null
   sessionSnapshot: DesktopSessionSnapshot | null

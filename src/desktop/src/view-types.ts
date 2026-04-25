@@ -101,5 +101,6 @@ export interface DesktopContextUsage {
 
 export interface DesktopPrimaryAgent {
   name: string
+  displayName?: string
   description: string
 }

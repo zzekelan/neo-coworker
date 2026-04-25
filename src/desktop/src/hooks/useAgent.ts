@@ -193,10 +193,11 @@ function mapContextUsage(
 }
 
 function mapPrimaryAgent(
-  agent: { name: string; description: string },
+  agent: { name: string; displayName?: string; description: string },
 ): DesktopPrimaryAgent {
   return {
     name: agent.name,
+    displayName: agent.displayName,
     description: agent.description,
   }
 }
