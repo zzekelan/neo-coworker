@@ -46,6 +46,56 @@ describe("layered skill loading", () => {
     })
   })
 
+  test("loads bundled built-in skills by package-qualified activation name", async () => {
+    const workspaceRoot = await createTempDirectory("layered-skill-workspace-")
+    const xdgConfigHome = await createTempDirectory("layered-skill-config-")
+    const xdgDataHome = await createTempDirectory("layered-skill-data-")
+
+    await withEnv({ XDG_CONFIG_HOME: xdgConfigHome, XDG_DATA_HOME: xdgDataHome }, async () => {
+      const runtime = createLayeredSkillRuntime()
+
+      await expect(runtime.loadSkill({ workspaceRoot, name: "research/deep-research" })).resolves.toMatchObject({
+        name: "deep-research",
+        path: "builtin:research/deep-research/SKILL.md",
+        source: "builtin",
+      })
+      await expect(runtime.loadSkill({ workspaceRoot, name: "research/finding-synthesis" })).resolves.toMatchObject({
+        name: "finding-synthesis",
+        path: "builtin:research/finding-synthesis/SKILL.md",
+        source: "builtin",
+      })
+      await expect(runtime.loadSkill({ workspaceRoot, name: "research/source-note" })).resolves.toMatchObject({
+        name: "source-note",
+        path: "builtin:research/source-note/SKILL.md",
+        source: "builtin",
+      })
+    })
+  })
+
+  test("loads package-qualified names through the effective catalog entry", async () => {
+    const workspaceRoot = await createTempDirectory("layered-skill-workspace-")
+    const xdgConfigHome = await createTempDirectory("layered-skill-config-")
+    const xdgDataHome = await createTempDirectory("layered-skill-data-")
+
+    await writeWorkspaceSkill(workspaceRoot, ["deep-research"], {
+      description: "Workspace direct Deep Research override",
+      body: "Use the direct workspace research process.",
+    })
+
+    await withEnv({ XDG_CONFIG_HOME: xdgConfigHome, XDG_DATA_HOME: xdgDataHome }, async () => {
+      const runtime = createLayeredSkillRuntime()
+      const loaded = await runtime.loadSkill({ workspaceRoot, name: "research/deep-research" })
+
+      expect(loaded).toMatchObject({
+        name: "deep-research",
+        description: "Workspace direct Deep Research override",
+        path: ".ncoworker/skills/deep-research/SKILL.md",
+        source: "workspace",
+      })
+      expect(loaded.instructions).toContain("Use the direct workspace research process.")
+    })
+  })
+
   test("applies workspace > global > built-in precedence and reports hidden duplicates", async () => {
     const workspaceRoot = await createTempDirectory("layered-skill-workspace-")
     const xdgConfigHome = await createTempDirectory("layered-skill-config-")
@@ -94,6 +144,13 @@ describe("layered skill loading", () => {
         files: [],
       })
       expect(loaded.instructions).toContain("Use the workspace research process.")
+
+      await expect(runtime.loadSkill({ workspaceRoot, name: "research/deep-research" })).resolves.toMatchObject({
+        name: "deep-research",
+        description: "Workspace Deep Research override",
+        path: ".ncoworker/skills/research/deep-research/SKILL.md",
+        source: "workspace",
+      })
     })
   })
 
