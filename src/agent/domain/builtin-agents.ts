@@ -74,7 +74,7 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
     name: "source-researcher",
     displayName: "Source Researcher",
     description: "Source note collector",
-    tools: ["read", "grep", "glob", "webfetch", "get_current_datetime"],
+    tools: ["read", "grep", "glob", "webfetch", "websearch", "get_current_datetime"],
     parallel: true,
     instructions: SOURCE_NOTE_SUBAGENT_INSTRUCTIONS,
     skills: ["source-note"],
