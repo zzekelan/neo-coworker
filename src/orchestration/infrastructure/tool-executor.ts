@@ -2,6 +2,10 @@ import type {
   OrchestrationToolExecutionInput,
   OrchestrationToolExecutionResult,
 } from "../application/ports/tool"
+import {
+  TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
+  TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
+} from "../application/ports/tool"
 
 type ToolConcurrency = "read-only" | "mutating"
 
@@ -25,6 +29,9 @@ export type ConcurrentToolDefinition = {
 export type ClassifiedToolCall = ConcurrentToolCall & {
   index: number
   concurrency: ToolConcurrency
+  recoverableUnknown?: {
+    allowedToolNames: string[]
+  }
 }
 
 export type ToolExecutionBatch = {
@@ -38,10 +45,18 @@ export function classifyToolCalls(
   registry: ConcurrentToolDefinition[],
 ): ToolExecutionBatch {
   const toolMap = new Map(registry.map((tool) => [tool.name, tool]))
+  const allowedToolNames = registry.map((tool) => tool.name)
   const classifiedCalls = calls.map((call, index) => {
     const tool = toolMap.get(call.toolName)
     if (!tool) {
-      throw new Error(`Unknown tool: ${call.toolName}`)
+      return {
+        ...call,
+        index,
+        concurrency: "mutating" as const,
+        recoverableUnknown: {
+          allowedToolNames,
+        },
+      }
     }
 
     return {
@@ -124,6 +139,13 @@ async function executeSingleTool(input: {
 
   const tool = input.toolMap.get(input.call.toolName)
   if (!tool) {
+    if (input.call.recoverableUnknown) {
+      return createRecoverableUnknownToolResult({
+        toolName: input.call.toolName,
+        allowedToolNames: input.call.recoverableUnknown.allowedToolNames,
+      })
+    }
+
     throw new Error(`Unknown tool: ${input.call.toolName}`)
   }
 
@@ -134,6 +156,24 @@ async function executeSingleTool(input: {
     signal: input.signal,
     onProgress: input.call.onProgress,
   })
+}
+
+function createRecoverableUnknownToolResult(input: {
+  toolName: string
+  allowedToolNames: string[]
+}): OrchestrationToolExecutionResult {
+  const allowedToolList = input.allowedToolNames.length > 0
+    ? input.allowedToolNames.join(", ")
+    : "none"
+
+  return {
+    output: `Tool '${input.toolName}' is not available. Allowed tools: ${allowedToolList}. Use one of the allowed tools instead.`,
+    isError: true,
+    metadata: {
+      [TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY]: true,
+      [TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]: input.allowedToolNames,
+    },
+  }
 }
 
 function ensureNotAborted(signal: AbortSignal) {

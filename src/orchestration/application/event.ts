@@ -120,6 +120,10 @@ export type OrchestrationRuntimeEvent =
       callId: string
       name: string
       output: string
+      isError?: boolean
+      recoverable?: boolean
+      attemptedTool?: string
+      allowedTools?: string[]
     }
   | {
       type: "tool.progress"

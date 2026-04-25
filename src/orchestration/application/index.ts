@@ -44,6 +44,8 @@ export type {
 export {
   TOOL_FAILURE_MESSAGE_METADATA_KEY,
   TOOL_PERMISSION_DENIED_METADATA_KEY,
+  TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
+  TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
 } from "./ports/tool"
 export type {
   OrchestrationRuntimeObserverPort,

@@ -11,6 +11,8 @@ import {
   type OrchestrationBatchExecutionResult,
   TOOL_FAILURE_MESSAGE_METADATA_KEY,
   TOOL_PERMISSION_DENIED_METADATA_KEY,
+  TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
+  TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
   type OrchestrationToolPort,
 } from "./ports/tool"
 import type { OrchestrationRuntimeObserverPort } from "./ports/runtime-observer"
@@ -835,11 +837,27 @@ async function executePendingToolCalls(input: {
       isError: result.isError,
       metadata: result.metadata,
     })
+    const isRecoverableUnknownTool = readMetadataBoolean(
+      result.metadata,
+      TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
+    )
+    const allowedTools = readMetadataStringArray(
+      result.metadata,
+      TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
+    )
     input.emit({
       type: "tool.call.completed",
       callId: result.callId,
       name: result.toolName,
       output: result.output,
+      isError: result.isError,
+      ...(isRecoverableUnknownTool
+        ? {
+            recoverable: true,
+            attemptedTool: result.toolName,
+            allowedTools,
+          }
+        : {}),
     })
 
     if (result.toolName === "read") {
@@ -1061,6 +1079,11 @@ function readMetadataString(metadata: Record<string, unknown> | undefined, key: 
 
 function readMetadataBoolean(metadata: Record<string, unknown> | undefined, key: string) {
   return metadata?.[key] === true
+}
+
+function readMetadataStringArray(metadata: Record<string, unknown> | undefined, key: string) {
+  const value = metadata?.[key]
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
 async function partitionToolCallsForCurrentAgent(input: {

@@ -19,6 +19,10 @@ import {
   createModelProvider,
   createModelRuntimeApi,
 } from "../../src/model"
+import {
+  TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
+  TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
+} from "../../src/orchestration"
 import { estimateModelTurnUsage } from "../../src/model/application/token-usage"
 import { createRuntime } from "../../src/bootstrap"
 import { createSkillRuntimeApi, type SkillStore } from "../../src/skill"
@@ -1067,6 +1071,229 @@ describe("subsession transcript isolation", () => {
     )
   })
 
+  test("source researcher recovers from unknown model-emitted list tool", async () => {
+    const harness = await createHarness("source-researcher-unknown-tool-recovery", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_source_researcher_unknown_tool_recovery",
+      messageId: "message_source_researcher_unknown_tool_recovery",
+      prompt: "Delegate source collection and recover from an unavailable child tool.",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtimeEvents: Array<{
+      sessionId: string
+      runId: string
+      event: { type: string; [key: string]: unknown }
+    }> = []
+    const createStoredRunEvent = (input: {
+      sessionId: string
+      runId: string
+      source: "model" | "orchestration" | "permission" | "tool" | "memory" | "skill"
+      eventType: string
+      data?: Record<string, unknown>
+      createdAt?: number
+    }) => ({
+      id: `event_${runtimeEvents.length}`,
+      sessionId: input.sessionId,
+      runId: input.runId,
+      sequence: runtimeEvents.length,
+      source: input.source,
+      eventType: input.eventType,
+      data: input.data ?? {},
+      createdAt: input.createdAt ?? 0,
+    })
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_source_researcher",
+            name: "agent",
+            inputText:
+              '{"agent":"source-researcher","prompt":"Collect workspace source names after correcting tool selection."}',
+          }
+        },
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_child_list",
+            name: "list",
+            inputText: '{"path":"."}',
+          }
+        },
+        async function* (request) {
+          const requestText = readRequestText(request).join("\n")
+
+          expect(requestText).toContain("Tool 'list' is not available.")
+          expect(requestText).toContain("Allowed tools:")
+          expect(requestText).toContain("glob")
+          expect(requestText).not.toContain("shell_cmd")
+
+          yield {
+            type: "tool.call",
+            callId: "call_child_glob",
+            name: "glob",
+            inputText: '{"pattern":"**/*"}',
+          }
+        },
+        async function* (request) {
+          const requestText = readRequestText(request).join("\n")
+
+          expect(requestText).toContain("placeholder.txt")
+          yield { type: "text.delta", text: "Child recovered with glob." }
+        },
+        async function* (request) {
+          const requestText = readRequestText(request).join("\n")
+
+          expect(requestText).toContain("Delegate source collection")
+          expect(requestText).toContain("Child recovered with glob.")
+          expect(requestText).not.toContain("Tool 'list' is not available.")
+
+          yield { type: "text.delta", text: "Parent saw successful recovered child result." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: {
+        runtimeObserver: {
+          recordRuntimeEvent(event) {
+            runtimeEvents.push(event)
+            return createStoredRunEvent({
+              sessionId: event.sessionId,
+              runId: event.runId,
+              source: "orchestration" as const,
+              eventType: event.event.type,
+              data: event.event,
+              createdAt: event.occurredAt ?? 0,
+            })
+          },
+        },
+        modelObserver: {
+          recordModelEvent(event) {
+            return createStoredRunEvent({
+              sessionId: event.sessionId,
+              runId: event.runId,
+              source: "model",
+              eventType: event.type,
+              data: event,
+            })
+          },
+        },
+        toolObserver: {
+          recordToolEvent(event) {
+            return createStoredRunEvent({
+              sessionId: event.sessionId,
+              runId: event.runId,
+              source: "tool",
+              eventType: event.type,
+              data: event,
+            })
+          },
+        },
+        permissionObserver: {
+          recordPermissionEvent(event) {
+            return createStoredRunEvent({
+              sessionId: event.sessionId,
+              runId: event.runId,
+              source: "permission",
+              eventType: event.type,
+              data: event,
+            })
+          },
+        },
+        memoryObserver: {
+          recordMemoryEvent(event) {
+            return createStoredRunEvent({
+              sessionId: event.sessionId,
+              runId: event.runId,
+              source: "memory",
+              eventType: event.type,
+              data: event,
+            })
+          },
+        },
+        skillObserver: {
+          recordSkillEvent(event) {
+            return createStoredRunEvent({
+              sessionId: event.sessionId,
+              runId: event.runId,
+              source: "skill",
+              eventType: event.type,
+              data: event,
+            })
+          },
+        },
+      },
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const subSession = harness.repository.sessions.listSubSessions(harness.session.id)[0]
+    const subRuns = subSession ? harness.repository.runs.listBySession(subSession.id) : []
+    const subRun = subRuns[0]
+    const childTranscript = subSession
+      ? harness.repository.messages.listSessionTranscript(subSession.id)
+      : []
+    const parentTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const childUnknownResult = childTranscript
+      .flatMap((message) => message.parts)
+      .find(
+        (part) =>
+          part.kind === "tool_result" &&
+          (part.data as { callId?: string } | undefined)?.callId === "call_child_list",
+      )
+    const unknownEvent = runtimeEvents.find(
+      (entry) =>
+        entry.runId === subRun?.id &&
+        entry.event.type === "tool.call.completed" &&
+        entry.event.callId === "call_child_list",
+    )
+
+    expect(requests).toHaveLength(5)
+    expect(subRun).toMatchObject({ parentRunId: started.run.id, status: "completed" })
+    expect(parentTranscript[1]?.parts[1]).toMatchObject({
+      kind: "tool_result",
+      data: {
+        callId: "call_source_researcher",
+        toolName: "agent",
+        output: "Child recovered with glob.",
+      },
+    })
+    expect(childUnknownResult).toMatchObject({
+      kind: "tool_result",
+      text: expect.stringContaining("Tool 'list' is not available."),
+      data: {
+        callId: "call_child_list",
+        toolName: "list",
+        output: expect.stringContaining("Allowed tools:"),
+        isError: true,
+        metadata: expect.objectContaining({
+          [TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY]: true,
+          [TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]: expect.arrayContaining(["glob", "grep", "read"]),
+        }),
+      },
+    })
+    expect(unknownEvent?.event).toMatchObject({
+      type: "tool.call.completed",
+      callId: "call_child_list",
+      name: "list",
+      isError: true,
+      recoverable: true,
+      attemptedTool: "list",
+      allowedTools: expect.arrayContaining(["glob", "grep", "read"]),
+    })
+    expect(events.map((event) => event.type)).not.toContain("subagent.failed")
+    expect(events).toContainEqual(expect.objectContaining({ type: "subagent.completed" }))
+    expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
+  })
+
 })
 
 async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
@@ -1164,8 +1391,8 @@ function createTurnProvider(
   })
 }
 
-async function collectEvents(events: AsyncIterable<unknown>) {
-  const collected = []
+async function collectEvents<T>(events: AsyncIterable<T>) {
+  const collected: T[] = []
   for await (const event of events) {
     collected.push(event)
   }

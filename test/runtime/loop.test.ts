@@ -20,6 +20,10 @@ import {
   type ProviderTurnRequest,
   createModelProvider,
 } from "../../src/model"
+import {
+  TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
+  TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
+} from "../../src/orchestration"
 import { createRuntime } from "../../src/bootstrap"
 import { formatAnchorLine } from "../../src/tool/infrastructure/builtins/hash-anchor"
 
@@ -151,6 +155,98 @@ describe("agent loop", () => {
       inputTokens: expect.any(Number),
       outputTokens: expect.any(Number),
     })
+  })
+
+  test("recovers when the main model emits an unknown tool name", async () => {
+    const harness = await createHarness("main-unknown-tool-recovery", true)
+    const started = startPromptRun({
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_main_unknown_tool_recovery",
+      messageId: "message_main_unknown_tool_recovery_user",
+      prompt: "Inspect README.md after correcting an unavailable tool.",
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_shell_cmd",
+            name: "shell_cmd",
+            inputText: '{"cmd":"ls"}',
+          }
+        },
+        async function* (request) {
+          const requestText = readRequestText(request).join("\n")
+
+          expect(requestText).toContain("Tool 'shell_cmd' is not available.")
+          expect(requestText).toContain("Allowed tools:")
+          expect(requestText).toContain("read")
+          expect(requestText).toContain("shell")
+
+          yield {
+            type: "tool.call",
+            callId: "call_read_after_unknown",
+            name: "read",
+            inputText: '{"path":"README.md"}',
+          }
+        },
+        async function* () {
+          yield { type: "text.delta", text: "Recovered with an allowed read tool." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const unknownResult = activeRunMessages
+      .flatMap((message) => message.parts)
+      .find(
+        (part) =>
+          part.kind === "tool_result" &&
+          (part.data as { callId?: string } | undefined)?.callId === "call_shell_cmd",
+      )
+    const unknownEvent = events.find(
+      (event) => event.type === "tool.call.completed" && event.callId === "call_shell_cmd",
+    )
+
+    expect(requests).toHaveLength(3)
+    expect(unknownResult).toMatchObject({
+      kind: "tool_result",
+      text: expect.stringContaining("Tool 'shell_cmd' is not available."),
+      data: {
+        callId: "call_shell_cmd",
+        toolName: "shell_cmd",
+        output: expect.stringContaining("Allowed tools:"),
+        isError: true,
+        metadata: expect.objectContaining({
+          [TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY]: true,
+          [TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]: expect.arrayContaining(["read", "shell"]),
+        }),
+      },
+    })
+    expect(unknownEvent).toMatchObject({
+      type: "tool.call.completed",
+      callId: "call_shell_cmd",
+      name: "shell_cmd",
+      isError: true,
+      recoverable: true,
+      attemptedTool: "shell_cmd",
+      allowedTools: expect.arrayContaining(["read", "shell"]),
+    })
+    expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
   test("supports multiple model and tool cycles inside one durable run", async () => {

@@ -5,6 +5,10 @@ import {
   type ConcurrentToolCall,
   type ConcurrentToolDefinition,
 } from "../../src/orchestration/infrastructure/tool-executor"
+import {
+  TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
+  TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
+} from "../../src/orchestration"
 
 function createDelay(ms: number) {
   return new Promise((resolve) => {
@@ -203,6 +207,67 @@ describe("tool executor", () => {
       "tool_1",
       "tool_2",
     ])
+  })
+
+  test("returns recoverable error results for model-emitted unknown tools", async () => {
+    const calls: ConcurrentToolCall[] = [
+      { callId: "call_unknown", toolName: "shell_cmd", args: {} },
+    ]
+    const tools: ConcurrentToolDefinition[] = [
+      {
+        name: "read",
+        description: "Read files",
+        concurrency: "read-only",
+        execute: async () => ({ output: "unused" }),
+      },
+      {
+        name: "glob",
+        description: "List files",
+        concurrency: "read-only",
+        execute: async () => ({ output: "unused" }),
+      },
+    ]
+
+    const results = await executeToolBatch(
+      classifyToolCalls(calls, tools),
+      tools,
+      "/workspace",
+      new AbortController().signal,
+    )
+
+    expect(results).toEqual([
+      {
+        output: "Tool 'shell_cmd' is not available. Allowed tools: read, glob. Use one of the allowed tools instead.",
+        isError: true,
+        metadata: {
+          [TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY]: true,
+          [TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]: ["read", "glob"],
+        },
+      },
+    ])
+  })
+
+  test("keeps inconsistent executor configuration fatal", async () => {
+    const calls: ConcurrentToolCall[] = [
+      { callId: "call_read", toolName: "read", args: {} },
+    ]
+    const registry: ConcurrentToolDefinition[] = [
+      {
+        name: "read",
+        description: "Read files",
+        concurrency: "read-only",
+        execute: async () => ({ output: "unused" }),
+      },
+    ]
+
+    await expect(
+      executeToolBatch(
+        classifyToolCalls(calls, registry),
+        [],
+        "/workspace",
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("Unknown tool: read")
   })
 
   test("propagates abort to all concurrent executions", async () => {
