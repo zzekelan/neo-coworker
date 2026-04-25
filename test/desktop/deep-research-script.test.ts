@@ -14,6 +14,7 @@ describe("desktop deep-research real-path verifier script", () => {
 
     expect(scriptSource).toContain("import { _electron as electron } from \"playwright\"")
     expect(scriptSource).toContain("DESKTOP_DEEP_RESEARCH_VERIFY_PROMPT")
+    expect(scriptSource).toContain("current-env")
     expect(scriptSource).toContain("task-7-deep-research-real-path")
     expect(scriptSource).toContain("trace.zip")
     expect(scriptSource).toContain("screenshot.png")

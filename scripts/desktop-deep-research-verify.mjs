@@ -17,7 +17,7 @@ const expectedModelByMode = {
   deepseek: "deepseek-v4-flash",
   doubao: "doubao-seed-2-0-code-preview-260215",
 }
-const expectedModel = expectedModelByMode[verifyMode]
+const configuredExpectedModel = expectedModelByMode[verifyMode] ?? null
 
 const evidenceRoot = join(cwd, ".sisyphus", "evidence", `task-7-deep-research-real-path-${verifyMode}`)
 const tracePath = join(evidenceRoot, "trace.zip")
@@ -89,9 +89,12 @@ try {
   })
   assert(settingsSnapshot.serverMode === "managed-local", "Deep Research verifier must use managed-local desktop/server state.")
   assert(settingsSnapshot.provider, `Desktop Deep Research ${verifyMode} verifier is missing provider settings; configure a real provider in desktop settings/.env.`)
-  assert(settingsSnapshot.model, `Desktop Deep Research ${verifyMode} verifier is missing model settings; expected ${expectedModel} with no fallback.`)
-  assert(settingsSnapshot.model === expectedModel, `Desktop Deep Research ${verifyMode} verifier expected model ${expectedModel} with no fallback, got ${settingsSnapshot.model}.`)
+  assert(settingsSnapshot.model, `Desktop Deep Research ${verifyMode} verifier is missing model settings; expected configured model with no fallback.`)
+  if (configuredExpectedModel) {
+    assert(settingsSnapshot.model === configuredExpectedModel, `Desktop Deep Research ${verifyMode} verifier expected model ${configuredExpectedModel} with no fallback, got ${settingsSnapshot.model}.`)
+  }
   assert(settingsSnapshot.apiKeyConfigured, `Desktop Deep Research ${verifyMode} verifier is missing real API credentials/settings; configure an API key instead of skipping.`)
+  const expectedModel = configuredExpectedModel ?? settingsSnapshot.model
 
   await page.context().tracing.start({
     name: `task-7-deep-research-real-path-${verifyMode}`,
@@ -1102,11 +1105,14 @@ function parsePositiveInt(value, fallback) {
 }
 
 function resolveVerifyMode(value) {
-  const normalized = String(value ?? "deepseek").trim().toLowerCase()
+  const normalized = String(value ?? "current").trim().toLowerCase()
+  if (normalized === "current" || normalized === "current-env") {
+    return "current"
+  }
   if (normalized === "deepseek" || normalized === "doubao") {
     return normalized
   }
-  throw new Error("DESKTOP_DEEP_RESEARCH_VERIFY_MODE must be either deepseek or doubao.")
+  throw new Error("DESKTOP_DEEP_RESEARCH_VERIFY_MODE must be current, current-env, deepseek, or doubao.")
 }
 
 function assert(condition, message) {
