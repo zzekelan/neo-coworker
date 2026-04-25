@@ -128,6 +128,40 @@ export type OrchestrationRuntimeEvent =
       timestamp: number
     }
   | {
+      type: "subagent.started"
+      sessionId?: string
+      runId?: string
+      agentId: string
+      displayName: string
+      status: "started"
+      parentRunId: string
+      subRunId: string
+      maxTurns: number
+    }
+  | {
+      type: "subagent.completed"
+      sessionId?: string
+      runId?: string
+      agentId: string
+      displayName: string
+      status: "completed"
+      parentRunId: string
+      subRunId: string
+      outputLength: number
+    }
+  | {
+      type: "subagent.failed"
+      sessionId?: string
+      runId?: string
+      agentId: string
+      displayName: string
+      status: "failed"
+      parentRunId: string
+      subRunId: string
+      errorCode: "SUBAGENT_FAILED"
+      errorMessage: string
+    }
+  | {
       type: "run.completed"
       runId: string
     }

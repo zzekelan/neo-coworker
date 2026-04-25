@@ -960,15 +960,25 @@ function buildLifecycleServerEvent(
       skillName,
       status,
     }
-    assignOptionalString(payload, "reason", readString(event, "reason"))
-    assignOptionalString(payload, "skillPath", readString(event, "skillPath"))
-    assignOptionalNumber(payload, "instructionsLength", readNumber(event, "instructionsLength"))
-    assignOptionalString(payload, "agentId", readString(event, "agentId"))
-    assignOptionalString(payload, "displayName", readString(event, "displayName"))
-    assignOptionalString(payload, "parentRunId", readString(event, "parentRunId"))
-    assignOptionalString(payload, "subRunId", readString(event, "subRunId"))
-    assignOptionalString(payload, "errorCode", readString(event, "errorCode") ?? (event.type === "skill.load.failed" ? "SKILL_LOAD_FAILED" : null))
-    assignOptionalString(payload, "errorMessage", readString(event, "errorMessage") ?? readString(event, "error"))
+    const reason = readString(event, "reason")
+    const skillPath = readString(event, "skillPath")
+    const instructionsLength = readNumber(event, "instructionsLength")
+    const agentId = readString(event, "agentId")
+    const displayName = readString(event, "displayName")
+    const parentRunId = readString(event, "parentRunId")
+    const subRunId = readString(event, "subRunId")
+    const errorCode = readString(event, "errorCode") ?? (event.type === "skill.load.failed" ? "SKILL_LOAD_FAILED" : null)
+    const errorMessage = readString(event, "errorMessage") ?? readString(event, "error")
+
+    if (reason) payload.reason = reason
+    if (skillPath) payload.skillPath = skillPath
+    if (instructionsLength !== null) payload.instructionsLength = instructionsLength
+    if (agentId) payload.agentId = agentId
+    if (displayName) payload.displayName = displayName
+    if (parentRunId) payload.parentRunId = parentRunId
+    if (subRunId) payload.subRunId = subRunId
+    if (errorCode) payload.errorCode = errorCode
+    if (errorMessage) payload.errorMessage = errorMessage
     return payload
   }
 
@@ -995,8 +1005,10 @@ function buildLifecycleServerEvent(
         "subagent.failed": "failed",
       }),
     }
-    assignOptionalString(payload, "errorCode", readString(event, "errorCode") ?? (event.type === "subagent.failed" ? "SUBAGENT_FAILED" : null))
-    assignOptionalString(payload, "errorMessage", readString(event, "errorMessage") ?? readString(event, "error"))
+    const errorCode = readString(event, "errorCode") ?? (event.type === "subagent.failed" ? "SUBAGENT_FAILED" : null)
+    const errorMessage = readString(event, "errorMessage") ?? readString(event, "error")
+    if (errorCode) payload.errorCode = errorCode
+    if (errorMessage) payload.errorMessage = errorMessage
     return payload
   }
 
@@ -1022,16 +1034,4 @@ function readString(value: Record<string, unknown>, key: string) {
 
 function readNumber(value: Record<string, unknown>, key: string) {
   return typeof value[key] === "number" ? value[key] : null
-}
-
-function assignOptionalString<T extends Record<string, unknown>>(target: T, key: string, value: string | null) {
-  if (value) {
-    target[key] = value
-  }
-}
-
-function assignOptionalNumber<T extends Record<string, unknown>>(target: T, key: string, value: number | null) {
-  if (value !== null) {
-    target[key] = value
-  }
 }
