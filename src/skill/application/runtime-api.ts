@@ -33,6 +33,10 @@ export function createSkillRuntimeApi(input: CreateSkillRuntimeApiInput) {
       workspaceRoot: string
       name: string
     }) {
+      if (isCatalogPath(inputValue.name)) {
+        return input.store.loadByPath(inputValue.workspaceRoot, inputValue.name)
+      }
+
       const catalog = await input.store.listCatalog(inputValue.workspaceRoot)
       const discoveredSkill = catalog.find((skill) => matchesRequestedSkill(skill, inputValue.name))
 
@@ -43,6 +47,10 @@ export function createSkillRuntimeApi(input: CreateSkillRuntimeApiInput) {
       return input.store.loadByName(inputValue.workspaceRoot, inputValue.name)
     },
   }
+}
+
+function isCatalogPath(value: string) {
+  return value.startsWith("builtin:") || value.startsWith("global:") || value.endsWith(`/${SKILL_FILENAME}`)
 }
 
 export type SkillRuntimeApi = ReturnType<typeof createSkillRuntimeApi>

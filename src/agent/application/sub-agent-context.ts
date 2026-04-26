@@ -92,6 +92,10 @@ type AgentToolGuidanceEntry = {
   isReadOnly: boolean
 }
 
+type ScopedSkillCatalogEntry = Awaited<ReturnType<AgentSkillPort["listCatalog"]>>[number] & {
+  overrides?: Array<{ path: string }>
+}
+
 export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<string> {
   const now = input.now ?? Date.now
   const context = createSubAgentContext({
@@ -384,7 +388,7 @@ function createScopedSkillPort(input: {
   return {
     async listCatalog(workspaceRoot) {
       const catalog = await input.skill.listCatalog(workspaceRoot)
-      return catalog.filter((skill) => allowed.has(skill.name))
+      return catalog.filter((skill) => input.allowedSkillNames.some((name) => skillCatalogEntryMatchesName(skill, name)))
     },
     async loadSkill(value) {
       if (!allowed.has(value.name)) {
@@ -397,6 +401,23 @@ function createScopedSkillPort(input: {
       })
     },
   }
+}
+
+function skillCatalogEntryMatchesName(
+  skill: ScopedSkillCatalogEntry,
+  skillName: string,
+) {
+  return (
+    skill.name === skillName ||
+    skillCatalogPathMatchesName(skill.path, skillName) ||
+    (skill.overrides ?? []).some((override) => skillCatalogPathMatchesName(override.path, skillName))
+  )
+}
+
+function skillCatalogPathMatchesName(path: string, skillName: string) {
+  const packagePath = `${skillName}/SKILL.md`
+
+  return path === `.ncoworker/skills/${packagePath}` || path === packagePath || path.endsWith(`:${packagePath}`)
 }
 
 function createScopedToolPort(input: {

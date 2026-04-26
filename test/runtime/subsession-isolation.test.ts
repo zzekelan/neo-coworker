@@ -972,7 +972,7 @@ describe("subsession transcript isolation", () => {
     expect(harness.repository.runs.get(childB!.run.id).status).toBe("completed")
   })
 
-  test("source researcher loads builtin source-note without workspace fallback", async () => {
+  test("source researcher loads package-qualified builtin source-note without short-name workspace fallback", async () => {
     const harness = await createHarness("source-researcher-source-note-runtime", false)
     const started = startPromptRun({
       repository: harness.repository,
@@ -989,6 +989,11 @@ describe("subsession transcript isolation", () => {
     const store: SkillStore = {
       async listCatalog() {
         return [
+          {
+            name: "source-note",
+            description: "Short-name workspace fallback should not win",
+            path: ".ncoworker/skills/source-note/SKILL.md",
+          },
           {
             name: "source-note",
             description: "Source note collector contract",
@@ -1011,7 +1016,7 @@ describe("subsession transcript isolation", () => {
       },
       async loadByName(workspaceRoot, skillName) {
         loadByNameCalls.push(join(workspaceRoot, ".ncoworker", "skills", skillName, "SKILL.md"))
-        throw new Error(`Workspace fallback should not load ${skillName}`)
+        throw new Error(`Short-name workspace fallback should not load ${skillName}`)
       },
       async writeSkill() {
         throw new Error("test store should not write skills")
@@ -1065,10 +1070,129 @@ describe("subsession transcript isolation", () => {
 
     expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
     expect(loadByPathCalls).toContain("builtin:research/source-note/SKILL.md")
+    expect(loadByPathCalls).not.toContain(".ncoworker/skills/source-note/SKILL.md")
     expect(loadByNameCalls).toEqual([])
     expect(loadByNameCalls).not.toContain(
-      join(harness.workspaceRoot, ".ncoworker", "skills", "research/source-note", "SKILL.md"),
+      join(harness.workspaceRoot, ".ncoworker", "skills", "source-note", "SKILL.md"),
     )
+  })
+
+  test("non-source-note subagent skills preserve normal skill lookup precedence", async () => {
+    const harness = await createHarness("subagent-skill-precedence-runtime", false)
+    harness.repository.sessions.update({
+      sessionId: harness.session.id,
+      activeSkills: ["reviewer"],
+    })
+    const started = startPromptRun({
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_subagent_skill_precedence",
+      messageId: "message_subagent_skill_precedence",
+      prompt: "Delegate normal review through explore.",
+    })
+    const loadByNameCalls: string[] = []
+    const loadByPathCalls: string[] = []
+    const providerRequests: ProviderTurnRequest[] = []
+    const store: SkillStore = {
+      async listCatalog() {
+        return [
+          {
+            name: "reviewer",
+            description: "Workspace reviewer should win normal precedence",
+            path: ".ncoworker/skills/reviewer/SKILL.md",
+          },
+          {
+            name: "reviewer",
+            description: "Builtin reviewer should not be forced",
+            path: "builtin:reviewer/SKILL.md",
+          },
+        ]
+      },
+      async loadByPath(_workspaceRoot, skillPath) {
+        loadByPathCalls.push(skillPath)
+        if (skillPath !== ".ncoworker/skills/reviewer/SKILL.md") {
+          throw new Error(`Builtin path should not be forced for reviewer: ${skillPath}`)
+        }
+
+        return {
+          name: "reviewer",
+          description: "Workspace reviewer should win normal precedence",
+          path: skillPath,
+          entryPath: "SKILL.md",
+          baseDir: "file:///workspace/.ncoworker/skills/reviewer/",
+          source: "workspace",
+          files: [],
+          instructions: "Workspace reviewer instructions",
+        }
+      },
+      async loadByName(_workspaceRoot, skillName) {
+        loadByNameCalls.push(skillName)
+        return {
+          name: "reviewer",
+          description: "Workspace reviewer should win normal precedence",
+          path: ".ncoworker/skills/reviewer/SKILL.md",
+          entryPath: "SKILL.md",
+          baseDir: "file:///workspace/.ncoworker/skills/reviewer/",
+          source: "workspace",
+          files: [],
+          instructions: "Workspace reviewer instructions",
+        }
+      },
+      async writeSkill() {
+        throw new Error("test store should not write skills")
+      },
+      async deleteSkill() {
+        throw new Error("test store should not delete skills")
+      },
+    }
+    const runtime = createRuntime({
+      provider: createTurnProvider(providerRequests, [
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_explore",
+            name: "agent",
+            inputText:
+              '{"agent":"explore","prompt":"Review the placeholder file with the active reviewer skill."}',
+          }
+        },
+        async function* (request) {
+          const requestText = readRequestText(request).join("\n")
+          const systemText = request.system
+
+          expect(requestText).toContain("Review the placeholder file with the active reviewer skill.")
+          expect(requestText).toContain("Workspace reviewer instructions")
+          expect(systemText).toContain("active `reviewer` skill")
+
+          yield { type: "text.delta", text: "Workspace review complete." }
+        },
+        async function* (request) {
+          const requestText = readRequestText(request).join("\n")
+
+          expect(requestText).toContain("Delegate normal review through explore.")
+
+          yield { type: "text.delta", text: "Parent finished after review." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      skillRuntime: createSkillRuntimeApi({ store }),
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+
+    expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
+    expect(loadByPathCalls.length).toBeGreaterThan(0)
+    expect(loadByPathCalls.every((path) => path === ".ncoworker/skills/reviewer/SKILL.md")).toBe(true)
+    expect(loadByPathCalls).not.toContain("builtin:reviewer/SKILL.md")
+    expect(loadByNameCalls).toEqual([])
   })
 
   test("source researcher recovers from unknown model-emitted list tool", async () => {
