@@ -129,7 +129,10 @@ describe("run command", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello from cli"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello from cli",
+            }),
           }
         },
         async function* () {
@@ -164,9 +167,13 @@ describe("run command", () => {
       },
     ])
     expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe("hello from cli")
-    expect(output.join("")).toContain("permission.requested write write notes.txt")
+    expect(output.join("")).toContain(
+      `permission.requested write write ${join(harness.workspaceRoot, "notes.txt")}`,
+    )
     expect(output.join("")).toContain("tool.call write:")
-    expect(output.join("")).toContain("tool.call.completed write: Wrote notes.txt")
+    expect(output.join("")).toContain(
+      `tool.call.completed write: Wrote ${join(harness.workspaceRoot, "notes.txt")}`,
+    )
     expect(output.join("")).toContain("Write finished.")
     expect(countOccurrences(output.join(""), "run.started")).toBe(1)
   })
@@ -236,7 +243,10 @@ describe("run command", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello from cli"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello from cli",
+            }),
           }
         },
         async function* () {
@@ -271,7 +281,9 @@ describe("run command", () => {
       },
     ])
     expect(run.status).toBe("cancelled")
-    expect(output.join("")).toContain("permission.requested write write notes.txt")
+    expect(output.join("")).toContain(
+      `permission.requested write write ${join(harness.workspaceRoot, "notes.txt")}`,
+    )
     expect(output.join("")).toContain("error Tool write failed: Permission denied")
     expect(output.join("")).toContain(`run.cancelled ${run.id}`)
     expect(output.join("")).not.toContain("This turn should not run.")
@@ -382,7 +394,10 @@ describe("run command", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello from cli"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello from cli",
+            }),
           }
         },
       ]),
@@ -433,7 +448,9 @@ describe("run command", () => {
 
     expect(result).toBe("completed")
     expect(run.status).toBe("cancelled")
-    expect(output.join("")).toContain("permission.requested write write notes.txt")
+    expect(output.join("")).toContain(
+      `permission.requested write write ${join(harness.workspaceRoot, "notes.txt")}`,
+    )
     expect(output.join("")).toContain(`run.cancelled ${run.id}`)
   })
 
@@ -447,7 +464,10 @@ describe("run command", () => {
             type: "tool.call",
             callId: "call_write_first",
             name: "write",
-            inputText: '{"path":"hello.ts","content":"console.log(\\"hello, world\\");"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "hello.ts"),
+              content: 'console.log("hello, world");',
+            }),
           }
         },
         async function* (request) {
@@ -463,7 +483,10 @@ describe("run command", () => {
             type: "tool.call",
             callId: "call_write_second",
             name: "write",
-            inputText: '{"path":"hello.ts","content":"console.log(\\"hello, world\\");"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "hello.ts"),
+              content: 'console.log("hello, world");',
+            }),
           }
         },
         async function* () {
@@ -531,10 +554,16 @@ describe("run command", () => {
     expect(await readFile(join(harness.workspaceRoot, "hello.ts"), "utf8")).toBe(
       'console.log("hello, world");',
     )
-    expect(cancelledOutput.join("")).toContain("permission.requested write write hello.ts")
+    expect(cancelledOutput.join("")).toContain(
+      `permission.requested write write ${join(harness.workspaceRoot, "hello.ts")}`,
+    )
     expect(cancelledOutput.join("")).toContain(`run.cancelled ${runs[0]!.id}`)
-    expect(retryOutput.join("")).toContain("permission.requested write write hello.ts")
-    expect(retryOutput.join("")).toContain("tool.call.completed write: Wrote hello.ts")
+    expect(retryOutput.join("")).toContain(
+      `permission.requested write write ${join(harness.workspaceRoot, "hello.ts")}`,
+    )
+    expect(retryOutput.join("")).toContain(
+      `tool.call.completed write: Wrote ${join(harness.workspaceRoot, "hello.ts")}`,
+    )
     expect(retryOutput.join("")).toContain("Write finished.")
     expect(retryOutput.join("")).toContain(`run.completed ${runs[1]!.id}`)
   })
@@ -960,7 +989,10 @@ describe("chat command", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello from chat"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello from chat",
+            }),
           }
         },
         async function* () {
@@ -1561,7 +1593,10 @@ describe("chat command", () => {
             type: "tool.call",
             callId: "call_write_local",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello from local chat"}',
+            inputText: JSON.stringify({
+              path: join(workspaceRoot, "notes.txt"),
+              content: "hello from local chat",
+            }),
           }
         },
       ]),

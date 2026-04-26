@@ -1553,7 +1553,10 @@ describe("agent loop", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello",
+            }),
           }
         },
         async function* () {

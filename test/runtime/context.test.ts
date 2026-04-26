@@ -277,7 +277,7 @@ describe("context builder", () => {
             data: {
               callId: "call_pending",
               toolName: "write",
-              inputText: '{"path":"hello.ts","content":"console.log(\\"hello\\")"}',
+              inputText: '{"path":"/tmp/hello.ts","content":"console.log(\\"hello\\")"}',
             },
           },
         ],

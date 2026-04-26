@@ -1,3 +1,4 @@
+import { join } from "node:path"
 import {
   createModelProvider,
   createModelRuntimeApi,
@@ -10,9 +11,9 @@ import type { EvalProviderFactory } from "../runner"
 type ScriptedTurn = (request: ProviderTurnRequest) => AsyncIterable<ProviderEvent>
 
 export function createScriptedEvalProviderFactory(scenario: string): EvalProviderFactory {
-  return (input: { modelObserver?: ModelObserverPort }) => {
+  return (input: { modelObserver?: ModelObserverPort; workspaceRoot?: string }) => {
     let turnIndex = 0
-    const turns = buildScenarioTurns(scenario)
+    const turns = buildScenarioTurns(scenario, input.workspaceRoot)
 
     return createModelProvider({
       observer: input.modelObserver,
@@ -34,7 +35,15 @@ export function createScriptedEvalProviderFactory(scenario: string): EvalProvide
   }
 }
 
-function buildScenarioTurns(scenario: string): ScriptedTurn[] {
+function buildScenarioTurns(scenario: string, workspaceRoot: string | undefined): ScriptedTurn[] {
+  const workspacePath = (relativePath: string) => {
+    if (!workspaceRoot) {
+      throw new Error(`Scripted eval scenario ${scenario} requires workspaceRoot for write paths`)
+    }
+
+    return join(workspaceRoot, relativePath)
+  }
+
   switch (scenario) {
     case "read-only":
       return [
@@ -57,7 +66,10 @@ function buildScenarioTurns(scenario: string): ScriptedTurn[] {
             type: "tool.call",
             callId: "call_write_allow",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello from eval allow"}',
+            inputText: JSON.stringify({
+              path: workspacePath("notes.txt"),
+              content: "hello from eval allow",
+            }),
           }
         },
         async function* () {
@@ -180,7 +192,10 @@ function buildScenarioTurns(scenario: string): ScriptedTurn[] {
             type: "tool.call",
             callId: "call_write_deny",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"deny should not write"}',
+            inputText: JSON.stringify({
+              path: workspacePath("notes.txt"),
+              content: "deny should not write",
+            }),
           }
         },
       ]

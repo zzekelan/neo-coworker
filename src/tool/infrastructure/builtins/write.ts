@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises"
 import { realpath } from "node:fs/promises"
-import { relative, resolve, sep } from "node:path"
+import { isAbsolute, relative, resolve, sep } from "node:path"
 import { z } from "zod"
 import {
   assertWorkspacePathNotReserved,
@@ -24,13 +24,13 @@ const CONDITIONALLY_PROTECTED_WRITE_BASENAMES = new Set([
 
 const WriteArgsSchema = z.object({
   path: z.string().trim().min(1, "Path must not be empty").describe(
-    "Workspace-relative file path to create or overwrite, for example `notes/todo.md` or `src/example.ts`. Parent directories are created automatically if they do not exist. Existing files are normally overwritten atomically, but protected files such as `README.md`, `AGENTS.md`, `package.json`, `tsconfig.json`, `bun.lock`, and `.env*` require a read-first confirmation before overwrite.",
+    "Absolute file path to create or overwrite. Parent directories are created automatically if they do not exist. Existing files are normally overwritten atomically, but protected files such as `README.md`, `AGENTS.md`, `package.json`, `tsconfig.json`, `bun.lock`, and `.env*` require a read-first confirmation before overwrite.",
   ),
   content: z.string().describe(
     "Complete UTF-8 file contents to write. Pass the full desired file body, not a patch or partial replacement. The entire file is replaced atomically.",
   ),
 }).describe(
-  "Create or overwrite a UTF-8 file inside the workspace. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates workspace state. Paths must stay inside the workspace.",
+  "Create or overwrite a UTF-8 file by absolute path. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates filesystem state.",
 )
 
 function isConditionallyProtectedWritePath(relativePath: string): boolean {
@@ -50,41 +50,53 @@ function assertWorkspaceParentPathAllowedForWrite(relativePath: string, targetRe
   assertWorkspacePathNotReserved(relativePath)
 }
 
-async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: string) {
-  assertWorkspacePathNotReserved(relativePath)
+async function resolveAbsoluteWritePath(workspaceRoot: string, inputPath: string) {
+  if (!isAbsolute(inputPath)) {
+    throw new Error(`Path must be absolute: ${inputPath}`)
+  }
 
   const root = await realpath(resolve(workspaceRoot))
-  const target = resolve(root, relativePath)
-  const resolvedTargetRelativePath = relative(root, target)
-  assertWorkspacePathNotReserved(resolvedTargetRelativePath)
+  const target = resolve(inputPath)
+  const targetRelativePath = relative(root, target)
+  const targetIsInWorkspace = isPathInside(root, target)
+  if (targetIsInWorkspace) {
+    assertWorkspacePathNotReserved(targetRelativePath)
+  }
 
   if (target === root) {
-    throw new Error(`Path must reference a file inside workspace: ${relativePath}`)
+    throw new Error(`Path must reference a file: ${inputPath}`)
   }
 
   try {
     const existing = await realpath(target)
+    const existingRelativePath = relative(root, existing)
 
-    if (existing !== root && !existing.startsWith(`${root}${sep}`)) {
-      throw new Error(`Path must stay inside workspace: ${relativePath}`)
+    if (isPathInside(root, existing)) {
+      assertWorkspacePathNotReserved(existingRelativePath)
     }
 
-    assertWorkspacePathNotReserved(relative(root, existing))
-
-    return existing
+    return {
+      file: existing,
+      workspaceRelativePath: targetIsInWorkspace ? targetRelativePath : null,
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       throw error
     }
 
-    const pathSegments = relativePath.replaceAll("\\", "/").split("/").filter(Boolean)
+    const pathSegments = target.split(/[\\/]+/).filter(Boolean)
     const fileName = pathSegments.at(-1)
     if (!fileName) {
-      throw new Error(`Path must reference a file inside workspace: ${relativePath}`)
+      throw new Error(`Path must reference a file: ${inputPath}`)
     }
 
-    const parentSegments = pathSegments.slice(0, -1)
-    let existingParentDir = root
+    const absoluteParentPath = resolve(target, "..")
+    const parentRelativePath = relative(root, absoluteParentPath)
+    const parentIsInWorkspace = isPathInside(root, absoluteParentPath)
+    const parentSegments = parentIsInWorkspace
+      ? parentRelativePath.replaceAll("\\", "/").split("/").filter(Boolean)
+      : []
+    let existingParentDir = parentIsInWorkspace ? root : absoluteParentPath
     let firstMissingIndex = parentSegments.length
 
     for (const [index, segment] of parentSegments.entries()) {
@@ -92,13 +104,13 @@ async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: st
 
       try {
         const resolvedCandidate = await realpath(candidate)
-        if (resolvedCandidate !== root && !resolvedCandidate.startsWith(`${root}${sep}`)) {
-          throw new Error(`Path must stay inside workspace: ${relativePath}`)
+        if (!isPathInside(root, resolvedCandidate)) {
+          throw new Error(`Path must stay inside workspace when using workspace symlinks: ${inputPath}`)
         }
 
         const relativeCandidate = relative(root, resolvedCandidate)
         if (relativeCandidate) {
-          assertWorkspaceParentPathAllowedForWrite(relativeCandidate, relativePath)
+          assertWorkspaceParentPathAllowedForWrite(relativeCandidate, targetRelativePath)
         }
 
         existingParentDir = resolvedCandidate
@@ -116,22 +128,26 @@ async function resolveWorkspaceWritePath(workspaceRoot: string, relativePath: st
       existingParentDir = resolve(existingParentDir, segment)
     }
 
-    if (existingParentDir !== root && !existingParentDir.startsWith(`${root}${sep}`)) {
-      throw new Error(`Path must stay inside workspace: ${relativePath}`)
-    }
-
     const relativeParent = relative(root, existingParentDir)
-    if (relativeParent) {
-      assertWorkspaceParentPathAllowedForWrite(relativeParent, relativePath)
+    if (targetIsInWorkspace && relativeParent) {
+      assertWorkspaceParentPathAllowedForWrite(relativeParent, targetRelativePath)
     }
 
     const resolvedTarget = resolve(existingParentDir, fileName)
     if (resolvedTarget === root || !resolvedTarget.startsWith(`${existingParentDir}${sep}`)) {
-      throw new Error(`Path must stay inside workspace: ${relativePath}`)
+      throw new Error(`Path must reference a file: ${inputPath}`)
     }
 
-    return resolvedTarget
+    return {
+      file: resolvedTarget,
+      workspaceRelativePath: targetIsInWorkspace ? targetRelativePath : null,
+    }
   }
+}
+
+function isPathInside(root: string, path: string) {
+  const relativePath = relative(root, path)
+  return path === root || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -152,7 +168,7 @@ export function createWriteTool(input: {
   return {
     name: "write",
     description:
-      "Create or overwrite a UTF-8 file inside the workspace. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates workspace state. Paths must stay inside the workspace.",
+      "Create or overwrite a UTF-8 file by absolute path. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates filesystem state.",
     inputSchema: WriteArgsSchema,
     concurrency: "mutating",
     isCompressible: false,
@@ -161,7 +177,6 @@ export function createWriteTool(input: {
     async execute(value) {
       throwIfToolAborted(value.signal)
       const { path, content } = WriteArgsSchema.parse(value.args)
-      assertWorkspacePathNotReserved(path)
       const decision = await input.requestPermission({
         toolName: "write",
         reason: `write ${path}`,
@@ -172,13 +187,16 @@ export function createWriteTool(input: {
       }
 
       throwIfToolAborted(value.signal)
-      const file = await resolveWorkspaceWritePath(value.workspaceRoot, path)
+      const { file, workspaceRelativePath } = await resolveAbsoluteWritePath(value.workspaceRoot, path)
       throwIfToolAborted(value.signal)
 
       return await withSerializedFileMutation(file, async () => {
         throwIfToolAborted(value.signal)
 
-        if ((await fileExists(file)) && isConditionallyProtectedWritePath(path)) {
+        if (
+          (await fileExists(file)) &&
+          isConditionallyProtectedWritePath(workspaceRelativePath ?? path)
+        ) {
           return {
             output: "File exists. Please read it first to confirm overwrite.",
             isError: true,

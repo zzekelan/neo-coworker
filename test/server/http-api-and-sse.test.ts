@@ -1268,7 +1268,10 @@ describe("server HTTP API and SSE", () => {
           type: "tool.call",
           callId: "call_write",
           name: "write",
-          inputText: '{"path":"notes.txt","content":"hello from server"}',
+          inputText: JSON.stringify({
+            path: join(harness.workspaceRoot, "notes.txt"),
+            content: "hello from server",
+          }),
         }
       },
       async function* () {
@@ -1489,7 +1492,10 @@ describe("server HTTP API and SSE", () => {
           type: "tool.call",
           callId: "call_write",
           name: "write",
-          inputText: '{"path":"notes.txt","content":"hello after restart"}',
+          inputText: JSON.stringify({
+            path: join(harness.workspaceRoot, "notes.txt"),
+            content: "hello after restart",
+          }),
         }
       },
     ]), {

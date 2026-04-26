@@ -69,7 +69,7 @@ describe("integration: shadow git wiring", () => {
             callId: "call_write",
             name: "write",
             inputText: JSON.stringify({
-              path: "notes.txt",
+              path: join(harness.workspaceRoot, "notes.txt"),
               content: "updated\n",
             }),
           }
@@ -93,7 +93,7 @@ describe("integration: shadow git wiring", () => {
     const checkpoints = await store.list(harness.workspaceRoot)
 
     expect(checkpoints.length).toBeGreaterThanOrEqual(1)
-    expect(checkpoints[0]?.description).toBe("before write notes.txt")
+    expect(checkpoints[0]?.description).toBe(`before write ${join(harness.workspaceRoot, "notes.txt")}`)
     await expect(readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).resolves.toBe("updated\n")
 
     await store.restore(harness.workspaceRoot, checkpoints[0]!.id)
@@ -157,7 +157,10 @@ describe("integration: shadow git wiring", () => {
             type: "tool.call",
             callId: "call_write_invisible",
             name: "write",
-            inputText: JSON.stringify({ path: "notes.txt", content: "updated\n" }),
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "updated\n",
+            }),
           }
         },
         async function* (request) {
@@ -183,7 +186,9 @@ describe("integration: shadow git wiring", () => {
 
     const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
     const texts = transcript.flatMap((message) => message.parts.map((part) => part.text))
-    expect(texts.some((text) => text === "Created checkpoint before write notes.txt.")).toBe(false)
+    expect(
+      texts.some((text) => text === `Created checkpoint before write ${join(harness.workspaceRoot, "notes.txt")}.`),
+    ).toBe(false)
   })
 })
 

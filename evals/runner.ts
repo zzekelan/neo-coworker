@@ -51,6 +51,7 @@ import { EvalTaskSchema, type EvalTask } from "./schemas/task"
 
 export type EvalProviderFactory = (input: {
   modelObserver?: ModelObserverPort
+  workspaceRoot?: string
 }) => Promise<ModelProvider> | ModelProvider
 
 export type EvalRunGrades = {
@@ -102,6 +103,7 @@ export async function runEvalTask(input: {
     : undefined
   const provider = await input.createProvider({
     modelObserver: observability?.modelObserver,
+    workspaceRoot,
   })
   const faultedProvider = applyProviderFaults({
     provider,

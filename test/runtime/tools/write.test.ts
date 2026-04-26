@@ -21,6 +21,22 @@ async function createTempWorkspace() {
 }
 
 describe("write tool — parent dir auto-creation", () => {
+  test("requires an absolute path", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const registry = createToolRuntimeApi({
+      tools: [createWriteTool({ requestPermission })],
+    })
+
+    await expect(
+      registry.execute({
+        toolName: "write",
+        args: { path: "notes.txt", content: "hello" },
+        workspaceRoot,
+      }),
+    ).rejects.toThrow("Path must be absolute")
+  })
+
   test("allows writes under .ncoworker/research while blocking unrelated runtime files", async () => {
     const workspaceRoot = await createTempWorkspace()
     const { requestPermission } = createAllowPermission()
@@ -30,7 +46,7 @@ describe("write tool — parent dir auto-creation", () => {
 
     const result = await registry.execute({
       toolName: "write",
-      args: { path: ".ncoworker/research/browser-security/brief.md", content: "# Brief\n" },
+      args: { path: join(workspaceRoot, ".ncoworker", "research", "browser-security", "brief.md"), content: "# Brief\n" },
       workspaceRoot,
     })
 
@@ -40,7 +56,7 @@ describe("write tool — parent dir auto-creation", () => {
     await expect(
       registry.execute({
         toolName: "write",
-        args: { path: ".ncoworker/secret.txt", content: "blocked" },
+        args: { path: join(workspaceRoot, ".ncoworker", "secret.txt"), content: "blocked" },
         workspaceRoot,
       }),
     ).rejects.toThrow("Path is reserved for agent runtime data")
@@ -48,7 +64,7 @@ describe("write tool — parent dir auto-creation", () => {
     await expect(
       registry.execute({
         toolName: "write",
-        args: { path: ".ncoworker/research/../secret.txt", content: "blocked" },
+        args: { path: join(workspaceRoot, ".ncoworker", "research", "..", "secret.txt"), content: "blocked" },
         workspaceRoot,
       }),
     ).rejects.toThrow("Path is reserved for agent runtime data")
@@ -63,7 +79,7 @@ describe("write tool — parent dir auto-creation", () => {
 
     const result = await registry.execute({
       toolName: "write",
-      args: { path: "deep/nested/dir/file.txt", content: "hello" },
+      args: { path: join(workspaceRoot, "deep", "nested", "dir", "file.txt"), content: "hello" },
       workspaceRoot,
     })
 
@@ -81,12 +97,31 @@ describe("write tool — parent dir auto-creation", () => {
 
     await registry.execute({
       toolName: "write",
-      args: { path: "subdir/file.txt", content: "world" },
+      args: { path: join(workspaceRoot, "subdir", "file.txt"), content: "world" },
       workspaceRoot,
     })
 
     const content = await readFile(join(workspaceRoot, "subdir", "file.txt"), "utf8")
     expect(content).toBe("world")
+  })
+
+  test("writes absolute paths outside the workspace after permission is granted", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const externalRoot = await createTempWorkspace()
+    const { requestPermission } = createAllowPermission()
+    const registry = createToolRuntimeApi({
+      tools: [createWriteTool({ requestPermission })],
+    })
+    const filePath = join(externalRoot, "notes", "outside.txt")
+
+    const result = await registry.execute({
+      toolName: "write",
+      args: { path: filePath, content: "outside" },
+      workspaceRoot,
+    })
+
+    expect(result.output).toContain(filePath)
+    expect(await readFile(filePath, "utf8")).toBe("outside")
   })
 
   test("succeeds when parent dir already exists", async () => {
@@ -98,7 +133,7 @@ describe("write tool — parent dir auto-creation", () => {
 
     await registry.execute({
       toolName: "write",
-      args: { path: "file.txt", content: "root level" },
+      args: { path: join(workspaceRoot, "file.txt"), content: "root level" },
       workspaceRoot,
     })
 
@@ -119,7 +154,7 @@ describe("write tool — atomic write", () => {
 
     await registry.execute({
       toolName: "write",
-      args: { path: "large.txt", content: largeContent },
+      args: { path: join(workspaceRoot, "large.txt"), content: largeContent },
       workspaceRoot,
     })
 
@@ -137,7 +172,7 @@ describe("write tool — atomic write", () => {
 
     await registry.execute({
       toolName: "write",
-      args: { path: "myfile.ts", content: "export const x = 1" },
+      args: { path: join(workspaceRoot, "myfile.ts"), content: "export const x = 1" },
       workspaceRoot,
     })
 
@@ -185,7 +220,7 @@ describe("write tool — atomic write", () => {
 
     await registry.execute({
       toolName: "write",
-      args: { path: "script.sh", content: "#!/bin/sh\necho new\n" },
+      args: { path: join(workspaceRoot, "script.sh"), content: "#!/bin/sh\necho new\n" },
       workspaceRoot,
     })
 
@@ -206,10 +241,10 @@ describe("write tool — atomic write", () => {
     await expect(
       registry.execute({
         toolName: "write",
-        args: { path: "links/outside/escape.txt", content: "nope" },
+        args: { path: join(workspaceRoot, "links", "outside", "escape.txt"), content: "nope" },
         workspaceRoot,
       }),
-    ).rejects.toThrow("Path must stay inside workspace")
+    ).rejects.toThrow("Path must stay inside workspace when using workspace symlinks")
 
     await expect(access(join(externalRoot, "escape.txt"))).rejects.toThrow()
   })
@@ -228,7 +263,7 @@ describe("write tool — atomic write", () => {
     await expect(
       registry.execute({
         toolName: "write",
-        args: { path: "links/runtime/secret.txt", content: "blocked" },
+        args: { path: join(workspaceRoot, "links", "runtime", "secret.txt"), content: "blocked" },
         workspaceRoot,
       }),
     ).rejects.toThrow("Path is reserved for agent runtime data")
@@ -247,7 +282,7 @@ describe("write tool — conditional overwrite protection", () => {
 
     const result = await registry.execute({
       toolName: "write",
-      args: { path: "existing.txt", content: "new content" },
+      args: { path: join(workspaceRoot, "existing.txt"), content: "new content" },
       workspaceRoot,
     })
 
@@ -267,7 +302,7 @@ describe("write tool — conditional overwrite protection", () => {
 
     const result = await registry.execute({
       toolName: "write",
-      args: { path: "README.md", content: "new content" },
+      args: { path: join(workspaceRoot, "README.md"), content: "new content" },
       workspaceRoot,
     })
 
@@ -287,7 +322,7 @@ describe("write tool — conditional overwrite protection", () => {
 
     const result = await registry.execute({
       toolName: "write",
-      args: { path: "README.md", content: "new content" },
+      args: { path: join(workspaceRoot, "README.md"), content: "new content" },
       workspaceRoot,
     })
 
@@ -306,7 +341,7 @@ describe("write tool — conditional overwrite protection", () => {
 
     await registry.execute({
       toolName: "write",
-      args: { path: "README.md", content: "new content" },
+      args: { path: join(workspaceRoot, "README.md"), content: "new content" },
       workspaceRoot,
     })
 
@@ -323,7 +358,7 @@ describe("write tool — conditional overwrite protection", () => {
 
     const result = await registry.execute({
       toolName: "write",
-      args: { path: "brand-new.txt", content: "fresh content" },
+      args: { path: join(workspaceRoot, "brand-new.txt"), content: "fresh content" },
       workspaceRoot,
     })
 

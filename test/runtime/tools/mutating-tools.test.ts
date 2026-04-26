@@ -37,7 +37,7 @@ describe("mutating tools", () => {
 
     const pending = registry.execute({
       toolName: "write",
-      args: { path: "notes.txt", content: "hello" },
+      args: { path: join(workspaceRoot, "notes.txt"), content: "hello" },
       workspaceRoot,
     })
 
@@ -63,7 +63,7 @@ describe("mutating tools", () => {
 
     const pending = registry.execute({
       toolName: "write",
-      args: { path: "README.md", content: "updated fixture" },
+      args: { path: join(workspaceRoot, "README.md"), content: "updated fixture" },
       workspaceRoot,
     })
 

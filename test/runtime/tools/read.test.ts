@@ -12,7 +12,7 @@ import {
   splitLinesWithMetadata,
   validateInclusiveRange,
 } from "../../../src/tool/infrastructure/builtins/hash-anchor"
-import { createEditTool, createReadTool, createToolRuntimeApi, createWriteTool } from "../../../src/tool"
+import { createEditTool, createReadTool, createToolRuntimeApi } from "../../../src/tool"
 
 function createRegistry() {
   return createToolRuntimeApi({
@@ -61,7 +61,6 @@ describe("read tool enhancements", () => {
       const registry = createToolRuntimeApi({
         tools: [
           createReadTool(),
-          createWriteTool({ requestPermission }),
           createEditTool({ requestPermission }),
         ],
       })
@@ -73,14 +72,6 @@ describe("read tool enhancements", () => {
       })
 
       expect(result.output).toContain("Store source notes with these exact fields")
-
-      await expect(
-        registry.execute({
-          toolName: "write",
-          args: { path: referencePath, content: "blocked" },
-          workspaceRoot,
-        }),
-      ).rejects.toThrow("Path must stay inside workspace")
 
       await expect(
         registry.execute({

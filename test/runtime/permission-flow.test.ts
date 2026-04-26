@@ -649,7 +649,10 @@ describe("runtime permission flow", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello",
+            }),
           }
         },
         async function* () {
@@ -669,7 +672,7 @@ describe("runtime permission flow", () => {
     const iterator = handle.events[Symbol.asyncIterator]()
     const permissionEvent = await waitForPermissionRequest(iterator)
 
-    expect(permissionEvent.reason).toBe("write notes.txt")
+    expect(permissionEvent.reason).toBe(`write ${join(harness.workspaceRoot, "notes.txt")}`)
     expect(requests).toHaveLength(1)
     expect(harness.repository.runs.get(started.run.id)).toMatchObject({
       id: started.run.id,
@@ -734,7 +737,10 @@ describe("runtime permission flow", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello",
+            }),
           }
         },
         async function* () {
@@ -845,7 +851,10 @@ describe("runtime permission flow", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello",
+            }),
           }
         },
       ]),
@@ -980,7 +989,10 @@ describe("runtime permission flow", () => {
             type: "tool.call",
             callId: "call_write_1",
             name: "write",
-            inputText: '{"path":"first.txt","content":"first"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "first.txt"),
+              content: "first",
+            }),
           }
         },
         async function* () {
@@ -991,7 +1003,10 @@ describe("runtime permission flow", () => {
             type: "tool.call",
             callId: "call_write_2",
             name: "write",
-            inputText: '{"path":"second.txt","content":"second"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "second.txt"),
+              content: "second",
+            }),
           }
         },
         async function* () {
@@ -1065,7 +1080,10 @@ describe("runtime permission flow", () => {
             type: "tool.call",
             callId: "call_write",
             name: "write",
-            inputText: '{"path":"notes.txt","content":"hello"}',
+            inputText: JSON.stringify({
+              path: join(harness.workspaceRoot, "notes.txt"),
+              content: "hello",
+            }),
           }
         },
         async function* () {
@@ -1148,7 +1166,10 @@ describe("runtime permission flow", () => {
             type: "tool.call",
             callId: "call_write_a",
             name: "write",
-            inputText: '{"path":"a.txt","content":"from-a"}',
+            inputText: JSON.stringify({
+              path: join(harnessA.workspaceRoot, "a.txt"),
+              content: "from-a",
+            }),
           }
         },
         async function* () {
@@ -1167,7 +1188,10 @@ describe("runtime permission flow", () => {
             type: "tool.call",
             callId: "call_write_b",
             name: "write",
-            inputText: '{"path":"b.txt","content":"from-b"}',
+            inputText: JSON.stringify({
+              path: join(harnessB.workspaceRoot, "b.txt"),
+              content: "from-b",
+            }),
           }
         },
         async function* () {
