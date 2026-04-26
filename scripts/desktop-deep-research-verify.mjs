@@ -213,6 +213,13 @@ try {
     permissionsApproved: runResult.permissionsApproved,
   }
 
+  writeEvidenceSummaries({
+    sessionSummary,
+    lifecycleSummary,
+    transcriptSummary,
+    sqliteTelemetry,
+  })
+
   assertSubagentUsage({ lifecycleSummary, transcriptSummary, sqliteTelemetry })
   assertAgentSelectionTelemetry({ parentSessionId, parentRunId: runResult.latestRunId, sqliteTelemetry })
   assertSourceNoteSkillLoadSucceeded({ lifecycleSummary, sqliteTelemetry })
@@ -224,6 +231,7 @@ try {
   assertToolResultStorageAndTelemetry({ workspaceRoot, sqliteTelemetry })
   assertPromptAndToolTelemetry({ sqliteTelemetry })
   assertReasoningReplayTelemetry({ sqliteTelemetry, transcriptSummary })
+  assertNoLiteralThinkTagLeak(transcriptSummary)
   await assertNoHiddenReasoningInFinalUiText({ page, transcriptSummary })
   assertReasonableFinalOutput(transcriptSummary.parent.finalAssistantLength)
 
@@ -232,11 +240,6 @@ try {
     await page.context().tracing.stop({ path: tracePath })
     traceStarted = false
   }
-
-  writeFileSync(sessionSummaryPath, `${JSON.stringify(sessionSummary, null, 2)}\n`)
-  writeFileSync(lifecycleSummaryPath, `${JSON.stringify(lifecycleSummary, null, 2)}\n`)
-  writeFileSync(transcriptSummaryPath, `${JSON.stringify(transcriptSummary, null, 2)}\n`)
-  writeFileSync(sqliteTelemetrySummaryPath, `${JSON.stringify(sqliteTelemetry, null, 2)}\n`)
 
   console.log(
     JSON.stringify(
@@ -272,6 +275,13 @@ try {
     await app.close().catch(() => undefined)
   }
   rmSync(isolatedRoot, { recursive: true, force: true })
+}
+
+function writeEvidenceSummaries(input) {
+  writeFileSync(sessionSummaryPath, `${JSON.stringify(input.sessionSummary, null, 2)}\n`)
+  writeFileSync(lifecycleSummaryPath, `${JSON.stringify(input.lifecycleSummary, null, 2)}\n`)
+  writeFileSync(transcriptSummaryPath, `${JSON.stringify(input.transcriptSummary, null, 2)}\n`)
+  writeFileSync(sqliteTelemetrySummaryPath, `${JSON.stringify(input.sqliteTelemetry, null, 2)}\n`)
 }
 
 async function waitForCreatedSession(input) {
@@ -539,10 +549,12 @@ function summarizeTranscript(transcript) {
       .map((part) => summarizeLifecycleEvent({ eventType: part.data?.type, data: part.data })),
     visibleTextLength: visibleText.length,
     visibleTextPreview: preview(visibleText),
+    literalThinkTagCount: countLiteralThinkTags(visibleText),
     reasoningPartCount: reasoningTexts.length,
     reasoningPreviews: reasoningTexts.map((text) => preview(text, 120)).filter(Boolean),
     finalAssistantLength: finalText.length,
     finalAssistantPreview: preview(finalText),
+    finalAssistantLiteralThinkTagCount: countLiteralThinkTags(finalText),
   }
 }
 
@@ -958,14 +970,27 @@ function assertPromptAndToolTelemetry(input) {
 }
 
 function assertReasoningReplayTelemetry(input) {
+  const childRunIds = new Set(
+    input.sqliteTelemetry.runs
+      .filter((run) => run.parentRunId === input.sqliteTelemetry.parentRunId)
+      .map((run) => run.id),
+  )
   const capabilityEvents = input.sqliteTelemetry.runEvents.filter((event) => event.eventType === "capability.resolution.recorded")
-  const reasoningEnabled = capabilityEvents.some((event) => event.data?.reasoning === true || event.data?.interleavedField)
-  if (!reasoningEnabled) {
+  const childReasoningEnabled = capabilityEvents.some(
+    (event) => childRunIds.has(event.runId) && (event.data?.reasoning === true || event.data?.interleavedField),
+  )
+  if (!childReasoningEnabled) {
     return
   }
 
   const childHasReasoning = input.transcriptSummary.children.some((child) => child.reasoningPartCount > 0)
   assert(childHasReasoning, "Reasoning-enabled provider did not persist child reasoning replay telemetry.")
+}
+
+function assertNoLiteralThinkTagLeak(transcriptSummary) {
+  const leaked = [transcriptSummary.parent, ...transcriptSummary.children]
+    .some((summary) => summary.literalThinkTagCount > 0 || summary.finalAssistantLiteralThinkTagCount > 0)
+  assert(leaked === false, "Literal think-tag hidden reasoning remained in visible/final transcript text.")
 }
 
 async function assertNoHiddenReasoningInFinalUiText(input) {
@@ -988,6 +1013,10 @@ async function assertNoHiddenReasoningInFinalUiText(input) {
 
 function assertReasonableFinalOutput(finalLength) {
   assert(Number.isFinite(finalLength) && finalLength >= 40, "Deep Research final output was not a reasonable final output.")
+}
+
+function countLiteralThinkTags(value) {
+  return (value.match(/<\/?think\b[^>]*>/giu) ?? []).length
 }
 
 function allLifecycleEvents(summary) {

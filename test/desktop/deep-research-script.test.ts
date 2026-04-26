@@ -22,6 +22,10 @@ describe("desktop deep-research real-path verifier script", () => {
     expect(scriptSource).toContain("lifecycle-summary.json")
     expect(scriptSource).toContain("transcript-summary.json")
     expect(scriptSource).toContain("sqlite-telemetry-summary.json")
+    expect(scriptSource).toContain("writeEvidenceSummaries")
+    expect(scriptSource.indexOf("writeEvidenceSummaries({")).toBeLessThan(
+      scriptSource.indexOf("assertSubagentUsage({ lifecycleSummary, transcriptSummary, sqliteTelemetry })"),
+    )
     expect(scriptSource).toContain("SUMMARY_PREVIEW_LIMIT = 500")
     expect(scriptSource).toContain("SUBAGENT_RESULT_SIZE_LIMIT = 50_000")
     expect(scriptSource).toContain("WEBFETCH_TRUNCATED_RESULT_MAX = 55_000")
@@ -85,6 +89,11 @@ describe("desktop deep-research real-path verifier script", () => {
     expect(scriptSource).toContain("result.metadata?.truncated === true")
     expect(scriptSource).toContain("typeof result.metadata?.savedPath === \"string\"")
     expect(scriptSource).toContain("assertToolResultStorageAndTelemetry")
+    expect(scriptSource).toContain("assertReasoningReplayTelemetry")
+    expect(scriptSource).toContain("assertNoLiteralThinkTagLeak")
+    expect(scriptSource).toContain("literalThinkTagCount")
+    expect(scriptSource).toContain("countLiteralThinkTags")
+    expect(scriptSource).toContain("childRunIds.has(event.runId)")
     expect(scriptSource).toContain("SQLite telemetry did not identify a source-researcher child session.")
     expect(scriptSource).toContain("Real Task 7 path did not record any managed child/source-researcher tool result with metadata.savedPath.")
     expect(scriptSource).toContain("Managed child tool result did not include expected 50KB truncation metadata.")
