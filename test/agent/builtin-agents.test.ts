@@ -61,14 +61,14 @@ describe("builtin agents", () => {
     expect(primaryAgents.every((agent) => agent.isPrimary === true)).toBe(true)
   })
 
-  test("defines source researcher as a hidden source-note skill subagent", () => {
+  test("defines source researcher as a hidden package-qualified source-note skill subagent", () => {
     const agent = BUILTIN_AGENTS["source-researcher"]
 
     expect(agent).toBeDefined()
     expect(agent.name).toBe("source-researcher")
     expect(agent.displayName).toBe("Source Researcher")
     expect(agent.description).toBe("Source note collector")
-    expect(agent.skills).toEqual(["source-note"])
+    expect(agent.skills).toEqual(["research/source-note"])
     expect(agent.isPrimary).toBeUndefined()
     expect(agent.tools).toEqual(["read", "grep", "glob", "webfetch", "websearch", "get_current_datetime"])
     expect(agent.tools?.filter((tool) => tool === "websearch")).toHaveLength(1)

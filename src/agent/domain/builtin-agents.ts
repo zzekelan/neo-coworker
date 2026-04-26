@@ -77,7 +77,7 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
     tools: ["read", "grep", "glob", "webfetch", "websearch", "get_current_datetime"],
     parallel: true,
     instructions: SOURCE_NOTE_SUBAGENT_INSTRUCTIONS,
-    skills: ["source-note"],
+    skills: ["research/source-note"],
   },
   explore: {
     name: "explore",

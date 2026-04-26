@@ -291,7 +291,7 @@ describe("Deep Research source researcher subagents", () => {
       name: "source-researcher",
       displayName: "Source Researcher",
       description: "Source note collector",
-      skills: ["source-note"],
+      skills: ["research/source-note"],
       parallel: true,
     })
     expect(agent?.tools).not.toContain("write")
@@ -328,7 +328,7 @@ describe("Deep Research source researcher subagents", () => {
 
     expect(result).toEqual({ output: "source notes returned" })
     expect(delegatedProfiles).toEqual([
-      "source-researcher:source-note:Collect source notes for docs and weak claims.",
+      "source-researcher:research/source-note:Collect source notes for docs and weak claims.",
     ])
   })
 
@@ -364,15 +364,15 @@ describe("Deep Research source researcher subagents", () => {
       }),
     )
 
-    expect(queuedActiveSkills).toEqual([["source-note"]])
-    expect(loadedSkills).toEqual(["source-note"])
-    expect(loadedSkills).not.toContain("research/source-note")
+    expect(queuedActiveSkills).toEqual([["research/source-note"]])
+    expect(loadedSkills).toEqual(["research/source-note"])
+    expect(loadedSkills).not.toContain("source-note")
     expect(builtPrompt).toContain("# Source Note Subagent Contract")
     expect(builtPrompt).toContain("active `source-note` skill")
     expect(builtPrompt).not.toContain("research/source-note")
   })
 
-  test("source researcher startup emits structured secret-free skill load failure when source-note is missing", async () => {
+  test("source researcher startup emits structured secret-free skill load failure when research/source-note is missing", async () => {
     const events: Array<{ event: Record<string, unknown>; sessionId: string; runId: string }> = []
     const secretValue = "sk-test-source-note-secret"
 
@@ -398,7 +398,7 @@ describe("Deep Research source researcher subagents", () => {
           },
         }),
       ),
-    ).rejects.toThrow("Required builtin skill missing: source-note")
+    ).rejects.toThrow("Required builtin skill missing: research/source-note")
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -407,13 +407,13 @@ describe("Deep Research source researcher subagents", () => {
         event: expect.objectContaining({
           type: "skill.load.failed",
           status: "failed",
-          skillName: "source-note",
+          skillName: "research/source-note",
           agentId: "source-researcher",
           displayName: "Source Researcher",
           parentRunId: "parent-run",
           subRunId: expect.stringMatching(/^run_/),
           errorCode: "SKILL_LOAD_FAILED",
-          errorMessage: expect.stringContaining("Required builtin skill missing: source-note"),
+          errorMessage: expect.stringContaining("Required builtin skill missing: research/source-note"),
           reason: "startup",
         }),
       }),
