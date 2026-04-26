@@ -1,7 +1,6 @@
 import { realpath } from "node:fs/promises"
 import { extname, isAbsolute, relative, resolve, sep } from "node:path"
 import { z } from "zod"
-import { getBuiltinSkillsDirectory } from "../../../skill/infrastructure/builtin-materializer"
 import {
   assertWorkspacePathNotReserved,
   throwIfToolAborted,
@@ -28,6 +27,10 @@ const BLOCKED_DEVICE_PREFIXES = ["/dev/", "/proc/", "/sys/"]
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024
 const MAX_TEXT_SLICE_BYTES = 1024 * 1024
+
+export type CreateReadToolInput = {
+  allowedAbsoluteRoots?: Array<() => string | Promise<string>>
+}
 
 function formatReadOutput(text: string): string {
   return splitLinesWithMetadata(text)
@@ -57,9 +60,13 @@ function isBlockedDevicePath(filePath: string): boolean {
   return BLOCKED_DEVICE_PREFIXES.some(prefix => filePath.startsWith(prefix))
 }
 
-async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string) {
+async function resolveWorkspaceFile(
+  workspaceRoot: string,
+  relativePath: string,
+  allowedAbsoluteRoots: NonNullable<CreateReadToolInput["allowedAbsoluteRoots"]>,
+) {
   if (isAbsolute(relativePath)) {
-    return await resolveAbsoluteReadableFile(relativePath)
+    return await resolveAbsoluteReadableFile(relativePath, allowedAbsoluteRoots)
   }
 
   assertWorkspacePathNotReserved(relativePath)
@@ -76,18 +83,41 @@ async function resolveWorkspaceFile(workspaceRoot: string, relativePath: string)
   return file
 }
 
-async function resolveAbsoluteReadableFile(path: string) {
-  const builtinRoot = await realpath(getBuiltinSkillsDirectory())
+async function resolveAbsoluteReadableFile(
+  path: string,
+  allowedAbsoluteRoots: NonNullable<CreateReadToolInput["allowedAbsoluteRoots"]>,
+) {
   const file = await realpath(path)
 
-  if (file !== builtinRoot && !file.startsWith(`${builtinRoot}${sep}`)) {
-    throw new Error(`Path must stay inside workspace: ${path}`)
+  for (const getRoot of allowedAbsoluteRoots) {
+    const root = await resolveAllowedAbsoluteRoot(getRoot)
+    if (!root) {
+      continue
+    }
+
+    if (file === root || file.startsWith(`${root}${sep}`)) {
+      return file
+    }
   }
 
-  return file
+  throw new Error(`Path must stay inside workspace: ${path}`)
 }
 
-export function createReadTool(): ToolDefinition {
+async function resolveAllowedAbsoluteRoot(getRoot: () => string | Promise<string>) {
+  try {
+    return await realpath(await getRoot())
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null
+    }
+
+    throw error
+  }
+}
+
+export function createReadTool(input: CreateReadToolInput = {}): ToolDefinition {
+  const allowedAbsoluteRoots = input.allowedAbsoluteRoots ?? []
+
   return {
     name: "read",
     description:
@@ -110,7 +140,7 @@ export function createReadTool(): ToolDefinition {
 
       let file: string
       try {
-        file = await resolveWorkspaceFile(input.workspaceRoot, path)
+        file = await resolveWorkspaceFile(input.workspaceRoot, path, allowedAbsoluteRoots)
       } catch (err) {
         if (err instanceof Error && err.message.startsWith("Path must stay inside workspace")) {
           throw err

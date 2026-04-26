@@ -45,6 +45,7 @@ import {
 import type { ModelProvider } from "../model"
 import {
   createSkillWriteService,
+  getBuiltinSkillsDirectory,
   createLayeredSkillRuntime,
   createWorkspaceSkillStore,
   type SkillObserverPort,
@@ -306,6 +307,7 @@ export function createRuntime(input: RuntimeInput) {
             forwardRuntimeEvent: subAgentInput.forwardRuntimeEvent,
           }),
           toolObserver: observability?.toolObserver,
+          toolResultManager: createSubAgentToolResultManager(),
           createResultStore({ workspaceRoot, sessionId, runId }) {
             return createToolResultStore({
               workspaceRoot,
@@ -739,6 +741,7 @@ function createToolPortFactory(config: {
         searchBackend: config.searchBackend,
         memory,
         observer: config.observer,
+        readAllowedAbsoluteRoots: [getBuiltinSkillsDirectory],
         observerContext: {
           sessionId: input.sessionId,
           runId: input.runId,
@@ -1047,6 +1050,114 @@ function createToolPortFactory(config: {
           return applyTurnBudget(results, results.map(manageBatchResult))
         },
       }
+    },
+  }
+}
+
+function createSubAgentToolResultManager() {
+  return {
+    manageBatchResult<
+      T extends {
+        toolName: string
+        output: string
+        isError?: boolean
+        metadata?: Record<string, unknown>
+      },
+    >(input: {
+      result: T
+      tool?: { name: string; resultSizeLimit?: number }
+      limit: number
+      workspaceRoot: string
+      sessionId: string
+      runId: string
+      toolObserver?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
+      resultStore?: {
+        save(content: string, toolName: string): { path: string } | undefined
+      }
+    }): T {
+      return {
+        ...input.result,
+        ...manageResultSize(
+          {
+            output: input.result.output,
+            isError: input.result.isError,
+            metadata: input.result.metadata,
+          },
+          {
+            limit: input.limit,
+            tool: input.tool,
+            toolName: input.result.toolName,
+            workspaceRoot: input.workspaceRoot,
+            observer: input.toolObserver,
+            sessionId: input.sessionId,
+            runId: input.runId,
+            resultStore: input.resultStore,
+          },
+        ),
+      }
+    },
+    applyTurnBudget<
+      T extends {
+        toolName: string
+        output: string
+        isError?: boolean
+        metadata?: Record<string, unknown>
+      },
+    >(input: {
+      rawResults: T[]
+      managedResults: T[]
+      sessionId: string
+      runId: string
+      toolObserver?: Pick<ObservabilityRuntimeApi, "toolObserver">["toolObserver"]
+      resultStore?: {
+        save(content: string, toolName: string): { path: string } | undefined
+      }
+    }): T[] {
+      const turnBudget = new TurnBudget({
+        observer: input.toolObserver,
+        observerContext: {
+          sessionId: input.sessionId,
+          runId: input.runId,
+        },
+      })
+
+      for (const result of input.rawResults) {
+        if (result.isError) {
+          continue
+        }
+
+        turnBudget.track(result.toolName, result.output)
+      }
+
+      if (!turnBudget.isOverBudget() || !input.resultStore) {
+        return input.managedResults
+      }
+
+      const spilledResults = turnBudget.spillLargest(input.resultStore)
+      if (spilledResults.length === 0) {
+        return input.managedResults
+      }
+
+      const spilledByPosition = new Map(spilledResults.map((entry) => [entry.position, entry]))
+
+      return input.managedResults.map((result, index) => {
+        const spilled = spilledByPosition.get(index)
+        if (!spilled) {
+          return result
+        }
+
+        return {
+          ...result,
+          output: spilled.output,
+          metadata: {
+            ...result.metadata,
+            spilledToDisk: true,
+            savedPath: spilled.path,
+            originalSize: spilled.originalSize,
+            truncatedSize: spilled.previewSize,
+          },
+        }
+      })
     },
   }
 }

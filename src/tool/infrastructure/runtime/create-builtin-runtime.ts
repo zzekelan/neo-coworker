@@ -6,7 +6,7 @@ import { createDatetimeTool } from "../builtins/datetime"
 import { createEditTool } from "../builtins/edit"
 import { createGlobTool } from "../builtins/glob"
 import { createGrepTool } from "../builtins/grep"
-import { createReadTool } from "../builtins/read"
+import { createReadTool, type CreateReadToolInput } from "../builtins/read"
 import { type SearchToolBackend } from "../builtins/search-backend"
 import { createShellTool } from "../builtins/shell"
 import { createWebfetchTool } from "../builtins/webfetch"
@@ -25,6 +25,7 @@ export type CreateBuiltinToolRuntimeInput = {
     sessionId: string
     runId: string
   }
+  readAllowedAbsoluteRoots?: CreateReadToolInput["allowedAbsoluteRoots"]
   extraTools?: ToolDefinition[]
 }
 
@@ -61,7 +62,9 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
 
   return createToolRuntimeApi({
     tools: [
-      annotateDefaults(createReadTool()),
+      annotateDefaults(createReadTool({
+        allowedAbsoluteRoots: input.readAllowedAbsoluteRoots,
+      })),
       annotateDefaults(createGlobTool()),
       annotateDefaults(createGrepTool()),
       annotateDefaults(createWebfetchTool({ requestPermission })),

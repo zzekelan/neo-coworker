@@ -1,10 +1,4 @@
 import type { AgentProfile } from "../domain/agent-profile"
-import {
-  manageResultSize,
-  TurnBudget,
-  type ResultStore,
-  type ToolObserverPort,
-} from "../../tool"
 import type {
   AgentContextWindowPort,
   AgentModelPort,
@@ -26,6 +20,35 @@ import { filterToolsForAgent, loadSkillsForAgent } from "./tool-filter"
 
 const DEFAULT_SUBAGENT_MAX_TURNS = 50
 const SUBAGENT_TOOL_RESULT_SIZE_LIMIT = 50_000
+
+type ResultStore = {
+  save(content: string, toolName: string): { path: string } | undefined
+}
+
+type ToolObserverPort = {
+  recordToolEvent?(event: any): void
+}
+
+type AgentToolResultManager = {
+  manageBatchResult(input: {
+    result: AgentToolBatchResult
+    tool?: Pick<AgentToolDefinition, "name" | "resultSizeLimit">
+    limit: number
+    workspaceRoot: string
+    sessionId: string
+    runId: string
+    toolObserver?: ToolObserverPort
+    resultStore?: ResultStore
+  }): AgentToolBatchResult
+  applyTurnBudget(input: {
+    rawResults: AgentToolBatchResult[]
+    managedResults: AgentToolBatchResult[]
+    sessionId: string
+    runId: string
+    toolObserver?: ToolObserverPort
+    resultStore?: ResultStore
+  }): AgentToolBatchResult[]
+}
 
 export function createSubAgentContext(input: { sessionId: string; signal?: AbortSignal }) {
   const controller = new AbortController()
@@ -79,6 +102,7 @@ export type CreateSubAgentRunInput = {
   createToolRuntime: CreateAgentToolRuntime
   createToolProvider: CreateAgentToolProvider
   toolObserver?: ToolObserverPort
+  toolResultManager?: AgentToolResultManager
   createResultStore?(input: {
     workspaceRoot: string
     sessionId: string
@@ -170,6 +194,7 @@ export async function createSubAgentRun(input: CreateSubAgentRunInput): Promise<
     sessionId: subSessionId,
     runId: context.subRunId,
     toolObserver: input.toolObserver,
+    toolResultManager: input.toolResultManager,
     resultStore,
   })
   const emit = (event: AgentRuntimeEvent) => {
@@ -431,6 +456,7 @@ function createScopedToolPort(input: {
   sessionId: string
   runId: string
   toolObserver?: ToolObserverPort
+  toolResultManager?: AgentToolResultManager
   resultStore?: ResultStore
 }): AgentToolPort {
   const batchExecutor = input.createToolBatchExecutor()
@@ -442,6 +468,7 @@ function createScopedToolPort(input: {
     tools: scopedTools,
   })
   const provider = input.createToolProvider({ runtime })
+  const resultManager = input.toolResultManager ?? defaultAgentToolResultManager
 
   return {
     list() {
@@ -459,17 +486,20 @@ function createScopedToolPort(input: {
         signal: batchInput.signal,
       })
 
-      return applyScopedTurnBudget({
+      const managedResults = results.map((result) => resultManager.manageBatchResult({
+        result,
+        tool: scopedTools.find((candidate) => candidate.name === result.toolName),
+        limit: SUBAGENT_TOOL_RESULT_SIZE_LIMIT,
+        workspaceRoot: input.workspaceRoot,
+        sessionId: input.sessionId,
+        runId: input.runId,
+        toolObserver: input.toolObserver,
+        resultStore: input.resultStore,
+      }))
+
+      return resultManager.applyTurnBudget({
         rawResults: results,
-        managedResults: results.map((result) => manageScopedBatchResult({
-          result,
-          tools: scopedTools,
-          workspaceRoot: input.workspaceRoot,
-          sessionId: input.sessionId,
-          runId: input.runId,
-          toolObserver: input.toolObserver,
-          resultStore: input.resultStore,
-        })),
+        managedResults,
         sessionId: input.sessionId,
         runId: input.runId,
         toolObserver: input.toolObserver,
@@ -479,92 +509,207 @@ function createScopedToolPort(input: {
   }
 }
 
-function manageScopedBatchResult(input: {
-  result: AgentToolBatchResult
-  tools: AgentToolDefinition[]
-  workspaceRoot: string
-  sessionId: string
-  runId: string
-  toolObserver?: ToolObserverPort
-  resultStore?: ResultStore
-}): AgentToolBatchResult {
-  const tool = input.tools.find((candidate) => candidate.name === input.result.toolName)
+const defaultAgentToolResultManager: AgentToolResultManager = {
+  manageBatchResult(input) {
+    const result = input.result
 
-  return {
-    ...input.result,
-    ...manageResultSize(
-      {
-        output: input.result.output,
-        isError: input.result.isError,
-        metadata: input.result.metadata,
-      },
-      {
-        limit: SUBAGENT_TOOL_RESULT_SIZE_LIMIT,
-        tool,
-        toolName: input.result.toolName,
-        workspaceRoot: input.workspaceRoot,
-        observer: input.toolObserver,
-        sessionId: input.sessionId,
-        runId: input.runId,
-        resultStore: input.resultStore,
-      },
-    ),
-  }
-}
-
-function applyScopedTurnBudget(input: {
-  rawResults: AgentToolBatchResult[]
-  managedResults: AgentToolBatchResult[]
-  sessionId: string
-  runId: string
-  toolObserver?: ToolObserverPort
-  resultStore?: ResultStore
-}) {
-  const turnBudget = new TurnBudget({
-    observer: input.toolObserver,
-    observerContext: {
-      sessionId: input.sessionId,
-      runId: input.runId,
-    },
-  })
-
-  for (const result of input.rawResults) {
     if (result.isError) {
-      continue
+      return result
     }
 
-    turnBudget.track(result.toolName, result.output)
-  }
+    const limit = input.limit
+    const originalSize = Buffer.byteLength(result.output, "utf8")
 
-  if (!turnBudget.isOverBudget() || !input.resultStore) {
-    return input.managedResults
-  }
-
-  const spilledResults = turnBudget.spillLargest(input.resultStore)
-  if (spilledResults.length === 0) {
-    return input.managedResults
-  }
-
-  const spilledByPosition = new Map(spilledResults.map((entry) => [entry.position, entry]))
-
-  return input.managedResults.map((result, index) => {
-    const spilled = spilledByPosition.get(index)
-    if (!spilled) {
+    if (originalSize <= limit) {
       return result
+    }
+
+    const truncated = Buffer.from(result.output, "utf8").subarray(0, limit).toString("utf8")
+    const truncatedSize = Buffer.byteLength(truncated, "utf8")
+    const savedPath = saveOversizedAgentToolResult({
+      resultStore: input.resultStore,
+      toolName: result.toolName,
+      output: result.output,
+    })?.path
+
+    if (savedPath) {
+      recordAgentToolEvent(input.toolObserver, {
+        type: "budget.result_truncated",
+        sessionId: input.sessionId,
+        runId: input.runId,
+        toolName: result.toolName,
+        originalSize,
+        truncatedSize,
+        limit,
+        savedPath,
+      })
     }
 
     return {
       ...result,
-      output: spilled.output,
+      output: `${truncated}${formatAgentToolTruncationSuffix({ originalSize, truncatedSize, savedPath })}`,
       metadata: {
         ...result.metadata,
-        spilledToDisk: true,
-        savedPath: spilled.path,
-        originalSize: spilled.originalSize,
-        truncatedSize: spilled.previewSize,
+        truncated: true,
+        originalSize,
+        truncatedSize,
+        resultSizeLimit: limit,
+        savedPath,
       },
     }
-  })
+  },
+  applyTurnBudget(input) {
+    const trackedResults: Array<{
+      position: number
+      toolName: string
+      content: string
+      size: number
+      spilled: boolean
+    }> = []
+    let totalSize = 0
+    let overBudgetEmitted = false
+
+    for (const result of input.rawResults) {
+      if (result.isError) {
+        continue
+      }
+
+      const size = result.output.length
+      trackedResults.push({
+        position: trackedResults.length,
+        toolName: result.toolName,
+        content: result.output,
+        size,
+        spilled: false,
+      })
+      totalSize += size
+
+      if (totalSize > 200_000 && !overBudgetEmitted) {
+        overBudgetEmitted = true
+        recordAgentToolEvent(input.toolObserver, {
+          type: "budget.turn_over_budget",
+          sessionId: input.sessionId,
+          runId: input.runId,
+          turnCumulativeSize: totalSize,
+          maxChars: 200_000,
+          trackedToolCount: trackedResults.length,
+        })
+      }
+    }
+
+    if (totalSize <= 200_000 || !input.resultStore) {
+      return input.managedResults
+    }
+
+    const spilledResults: Array<{
+      position: number
+      path: string
+      output: string
+      originalSize: number
+      previewSize: number
+    }> = []
+
+    while (totalSize > 200_000) {
+      const candidate = trackedResults
+        .filter((result) => !result.spilled)
+        .sort((left, right) => right.size - left.size)[0]
+
+      if (!candidate) {
+        break
+      }
+
+      const saved = input.resultStore.save(candidate.content, candidate.toolName)
+      if (!saved) {
+        break
+      }
+
+      const originalSize = candidate.size
+      const preview = candidate.content.slice(0, 500)
+      const output = `${preview}\n\n[Result spilled to ${saved.path} to stay within the per-turn tool budget.]`
+      const previewSize = output.length
+
+      if (previewSize >= originalSize) {
+        break
+      }
+
+      candidate.content = output
+      candidate.size = previewSize
+      candidate.spilled = true
+      totalSize = totalSize - originalSize + previewSize
+      recordAgentToolEvent(input.toolObserver, {
+        type: "budget.spill_largest",
+        sessionId: input.sessionId,
+        runId: input.runId,
+        toolName: candidate.toolName,
+        spilledSize: originalSize,
+        previewLength: 500,
+        diskPath: saved.path,
+        remainingBudget: Math.max(0, 200_000 - totalSize),
+      })
+      spilledResults.push({
+        position: candidate.position,
+        path: saved.path,
+        output,
+        originalSize,
+        previewSize,
+      })
+    }
+
+    if (spilledResults.length === 0) {
+      return input.managedResults
+    }
+
+    const spilledByPosition = new Map(spilledResults.map((entry) => [entry.position, entry]))
+
+    return input.managedResults.map((result, index) => {
+      const spilled = spilledByPosition.get(index)
+      if (!spilled) {
+        return result
+      }
+
+      return {
+        ...result,
+        output: spilled.output,
+        metadata: {
+          ...result.metadata,
+          spilledToDisk: true,
+          savedPath: spilled.path,
+          originalSize: spilled.originalSize,
+          truncatedSize: spilled.previewSize,
+        },
+      }
+    })
+  },
+}
+
+function saveOversizedAgentToolResult(input: {
+  resultStore?: ResultStore
+  toolName: string
+  output: string
+}) {
+  try {
+    return input.resultStore?.save(input.output, input.toolName)
+  } catch {
+    return undefined
+  }
+}
+
+function formatAgentToolTruncationSuffix(input: {
+  originalSize: number
+  truncatedSize: number
+  savedPath?: string
+}) {
+  if (input.savedPath) {
+    return `\n\n[Result truncated: ${input.originalSize}B → ${input.truncatedSize}B. Full result saved to ${input.savedPath}]`
+  }
+
+  return `\n\n[Result truncated: ${input.originalSize}B → ${input.truncatedSize}B. Full result was not persisted in this context.]`
+}
+
+function recordAgentToolEvent(observer: ToolObserverPort | undefined, event: any) {
+  try {
+    observer?.recordToolEvent?.(event)
+  } catch {}
 }
 
 function createForwardedTools(parentTools: AgentToolPort): AgentToolDefinition[] {

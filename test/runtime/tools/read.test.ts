@@ -60,7 +60,9 @@ describe("read tool enhancements", () => {
       const { requestPermission } = createAllowPermission()
       const registry = createToolRuntimeApi({
         tools: [
-          createReadTool(),
+          createReadTool({
+            allowedAbsoluteRoots: [() => materialized.root],
+          }),
           createEditTool({ requestPermission }),
         ],
       })
