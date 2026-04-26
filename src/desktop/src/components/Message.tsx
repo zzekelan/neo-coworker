@@ -355,10 +355,10 @@ const MessagePartRenderer: React.FC<{
   return null
 }
 
-/** Reasoning block: visible-by-default, user-collapsible. */
+/** Reasoning block: collapsed by default, user-expandable. */
 const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo(({ text, partIndex }) => {
   const labels = useDesktopText()
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
   const toggle = useCallback(() => setIsExpanded((prev) => !prev), [])
 
   return (

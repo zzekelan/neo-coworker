@@ -40,13 +40,13 @@ describe("desktop message", () => {
     expect(source).toContain("return wasTruncated ? `${limitedText}\\n...` : limitedText")
   })
 
-  test("renders reasoning parts visible-by-default with a collapsible affordance", () => {
+  test("renders reasoning parts collapsed by default with an expandable affordance", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
     expect(source).toContain('part.type === "reasoning"')
     expect(source).toContain("<ReasoningBlock")
     expect(source).toContain("const ReasoningBlock")
-    expect(source).toContain("useState(true)")
+    expect(source).toContain("useState(false)")
     expect(source).toContain("labels.message.reasoning")
     expect(source).toContain("aria-expanded={isExpanded}")
   })
