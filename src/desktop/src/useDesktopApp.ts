@@ -38,7 +38,6 @@ import type {
   DesktopServerEvent,
   DesktopSessionSnapshot,
   DesktopWorkspaceSummary,
-  LifecycleEvent,
 } from "./types"
 
 type AppState = {
@@ -276,7 +275,6 @@ export function useDesktopApp() {
 
   const handleEvent = useEffectEvent((event: DesktopServerEvent) => {
     const { activeWorkspaceRoot, activeSessionId } = selectionRef.current
-    const activeRunId = state.sessionSnapshot?.activeRun?.id ?? state.sessionSnapshot?.latestRun?.id ?? null
 
     if (event.type === "heartbeat") {
       setState((previous) => ({
@@ -378,20 +376,6 @@ export function useDesktopApp() {
         ...previous,
         transcript: updateToolProgress(previous.transcript, event.toolCallId, event.message),
       }))
-      return
-    }
-
-    if (isLifecycleEvent(event)) {
-      const matchesSession = event.sessionId === activeSessionId
-      const matchesRun = event.runId === activeRunId
-      const matchesParentRun = "parentRunId" in event && event.parentRunId === activeRunId
-
-      if (activeSessionId && (matchesSession || matchesRun || matchesParentRun)) {
-        setState((previous) => ({
-          ...previous,
-          transcript: appendLifecycleDiagnostic(previous.transcript, event, activeSessionId, activeRunId),
-        }))
-      }
       return
     }
 
@@ -1104,46 +1088,6 @@ function upsertSessionRun(runs: DesktopRun[], run: DesktopRun) {
   const withoutCurrent = runs.filter((candidate) => candidate.id !== run.id)
   withoutCurrent.push(run)
   return withoutCurrent.sort((left, right) => left.createdAt - right.createdAt)
-}
-
-function isLifecycleEvent(event: DesktopServerEvent): event is LifecycleEvent {
-  return event.type === "subagent.started" ||
-    event.type === "subagent.completed" ||
-    event.type === "subagent.failed" ||
-    event.type === "skill.load.requested" ||
-    event.type === "skill.load.completed" ||
-    event.type === "skill.load.failed"
-}
-
-function appendLifecycleDiagnostic(
-  transcript: DesktopMessage[],
-  event: LifecycleEvent,
-  sessionId: string,
-  activeRunId: string | null,
-) {
-  const runId = event.runId ?? ("parentRunId" in event ? event.parentRunId : activeRunId) ?? "lifecycle"
-  const messageId = `lifecycle:${event.id}`
-  const nextSequence = transcript.reduce((max, message) => Math.max(max, message.sequence), -1) + 1
-
-  return upsertTranscriptMessage(transcript, {
-    id: messageId,
-    sessionId,
-    runId,
-    role: "synthetic",
-    sequence: nextSequence,
-    createdAt: event.time,
-    parts: [{
-      id: `lifecycle-part:${event.id}`,
-      sessionId,
-      runId,
-      messageId,
-      kind: "lifecycle",
-      sequence: 0,
-      text: null,
-      data: event,
-      createdAt: event.time,
-    }],
-  })
 }
 
 function summarizePrompt(prompt: string) {

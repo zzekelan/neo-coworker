@@ -51,20 +51,14 @@ describe("desktop message", () => {
     expect(source).toContain("aria-expanded={isExpanded}")
   })
 
-  test("renders structured lifecycle diagnostics with visible failure detail", () => {
+  test("does not render structured lifecycle diagnostics in the chat transcript", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
     const i18nSource = readFileSync("src/desktop/src/i18n.tsx", "utf8")
 
-    expect(source).toContain('part.type === "lifecycle"')
-    expect(source).toContain("<LifecycleDiagnostic")
-    expect(source).toContain("describeLifecycleTitle")
-    expect(source).toContain("text.message.startingAgent(part.displayName")
-    expect(source).toContain("text.message.failedToLoadSkill(part.skillName")
-    expect(source).toContain("part.errorMessage ?? part.reason ?? part.errorCode")
-    expect(source).not.toContain("Spawned source-note subagent")
-    expect(i18nSource).toContain("startingAgent(name: string)")
-    expect(i18nSource).toContain("loadingSkill(name: string)")
-    expect(i18nSource).toContain("loadedSkill(name: string)")
-    expect(i18nSource).toContain("failedToLoadSkill(name: string)")
+    expect(source).not.toContain('part.type === "lifecycle"')
+    expect(source).not.toContain("<LifecycleDiagnostic")
+    expect(source).not.toContain("describeLifecycleTitle")
+    expect(i18nSource).not.toContain("loadingSkill(name: string)")
+    expect(i18nSource).not.toContain("failedToLoadSkill(name: string)")
   })
 })

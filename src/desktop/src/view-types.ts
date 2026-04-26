@@ -65,18 +65,6 @@ export type MessagePart =
     }
   | { type: "tool_result"; callId: string; result: unknown; isError?: boolean }
   | {
-      type: "lifecycle"
-      eventType: string
-      category: "agent" | "skill"
-      status: "started" | "completed" | "failed" | "requested"
-      agentId?: string
-      displayName?: string
-      skillName?: string
-      errorCode?: string
-      errorMessage?: string
-      reason?: string
-    }
-  | {
       type: "compaction_boundary"
       tokensBefore: number
       tokensAfter: number

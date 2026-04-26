@@ -68,16 +68,12 @@ describe("desktop app state flow", () => {
     expect(source).toContain("void loadPrimaryAgents(refreshData.resolvedWorkspaceRoot ?? undefined)")
   })
 
-  test("appends structured lifecycle events to the active transcript", () => {
+  test("does not append structured lifecycle events to the active transcript", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 
-    expect(source).toContain("isLifecycleEvent(event)")
-    expect(source).toContain("appendLifecycleDiagnostic")
-    expect(source).toContain('kind: "lifecycle"')
-    expect(source).toContain("data: event")
-    expect(source).toContain("event.sessionId === activeSessionId")
-    expect(source).toContain("event.runId === activeRunId")
-    expect(source).toContain("event.parentRunId === activeRunId")
+    expect(source).not.toContain("isLifecycleEvent(event)")
+    expect(source).not.toContain("appendLifecycleDiagnostic")
+    expect(source).not.toContain('kind: "lifecycle"')
   })
 
   test("intercepts /compact as a command instead of sending it as a prompt", () => {
@@ -136,7 +132,7 @@ describe("desktop app state flow", () => {
 })
 
 describe("desktop api client", () => {
-  test("subscribes to structured lifecycle server events", () => {
+  test("does not subscribe to structured lifecycle server events", () => {
     const apiSource = readFileSync("src/desktop/src/api.ts", "utf8")
     const typesSource = readFileSync("src/desktop/src/types.ts", "utf8")
 
@@ -148,13 +144,9 @@ describe("desktop api client", () => {
       "skill.load.completed",
       "skill.load.failed",
     ]) {
-      expect(apiSource).toContain(`"${eventType}"`)
-      expect(typesSource).toContain(`"${eventType}"`)
+      expect(apiSource).not.toContain(`"${eventType}"`)
+      expect(typesSource).not.toContain(`"${eventType}"`)
     }
-
-    expect(typesSource).toContain("agentId: string")
-    expect(typesSource).toContain("displayName: string")
-    expect(typesSource).toContain("errorMessage?: string")
   })
 
   test("exposes a compactSession function that POSTs to the compact endpoint", () => {

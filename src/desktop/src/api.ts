@@ -24,12 +24,6 @@ const SERVER_EVENT_TYPES = [
   "runtime.error",
   "tool.progress",
   "context.usage.updated",
-  "subagent.started",
-  "subagent.completed",
-  "subagent.failed",
-  "skill.load.requested",
-  "skill.load.completed",
-  "skill.load.failed",
 ] as const
 
 type JsonRequestInput = {

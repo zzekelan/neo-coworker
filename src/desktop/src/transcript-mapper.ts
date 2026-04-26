@@ -125,10 +125,6 @@ function mapMessagePart(
     }
   }
 
-  if (part.kind === "lifecycle") {
-    return mapLifecyclePart(part)
-  }
-
   const text = formatPlainPart(part)
   if (!text) {
     return null
@@ -138,53 +134,6 @@ function mapMessagePart(
     type: "text",
     text,
   }
-}
-
-function mapLifecyclePart(part: DesktopPart): MessagePart | null {
-  const eventType = readObjectString(part.data, "type")
-  if (!eventType) {
-    return null
-  }
-
-  const status = readObjectString(part.data, "status")
-  if (
-    status !== "started" &&
-    status !== "completed" &&
-    status !== "failed" &&
-    status !== "requested"
-  ) {
-    return null
-  }
-
-  if (eventType.startsWith("subagent.")) {
-    return {
-      type: "lifecycle",
-      eventType,
-      category: "agent",
-      status,
-      agentId: readObjectString(part.data, "agentId") ?? undefined,
-      displayName: readObjectString(part.data, "displayName") ?? undefined,
-      errorCode: readObjectString(part.data, "errorCode") ?? undefined,
-      errorMessage: readObjectString(part.data, "errorMessage") ?? undefined,
-    }
-  }
-
-  if (eventType.startsWith("skill.load.")) {
-    return {
-      type: "lifecycle",
-      eventType,
-      category: "skill",
-      status,
-      skillName: readObjectString(part.data, "skillName") ?? undefined,
-      agentId: readObjectString(part.data, "agentId") ?? undefined,
-      displayName: readObjectString(part.data, "displayName") ?? undefined,
-      errorCode: readObjectString(part.data, "errorCode") ?? undefined,
-      errorMessage: readObjectString(part.data, "errorMessage") ?? undefined,
-      reason: readObjectString(part.data, "reason") ?? undefined,
-    }
-  }
-
-  return null
 }
 
 function buildToolCallInput(part: DesktopPart) {
