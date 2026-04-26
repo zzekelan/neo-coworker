@@ -351,6 +351,97 @@ describe("openai-compatible provider", () => {
     ])
   })
 
+  test("splits literal think blocks from streamed content into reasoning deltas", async () => {
+    const provider = createProvider({
+      model: "minimax-m2.7",
+      client: createMockOpenAICompatibleClient(async () => {
+        return (async function* () {
+          yield createOpenAICompatibleChunk({ content: "Visible before <thi" })
+          yield createOpenAICompatibleChunk({ content: "nk>hidden reasoning" })
+          yield createOpenAICompatibleChunk({ content: "</thi" })
+          yield createOpenAICompatibleChunk({ content: "nk> visible after" })
+        })()
+      }),
+    })
+
+    const events = []
+    for await (const event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      { type: "text.delta", text: "Visible before " },
+      { type: "reasoning.delta", text: "hidden reasoning" },
+      { type: "text.delta", text: " visible after" },
+    ])
+  })
+
+  test("hides attributed and spaced think tags across streamed chunk boundaries", async () => {
+    const provider = createProvider({
+      model: "minimax-m2.7",
+      client: createMockOpenAICompatibleClient(async () => {
+        return (async function* () {
+          yield createOpenAICompatibleChunk({ content: "Alpha <TH" })
+          yield createOpenAICompatibleChunk({ content: "INK data-x=\"1\"" })
+          yield createOpenAICompatibleChunk({ content: ">hidden one</THINK> Beta " })
+          yield createOpenAICompatibleChunk({ content: "<think " })
+          yield createOpenAICompatibleChunk({ content: ">hidden two" })
+          yield createOpenAICompatibleChunk({ content: "</think> Gamma think aloud" })
+        })()
+      }),
+    })
+
+    const events = []
+    for await (const event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      { type: "text.delta", text: "Alpha " },
+      { type: "reasoning.delta", text: "hidden one" },
+      { type: "text.delta", text: " Beta " },
+      { type: "reasoning.delta", text: "hidden two" },
+      { type: "text.delta", text: " Gamma think aloud" },
+    ])
+    expect(events.filter((event) => event.type === "text.delta").map((event) => event.text).join(""))
+      .toBe("Alpha  Beta  Gamma think aloud")
+  })
+
+  test("keeps ordinary think-like text visible when it is not a think tag", async () => {
+    const provider = createProvider({
+      model: "minimax-m2.7",
+      client: createMockOpenAICompatibleClient(async () => {
+        return (async function* () {
+          yield createOpenAICompatibleChunk({ content: "Visible <thinker> and thinking words stay visible." })
+        })()
+      }),
+    })
+
+    const events = []
+    for await (const event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      { type: "text.delta", text: "Visible <thinker> and thinking words stay visible." },
+    ])
+  })
+
   test("emits each streamed tool call exactly once when multiple tool calls are present", async () => {
     const provider = createProvider({
       model: "kimi-k2.5",
