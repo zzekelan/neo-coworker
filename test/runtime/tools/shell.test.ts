@@ -173,16 +173,7 @@ describe("shell tool — workspace path safety", () => {
     const runtime = makeRuntime()
     const workspaceRoot = await mkdtemp(join(tmpdir(), "shell-runtime-state-"))
 
-    await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
     await mkdir(join(workspaceRoot, ".ncoworker"), { recursive: true })
-
-    await expect(
-      runtime.execute({
-        toolName: "shell",
-        args: { command: "pwd", workdir: ".agents" },
-        workspaceRoot,
-      }),
-    ).rejects.toThrow("Path is reserved for agent runtime data")
 
     await expect(
       runtime.execute({

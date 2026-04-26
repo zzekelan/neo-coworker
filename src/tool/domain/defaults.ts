@@ -9,14 +9,12 @@ export {
 export { type ToolExecutionInput, type ToolExecutionResult } from "./result"
 
 export const WORKSPACE_SKIPPED_DIRECTORIES = new Set([
-  ".agents",
   ".ncoworker",
   ".git",
   "node_modules",
   ".worktrees",
 ])
 export const WORKSPACE_RESERVED_DIRECTORIES = new Set([
-  ".agents",
   ".ncoworker",
 ])
 export const WORKSPACE_ALLOWED_NCOWORKER_SUBTREES = new Set([

@@ -62,13 +62,13 @@ describe("grep tool", () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), "grep-workspace-"))
 
     await mkdir(join(workspaceRoot, "src"), { recursive: true })
-    await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
+    await mkdir(join(workspaceRoot, ".ncoworker"), { recursive: true })
 
     for (let index = 0; index < 25; index += 1) {
       await writeFile(join(workspaceRoot, "src", `match-${index}.ts`), `const value = "manyHit"\n`)
     }
 
-    await writeFile(join(workspaceRoot, ".agents", "hidden.ts"), 'const value = "manyHit"\n')
+    await writeFile(join(workspaceRoot, ".ncoworker", "hidden.ts"), 'const value = "manyHit"\n')
 
     const result = await registry.execute({
       toolName: "grep",
@@ -76,7 +76,7 @@ describe("grep tool", () => {
       workspaceRoot,
     })
 
-    expect(result.output).not.toContain(".agents/hidden.ts")
+    expect(result.output).not.toContain(".ncoworker/hidden.ts")
     expect(result.output).toContain("src/match-0.ts")
     expect(result.output).toContain("... truncated after 20 matches")
   })

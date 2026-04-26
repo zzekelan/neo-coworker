@@ -32,13 +32,17 @@ describe(".ncoworker path safety", () => {
       ".ncoworker/agent.sqlite",
       ".ncoworker/research/../secret.txt",
       "nested/.ncoworker/research/topic/brief.md",
-      ".agents/research/topic/brief.md",
     ]
 
     for (const path of blockedPaths) {
       expect(isWorkspacePathReserved(path)).toBe(true)
       expect(() => assertWorkspacePathNotReserved(path)).toThrow("Path is reserved for agent runtime data")
     }
+  })
+
+  test("does not treat unrelated dot directories as runtime state", () => {
+    expect(isWorkspacePathReserved(".cache/research/topic/brief.md")).toBe(false)
+    expect(() => assertWorkspacePathNotReserved(".cache/research/topic/brief.md")).not.toThrow()
   })
 
   test("workspace discovery lists allowed research artifacts without exposing runtime files", async () => {

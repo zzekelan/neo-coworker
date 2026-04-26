@@ -105,15 +105,14 @@ describe("bootstrap paths", () => {
     })
   })
 
-  test("does not return .agents paths when a legacy directory exists", async () => {
+  test("keeps runtime paths out of the workspace config directory", async () => {
     await withPathsTest(async ({ tmpDir, workspaceRoot }) => {
       process.env.XDG_CONFIG_HOME = join(tmpDir, "xdg-config")
       process.env.XDG_DATA_HOME = join(tmpDir, "xdg-data")
-      await mkdir(join(workspaceRoot, ".agents"), { recursive: true })
+      await mkdir(join(workspaceRoot, ".ncoworker"), { recursive: true })
 
       const paths = [
         getConfigDir(workspaceRoot),
-        getStoragePath(workspaceRoot),
         getServerStoragePath(workspaceRoot),
         getDesktopStatePath(workspaceRoot),
         getDesktopSettingsPath(workspaceRoot),
@@ -121,7 +120,7 @@ describe("bootstrap paths", () => {
       ]
 
       for (const p of paths) {
-        expect(p).not.toContain(".agents")
+        expect(p).not.toContain(join(workspaceRoot, ".ncoworker"))
       }
     })
   })

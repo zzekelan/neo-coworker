@@ -39,10 +39,6 @@ export function assertWorkspacePathNotReserved(relativePath: string) {
 export function isWorkspacePathReserved(relativePath: string) {
   const segments = normalizeWorkspacePathSegments(relativePath)
 
-  if (segments.includes(".agents")) {
-    return true
-  }
-
   const ncoworkerIndex = segments.indexOf(".ncoworker")
   if (ncoworkerIndex === -1) {
     return false

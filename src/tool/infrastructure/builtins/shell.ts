@@ -47,7 +47,7 @@ const ShellArgsSchema = z
     workdir: z
       .optional(z.string().trim().min(1, "Workdir must not be empty"))
       .describe(
-        "Workspace-relative working directory for the command. When omitted the command runs from the workspace root. The resolved path must remain inside the workspace and cannot target .agents/** or unapproved .ncoworker/** runtime state. Explicit workspace subtrees such as .ncoworker/research/** are allowed.",
+        "Workspace-relative working directory for the command. When omitted the command runs from the workspace root. The resolved path must remain inside the workspace and cannot target unapproved .ncoworker/** runtime state. Explicit workspace subtrees such as .ncoworker/research/** are allowed.",
       ),
     description: z
       .optional(z.string().trim().min(1))

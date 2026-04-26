@@ -28,11 +28,9 @@ declare const Bun: {
 }
 
 const WORKSPACE_EXCLUDE_GLOBS = [
-  "!.agents/**",
   "!.git/**",
   "!node_modules/**",
   "!.worktrees/**",
-  "!**/.agents/**",
   "!**/.git/**",
   "!**/node_modules/**",
   "!**/.worktrees/**",

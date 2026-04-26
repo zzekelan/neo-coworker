@@ -7,7 +7,7 @@ import { createWorkspaceSkillRuntime, createWorkspaceSkillStore } from "../../sr
 async function createWorkspaceWithSkill(input: {
   directoryName: string
   instructions: string
-  skillsDirectory?: ".agents/skills" | ".ncoworker/skills"
+  skillsDirectory?: ".ncoworker/skills"
 }) {
   const workspaceRoot = await mkdtemp(join(tmpdir(), "skill-runtime-workspace-"))
   const skillsDirectory = input.skillsDirectory ?? ".ncoworker/skills"
@@ -40,28 +40,6 @@ describe("skill runtime", () => {
         path: ".ncoworker/skills/reviewer/SKILL.md",
       },
     ])
-  })
-
-  test("ignores skills that exist only under legacy .agents/skills", async () => {
-    const workspaceRoot = await createWorkspaceWithSkill({
-      directoryName: "legacy-only",
-      skillsDirectory: ".agents/skills",
-      instructions: [
-        "name: legacy-only",
-        "description: Legacy skill should not load",
-        "",
-        "This should not be listed.",
-      ].join("\n"),
-    })
-    const runtime = createWorkspaceSkillRuntime()
-
-    await expect(runtime.listCatalog(workspaceRoot)).resolves.toEqual([])
-    await expect(
-      runtime.loadSkill({
-        workspaceRoot,
-        name: "legacy-only",
-      }),
-    ).rejects.toBeDefined()
   })
 
   test("discovers skill metadata without loading instructions", async () => {
