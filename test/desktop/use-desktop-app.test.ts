@@ -48,6 +48,7 @@ describe("desktop app state flow", () => {
 
     expect(source).toContain("contextUsage: ContextUsageState | null")
     expect(source).toContain("event.type === \"context.usage.updated\"")
+    expect(source).toContain("normalizeContextUsageState({")
     expect(source).toContain("contextTokens: event.contextTokens")
     expect(source).toContain("contextWindow: event.contextWindow")
     expect(source).toContain("utilizationPercent: event.utilizationPercent")
@@ -59,7 +60,19 @@ describe("desktop app state flow", () => {
   test("hydrates contextUsage from the REST session snapshot on refresh", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 
-    expect(source).toContain("contextUsage: refreshData.snapshot?.contextUsage ?? null")
+    expect(source).toContain("contextUsage: normalizeContextUsageState(refreshData.snapshot?.contextUsage)")
+  })
+
+  test("guards desktop context usage against invalid provider token counts", () => {
+    const desktopAppSource = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+    const chatAreaSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+    const useAgentSource = readFileSync("src/desktop/src/hooks/useAgent.ts", "utf8")
+
+    expect(desktopAppSource).toContain("function normalizeContextUsageState")
+    expect(desktopAppSource).toContain("typeof value !== \"number\" || !Number.isFinite(value)")
+    expect(chatAreaSource).toContain("normalizeUsageNumber(usage?.contextTokens)")
+    expect(chatAreaSource).toContain("contextTokens.toLocaleString()")
+    expect(useAgentSource).toContain("normalizeUsageNumber(usage.contextTokens)")
   })
 
   test("loads primary agents for the resolved workspace so custom backend agents can appear", () => {

@@ -675,13 +675,15 @@ export function ChatArea({
 function ContextBudgetBar(input: { usage: DesktopContextUsage | null }) {
   const text = useDesktopText()
   const { usage } = input
-  const percent = usage
-    ? Math.max(0, Math.min(100, Math.round(usage.utilizationPercent)))
+  const contextTokens = normalizeUsageNumber(usage?.contextTokens)
+  const contextWindow = normalizeUsageNumber(usage?.contextWindow)
+  const percent = usage && contextWindow > 0
+    ? Math.max(0, Math.min(100, Math.round(normalizeUsageNumber(usage.utilizationPercent))))
     : 0
   const isHigh = percent >= 80
   const isCritical = percent >= 95
-  const title = usage
-    ? `${usage.contextTokens.toLocaleString()} / ${usage.contextWindow.toLocaleString()} tokens`
+  const title = usage && contextWindow > 0
+    ? `${contextTokens.toLocaleString()} / ${contextWindow.toLocaleString()} tokens`
     : text.chat.contextUsed(0)
 
   return (
@@ -716,6 +718,14 @@ function ContextBudgetBar(input: { usage: DesktopContextUsage | null }) {
       </span>
     </div>
   )
+}
+
+function normalizeUsageNumber(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0
+  }
+
+  return Math.trunc(value)
 }
 
 type RunStatus = string | null

@@ -50,8 +50,8 @@ export function createOpenAIEventNormalizer() {
           {
             type: "usage",
             source: "provider",
-            inputTokens: event.response.usage.input_tokens,
-            outputTokens: event.response.usage.output_tokens,
+            inputTokens: normalizeTokenCount(event.response.usage.input_tokens),
+            outputTokens: normalizeTokenCount(event.response.usage.output_tokens),
           },
         ]
       }
@@ -109,8 +109,8 @@ export function createOpenAICompatibleEventNormalizer() {
         events.push({
           type: "usage",
           source: "provider",
-          inputTokens: chunk.usage.prompt_tokens,
-          outputTokens: chunk.usage.completion_tokens,
+          inputTokens: normalizeTokenCount(chunk.usage.prompt_tokens),
+          outputTokens: normalizeTokenCount(chunk.usage.completion_tokens),
         })
       }
 
@@ -123,6 +123,14 @@ export function createOpenAICompatibleEventNormalizer() {
       ]
     },
   }
+}
+
+function normalizeTokenCount(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0
+  }
+
+  return Math.trunc(value)
 }
 
 function createThinkBlockParser() {

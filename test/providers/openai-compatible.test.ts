@@ -351,6 +351,47 @@ describe("openai-compatible provider", () => {
     ])
   })
 
+  test("normalizes missing provider usage token counts", async () => {
+    const provider = createProvider({
+      model: "minimax-m2.7",
+      client: createMockOpenAICompatibleClient(async () => {
+        return (async function* () {
+          yield {
+            id: "chatcmpl_usage_fixture",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "minimax-m2.7",
+            choices: [],
+            usage: {
+              prompt_tokens: undefined,
+              completion_tokens: undefined,
+              total_tokens: 20,
+            } as unknown as OpenAI.CompletionUsage,
+          } as OpenAI.Chat.ChatCompletionChunk
+        })()
+      }),
+    })
+
+    const events = []
+    for await (const event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      {
+        type: "usage",
+        source: "provider",
+        inputTokens: 0,
+        outputTokens: 0,
+      },
+    ])
+  })
+
   test("splits literal think blocks from streamed content into reasoning deltas", async () => {
     const provider = createProvider({
       model: "minimax-m2.7",

@@ -184,7 +184,7 @@ export function useDesktopApp() {
         sessionRuns: refreshData.sessionRuns,
         transcript: refreshData.transcript,
         permissionRequests: refreshData.permissionRequests,
-        contextUsage: refreshData.snapshot?.contextUsage ?? null,
+        contextUsage: normalizeContextUsageState(refreshData.snapshot?.contextUsage),
         connection: {
           state: "online",
           label: "Connected to app-server",
@@ -428,12 +428,12 @@ export function useDesktopApp() {
     if (event.type === "context.usage.updated" && event.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
-        contextUsage: {
+        contextUsage: normalizeContextUsageState({
           contextTokens: event.contextTokens,
           contextWindow: event.contextWindow,
           utilizationPercent: event.utilizationPercent,
           source: event.source,
-        },
+        }),
       }))
     }
   })
@@ -1105,6 +1105,32 @@ function summarizePrompt(prompt: string) {
 
 function isTerminalRunStatus(status: DesktopRun["status"]) {
   return status === "completed" || status === "failed" || status === "cancelled"
+}
+
+function normalizeContextUsageState(input: {
+  contextTokens?: unknown
+  contextWindow?: unknown
+  utilizationPercent?: unknown
+  source?: unknown
+} | null | undefined): ContextUsageState | null {
+  if (!input) {
+    return null
+  }
+
+  return {
+    contextTokens: normalizeUsageNumber(input.contextTokens),
+    contextWindow: normalizeUsageNumber(input.contextWindow),
+    utilizationPercent: Math.max(0, Math.min(100, normalizeUsageNumber(input.utilizationPercent))),
+    source: input.source === "provider" || input.source === "estimated" ? input.source : null,
+  }
+}
+
+function normalizeUsageNumber(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0
+  }
+
+  return Math.trunc(value)
 }
 
 function toErrorMessage(error: unknown) {

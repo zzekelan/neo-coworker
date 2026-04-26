@@ -14,7 +14,7 @@ export function buildContextUsageSnapshot(input: {
   contextWindow: number
   source: ContextUsageSource | null
 }): ContextUsageSnapshot {
-  const contextTokens = Math.max(0, Math.trunc(input.contextTokens))
+  const contextTokens = normalizeTokenCount(input.contextTokens)
   const contextWindow = normalizeContextWindow(input.contextWindow)
   const utilizationPercent = Math.max(
     0,
@@ -42,6 +42,14 @@ export function buildEmptyContextUsageSnapshot(input: {
 function normalizeContextWindow(value: number) {
   if (!Number.isFinite(value) || value < 1) {
     return DEFAULT_CONTEXT_WINDOW_SIZE
+  }
+
+  return Math.trunc(value)
+}
+
+function normalizeTokenCount(value: number) {
+  if (!Number.isFinite(value) || value < 0) {
+    return 0
   }
 
   return Math.trunc(value)

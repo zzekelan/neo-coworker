@@ -185,11 +185,19 @@ function mapContextUsage(
   usage: { contextTokens: number; contextWindow: number; utilizationPercent: number; source: "provider" | "estimated" | null },
 ): DesktopContextUsage {
   return {
-    contextTokens: usage.contextTokens,
-    contextWindow: usage.contextWindow,
-    utilizationPercent: usage.utilizationPercent,
+    contextTokens: normalizeUsageNumber(usage.contextTokens),
+    contextWindow: normalizeUsageNumber(usage.contextWindow),
+    utilizationPercent: Math.max(0, Math.min(100, normalizeUsageNumber(usage.utilizationPercent))),
     source: usage.source,
   }
+}
+
+function normalizeUsageNumber(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0
+  }
+
+  return Math.trunc(value)
 }
 
 function mapPrimaryAgent(
