@@ -141,8 +141,14 @@ describe("integration: tool budget wiring", () => {
     handle.cancel()
     await collectRemainingEvents(iterator)
 
-    const spilledFile = join(harness.workspaceRoot, ".ncoworker", "tool-results", "shell")
-    const savedEntries = await readdir(spilledFile)
+    const spilledDirectory = join(
+      harness.workspaceRoot,
+      ".ncoworker",
+      "tool-results",
+      harness.session.id,
+      "shell",
+    )
+    const savedEntries = await readdir(spilledDirectory)
     expect(savedEntries.length).toBeGreaterThan(0)
 
     const trace = harness.observability.exportRunTrace(started.run.id)
@@ -167,7 +173,7 @@ describe("integration: tool budget wiring", () => {
         toolName: "shell",
         spilledSize: 150000,
         previewLength: 500,
-        diskPath: expect.stringContaining(".ncoworker/tool-results/shell/"),
+        diskPath: expect.stringContaining(`.ncoworker/tool-results/${harness.session.id}/shell/`),
         remainingBudget: expect.any(Number),
       },
     })
