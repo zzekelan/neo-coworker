@@ -33,7 +33,7 @@ const ToolDetailsComponent: React.FC<ToolDetailsProps> = ({ details, emptyDetail
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-border/50 bg-paper p-3">
+    <div className="max-h-80 space-y-3 overflow-y-auto rounded-xl border border-border/50 bg-paper p-3">
       {details.map((detail, index) => (
         <ToolDetailRow key={`${detail.label}:${index}`} detail={detail} />
       ))}

@@ -390,7 +390,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedSkills: "Updated skills",
       cancelledSuffix: "(cancelled)",
       failedSuffix: "failed",
-      reasoning: "Reasoning",
+      reasoning: "Thinking",
     },
     settings: {
       title: "Settings",
@@ -623,7 +623,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedSkills: "更新了技能",
       cancelledSuffix: "（已取消）",
       failedSuffix: "失败",
-      reasoning: "推理",
+      reasoning: "思考",
     },
     settings: {
       title: "设置",

@@ -49,6 +49,26 @@ describe("desktop message", () => {
     expect(source).toContain("useState(false)")
     expect(source).toContain("labels.message.reasoning")
     expect(source).toContain("aria-expanded={isExpanded}")
+    expect(source).toContain("ACTIVITY_ROW_CLASS")
+    expect(source).toContain("ACTIVITY_RAIL_CLASS")
+  })
+
+  test("labels reasoning activity as thinking in the desktop transcript", () => {
+    const source = readFileSync("src/desktop/src/i18n.tsx", "utf8")
+
+    expect(source).toContain('reasoning: "Thinking"')
+    expect(source).toContain('reasoning: "思考"')
+  })
+
+  test("filters whitespace-only text parts and keeps activity details bounded", () => {
+    const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+    const detailsSource = readFileSync("src/desktop/src/components/ToolDetails.tsx", "utf8")
+
+    expect(messageSource).toContain('p.type !== "text" || p.text.trim().length > 0')
+    expect(messageSource).toContain("p.text.trim().length > 0")
+    expect(messageSource).toContain("function compactPath(")
+    expect(detailsSource).toContain("max-h-80")
+    expect(detailsSource).toContain("overflow-y-auto")
   })
 
   test("does not render structured lifecycle diagnostics in the chat transcript", () => {

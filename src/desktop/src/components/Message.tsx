@@ -19,6 +19,12 @@ const PulsePlaceholder = () => <div className="pulse-placeholder" />
 
 const DEFAULT_COLLAPSED_CHAR_LIMIT = 280
 const DEFAULT_COLLAPSED_LINE_LIMIT = 8
+const ACTIVITY_ROW_CLASS =
+  "relative pl-6 pr-2 py-1 text-left transition-colors hover:bg-surface/35"
+const ACTIVITY_MARKER_CLASS =
+  "absolute left-[7px] top-3 h-1.5 w-1.5 rounded-full bg-accent/70 ring-4 ring-paper"
+const ACTIVITY_RAIL_CLASS =
+  "before:absolute before:left-[9.5px] before:top-0 before:bottom-0 before:w-px before:bg-border"
 const TOOL_DETAIL_KEYS = [
   "path",
   "paths",
@@ -102,6 +108,7 @@ const MessageComponent: React.FC<{
     if (message.parts) {
       return message.parts
         .filter((p): p is Extract<MessagePart, { type: "text" }> => p.type === "text")
+        .filter((p) => p.text.trim().length > 0)
         .map((p) => p.text)
         .join("\n")
     }
@@ -113,7 +120,7 @@ const MessageComponent: React.FC<{
 
   /** Group consecutive completed tool_call parts of the same normalized type. */
   const renderItems = useMemo((): RenderItem[] => {
-    const filtered = (message.parts ?? []).filter((p) => p.type !== "tool_result")
+    const filtered = (message.parts ?? []).filter((p) => p.type !== "tool_result" && (p.type !== "text" || p.text.trim().length > 0))
     const items: RenderItem[] = []
     let i = 0
     while (i < filtered.length) {
@@ -178,16 +185,12 @@ const MessageComponent: React.FC<{
         className={cn("flex w-full flex-col", isUser ? "items-end" : "items-start", copyableText && "group/msg")}
       >
         {showTimestamp ? (
-          <div className={cn("mb-1.5 flex items-center gap-2 px-1", isUser ? "flex-row-reverse" : "flex-row")}>
-            <span className="text-[11px] font-medium text-accent">
-              {formattedTimestamp}
-            </span>
-          </div>
+          <TimestampDivider timestamp={formattedTimestamp} isUser={isUser} />
         ) : null}
 
         <div className={cn("flex max-w-3xl flex-col", isUser ? "items-end" : "w-full items-start")}>
           {message.parts ? (
-            <div className="w-full space-y-2">
+            <div className={cn("w-full", isUser ? "space-y-2" : "space-y-1.5")}>
               {renderItems.map((item) => {
                 if (item.kind === "group") {
                   return (
@@ -242,6 +245,27 @@ const MessageComponent: React.FC<{
 
 export const Message = React.memo(MessageComponent)
 
+const TimestampDivider: React.FC<{ timestamp: string; isUser: boolean }> = React.memo(({ timestamp, isUser }) => {
+  if (isUser) {
+    return (
+      <div className="mb-1.5 flex flex-row-reverse items-center gap-2 px-1">
+        <span className="text-[11px] font-medium text-accent">
+          {timestamp}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="my-2 flex w-full max-w-3xl items-center gap-3 pl-6">
+      <span className="shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted/65">
+        {timestamp}
+      </span>
+      <span className="h-px flex-1 bg-border/55" />
+    </div>
+  )
+})
+
 function CopyMessageButton({ text, label, copiedLabel, failedLabel }: { text: string; label: string; copiedLabel: string; failedLabel: string }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
 
@@ -293,7 +317,7 @@ const MessagePartRenderer: React.FC<{
       return (
         <ErrorBoundary>
           <Suspense fallback={<PulsePlaceholder />}>
-            <MarkdownText text={part.text} className="py-1 text-[15px]" />
+            <MarkdownText text={part.text} className="py-2 text-[15px] leading-relaxed text-ink" />
           </Suspense>
         </ErrorBoundary>
       )
@@ -366,16 +390,20 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className="relative"
+      className={cn("relative", ACTIVITY_RAIL_CLASS)}
     >
       <button
         type="button"
         onClick={toggle}
         onKeyDown={expandKeyDown(toggle)}
         aria-expanded={isExpanded}
-        className="group flex w-full items-center gap-1.5 py-0.5 text-left rounded-md cursor-pointer transition-colors hover:bg-surface/50 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:rounded-md focus-visible:outline-none"
+        className={cn(
+          "group flex w-full cursor-pointer items-center gap-2 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
+          ACTIVITY_ROW_CLASS,
+        )}
       >
-        <span className="text-[12px] font-medium uppercase tracking-wider text-muted/70">
+        <span className={ACTIVITY_MARKER_CLASS} />
+        <span className="text-[12px] font-medium tracking-[0.08em] text-muted">
           {labels.message.reasoning}
         </span>
         <div className="flex w-5 shrink-0 items-center justify-center">
@@ -396,7 +424,7 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="ml-1 mt-0.5 border-l-2 border-border/40 pl-3 py-1 whitespace-pre-wrap text-[13px] leading-relaxed text-muted italic">
+            <div className="ml-6 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border/60 bg-surface/35 px-3 py-2 whitespace-pre-wrap text-[13px] leading-relaxed text-muted">
               {text}
             </div>
           </motion.div>
@@ -434,8 +462,8 @@ const ToolCallGroup: React.FC<{
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(startIndex * 0.05, 0.5) }}
       className={cn(
         "relative",
-        isAgent && "ml-2 border-l-2 border-highlight/20 pl-3",
-        hasAnyError && !isAgent && "border-l-2 border-danger pl-2",
+        ACTIVITY_RAIL_CLASS,
+        isAgent && "ml-2",
       )}
     >
       {/* Group header */}
@@ -443,11 +471,16 @@ const ToolCallGroup: React.FC<{
         type="button"
         onClick={() => setIsExpanded((prev) => !prev)}
         aria-expanded={isExpanded}
-        className="group flex w-full items-center gap-1.5 py-0.5 text-left rounded-md cursor-pointer transition-colors hover:bg-surface/50 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:rounded-md focus-visible:outline-none"
+        className={cn(
+          "group flex w-full cursor-pointer items-center gap-2 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
+          ACTIVITY_ROW_CLASS,
+          hasAnyError && "text-danger",
+        )}
       >
+        <span className={cn(ACTIVITY_MARKER_CLASS, hasAnyError && "bg-danger/70", isAgent && "bg-highlight/70")} />
         <div className="flex min-w-0 flex-1 items-center">
           <span className={cn(
-            "min-w-0 truncate text-[13px] leading-snug",
+            "min-w-0 truncate text-[13px] font-medium leading-snug",
             allCancelled ? "text-muted/50 italic" : "text-muted",
           )}>
             {groupLabel}
@@ -481,7 +514,7 @@ const ToolCallGroup: React.FC<{
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="ml-4 mt-0.5 border-l border-border/40 pl-3">
+            <div className="ml-2 mt-1 pl-4">
               {entries.map((entry) => {
                 const callDetails = buildToolCallDetails(text, entry.part.toolName, entry.part.toolInput)
                 const resultDetails = entry.result ? buildToolResultDetails(text, entry.result.result) : []
@@ -527,13 +560,14 @@ const ToolIndicator: React.FC<{
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className={cn("relative", isAgent && "ml-2 border-l-2 border-highlight/20 pl-3")}
+      className={cn("relative", ACTIVITY_RAIL_CLASS, isAgent && "ml-2")}
     >
       {/* Indicator row */}
       <div
         className={cn(
-          "group relative flex items-center gap-2 py-1.5 rounded-md transition-colors",
-          hasDetails && "cursor-pointer hover:bg-surface/50 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:rounded-md focus-visible:outline-none",
+          "group flex items-center gap-2",
+          ACTIVITY_ROW_CLASS,
+          hasDetails && "cursor-pointer focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
         )}
         onClick={hasDetails ? () => setIsDetailsOpen((previous) => !previous) : undefined}
         role={hasDetails ? "button" : undefined}
@@ -541,9 +575,10 @@ const ToolIndicator: React.FC<{
         aria-expanded={hasDetails ? isDetailsOpen : undefined}
         onKeyDown={hasDetails ? expandKeyDown(() => setIsDetailsOpen(prev => !prev)) : undefined}
       >
+        <span className={cn(ACTIVITY_MARKER_CLASS, status === "pending" && "bg-highlight/70", status === "error" && "bg-danger/70")} />
         {/* Title · Subtitle · Status — single line, truncated */}
         <div className="flex min-w-0 flex-1 items-center">
-          <span className="shrink-0 text-[13px] font-medium leading-snug text-ink">
+          <span className="shrink-0 text-[13px] font-medium leading-snug text-muted">
             {title}
           </span>
           <span className="mx-1.5 text-muted leading-snug select-none">·</span>
@@ -579,7 +614,7 @@ const ToolIndicator: React.FC<{
         className="overflow-hidden"
       >
         {isDetailsOpen ? (
-          <div className="border-l border-border/30 ml-1 pl-3 pb-2">
+          <div className="ml-6 pb-2">
             <ErrorBoundary>
               <Suspense fallback={<PulsePlaceholder />}>
                 <ToolDetails
@@ -654,14 +689,16 @@ const CompletedToolRow: React.FC<{
       transition={skipEntrance ? { duration: 0 } : { duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
       className={cn(
         "relative",
-        isAgent && "ml-2 border-l-2 border-highlight/20 pl-3",
-        isError && !isAgent && "border-l-2 border-danger pl-2",
+        ACTIVITY_RAIL_CLASS,
+        isAgent && "ml-2",
       )}
     >
       <div
         className={cn(
-          "group relative flex items-center gap-1.5 py-0.5 rounded-md transition-colors",
-          hasDetails && "cursor-pointer hover:bg-surface/50 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:rounded-md focus-visible:outline-none",
+          "group flex items-center gap-2",
+          ACTIVITY_ROW_CLASS,
+          isError && "text-danger",
+          hasDetails && "cursor-pointer focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
         )}
         onClick={hasDetails ? () => setIsDetailsOpen((previous) => !previous) : undefined}
         role={hasDetails ? "button" : undefined}
@@ -669,9 +706,10 @@ const CompletedToolRow: React.FC<{
         aria-expanded={hasDetails ? isDetailsOpen : undefined}
         onKeyDown={hasDetails ? expandKeyDown(() => setIsDetailsOpen(prev => !prev)) : undefined}
       >
+        <span className={cn(ACTIVITY_MARKER_CLASS, isError && "bg-danger/70", isAgent && "bg-highlight/70")} />
         <div className="flex min-w-0 flex-1 items-center overflow-hidden">
           <span className={cn(
-            "min-w-0 truncate text-[13px] leading-snug",
+            "min-w-0 truncate text-[13px] font-medium leading-snug",
             isCancelled
               ? "text-muted/50 italic"
               : isError
@@ -713,7 +751,7 @@ const CompletedToolRow: React.FC<{
         className="overflow-hidden"
       >
         {isDetailsOpen ? (
-          <div className="border-l border-border/30 ml-1 pl-3 pb-2">
+          <div className="ml-6 pb-2">
             <ErrorBoundary>
               <Suspense fallback={<PulsePlaceholder />}>
                 <ToolDetails
@@ -908,7 +946,7 @@ function extractCompactToolDetail(toolName: string, value: unknown): string | nu
     case "read":
     case "write":
     case "edit":
-      return path ?? null
+      return path ? compactPath(path) : null
     case "shell":
       return command ? truncateShellCommand(command) : null
     case "websearch":
@@ -924,8 +962,27 @@ function extractCompactToolDetail(toolName: string, value: unknown): string | nu
     case "agent":
       return readRecordString(parsed, "agent") ?? null
     default:
-      return path ?? query ?? pattern ?? url ?? command ?? null
+      return path ? compactPath(path) : query ?? pattern ?? url ?? command ?? null
   }
+}
+
+function compactPath(path: string): string {
+  const normalized = path.replaceAll("\\", "/")
+  const segments = normalized.split("/").filter(Boolean)
+  if (segments.length === 0) {
+    return path
+  }
+
+  const interestingIndex = segments.findIndex((segment) => segment === ".ncoworker" || segment === "src" || segment === "docs" || segment === "test" || segment === "tests")
+  if (interestingIndex >= 0 && segments.length - interestingIndex <= 4) {
+    return segments.slice(interestingIndex).join("/")
+  }
+
+  if (segments.length <= 2) {
+    return segments.join("/")
+  }
+
+  return segments.slice(-2).join("/")
 }
 
 function truncateShellCommand(command: string): string {
