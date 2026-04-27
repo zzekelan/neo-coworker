@@ -111,7 +111,8 @@ describe("desktop chat area", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
     expect(source).toContain('<div className="mx-auto max-w-4xl">')
-    expect(source).toContain('className="content-fade-top pointer-events-auto relative mx-auto max-w-4xl"')
+    expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl"')
+    expect(source).not.toContain("content-fade-top")
     expect(source).not.toContain('<div className="w-full">')
   })
 

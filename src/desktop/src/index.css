@@ -111,15 +111,3 @@ body {
 .chrome-edge-bottom {
   box-shadow: 0 1px 0 0 color-mix(in srgb, var(--color-border) 40%, transparent);
 }
-
-/* Content fade above input bar — replaces hard border-t with gradient dissolve */
-.content-fade-top::before {
-  content: '';
-  position: absolute;
-  inset-inline: 0;
-  bottom: 100%;
-  height: 20px;
-  background: linear-gradient(to bottom, transparent, var(--color-paper));
-  pointer-events: none;
-  opacity: 1;
-}
