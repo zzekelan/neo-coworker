@@ -65,6 +65,7 @@ function expandKeyDown(toggle: () => void) {
 }
 
 type ToolStatus = Extract<MessagePart, { type: "tool_call" }>["status"]
+type ToolDisplayStatus = ToolStatus | "waiting_permission"
 
 type ToolCallPart = Extract<MessagePart, { type: "tool_call" }>
 type ToolResultPart = Extract<MessagePart, { type: "tool_result" }>
@@ -134,7 +135,8 @@ function shouldShowTimestamp(previousTimestamp: string | undefined, currentTimes
 const MessageComponent: React.FC<{
   message: DesktopTranscriptMessage
   previousTimestamp?: string
-}> = ({ message, previousTimestamp }) => {
+  waitingPermissionToolName?: string | null
+}> = ({ message, previousTimestamp, waitingPermissionToolName = null }) => {
   const text = useDesktopText()
   const isUser = message.role === "user"
   const toolResultLookup = useMemo(
@@ -252,6 +254,7 @@ const MessageComponent: React.FC<{
                     role={message.role}
                     relatedResult={part.type === "tool_call" ? toolResultLookup.get(part.callId) ?? null : null}
                     partIndex={item.index}
+                    waitingPermissionToolName={waitingPermissionToolName}
                   />
                 )
               })}
@@ -378,7 +381,8 @@ const MessagePartRenderer: React.FC<{
   role?: DesktopTranscriptMessage["role"]
   relatedResult?: Extract<MessagePart, { type: "tool_result" }> | null
   partIndex?: number
-}> = ({ part, role, relatedResult = null, partIndex = 0 }) => {
+  waitingPermissionToolName?: string | null
+}> = ({ part, role, relatedResult = null, partIndex = 0, waitingPermissionToolName = null }) => {
   const text = useDesktopText()
 
   if (part.type === "text") {
@@ -411,7 +415,18 @@ const MessagePartRenderer: React.FC<{
     const isCompleted = relatedResult !== null
     const isCancelled = part.status === "cancelled"
     const isError = relatedResult?.isError ?? false
-    const finalStatus: ToolStatus = isCancelled ? "cancelled" : isCompleted ? (isError ? "error" : "success") : (part.status ?? "pending")
+    const isWaitingForPermission =
+      !isCompleted
+      && !isCancelled
+      && waitingPermissionToolName !== null
+      && normalizeToolName(waitingPermissionToolName) === normalizeToolName(part.toolName)
+    const finalStatus: ToolDisplayStatus = isCancelled
+      ? "cancelled"
+      : isCompleted
+        ? (isError ? "error" : "success")
+        : isWaitingForPermission
+          ? "waiting_permission"
+          : (part.status ?? "pending")
 
     const callDetails = buildToolCallDetails(text, part.toolName, part.toolInput)
     const resultDetails = isCompleted ? buildToolResultDetails(text, relatedResult.result) : []
@@ -616,7 +631,7 @@ const ToolCallGroup: React.FC<{
 const ToolIndicator: React.FC<{
   title: string
   subtitle: string
-  status: ToolStatus
+  status: ToolDisplayStatus
   details: DetailItem[]
   partIndex?: number
 }> = React.memo(({ title, subtitle, status, details, partIndex = 0 }) => {
@@ -624,6 +639,7 @@ const ToolIndicator: React.FC<{
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
   const hasDetails = details.length > 0
+  const isActive = status === "pending" || status === "waiting_permission"
 
   return (
     <motion.div
@@ -637,6 +653,8 @@ const ToolIndicator: React.FC<{
         className={cn(
           "group flex items-center gap-2",
           ACTIVITY_ROW_CLASS,
+          isActive && "rounded-md border-l-2 border-highlight/45 bg-highlight/5 pl-2",
+          status === "waiting_permission" && "border-highlight/70 bg-highlight/10",
           hasDetails && "cursor-pointer focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
         )}
         onClick={hasDetails ? () => setIsDetailsOpen((previous) => !previous) : undefined}
@@ -699,13 +717,14 @@ const ToolIndicator: React.FC<{
   )
 })
 
-const ToolStatusBadge: React.FC<{ status: ToolStatus }> = React.memo(({ status }) => {
+const ToolStatusBadge: React.FC<{ status: ToolDisplayStatus }> = React.memo(({ status }) => {
   const text = useDesktopText()
 
-  if (status === "pending") {
+  if (status === "pending" || status === "waiting_permission") {
     return (
-      <span className="animate-breathe text-[12px] font-medium text-highlight">
-        {text.message.running}
+      <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-highlight">
+        <span className="h-1.5 w-1.5 rounded-full bg-highlight animate-breathe" aria-hidden="true" />
+        {status === "waiting_permission" ? text.message.waitingPermission : text.message.running}
       </span>
     )
   }

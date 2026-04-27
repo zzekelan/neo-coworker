@@ -44,6 +44,8 @@ type DesktopText = {
     runStatusWaiting: string
     runStatusFailed: string
     runStatusCancelled: string
+    runFinishedFailed: string
+    runFinishedCancelled: string
     copied: string
     copyMessage: string
     clipboardUnavailable: string
@@ -73,6 +75,7 @@ type DesktopText = {
     viewDetails: string
     hideDetails: string
     running: string
+    waitingPermission: string
     completed: string
     failed: string
     cancelled: string
@@ -255,6 +258,8 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       runStatusWaiting: "Waiting",
       runStatusFailed: "Failed",
       runStatusCancelled: "Cancelled",
+      runFinishedFailed: "Run failed",
+      runFinishedCancelled: "Run cancelled",
       copied: "Copied!",
       copyMessage: "Copy message",
       clipboardUnavailable: "Clipboard unavailable",
@@ -286,6 +291,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       viewDetails: "View details",
       hideDetails: "Hide details",
       running: "In progress",
+      waitingPermission: "Waiting for permission",
       completed: "Completed",
       failed: "Failed",
       cancelled: "Cancelled",
@@ -394,7 +400,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedSkills: "Updated skills",
       cancelledSuffix: "(cancelled)",
       failedSuffix: "failed",
-      reasoning: "Thinking",
+      reasoning: "Reasoning",
     },
     settings: {
       title: "Settings",
@@ -490,6 +496,8 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       runStatusWaiting: "等待中",
       runStatusFailed: "失败",
       runStatusCancelled: "已取消",
+      runFinishedFailed: "运行失败",
+      runFinishedCancelled: "运行已取消",
       copied: "已复制！",
       copyMessage: "复制消息",
       clipboardUnavailable: "剪贴板不可用",
@@ -521,6 +529,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       viewDetails: "查看详情",
       hideDetails: "收起详情",
       running: "进行中",
+      waitingPermission: "等待授权",
       completed: "已完成",
       failed: "失败",
       cancelled: "已取消",
@@ -629,7 +638,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedSkills: "更新了技能",
       cancelledSuffix: "（已取消）",
       failedSuffix: "失败",
-      reasoning: "思考",
+      reasoning: "推理摘要",
     },
     settings: {
       title: "设置",

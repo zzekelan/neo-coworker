@@ -58,11 +58,12 @@ describe("desktop message", () => {
     expect(source).not.toContain("ACTIVITY_RAIL_CLASS")
   })
 
-  test("labels reasoning activity as thinking in the desktop transcript", () => {
+  test("labels completed reasoning as reasoning instead of live thinking", () => {
     const source = readFileSync("src/desktop/src/i18n.tsx", "utf8")
 
-    expect(source).toContain('reasoning: "Thinking"')
-    expect(source).toContain('reasoning: "思考"')
+    expect(source).toContain('reasoning: "Reasoning"')
+    expect(source).toContain('reasoning: "推理摘要"')
+    expect(source).not.toContain('reasoning: "Thinking"')
   })
 
   test("keeps transcript timestamps sparse and visually quiet", () => {

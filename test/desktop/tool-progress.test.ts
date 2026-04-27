@@ -46,6 +46,9 @@ describe("Tool Progress UI (Source Analysis)", () => {
     expect(messageSource).toContain("text-highlight")
     expect(messageSource).toContain("text-success")
     expect(messageSource).toContain("text-danger")
+    expect(messageSource).toContain('status === "waiting_permission"')
+    expect(messageSource).toContain("text.message.waitingPermission")
+    expect(messageSource).toContain("border-l-2 border-highlight/45 bg-highlight/5 pl-2")
   })
 
   test("should extract progress text to subtitle in ToolIndicator", () => {
