@@ -336,41 +336,58 @@ export function ChatArea({
   if (!sessionSummary) {
     return (
       <div className="relative flex flex-1 flex-col bg-paper">
-        <div className="absolute top-4 left-4 z-10">
-          {!isSidebarOpen ? (
-            <button
-              onClick={onToggleSidebar}
-              className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-ink"
-              title="Open Sidebar"
-            >
-              <PanelLeft className="h-5 w-5" />
-            </button>
-          ) : null}
-        </div>
-        <EmptyChatState
-          icon={<Play className="h-6 w-6 text-accent" />}
-          title={hasSessions ? text.chat.selectSession : text.chat.createSessionToStart}
-          action={
-            !hasSessions ? (
+        <div className="chrome-edge-bottom sticky top-0 z-10 flex h-14 items-center justify-between bg-paper px-4 md:px-6">
+          <div className="flex items-center gap-3">
+            {!isSidebarOpen ? (
               <button
-                type="button"
-                onClick={() => void onCreateSession()}
-                className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-paper px-4 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-paper hover:text-ink"
+                onClick={onToggleSidebar}
+                className="-ml-1.5 rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-ink"
+                title="Open Sidebar"
               >
-                <Plus className="h-4 w-4" />
-                {text.chat.createSession}
+                <PanelLeft className="h-5 w-5" />
               </button>
-            ) : null
-          }
-          errorMessage={errorMessage}
-        />
+            ) : null}
+            {hasSessions ? (
+              <h2 className="font-semibold tracking-tight text-ink">
+                {text.chat.selectSession}
+              </h2>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <ThemeToggleButton />
+          </div>
+        </div>
+        <div
+          className="flex-1 overflow-y-auto px-4 md:px-8"
+          style={{ paddingBottom: bottomCardHeight + 16 }}
+        >
+          <EmptyChatState
+            icon={<Play className="h-6 w-6 text-accent" />}
+            title={hasSessions ? text.chat.selectSession : text.chat.createSessionToStart}
+            offsetClassName="translate-y-2"
+            action={
+              !hasSessions ? (
+                <button
+                  type="button"
+                  onClick={() => void onCreateSession()}
+                  className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-paper px-4 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-paper hover:text-ink"
+                >
+                  <Plus className="h-4 w-4" />
+                  {text.chat.createSession}
+                </button>
+              ) : null
+            }
+            errorMessage={errorMessage}
+          />
+        </div>
       </div>
     )
   }
 
   return (
     <div className="relative flex h-full flex-1 flex-col bg-paper">
-      <div className="sticky top-0 z-10 flex h-14 items-center justify-between px-4 md:px-6">
+      <div className="chrome-edge-bottom sticky top-0 z-10 flex h-14 items-center justify-between bg-paper px-4 md:px-6">
         <div className="flex items-center gap-3">
           {!isSidebarOpen ? (
             <button
@@ -799,21 +816,25 @@ function EmptyChatState(input: {
   offsetClassName?: string
 }) {
   return (
-    <div className="flex h-full w-full items-center justify-center">
+    <div className="relative h-full w-full">
       <div
-        className={cn(
-          "flex w-full max-w-md flex-col items-center justify-center px-6 text-center text-accent",
-          input.offsetClassName,
-        )}
+        className="absolute top-1/2 left-1/2 w-full max-w-md -translate-x-1/2 -translate-y-8 px-6 text-center text-accent"
       >
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-border bg-paper shadow-sm">
-          {input.icon}
+        <div
+          className={cn(
+            "flex flex-col items-center justify-center",
+            input.offsetClassName,
+          )}
+        >
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-border bg-paper shadow-sm">
+            {input.icon}
+          </div>
+          <p className="text-sm font-medium tracking-wide text-muted">{input.title}</p>
+          {input.action}
+          {input.errorMessage ? (
+            <p className="mt-3 max-w-sm text-center text-xs text-danger">{input.errorMessage}</p>
+          ) : null}
         </div>
-        <p className="text-sm font-medium tracking-wide text-muted">{input.title}</p>
-        {input.action}
-        {input.errorMessage ? (
-          <p className="mt-3 max-w-sm text-center text-xs text-danger">{input.errorMessage}</p>
-        ) : null}
       </div>
     </div>
   )

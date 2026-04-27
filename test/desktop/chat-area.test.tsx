@@ -9,6 +9,31 @@ describe("desktop chat area", () => {
     expect(source).not.toContain("scroll-smooth")
   })
 
+  test("keeps the chat header edge aligned with the sidebar chrome", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("chrome-edge-bottom sticky top-0 z-10 flex h-14")
+    expect(source).toContain("items-center justify-between bg-paper px-4 md:px-6")
+  })
+
+  test("keeps no-session empty state on the same header and bottom-inset rhythm", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("if (!sessionSummary)")
+    expect(source).toContain("hasSessions ? (")
+    expect(source).toContain("{text.chat.selectSession}")
+    expect(source).toContain("style={{ paddingBottom: bottomCardHeight + 16 }}")
+    expect(source).toContain("offsetClassName=\"translate-y-2\"")
+    expect(source).not.toContain("absolute top-4 left-4")
+  })
+
+  test("anchors empty-state icons independently from text and actions", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("absolute top-1/2 left-1/2 w-full max-w-md -translate-x-1/2 -translate-y-8")
+    expect(source).toContain("flex flex-col items-center justify-center")
+  })
+
   test("sizes the transcript bottom inset to match the input card height", () => {
     const chatSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
     const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
