@@ -231,7 +231,7 @@ const MessageComponent: React.FC<{
           <TimestampDivider timestamp={timestampLabel} />
         ) : null}
 
-        <div className={cn("flex flex-col", isUser ? "max-w-[78%] items-end" : "w-full items-start")}>
+        <div className={cn("flex flex-col", isUser ? "max-w-[78%] items-end pb-7" : "w-full items-start")}>
           {message.parts ? (
             <div className={cn("w-full", isUser ? "space-y-2" : "space-y-1.5")}>
               {renderItems.map((item) => {
@@ -261,7 +261,7 @@ const MessageComponent: React.FC<{
               className={cn(
                 "text-[15px] leading-relaxed",
                 isUser
-                  ? "rounded-xl rounded-tr-md border border-border/35 bg-surface/65 px-4 py-2.5 text-ink"
+                  ? "relative rounded-xl rounded-tr-md border border-border/35 bg-surface/65 px-4 py-2.5 text-ink"
                   : "py-2 text-ink",
               )}
             >
@@ -274,7 +274,7 @@ const MessageComponent: React.FC<{
                       label={text.chat.copyMessage}
                       copiedLabel={text.chat.copied}
                       failedLabel={text.chat.clipboardUnavailable}
-                      className="mt-2 self-end"
+                      className="absolute right-2 top-[calc(100%+0.25rem)]"
                     />
                   ) : null}
                 </>
@@ -340,7 +340,7 @@ function CopyMessageButton({
       type="button"
       onClick={handleCopy}
       className={cn(
-        "rounded-md p-1 transition-all duration-150",
+        "rounded-md p-1 transition-all duration-150 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
         copyState === "copied"
           ? "text-success opacity-100"
           : copyState === "failed"

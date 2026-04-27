@@ -74,6 +74,15 @@ describe("desktop message", () => {
     expect(source).not.toContain("font-mono text-[11px] font-medium uppercase tracking-[0.08em]")
   })
 
+  test("keeps user copy action out of the message bubble flow", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    expect(source).toContain('"max-w-[78%] items-end pb-7"')
+    expect(source).toContain('"relative rounded-xl rounded-tr-md border border-border/35 bg-surface/65 px-4 py-2.5 text-ink"')
+    expect(source).toContain('className="absolute right-2 top-[calc(100%+0.25rem)]"')
+    expect(source).not.toContain('className="mt-2 self-end"')
+  })
+
   test("filters whitespace-only text parts and keeps activity details bounded", () => {
     const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
     const detailsSource = readFileSync("src/desktop/src/components/ToolDetails.tsx", "utf8")
