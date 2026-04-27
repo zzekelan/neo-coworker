@@ -107,10 +107,10 @@ describe("desktop chat area", () => {
     expect(messageSource).not.toContain("\"mb-6 flex w-full flex-col\"")
   })
 
-  test("keeps transcript messages and the composer on the same centered measure", () => {
+  test("keeps transcript messages slightly narrower than the composer", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
-    expect(source).toContain('<div className="mx-auto max-w-4xl">')
+    expect(source).toContain('<div className="mx-auto max-w-[54rem]">')
     expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl bg-paper"')
     expect(source).not.toContain("content-fade-top")
     expect(source).not.toContain('<div className="w-full">')
@@ -119,7 +119,9 @@ describe("desktop chat area", () => {
   test("keeps the composer and footer opaque while the agent is running", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
+    expect(source).toContain('className="pointer-events-none absolute right-0 bottom-0 left-0 bg-paper px-4 pb-1.5"')
     expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl bg-paper"')
+    expect(source).toContain('className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent"')
     expect(source).toContain('? "border-border"')
     expect(source).not.toContain("opacity-80")
   })

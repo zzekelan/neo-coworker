@@ -445,7 +445,7 @@ export function ChatArea({
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
             const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined
             return (
-              <div className="mx-auto max-w-4xl">
+              <div className="mx-auto max-w-[54rem]">
                 {boundaryPart && boundaryPart.type === "compaction_boundary" ? (
                   <CompactionDivider
                     tokensBefore={boundaryPart.tokensBefore}
@@ -465,7 +465,7 @@ export function ChatArea({
             )
           }}
           footer={
-            <div className="mx-auto max-w-4xl">
+            <div className="mx-auto max-w-[54rem]">
               {compatibilityPrompt ? (
                 <div
                   role="alertdialog"
@@ -535,7 +535,7 @@ export function ChatArea({
         />
       )}
 
-       <div className="pointer-events-none absolute right-0 bottom-0 left-0 px-4 pb-4">
+       <div className="pointer-events-none absolute right-0 bottom-0 left-0 bg-paper px-4 pb-1.5">
         <motion.div ref={bottomCardRef} layout transition={SKILL_DRAWER_TRANSITION} className="pointer-events-auto relative mx-auto max-w-4xl bg-paper">
           <div ref={skillPanelShellRef}>
             <AnimatePresence initial={false}>
