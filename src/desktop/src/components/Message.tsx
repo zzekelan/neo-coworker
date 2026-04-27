@@ -189,7 +189,7 @@ const MessageComponent: React.FC<{
         className={cn("flex w-full flex-col", isUser ? "items-end" : "items-start", copyableText && "group/msg")}
       >
         {showTimestamp ? (
-          <TimestampDivider timestamp={formattedTimestamp} isUser={isUser} />
+          <TimestampDivider timestamp={formattedTimestamp} />
         ) : null}
 
         <div className={cn("flex max-w-3xl flex-col", isUser ? "items-end" : "w-full items-start")}>
@@ -227,20 +227,29 @@ const MessageComponent: React.FC<{
               )}
             >
               {isUser ? (
-                <div className="whitespace-pre-wrap">{message.content}</div>
+                <>
+                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  {message.content.trim().length > 0 ? (
+                    <CopyMessageButton
+                      text={message.content}
+                      label={text.chat.copyMessage}
+                      copiedLabel={text.chat.copied}
+                      failedLabel={text.chat.clipboardUnavailable}
+                      className="mt-2 self-end"
+                    />
+                  ) : null}
+                </>
               ) : (
-                <ErrorBoundary>
-                  <Suspense fallback={<PulsePlaceholder />}>
-                    <MarkdownText text={message.content} />
-                  </Suspense>
-                </ErrorBoundary>
+                <TextPartWithCopy
+                  text={message.content}
+                  copyLabel={text.chat.copyMessage}
+                  copiedLabel={text.chat.copied}
+                  failedLabel={text.chat.clipboardUnavailable}
+                  markdownClassName="text-[15px] leading-relaxed text-ink"
+                />
               )}
             </div>
           )}
-
-          {copyableText ? (
-            <CopyMessageButton text={copyableText} label={text.chat.copyMessage} copiedLabel={text.chat.copied} failedLabel={text.chat.clipboardUnavailable} />
-          ) : null}
         </div>
       </motion.div>
     </ErrorBoundary>
@@ -249,19 +258,9 @@ const MessageComponent: React.FC<{
 
 export const Message = React.memo(MessageComponent)
 
-const TimestampDivider: React.FC<{ timestamp: string; isUser: boolean }> = React.memo(({ timestamp, isUser }) => {
-  if (isUser) {
-    return (
-      <div className="mb-1.5 flex flex-row-reverse items-center gap-2 px-1">
-        <span className="text-[11px] font-medium text-accent">
-          {timestamp}
-        </span>
-      </div>
-    )
-  }
-
+const TimestampDivider: React.FC<{ timestamp: string }> = React.memo(({ timestamp }) => {
   return (
-    <div className="my-2 flex w-full max-w-3xl items-center gap-3 pl-6">
+    <div className="my-3 flex w-full max-w-3xl items-center gap-3 pl-6">
       <span className="shrink-0 font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted/65">
         {timestamp}
       </span>
@@ -270,7 +269,19 @@ const TimestampDivider: React.FC<{ timestamp: string; isUser: boolean }> = React
   )
 })
 
-function CopyMessageButton({ text, label, copiedLabel, failedLabel }: { text: string; label: string; copiedLabel: string; failedLabel: string }) {
+function CopyMessageButton({
+  text,
+  label,
+  copiedLabel,
+  failedLabel,
+  className,
+}: {
+  text: string
+  label: string
+  copiedLabel: string
+  failedLabel: string
+  className?: string
+}) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
 
   const handleCopy = useCallback(() => {
@@ -291,12 +302,13 @@ function CopyMessageButton({ text, label, copiedLabel, failedLabel }: { text: st
       type="button"
       onClick={handleCopy}
       className={cn(
-        "mt-1 rounded-md p-1 transition-all duration-150",
+        "rounded-md p-1 transition-all duration-150",
         copyState === "copied"
           ? "text-success opacity-100"
           : copyState === "failed"
             ? "text-danger opacity-100"
             : "text-muted opacity-0 hover:bg-surface hover:text-ink group-hover/msg:opacity-100",
+        className,
       )}
       title={copyState === "copied" ? copiedLabel : copyState === "failed" ? failedLabel : label}
       aria-label={copyState === "copied" ? copiedLabel : copyState === "failed" ? failedLabel : label}
@@ -305,6 +317,39 @@ function CopyMessageButton({ text, label, copiedLabel, failedLabel }: { text: st
        copyState === "failed" ? <AlertCircle className="h-3.5 w-3.5" /> :
        <Copy className="h-3.5 w-3.5" />}
     </button>
+  )
+}
+
+function TextPartWithCopy({
+  text,
+  copyLabel,
+  copiedLabel,
+  failedLabel,
+  markdownClassName,
+}: {
+  text: string
+  copyLabel: string
+  copiedLabel: string
+  failedLabel: string
+  markdownClassName: string
+}) {
+  return (
+    <div className="flex min-w-0 flex-col items-start">
+      <ErrorBoundary>
+        <Suspense fallback={<PulsePlaceholder />}>
+          <MarkdownText text={text} className={markdownClassName} />
+        </Suspense>
+      </ErrorBoundary>
+      {text.trim().length > 0 ? (
+        <CopyMessageButton
+          text={text}
+          label={copyLabel}
+          copiedLabel={copiedLabel}
+          failedLabel={failedLabel}
+          className="-mt-1 mb-1"
+        />
+      ) : null}
+    </div>
   )
 }
 
@@ -319,15 +364,30 @@ const MessagePartRenderer: React.FC<{
   if (part.type === "text") {
     if (role === "assistant") {
       return (
-        <ErrorBoundary>
-          <Suspense fallback={<PulsePlaceholder />}>
-            <MarkdownText text={part.text} className="py-2 text-[15px] leading-relaxed text-ink" />
-          </Suspense>
-        </ErrorBoundary>
+        <TextPartWithCopy
+          text={part.text}
+          copyLabel={text.chat.copyMessage}
+          copiedLabel={text.chat.copied}
+          failedLabel={text.chat.clipboardUnavailable}
+          markdownClassName="py-2 text-[15px] leading-relaxed text-ink"
+        />
       )
     }
 
-    return <div className="py-1 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{part.text}</div>
+    return (
+      <div className="flex min-w-0 flex-col items-end">
+        <div className="py-1 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{part.text}</div>
+        {part.text.trim().length > 0 ? (
+          <CopyMessageButton
+            text={part.text}
+            label={text.chat.copyMessage}
+            copiedLabel={text.chat.copied}
+            failedLabel={text.chat.clipboardUnavailable}
+            className="mt-1 self-end"
+          />
+        ) : null}
+      </div>
+    )
   }
 
   if (part.type === "tool_call") {
