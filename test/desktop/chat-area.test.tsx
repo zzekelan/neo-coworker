@@ -151,4 +151,19 @@ describe("desktop chat area", () => {
     expect(source).toContain("onReply={handlePermissionReply}")
     expect(source).not.toContain("permissionRequests.map(")
   })
+
+  test("keeps live thinking distinct from active tool and terminal run states", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain("const hasActiveToolCall = useMemo(")
+    expect(source).toContain("const showThinkingIndicator = isRunning && !hasActiveToolCall")
+    expect(source).toContain("aria-label={text.message.running}")
+    expect(source).not.toContain("{text.chat.thinking}")
+    expect(source).toContain('const footerRunStatus = activeRunStatus === "running" || activeRunStatus === "queued" ? null : activeRunStatus')
+    expect(source).toContain("<RunStatusDot status={footerRunStatus} />")
+    expect(source).toContain("function hasPendingToolCall(")
+    expect(source).toContain("waitingPermissionToolName={")
+    expect(source).toContain("function RunFinishedNotice(")
+    expect(source).toContain("text.chat.runFinishedCancelled")
+  })
 })

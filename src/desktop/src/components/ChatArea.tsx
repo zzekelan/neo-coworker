@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowUp,
   ChevronDown,
@@ -150,10 +150,18 @@ export function ChatArea({
     queue: null,
   })
   const activeRunStatus = session?.activeRun?.status ?? null
+  const activeRunId = session?.activeRun?.id ?? null
   const isRunning = activeRunStatus === "running"
   const isBusy = isBusyRunStatus(activeRunStatus)
   const isRunSkillEditingLocked = Boolean(session?.activeRun)
   const activePermissionRequest = permissionRequests[0] ?? null
+  const hasActiveToolCall = useMemo(
+    () => hasPendingToolCall(transcript, activeRunId),
+    [transcript, activeRunId],
+  )
+  const showThinkingIndicator = isRunning && !hasActiveToolCall
+  const footerRunStatus = activeRunStatus === "running" || activeRunStatus === "queued" ? null : activeRunStatus
+  const finishedRunNotice = getFinishedRunNotice(session?.activeRun?.id ?? null, session?.latestRun?.status ?? null)
   const sessionSummaryWithOptimisticSkills =
     sessionSummary && optimisticSessionSkills
       ? {
@@ -439,7 +447,13 @@ export function ChatArea({
                     tokensAfter={boundaryPart.tokensAfter}
                   />
                 ) : (
-                  <Message message={message} previousTimestamp={prevTimestamp} />
+                  <Message
+                    message={message}
+                    previousTimestamp={prevTimestamp}
+                    waitingPermissionToolName={
+                      message.runId === activeRunId ? activePermissionRequest?.toolName ?? null : null
+                    }
+                  />
                 )}
               </div>
             )
@@ -491,21 +505,24 @@ export function ChatArea({
                 />
               ) : null}
 
-              {isRunning ? (
+              {finishedRunNotice ? (
+                <RunFinishedNotice label={finishedRunNotice === "cancelled" ? text.chat.runFinishedCancelled : text.chat.runFinishedFailed} />
+              ) : null}
+
+              {showThinkingIndicator ? (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
-                  className="flex items-center gap-1 py-3"
+                  className="flex items-center py-3"
+                  role="status"
+                  aria-label={text.message.running}
                 >
-                  <div className="flex items-center gap-[3px]">
+                  <div className="flex items-center gap-[3px]" aria-hidden="true">
                     <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0s' }} />
                     <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0.15s' }} />
                     <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0.3s' }} />
                   </div>
-                  <span className="ml-2 text-[13px] text-muted">
-                    {text.chat.thinking}
-                  </span>
                 </motion.div>
               ) : null}
             </div>
@@ -678,7 +695,7 @@ export function ChatArea({
             </div>
 
             <div className="flex items-center gap-3">
-              <RunStatusDot status={activeRunStatus} />
+              <RunStatusDot status={footerRunStatus} />
               <span className="text-muted/60 select-none">
                 ⏎ {text.chat.send} · ⇧⏎ {text.chat.newLine}
               </span>
@@ -687,6 +704,64 @@ export function ChatArea({
         </motion.div>
       </div>
     </div>
+  )
+}
+
+function hasPendingToolCall(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
+  if (!activeRunId) {
+    return false
+  }
+
+  return transcript.some((message) => {
+    if (message.runId !== activeRunId) {
+      return false
+    }
+
+    const parts = message.parts ?? []
+    const resolvedCallIds = new Set(
+      parts
+        .filter((part) => part.type === "tool_result")
+        .map((part) => part.callId),
+    )
+
+    return parts.some((part) => {
+      if (part.type !== "tool_call") {
+        return false
+      }
+
+      return !resolvedCallIds.has(part.callId)
+        && part.status !== "success"
+        && part.status !== "error"
+        && part.status !== "cancelled"
+    })
+  })
+}
+
+function getFinishedRunNotice(activeRunId: string | null, latestRunStatus: string | null | undefined) {
+  if (activeRunId) {
+    return null
+  }
+
+  if (latestRunStatus === "cancelled" || latestRunStatus === "failed") {
+    return latestRunStatus
+  }
+
+  return null
+}
+
+function RunFinishedNotice({ label }: { label: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="flex items-center gap-2 py-3 text-[13px] font-medium text-muted"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-muted" aria-hidden="true" />
+      {label}
+    </motion.div>
   )
 }
 
