@@ -55,6 +55,9 @@ describe("desktop message", () => {
     expect(source).toContain("aria-expanded={isExpanded}")
     expect(source).toContain("aria-live={isLive ? \"polite\" : undefined}")
     expect(source).toContain("THINKING_LABEL_CLASS")
+    expect(source).toContain("isLive ? (")
+    expect(source).toContain("animate-symbol-spin")
+    expect(source).toContain("className=\"h-3 w-3 max-w-none shrink-0 animate-symbol-spin text-highlight\"")
     expect(source).toContain('className="py-1 pr-2"')
     expect(source).toContain("ACTIVITY_CHEVRON_SLOT_CLASS")
     expect(source).toContain('className="group flex w-full cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"')
@@ -69,7 +72,7 @@ describe("desktop message", () => {
     expect(source).toContain('reasoning: "Reasoning"')
     expect(source).toContain('reasoning: "推理摘要"')
     expect(source).toContain('thinking: "Thinking"')
-    expect(source).toContain('thinking: "思考"')
+    expect(source).toContain('thinking: "正在思考"')
     expect(source).not.toContain('reasoning: "Thinking"')
   })
 

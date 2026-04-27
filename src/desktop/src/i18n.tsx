@@ -530,7 +530,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       showLess: "收起",
       viewDetails: "查看详情",
       hideDetails: "收起详情",
-      thinking: "思考",
+      thinking: "正在思考",
       running: "进行中",
       waitingPermission: "等待授权",
       completed: "已完成",

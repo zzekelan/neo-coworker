@@ -85,6 +85,16 @@ body {
   animation: breathe 2s ease-in-out infinite;
 }
 
+@keyframes symbol-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-symbol-spin {
+  animation: symbol-spin 4s linear infinite;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.8; }

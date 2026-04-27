@@ -502,6 +502,24 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number; isLive?: boole
         aria-live={isLive ? "polite" : undefined}
         className="group flex w-full cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"
       >
+        {isLive ? (
+          <span className="flex h-5 w-1.5 shrink-0 items-center justify-center" aria-hidden="true">
+            <svg
+              viewBox="0 0 20 20"
+              className="h-3 w-3 max-w-none shrink-0 animate-symbol-spin text-highlight"
+            >
+              <line
+                x1="15.5"
+                y1="2.5"
+                x2="4.5"
+                y2="17.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
+        ) : null}
         <span className={cn("min-w-0 flex-1 text-left", THINKING_LABEL_CLASS)}>
           {isLive ? labels.message.thinking : labels.message.reasoning}
         </span>

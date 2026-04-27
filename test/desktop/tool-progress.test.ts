@@ -39,6 +39,9 @@ describe("Tool Progress UI (Source Analysis)", () => {
     expect(cssSource).toContain("@keyframes typing-dot")
     expect(cssSource).toContain(".animate-typing-dot")
     expect(cssSource).toContain("animation: typing-dot")
+    expect(cssSource).toContain("@keyframes symbol-spin")
+    expect(cssSource).toContain(".animate-symbol-spin")
+    expect(cssSource).toContain("animation: symbol-spin 4s linear infinite")
   })
 
   test("should have status indicators in ToolIndicator for pending status", () => {

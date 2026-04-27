@@ -512,11 +512,27 @@ export function ChatArea({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
-                  className="flex items-center py-3"
+                  className="relative flex min-h-7 items-center gap-2 py-1 pr-2"
                   role="status"
                   aria-live="polite"
                   aria-label={text.message.thinking}
                 >
+                  <span className="flex h-5 w-1.5 shrink-0 items-center justify-center" aria-hidden="true">
+                    <svg
+                      viewBox="0 0 20 20"
+                      className="h-3 w-3 max-w-none shrink-0 animate-symbol-spin text-highlight"
+                    >
+                      <line
+                        x1="15.5"
+                        y1="2.5"
+                        x2="4.5"
+                        y2="17.5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </span>
                   <span className="text-[13px] font-medium leading-5 text-muted/70">
                     {text.message.thinking}
                   </span>
