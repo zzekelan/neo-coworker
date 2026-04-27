@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, Suspense } from "react"
+import React, { useCallback, useEffect, useMemo, useState, Suspense } from "react"
 import {
   AlertCircle,
   Check,
@@ -135,8 +135,9 @@ function shouldShowTimestamp(previousTimestamp: string | undefined, currentTimes
 const MessageComponent: React.FC<{
   message: DesktopTranscriptMessage
   previousTimestamp?: string
+  isActiveRunMessage?: boolean
   waitingPermissionToolName?: string | null
-}> = ({ message, previousTimestamp, waitingPermissionToolName = null }) => {
+}> = ({ message, previousTimestamp, isActiveRunMessage = false, waitingPermissionToolName = null }) => {
   const text = useDesktopText()
   const isUser = message.role === "user"
   const toolResultLookup = useMemo(
@@ -254,6 +255,7 @@ const MessageComponent: React.FC<{
                     role={message.role}
                     relatedResult={part.type === "tool_call" ? toolResultLookup.get(part.callId) ?? null : null}
                     partIndex={item.index}
+                    isActiveRunMessage={isActiveRunMessage}
                     waitingPermissionToolName={waitingPermissionToolName}
                   />
                 )
@@ -381,8 +383,9 @@ const MessagePartRenderer: React.FC<{
   role?: DesktopTranscriptMessage["role"]
   relatedResult?: Extract<MessagePart, { type: "tool_result" }> | null
   partIndex?: number
+  isActiveRunMessage?: boolean
   waitingPermissionToolName?: string | null
-}> = ({ part, role, relatedResult = null, partIndex = 0, waitingPermissionToolName = null }) => {
+}> = ({ part, role, relatedResult = null, partIndex = 0, isActiveRunMessage = false, waitingPermissionToolName = null }) => {
   const text = useDesktopText()
 
   if (part.type === "text") {
@@ -467,18 +470,22 @@ const MessagePartRenderer: React.FC<{
   }
 
   if (part.type === "reasoning") {
-    return <ReasoningBlock text={part.text} partIndex={partIndex} />
+    return <ReasoningBlock text={part.text} partIndex={partIndex} isLive={isActiveRunMessage} />
   }
 
   // tool_result parts are filtered out before reaching here
   return null
 }
 
-/** Reasoning block: collapsed by default, user-expandable. */
-const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo(({ text, partIndex }) => {
+/** Live reasoning stays visible while streaming; completed reasoning stays collapsed by default. */
+const ReasoningBlock: React.FC<{ text: string; partIndex: number; isLive?: boolean }> = React.memo(({ text, partIndex, isLive = false }) => {
   const labels = useDesktopText()
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(isLive)
   const toggle = useCallback(() => setIsExpanded((prev) => !prev), [])
+
+  useEffect(() => {
+    setIsExpanded(isLive)
+  }, [isLive])
 
   return (
     <motion.div
@@ -492,10 +499,11 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
         onClick={toggle}
         onKeyDown={expandKeyDown(toggle)}
         aria-expanded={isExpanded}
+        aria-live={isLive ? "polite" : undefined}
         className="group flex w-full cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"
       >
         <span className={cn("min-w-0 flex-1 text-left", THINKING_LABEL_CLASS)}>
-          {labels.message.reasoning}
+          {isLive ? labels.message.thinking : labels.message.reasoning}
         </span>
         <span className={ACTIVITY_CHEVRON_SLOT_CLASS}>
           <ChevronLeft

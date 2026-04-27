@@ -40,15 +40,20 @@ describe("desktop message", () => {
     expect(source).toContain("return wasTruncated ? `${limitedText}\\n...` : limitedText")
   })
 
-  test("renders reasoning parts collapsed by default with an expandable affordance", () => {
+  test("renders completed reasoning collapsed by default and live thinking expanded with the prior label", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
     expect(source).toContain('part.type === "reasoning"')
     expect(source).toContain("<ReasoningBlock")
     expect(source).toContain("const ReasoningBlock")
-    expect(source).toContain("useState(false)")
+    expect(source).toContain("isActiveRunMessage?: boolean")
+    expect(source).toContain("isLive={isActiveRunMessage}")
+    expect(source).toContain("useState(isLive)")
+    expect(source).toContain("setIsExpanded(isLive)")
     expect(source).toContain("labels.message.reasoning")
+    expect(source).toContain("labels.message.thinking")
     expect(source).toContain("aria-expanded={isExpanded}")
+    expect(source).toContain("aria-live={isLive ? \"polite\" : undefined}")
     expect(source).toContain("THINKING_LABEL_CLASS")
     expect(source).toContain('className="py-1 pr-2"')
     expect(source).toContain("ACTIVITY_CHEVRON_SLOT_CLASS")
@@ -63,6 +68,8 @@ describe("desktop message", () => {
 
     expect(source).toContain('reasoning: "Reasoning"')
     expect(source).toContain('reasoning: "推理摘要"')
+    expect(source).toContain('thinking: "Thinking"')
+    expect(source).toContain('thinking: "思考"')
     expect(source).not.toContain('reasoning: "Thinking"')
   })
 

@@ -74,6 +74,7 @@ type DesktopText = {
     showLess: string
     viewDetails: string
     hideDetails: string
+    thinking: string
     running: string
     waitingPermission: string
     completed: string
@@ -290,6 +291,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       showLess: "Show less",
       viewDetails: "View details",
       hideDetails: "Hide details",
+      thinking: "Thinking",
       running: "In progress",
       waitingPermission: "Waiting for permission",
       completed: "Completed",
@@ -528,6 +530,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       showLess: "收起",
       viewDetails: "查看详情",
       hideDetails: "收起详情",
+      thinking: "思考",
       running: "进行中",
       waitingPermission: "等待授权",
       completed: "已完成",

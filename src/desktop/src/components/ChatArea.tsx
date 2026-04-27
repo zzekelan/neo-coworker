@@ -159,7 +159,11 @@ export function ChatArea({
     () => hasPendingToolCall(transcript, activeRunId),
     [transcript, activeRunId],
   )
-  const showThinkingIndicator = isRunning && !hasActiveToolCall
+  const hasActiveReasoningPart = useMemo(
+    () => hasVisibleReasoningPart(transcript, activeRunId),
+    [transcript, activeRunId],
+  )
+  const showThinkingIndicator = isRunning && !hasActiveToolCall && !hasActiveReasoningPart
   const footerRunStatus = activeRunStatus === "running" || activeRunStatus === "queued" ? null : activeRunStatus
   const finishedRunNotice = getFinishedRunNotice(session?.activeRun?.id ?? null, session?.latestRun?.status ?? null)
   const sessionSummaryWithOptimisticSkills =
@@ -450,6 +454,7 @@ export function ChatArea({
                   <Message
                     message={message}
                     previousTimestamp={prevTimestamp}
+                    isActiveRunMessage={message.runId === activeRunId && isRunning}
                     waitingPermissionToolName={
                       message.runId === activeRunId ? activePermissionRequest?.toolName ?? null : null
                     }
@@ -516,13 +521,12 @@ export function ChatArea({
                   transition={{ duration: 0.3 }}
                   className="flex items-center py-3"
                   role="status"
-                  aria-label={text.message.running}
+                  aria-live="polite"
+                  aria-label={text.message.thinking}
                 >
-                  <div className="flex items-center gap-[3px]" aria-hidden="true">
-                    <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0s' }} />
-                    <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0.15s' }} />
-                    <span className="h-[5px] w-[5px] rounded-full bg-muted animate-typing-dot" style={{ animationDelay: '0.3s' }} />
-                  </div>
+                  <span className="text-[13px] font-medium leading-5 text-muted/70">
+                    {text.message.thinking}
+                  </span>
                 </motion.div>
               ) : null}
             </div>
@@ -734,6 +738,20 @@ function hasPendingToolCall(transcript: DesktopTranscriptMessage[], activeRunId:
         && part.status !== "error"
         && part.status !== "cancelled"
     })
+  })
+}
+
+function hasVisibleReasoningPart(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
+  if (!activeRunId) {
+    return false
+  }
+
+  return transcript.some((message) => {
+    if (message.runId !== activeRunId) {
+      return false
+    }
+
+    return (message.parts ?? []).some((part) => part.type === "reasoning" && part.text.trim().length > 0)
   })
 }
 
