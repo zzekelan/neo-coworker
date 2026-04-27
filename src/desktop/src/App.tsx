@@ -7,8 +7,13 @@ import { ChatArea } from "./components/ChatArea"
 import { KeyboardShortcutProvider } from "./providers/KeyboardShortcutProvider"
 import { ThemeProvider } from "./providers/ThemeProvider"
 import { CommandPalette } from "./components/CommandPalette"
+import { DesktopRunningStatesHarness } from "./DesktopRunningStatesHarness"
 
 export default function App() {
+  if (shouldShowRunningStatesHarness()) {
+    return <DesktopRunningStatesHarness />
+  }
+
   const {
     workspaces,
     activeWorkspaceRoot,
@@ -158,4 +163,13 @@ export default function App() {
     </KeyboardShortcutProvider>
     </ThemeProvider>
   )
+}
+
+function shouldShowRunningStatesHarness() {
+  return isLocalDesktopDevServer() && new URLSearchParams(window.location.search).get("fixture") === "running-states"
+}
+
+function isLocalDesktopDevServer() {
+  return window.location.port === "4173"
+    && (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")
 }
