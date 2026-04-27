@@ -192,7 +192,7 @@ const MessageComponent: React.FC<{
           <TimestampDivider timestamp={formattedTimestamp} />
         ) : null}
 
-        <div className={cn("flex max-w-3xl flex-col", isUser ? "items-end" : "w-full items-start")}>
+        <div className={cn("flex flex-col", isUser ? "max-w-[78%] items-end" : "w-full items-start")}>
           {message.parts ? (
             <div className={cn("w-full", isUser ? "space-y-2" : "space-y-1.5")}>
               {renderItems.map((item) => {
@@ -222,7 +222,7 @@ const MessageComponent: React.FC<{
               className={cn(
                 "text-[15px] leading-relaxed",
                 isUser
-                  ? "rounded-2xl rounded-tr-sm bg-surface px-5 py-3 text-ink"
+                  ? "rounded-xl rounded-tr-md border border-border/35 bg-surface/65 px-4 py-2.5 text-ink"
                   : "py-2 text-ink",
               )}
             >
@@ -260,7 +260,7 @@ export const Message = React.memo(MessageComponent)
 
 const TimestampDivider: React.FC<{ timestamp: string }> = React.memo(({ timestamp }) => {
   return (
-    <div className="my-3 flex w-full max-w-3xl items-center gap-3 pl-6">
+    <div className="my-3 flex w-full items-center gap-3 pl-6">
       <span className="shrink-0 font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted/65">
         {timestamp}
       </span>
@@ -467,9 +467,11 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
         )}
       >
         <span className={ACTIVITY_MARKER_CLASS} />
-        <span className={ACTIVITY_LABEL_CLASS}>
-          {labels.message.reasoning}
-        </span>
+        <div className="flex min-w-0 flex-1 items-center">
+          <span className={ACTIVITY_LABEL_CLASS}>
+            {labels.message.reasoning}
+          </span>
+        </div>
         <div className="flex w-5 shrink-0 items-center justify-center">
           <ChevronLeft
             className={cn(
