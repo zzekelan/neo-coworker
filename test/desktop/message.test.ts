@@ -83,6 +83,12 @@ describe("desktop message", () => {
     expect(source).not.toContain('className="mt-2 self-end"')
   })
 
+  test("keeps agent tool rows on the shared activity rail", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    expect(source).not.toContain('isAgent && "ml-2"')
+  })
+
   test("filters whitespace-only text parts and keeps activity details bounded", () => {
     const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
     const detailsSource = readFileSync("src/desktop/src/components/ToolDetails.tsx", "utf8")

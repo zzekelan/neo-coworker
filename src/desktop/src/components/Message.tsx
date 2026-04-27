@@ -567,7 +567,6 @@ const ToolCallGroup: React.FC<{
       className={cn(
         "relative",
         ACTIVITY_RAIL_CLASS,
-        isAgent && "ml-2",
       )}
     >
       {/* Group header */}
@@ -665,7 +664,7 @@ const ToolIndicator: React.FC<{
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className={cn("relative", ACTIVITY_RAIL_CLASS, isAgent && "ml-2")}
+      className={cn("relative", ACTIVITY_RAIL_CLASS)}
     >
       {/* Indicator row */}
       <div
@@ -795,7 +794,6 @@ const CompletedToolRow: React.FC<{
       className={cn(
         "relative",
         ACTIVITY_RAIL_CLASS,
-        isAgent && "ml-2",
       )}
     >
       <div
