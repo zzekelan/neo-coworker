@@ -62,6 +62,18 @@ describe("desktop message", () => {
     expect(source).toContain('reasoning: "思考"')
   })
 
+  test("keeps transcript timestamps sparse and visually quiet", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    expect(source).toContain("const TIMESTAMP_VISIBLE_GAP_MS = 5 * 60 * 1000")
+    expect(source).toContain("function shouldShowTimestamp(")
+    expect(source).toContain("return currentTime - previousTime >= TIMESTAMP_VISIBLE_GAP_MS")
+    expect(source).toContain("function formatTimestampLabel(")
+    expect(source).toContain("date.toLocaleTimeString([], timeFormat)")
+    expect(source).toContain('className="my-2 flex w-full justify-center"')
+    expect(source).not.toContain("font-mono text-[11px] font-medium uppercase tracking-[0.08em]")
+  })
+
   test("filters whitespace-only text parts and keeps activity details bounded", () => {
     const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
     const detailsSource = readFileSync("src/desktop/src/components/ToolDetails.tsx", "utf8")

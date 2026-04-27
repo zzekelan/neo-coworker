@@ -19,6 +19,7 @@ const PulsePlaceholder = () => <div className="pulse-placeholder" />
 
 const DEFAULT_COLLAPSED_CHAR_LIMIT = 280
 const DEFAULT_COLLAPSED_LINE_LIMIT = 8
+const TIMESTAMP_VISIBLE_GAP_MS = 5 * 60 * 1000
 const ACTIVITY_ROW_CLASS =
   "relative min-h-7 pl-6 pr-2 py-1 text-left transition-colors hover:bg-surface/35"
 const ACTIVITY_MARKER_CLASS =
@@ -82,14 +83,52 @@ type RenderItem =
       startIndex: number
     }
 
-function formatTimestampToMinute(createdAt: string): string {
-  return new Date(createdAt).toLocaleString([], {
+function isSameCalendarDay(left: Date, right: Date): boolean {
+  return left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+}
+
+function formatTimestampLabel(createdAt: string): string {
+  const date = new Date(createdAt)
+  const now = new Date()
+  const timeFormat = {
+    hour: "2-digit",
+    minute: "2-digit",
+  } as const
+
+  if (isSameCalendarDay(date, now)) {
+    return date.toLocaleTimeString([], timeFormat)
+  }
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleString([], {
+      month: "2-digit",
+      day: "2-digit",
+      ...timeFormat,
+    })
+  }
+
+  return date.toLocaleString([], {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    ...timeFormat,
   })
+}
+
+function shouldShowTimestamp(previousTimestamp: string | undefined, currentTimestamp: string): boolean {
+  if (!previousTimestamp) return true
+
+  const previous = new Date(previousTimestamp)
+  const current = new Date(currentTimestamp)
+  const previousTime = previous.getTime()
+  const currentTime = current.getTime()
+
+  if (Number.isNaN(previousTime) || Number.isNaN(currentTime)) return true
+  if (!isSameCalendarDay(previous, current)) return true
+
+  return currentTime - previousTime >= TIMESTAMP_VISIBLE_GAP_MS
 }
 
 const MessageComponent: React.FC<{
@@ -119,8 +158,8 @@ const MessageComponent: React.FC<{
     return message.content
   }, [message.parts, message.content])
 
-  const formattedTimestamp = formatTimestampToMinute(message.createdAt)
-  const showTimestamp = !previousTimestamp || formatTimestampToMinute(previousTimestamp) !== formattedTimestamp
+  const timestampLabel = formatTimestampLabel(message.createdAt)
+  const showTimestamp = shouldShowTimestamp(previousTimestamp, message.createdAt)
 
   /** Group consecutive completed tool_call parts of the same normalized type. */
   const renderItems = useMemo((): RenderItem[] => {
@@ -189,7 +228,7 @@ const MessageComponent: React.FC<{
         className={cn("flex w-full flex-col", isUser ? "items-end" : "items-start", copyableText && "group/msg")}
       >
         {showTimestamp ? (
-          <TimestampDivider timestamp={formattedTimestamp} />
+          <TimestampDivider timestamp={timestampLabel} />
         ) : null}
 
         <div className={cn("flex flex-col", isUser ? "max-w-[78%] items-end" : "w-full items-start")}>
@@ -260,11 +299,10 @@ export const Message = React.memo(MessageComponent)
 
 const TimestampDivider: React.FC<{ timestamp: string }> = React.memo(({ timestamp }) => {
   return (
-    <div className="my-3 flex w-full items-center gap-3 pl-6">
-      <span className="shrink-0 font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted/65">
+    <div className="my-2 flex w-full justify-center">
+      <span className="rounded-full bg-surface/45 px-2 py-0.5 text-[10px] font-medium leading-4 tracking-normal text-muted/55">
         {timestamp}
       </span>
-      <span className="h-px flex-1 bg-border/55" />
     </div>
   )
 })
