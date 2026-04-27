@@ -488,6 +488,7 @@ function createOpenAICompatibleRequestConfig(
     return undefined
   }
 
+  const usesMiniMaxReasoningSplit = isMiniMaxReasoningModel(resolvedCapabilities)
   const supportsThinkingSerialization =
     resolvedCapabilities.thinkingControls.thinking.supported === true
     || resolvedCapabilities.reasoning.supported === true
@@ -496,6 +497,10 @@ function createOpenAICompatibleRequestConfig(
     ...(resolvedCapabilities.interleaved.supported === true
       && resolvedCapabilities.interleaved.field
       && { replayedReasoningField: resolvedCapabilities.interleaved.field }),
+    ...(usesMiniMaxReasoningSplit && {
+      replayedReasoningField: "reasoning_details" as const,
+      reasoningSplit: true,
+    }),
     // An explicit config-level disable is not the same as the provider lacking
     // the thinking wire format. We still need to serialize `{ type: "disabled" }`
     // for reasoning-capable models like Kimi so the upstream default does not
@@ -514,6 +519,14 @@ function createOpenAICompatibleRequestConfig(
   }
 
   return Object.keys(requestConfig).length > 0 ? requestConfig : undefined
+}
+
+function isMiniMaxReasoningModel(resolvedCapabilities: ResolvedProviderCapabilities) {
+  const providerId = resolvedCapabilities.providerId?.toLowerCase() ?? ""
+  const model = resolvedCapabilities.model.toLowerCase()
+
+  return model.includes("minimax-m2")
+    || (providerId.includes("minimax") && /(^|[-_/])m2([.-]\d|$)/.test(model))
 }
 
 function createResilientProvider(input: {

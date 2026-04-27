@@ -4,7 +4,9 @@ import { z } from "zod"
 import { createOpenAICompatibleProvider } from "../../src/model"
 import { createEditTool } from "../../src/tool"
 
-type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming
+type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming & {
+  reasoning_split?: boolean
+}
 type OpenAIRequestOptions = OpenAI.RequestOptions
 type OpenAICompatibleChunkStream =
   | AsyncIterable<OpenAI.Chat.ChatCompletionChunk>
@@ -347,6 +349,50 @@ describe("openai-compatible provider", () => {
       {
         type: "reasoning.delta",
         text: "Need to inspect the README before calling read.",
+      },
+    ])
+  })
+
+  test("emits streamed reasoning deltas from cumulative reasoning_details chunks", async () => {
+    const provider = createProvider({
+      model: "MiniMax-M2.7",
+      client: createMockOpenAICompatibleClient(async () => {
+        return (async function* () {
+          yield createOpenAICompatibleChunk({
+            reasoning_details: [{ text: "Need to inspect" }],
+          })
+          yield createOpenAICompatibleChunk({
+            reasoning_details: [{ text: "Need to inspect the README" }],
+          })
+          yield createOpenAICompatibleChunk({
+            content: "Opening README.md",
+          })
+        })()
+      }),
+    })
+
+    const events = []
+    for await (const event of provider.streamTurn({
+      system: "system",
+      messages: [],
+      tools: [],
+      signal: new AbortController().signal,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      {
+        type: "reasoning.delta",
+        text: "Need to inspect",
+      },
+      {
+        type: "reasoning.delta",
+        text: " the README",
+      },
+      {
+        type: "text.delta",
+        text: "Opening README.md",
       },
     ])
   })
@@ -951,6 +997,80 @@ describe("openai-compatible provider", () => {
         type: "enabled",
         keep: "all",
       },
+      parallel_tool_calls: true,
+      tools: [],
+    })
+  })
+
+  test("serializes MiniMax reasoning_split and replays reasoning_details", async () => {
+    let receivedBody: unknown
+
+    const provider = createProvider({
+      model: "MiniMax-M2.7",
+      requestConfig: {
+        replayedReasoningField: "reasoning_details",
+        reasoningSplit: true,
+      },
+      client: createMockOpenAICompatibleClient(async (body) => {
+        receivedBody = body
+        return (async function* () {})()
+      }),
+    })
+
+    for await (const _event of provider.streamTurn({
+      system: "system",
+      messages: [
+        {
+          role: "assistant",
+          parts: [
+            {
+              type: "reasoning",
+              text: "Need to call the tool before answering.",
+            },
+            {
+              type: "tool_call",
+              callId: "call_1",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          ],
+        },
+      ],
+      tools: [],
+      signal: new AbortController().signal,
+      thinking: {
+        enabled: true,
+      },
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toEqual({
+      model: "MiniMax-M2.7",
+      messages: [
+        { role: "system", content: "system" },
+        {
+          role: "assistant",
+          content: null,
+          reasoning_details: [{ text: "Need to call the tool before answering." }],
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "read",
+                arguments: '{"path":"README.md"}',
+              },
+            },
+          ],
+        },
+      ],
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+      max_completion_tokens: 16000,
+      reasoning_split: true,
       parallel_tool_calls: true,
       tools: [],
     })

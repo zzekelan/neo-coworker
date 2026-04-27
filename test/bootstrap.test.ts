@@ -2,9 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import type OpenAI from "openai"
 import { buildCli } from "../src/cli"
 import {
   _resetModelsDevCatalogCache,
+  createDefaultProvider,
   createDefaultSearchBackend,
   getModelsDevCatalogCachePath,
   loadModelsDevCatalog,
@@ -19,8 +21,13 @@ import {
 } from "../src/bootstrap"
 import {
   type ModelsDevCatalog,
+  type ResolvedProviderCapabilities,
   resolveProviderCapabilities as resolveProviderCapabilitiesFromCatalog,
 } from "../src/bootstrap/provider-capabilities"
+
+type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming & {
+  reasoning_split?: boolean
+}
 
 const tempDirectories: string[] = []
 
@@ -334,6 +341,88 @@ describe("bootstrap", () => {
     ).toEqual({
       enabled: true,
       effort: "medium",
+    })
+  })
+
+  test("serializes MiniMax reasoning_split for the default openai-compatible provider", async () => {
+    let receivedBody: OpenAICompatibleRequest | null = null
+    const resolvedCapabilities: ResolvedProviderCapabilities = {
+      provider: "openai-compatible",
+      providerId: null,
+      model: "MiniMax-M2.7",
+      catalog: {
+        source: "default",
+        miss: true,
+      },
+      reasoning: {
+        supported: false,
+        source: "default",
+      },
+      toolCall: {
+        supported: true,
+        source: "default",
+      },
+      interleaved: {
+        supported: false,
+        field: null,
+        source: "default",
+      },
+      reasoningEffort: {
+        supported: false,
+        source: "default",
+      },
+      thinkingControls: {
+        thinking: {
+          supported: false,
+          source: "default",
+        },
+        reasoningEffort: {
+          supported: false,
+          source: "default",
+        },
+      },
+    }
+
+    const provider = await createDefaultProvider({
+      env: {
+        LLM_PROVIDER: "openai-compatible",
+        LLM_API_KEY: "test-key",
+        LLM_MODEL: "MiniMax-M2.7",
+        LLM_BASE_URL: "https://api.minimax.io/v1",
+      },
+      resolvedCapabilities,
+      createClient() {
+        return {
+          chat: {
+            completions: {
+              create(body: OpenAICompatibleRequest) {
+                receivedBody = body
+                return (async function* () {})()
+              },
+            },
+          },
+        } as unknown as OpenAI
+      },
+    })
+
+    for await (const _event of provider.streamTurn({
+      systemPrompt: "system",
+      skillCatalog: [],
+      activeSkills: [],
+      transcript: [],
+      tools: [],
+      signal: new AbortController().signal,
+      thinking: {
+        enabled: true,
+      },
+    })) {
+      void _event
+    }
+
+    expect(receivedBody).toMatchObject({
+      model: "MiniMax-M2.7",
+      stream: true,
+      reasoning_split: true,
     })
   })
 

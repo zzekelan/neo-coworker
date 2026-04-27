@@ -64,12 +64,18 @@ export function createOpenAIEventNormalizer() {
 export function createOpenAICompatibleEventNormalizer() {
   const toolCalls = new Map<number, OpenAICompatibleToolCallState>()
   const thinkBlockParser = createThinkBlockParser()
+  const reasoningDetailsParser = createReasoningDetailsParser()
 
   return {
     push(chunk: OpenAI.Chat.ChatCompletionChunk): ModelEvent[] {
       const events: ModelEvent[] = []
 
       for (const choice of chunk.choices) {
+        const reasoningDetails = reasoningDetailsParser.push(choice.delta)
+        if (reasoningDetails) {
+          events.push({ type: "reasoning.delta", text: reasoningDetails })
+        }
+
         const reasoningContent = readOpenAICompatibleReasoningContent(choice.delta)
         if (reasoningContent) {
           events.push({ type: "reasoning.delta", text: reasoningContent })
@@ -121,6 +127,32 @@ export function createOpenAICompatibleEventNormalizer() {
         ...thinkBlockParser.flush(),
         ...flushOpenAICompatibleToolCalls(toolCalls),
       ]
+    },
+  }
+}
+
+function createReasoningDetailsParser() {
+  let bufferedText = ""
+
+  return {
+    push(delta: OpenAI.Chat.ChatCompletionChunk.Choice.Delta) {
+      const text = readOpenAICompatibleReasoningDetails(delta)
+      if (!text) {
+        return null
+      }
+
+      if (text.startsWith(bufferedText)) {
+        const nextText = text.slice(bufferedText.length)
+        bufferedText = text
+        return nextText.length > 0 ? nextText : null
+      }
+
+      if (bufferedText.startsWith(text)) {
+        return null
+      }
+
+      bufferedText += text
+      return text
     },
   }
 }
@@ -245,6 +277,33 @@ function readOpenAICompatibleReasoningContent(
   return typeof (delta as { reasoning_content?: unknown }).reasoning_content === "string"
     ? (delta as { reasoning_content: string }).reasoning_content
     : null
+}
+
+function readOpenAICompatibleReasoningDetails(
+  delta: OpenAI.Chat.ChatCompletionChunk.Choice.Delta,
+) {
+  const reasoningDetails = (delta as { reasoning_details?: unknown }).reasoning_details
+
+  if (typeof reasoningDetails === "string") {
+    return reasoningDetails
+  }
+
+  if (!Array.isArray(reasoningDetails)) {
+    return null
+  }
+
+  const text = reasoningDetails
+    .map((detail) => {
+      if (!detail || typeof detail !== "object") {
+        return ""
+      }
+
+      const value = (detail as { text?: unknown }).text
+      return typeof value === "string" ? value : ""
+    })
+    .join("")
+
+  return text.length > 0 ? text : null
 }
 
 function rememberFunctionCall(

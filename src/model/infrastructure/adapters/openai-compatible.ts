@@ -15,16 +15,19 @@ type OpenAICompatibleThinking = {
   keep?: "all"
 }
 type OpenAICompatibleAssistantMessage = OpenAI.Chat.ChatCompletionAssistantMessageParam
-  & Partial<Record<OpenAICompatibleReasoningField, string>>
+  & Partial<Record<"reasoning_content", string>>
+  & { reasoning_details?: Array<{ text: string }> }
 type OpenAICompatibleMessage = OpenAI.Chat.ChatCompletionMessageParam | OpenAICompatibleAssistantMessage
 type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming & {
   reasoning_effort?: Exclude<ReasoningEffortMode, "default">
+  reasoning_split?: boolean
   thinking?: OpenAICompatibleThinking
 }
 type OpenAICompatibleTools = OpenAI.Chat.ChatCompletionTool[]
 
 export type OpenAICompatibleRequestConfig = {
   replayedReasoningField?: OpenAICompatibleReasoningField
+  reasoningSplit?: boolean
   serializeThinking?: boolean
   forcePreserveReasoning?: boolean
   serializeReasoningEffort?: boolean
@@ -117,7 +120,11 @@ function toChatCompletionMessages(
       }
 
       if (input.replayedReasoningField && reasoning) {
-        assistantMessage[input.replayedReasoningField] = reasoning
+        writeAssistantReasoning({
+          message: assistantMessage,
+          field: input.replayedReasoningField,
+          reasoning,
+        })
       }
 
       serialized.push(assistantMessage)
@@ -135,6 +142,19 @@ function toChatCompletionMessages(
   }
 
   return serialized
+}
+
+function writeAssistantReasoning(input: {
+  message: OpenAICompatibleAssistantMessage
+  field: OpenAICompatibleReasoningField
+  reasoning: string
+}) {
+  if (input.field === "reasoning_details") {
+    input.message.reasoning_details = [{ text: input.reasoning }]
+    return
+  }
+
+  input.message.reasoning_content = input.reasoning
 }
 
 function serializeToolResult(part: Extract<ModelMessage["parts"][number], { type: "tool_result" }>) {
@@ -380,6 +400,7 @@ export function createOpenAICompatibleProvider(input: {
           },
           max_completion_tokens: 16000,
           ...(temperature !== undefined && { temperature }),
+          ...(input.requestConfig?.reasoningSplit === true && { reasoning_split: true }),
           ...(thinking !== undefined && { thinking }),
           ...(reasoningEffort !== undefined && { reasoning_effort: reasoningEffort }),
           parallel_tool_calls: true,
