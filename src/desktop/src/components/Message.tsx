@@ -22,12 +22,12 @@ const DEFAULT_COLLAPSED_LINE_LIMIT = 8
 const TIMESTAMP_VISIBLE_GAP_MS = 5 * 60 * 1000
 const ACTIVITY_ROW_CLASS =
   "relative min-h-7 pl-6 pr-2 py-1 text-left transition-colors hover:bg-surface/35"
-const ACTIVITY_MARKER_CLASS =
-  "absolute left-[7px] top-[11px] h-1.5 w-1.5 rounded-full bg-accent/70 ring-4 ring-paper"
 const ACTIVITY_RAIL_CLASS =
   "before:absolute before:left-[9.5px] before:top-0 before:bottom-0 before:w-px before:bg-border"
 const ACTIVITY_LABEL_CLASS =
   "text-[13px] font-medium leading-5 tracking-normal text-muted"
+const THINKING_LABEL_CLASS =
+  "text-[13px] font-medium leading-5 tracking-normal text-muted/70"
 const ACTIVITY_META_CLASS =
   "text-[12px] font-medium leading-5 tracking-normal text-muted/70"
 const TOOL_DETAIL_KEYS = [
@@ -447,7 +447,6 @@ const MessagePartRenderer: React.FC<{
           isCancelled={isCancelled}
           details={allDetails}
           partIndex={partIndex}
-          isAgent={isAgentTool(part.toolName)}
         />
       )
     }
@@ -459,7 +458,6 @@ const MessagePartRenderer: React.FC<{
         status={finalStatus}
         details={callDetails}
         partIndex={partIndex}
-        isAgent={isAgentTool(part.toolName)}
       />
     )
   }
@@ -492,32 +490,24 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className={cn("relative", ACTIVITY_RAIL_CLASS)}
+      className="py-1 pl-6 pr-2"
     >
       <button
         type="button"
         onClick={toggle}
         onKeyDown={expandKeyDown(toggle)}
         aria-expanded={isExpanded}
-        className={cn(
-          "group flex w-full cursor-pointer items-center gap-2 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
-          ACTIVITY_ROW_CLASS,
-        )}
+        className="group inline-flex cursor-pointer items-center gap-1.5 rounded-sm focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"
       >
-        <span className={ACTIVITY_MARKER_CLASS} />
-        <div className="flex min-w-0 flex-1 items-center">
-          <span className={ACTIVITY_LABEL_CLASS}>
-            {labels.message.reasoning}
-          </span>
-        </div>
-        <div className="flex w-5 shrink-0 items-center justify-center">
-          <ChevronLeft
-            className={cn(
-              "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
-              isExpanded && "rotate-[-90deg]",
-            )}
-          />
-        </div>
+        <span className={THINKING_LABEL_CLASS}>
+          {labels.message.reasoning}
+        </span>
+        <ChevronLeft
+          className={cn(
+            "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
+            isExpanded && "rotate-[-90deg]",
+          )}
+        />
       </button>
       <AnimatePresence initial={false}>
         {isExpanded ? (
@@ -528,7 +518,7 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="ml-6 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border/60 bg-surface/35 px-3 py-2 whitespace-pre-wrap text-[13px] leading-relaxed text-muted">
+            <div className="ml-1 mt-1 max-h-64 overflow-y-auto border-l border-border/70 pl-3 whitespace-pre-wrap text-[13px] leading-relaxed text-muted">
               {text}
             </div>
           </motion.div>
@@ -551,7 +541,6 @@ const ToolCallGroup: React.FC<{
   const text = useDesktopText()
   const [isExpanded, setIsExpanded] = useState(entries.length <= 3)
 
-  const isAgent = isAgentTool(entries[0].part.toolName)
   const errorCount = entries.filter((e) => e.isError).length
   const cancelledCount = entries.filter((e) => e.isCancelled).length
   const hasAnyError = errorCount > 0
@@ -580,7 +569,6 @@ const ToolCallGroup: React.FC<{
           hasAnyError && "text-danger",
         )}
       >
-        <span className={cn(ACTIVITY_MARKER_CLASS, hasAnyError && "bg-danger/70", isAgent && "bg-highlight/70")} />
         <div className="flex min-w-0 flex-1 items-center">
           <span className={cn(
             "min-w-0 truncate",
@@ -633,7 +621,6 @@ const ToolCallGroup: React.FC<{
                     isCancelled={entry.isCancelled}
                     details={allDetails}
                     partIndex={0}
-                    isAgent={false}
                     skipEntrance
                   />
                 )
@@ -652,8 +639,7 @@ const ToolIndicator: React.FC<{
   status: ToolStatus
   details: DetailItem[]
   partIndex?: number
-  isAgent?: boolean
-}> = React.memo(({ title, subtitle, status, details, partIndex = 0, isAgent = false }) => {
+}> = React.memo(({ title, subtitle, status, details, partIndex = 0 }) => {
   const text = useDesktopText()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
@@ -679,7 +665,6 @@ const ToolIndicator: React.FC<{
         aria-expanded={hasDetails ? isDetailsOpen : undefined}
         onKeyDown={hasDetails ? expandKeyDown(() => setIsDetailsOpen(prev => !prev)) : undefined}
       >
-        <span className={cn(ACTIVITY_MARKER_CLASS, status === "pending" && "bg-highlight/70", status === "error" && "bg-danger/70")} />
         {/* Title · Subtitle · Status — single line, truncated */}
         <div className="flex min-w-0 flex-1 items-center">
           <span className={cn("shrink-0", ACTIVITY_LABEL_CLASS)}>
@@ -776,9 +761,8 @@ const CompletedToolRow: React.FC<{
   isCancelled: boolean
   details: DetailItem[]
   partIndex?: number
-  isAgent?: boolean
   skipEntrance?: boolean
-}> = React.memo(({ toolName, toolInput, isError, isCancelled, details, partIndex = 0, isAgent = false, skipEntrance = false }) => {
+}> = React.memo(({ toolName, toolInput, isError, isCancelled, details, partIndex = 0, skipEntrance = false }) => {
   const text = useDesktopText()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const hasDetails = details.length > 0
@@ -809,7 +793,6 @@ const CompletedToolRow: React.FC<{
         aria-expanded={hasDetails ? isDetailsOpen : undefined}
         onKeyDown={hasDetails ? expandKeyDown(() => setIsDetailsOpen(prev => !prev)) : undefined}
       >
-        <span className={cn(ACTIVITY_MARKER_CLASS, isError && "bg-danger/70", isAgent && "bg-highlight/70")} />
         <div className="flex min-w-0 flex-1 items-center overflow-hidden">
           <span className={cn(
             "min-w-0 truncate",
@@ -1227,11 +1210,6 @@ function normalizeToolName(toolName: string | undefined) {
   }
 
   return toolName
-}
-
-function isAgentTool(toolName: string | undefined): boolean {
-  const name = normalizeToolName(toolName)
-  return name.includes("agent")
 }
 
 function formatToolDisplayName(toolName: string) {

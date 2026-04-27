@@ -96,7 +96,7 @@ describe("desktop chat area", () => {
     expect(vtSource).toContain("style={{ overflowAnchor: \"none\" }}")
     expect(vtSource).toContain("useLayoutEffect")
 
-    expect(chatSource).toContain("paddingBottom: \"1.5rem\"")
+    expect(chatSource).not.toContain("getTranscriptItemBottomPadding")
 
     expect(messageSource).toContain("initial={false}")
     expect(messageSource).not.toContain("initial={{ opacity: 0, y: 10 }}")

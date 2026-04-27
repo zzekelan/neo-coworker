@@ -49,10 +49,10 @@ describe("desktop message", () => {
     expect(source).toContain("useState(false)")
     expect(source).toContain("labels.message.reasoning")
     expect(source).toContain("aria-expanded={isExpanded}")
-    expect(source).toContain("ACTIVITY_ROW_CLASS")
-    expect(source).toContain("ACTIVITY_RAIL_CLASS")
-    expect(source).toContain("ACTIVITY_LABEL_CLASS")
-    expect(source).toContain('className={ACTIVITY_LABEL_CLASS}')
+    expect(source).toContain("THINKING_LABEL_CLASS")
+    expect(source).toContain('className="py-1 pl-6 pr-2"')
+    expect(source).toContain('className={THINKING_LABEL_CLASS}')
+    expect(source).not.toContain('className={cn("relative", ACTIVITY_RAIL_CLASS)}\\n    >\\n      <button')
   })
 
   test("labels reasoning activity as thinking in the desktop transcript", () => {
@@ -87,6 +87,13 @@ describe("desktop message", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
     expect(source).not.toContain('isAgent && "ml-2"')
+  })
+
+  test("renders tool rows without leading dot markers", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    expect(source).not.toContain("ACTIVITY_MARKER_CLASS")
+    expect(source).not.toContain("isAgentTool(")
   })
 
   test("filters whitespace-only text parts and keeps activity details bounded", () => {
