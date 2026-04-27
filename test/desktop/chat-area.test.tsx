@@ -103,6 +103,14 @@ describe("desktop chat area", () => {
     expect(messageSource).not.toContain("\"mb-6 flex w-full flex-col\"")
   })
 
+  test("keeps transcript messages and the composer on the same centered measure", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain('<div className="mx-auto max-w-4xl">')
+    expect(source).toContain('className="content-fade-top pointer-events-auto relative mx-auto max-w-4xl"')
+    expect(source).not.toContain('<div className="w-full">')
+  })
+
   test("closes the skill panel on outside click and defers Enter submission during IME composition", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 

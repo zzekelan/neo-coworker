@@ -154,6 +154,8 @@ type DesktopText = {
     completedAgent(detail: string): string
     completedAgentFallback: string
     completedGenericTool(name: string, detail: string): string
+    completedSkillActivation(name: string): string
+    completedSkillList: string
     completedSkills: string
     cancelledSuffix: string
     failedSuffix: string
@@ -387,6 +389,8 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedAgent(detail: string) { return `Spawned ${detail} subagent` },
       completedAgentFallback: "Spawned subagent",
       completedGenericTool(name: string, detail: string) { return `${name}: ${detail}` },
+      completedSkillActivation(name: string) { return `Activated ${name}` },
+      completedSkillList: "Listed skills",
       completedSkills: "Updated skills",
       cancelledSuffix: "(cancelled)",
       failedSuffix: "failed",
@@ -620,6 +624,8 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedAgent(detail: string) { return `派遣了 ${detail} 子代理` },
       completedAgentFallback: "派遣了子代理",
       completedGenericTool(name: string, detail: string) { return `${name}: ${detail}` },
+      completedSkillActivation(name: string) { return `激活了 ${name}` },
+      completedSkillList: "列出了技能",
       completedSkills: "更新了技能",
       cancelledSuffix: "（已取消）",
       failedSuffix: "失败",

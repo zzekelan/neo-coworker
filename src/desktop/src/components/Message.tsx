@@ -21,9 +21,7 @@ const DEFAULT_COLLAPSED_CHAR_LIMIT = 280
 const DEFAULT_COLLAPSED_LINE_LIMIT = 8
 const TIMESTAMP_VISIBLE_GAP_MS = 5 * 60 * 1000
 const ACTIVITY_ROW_CLASS =
-  "relative min-h-7 pl-6 pr-2 py-1 text-left transition-colors hover:bg-surface/35"
-const ACTIVITY_RAIL_CLASS =
-  "before:absolute before:left-[9.5px] before:top-0 before:bottom-0 before:w-px before:bg-border"
+  "relative min-h-7 pr-2 py-1 text-left transition-colors hover:bg-surface/35"
 const ACTIVITY_LABEL_CLASS =
   "text-[13px] font-medium leading-5 tracking-normal text-muted"
 const THINKING_LABEL_CLASS =
@@ -233,7 +231,7 @@ const MessageComponent: React.FC<{
 
         <div className={cn("flex flex-col", isUser ? "max-w-[78%] items-end pb-7" : "w-full items-start")}>
           {message.parts ? (
-            <div className={cn("w-full", isUser ? "space-y-2" : "space-y-1.5")}>
+            <div className={cn("w-full", isUser ? "space-y-2" : "space-y-0")}>
               {renderItems.map((item) => {
                 if (item.kind === "group") {
                   return (
@@ -446,6 +444,7 @@ const MessagePartRenderer: React.FC<{
           isError={isError && !isCancelled}
           isCancelled={isCancelled}
           details={allDetails}
+          result={relatedResult}
           partIndex={partIndex}
         />
       )
@@ -490,14 +489,14 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className="py-1 pl-6 pr-2"
+      className="py-1 pr-2"
     >
       <button
         type="button"
         onClick={toggle}
         onKeyDown={expandKeyDown(toggle)}
         aria-expanded={isExpanded}
-        className="group inline-flex cursor-pointer items-center gap-1.5 rounded-sm focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"
+        className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"
       >
         <span className={THINKING_LABEL_CLASS}>
           {labels.message.reasoning}
@@ -553,10 +552,7 @@ const ToolCallGroup: React.FC<{
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(startIndex * 0.05, 0.5) }}
-      className={cn(
-        "relative",
-        ACTIVITY_RAIL_CLASS,
-      )}
+      className="relative"
     >
       {/* Group header */}
       <button
@@ -620,6 +616,7 @@ const ToolCallGroup: React.FC<{
                     isError={entry.isError}
                     isCancelled={entry.isCancelled}
                     details={allDetails}
+                    result={entry.result}
                     partIndex={0}
                     skipEntrance
                   />
@@ -650,7 +647,7 @@ const ToolIndicator: React.FC<{
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className={cn("relative", ACTIVITY_RAIL_CLASS)}
+      className="relative"
     >
       {/* Indicator row */}
       <div
@@ -760,14 +757,15 @@ const CompletedToolRow: React.FC<{
   isError: boolean
   isCancelled: boolean
   details: DetailItem[]
+  result?: ToolResultPart | null
   partIndex?: number
   skipEntrance?: boolean
-}> = React.memo(({ toolName, toolInput, isError, isCancelled, details, partIndex = 0, skipEntrance = false }) => {
+}> = React.memo(({ toolName, toolInput, isError, isCancelled, details, result = null, partIndex = 0, skipEntrance = false }) => {
   const text = useDesktopText()
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const hasDetails = details.length > 0
 
-  const summary = describeCompletedToolSummary(text, toolName, toolInput)
+  const summary = describeCompletedToolSummary(text, toolName, toolInput, result)
   const failSuffix = isError ? ` — ${text.message.failedSuffix}` : ""
 
   return (
@@ -775,10 +773,7 @@ const CompletedToolRow: React.FC<{
       initial={skipEntrance ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={skipEntrance ? { duration: 0 } : { duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className={cn(
-        "relative",
-        ACTIVITY_RAIL_CLASS,
-      )}
+      className="relative"
     >
       <div
         className={cn(
@@ -930,6 +925,7 @@ function describeCompletedToolSummary(
   text: ReturnType<typeof useDesktopText>,
   toolName: string,
   toolInput: unknown,
+  toolResult?: ToolResultPart | null,
 ): string {
   const detail = extractCompactToolDetail(toolName, toolInput)
   const name = normalizeToolName(toolName)
@@ -954,7 +950,7 @@ function describeCompletedToolSummary(
     case "glob":
       return detail ? text.message.completedFound(detail) : text.message.completedFoundFallback
     case "skill":
-      return text.message.completedSkills
+      return describeCompletedSkillSummary(text, toolInput, toolResult)
     case "agent":
       return detail ? text.message.completedAgent(detail) : text.message.completedAgentFallback
     default: {
@@ -996,6 +992,52 @@ function describeToolGroupLabel(
       return formatToolDisplayName(toolName)
     }
   }
+}
+
+function describeCompletedSkillSummary(
+  text: ReturnType<typeof useDesktopText>,
+  toolInput: unknown,
+  toolResult?: ToolResultPart | null,
+): string {
+  const input = asRecord(toolInput)
+  const parsedInput = input ? parseToolArgs(input) : null
+  const inputName = readRecordString(parsedInput, "name")
+  const inputAction = readRecordString(parsedInput, "action")
+
+  const resultOutput = readToolResultOutput(toolResult)
+  const activatedName = resultOutput?.match(/^Activated skill\s+(.+)$/i)?.[1]?.trim()
+  const listedSkills = resultOutput?.startsWith("Available skills:") === true
+
+  if (activatedName) {
+    return text.message.completedSkillActivation(activatedName)
+  }
+
+  if (inputName) {
+    return text.message.completedSkillActivation(inputName)
+  }
+
+  if (inputAction === "list" || listedSkills) {
+    return text.message.completedSkillList
+  }
+
+  return text.message.completedSkills
+}
+
+function readToolResultOutput(toolResult: ToolResultPart | null | undefined): string | null {
+  if (!toolResult) {
+    return null
+  }
+
+  if (typeof toolResult.result === "string") {
+    return toolResult.result
+  }
+
+  const parsed = asRecord(toolResult.result)
+  if (!parsed) {
+    return null
+  }
+
+  return readRecordString(parsed, "output")
 }
 
 /** Try to extract structured args from the tool_call data (args may be JSON-encoded in inputText). */

@@ -50,9 +50,10 @@ describe("desktop message", () => {
     expect(source).toContain("labels.message.reasoning")
     expect(source).toContain("aria-expanded={isExpanded}")
     expect(source).toContain("THINKING_LABEL_CLASS")
-    expect(source).toContain('className="py-1 pl-6 pr-2"')
+    expect(source).toContain('className="py-1 pr-2"')
+    expect(source).toContain('className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"')
     expect(source).toContain('className={THINKING_LABEL_CLASS}')
-    expect(source).not.toContain('className={cn("relative", ACTIVITY_RAIL_CLASS)}\\n    >\\n      <button')
+    expect(source).not.toContain("ACTIVITY_RAIL_CLASS")
   })
 
   test("labels reasoning activity as thinking in the desktop transcript", () => {
@@ -83,10 +84,11 @@ describe("desktop message", () => {
     expect(source).not.toContain('className="mt-2 self-end"')
   })
 
-  test("keeps agent tool rows on the shared activity rail", () => {
+  test("keeps agent tool rows aligned without a separate activity rail", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
     expect(source).not.toContain('isAgent && "ml-2"')
+    expect(source).not.toContain("before:absolute before:left")
   })
 
   test("renders tool rows without leading dot markers", () => {
@@ -94,6 +96,29 @@ describe("desktop message", () => {
 
     expect(source).not.toContain("ACTIVITY_MARKER_CLASS")
     expect(source).not.toContain("isAgentTool(")
+  })
+
+  test("keeps top-level tool labels aligned with thinking and assistant copy", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    expect(source).toContain(`const ACTIVITY_ROW_CLASS =
+  "relative min-h-7 pr-2 py-1 text-left transition-colors hover:bg-surface/35"`)
+    expect(source).toContain('className={cn("w-full", isUser ? "space-y-2" : "space-y-0")}')
+    expect(source).not.toContain("ACTIVITY_RAIL_CLASS")
+    expect(source).not.toContain("relative min-h-7 pl-6 pr-2")
+    expect(source).not.toContain('isUser ? "space-y-2" : "space-y-1.5"')
+  })
+
+  test("summarizes skill tool rows with the affected skill name", () => {
+    const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+    const i18nSource = readFileSync("src/desktop/src/i18n.tsx", "utf8")
+
+    expect(messageSource).toContain("function describeCompletedSkillSummary(")
+    expect(messageSource).toContain('resultOutput?.match(/^Activated skill\\s+(.+)$/i)')
+    expect(messageSource).toContain('readRecordString(parsedInput, "name")')
+    expect(i18nSource).toContain("completedSkillActivation(name: string): string")
+    expect(i18nSource).toContain('completedSkillList: "Listed skills"')
+    expect(i18nSource).toContain('completedSkillList: "列出了技能"')
   })
 
   test("filters whitespace-only text parts and keeps activity details bounded", () => {
