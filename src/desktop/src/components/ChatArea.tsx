@@ -21,6 +21,7 @@ import type {
   DesktopSessionSnapshot,
   DesktopSkillCatalogEntry,
   DesktopTranscriptMessage,
+  MessagePart,
 } from "../view-types"
 import { cn } from "../lib/utils"
 import { createSkillUpdateQueue, type SkillUpdateQueue } from "../skill-update-queue"
@@ -156,15 +157,22 @@ export function ChatArea({
   const isBusy = isBusyRunStatus(activeRunStatus)
   const isRunSkillEditingLocked = Boolean(session?.activeRun)
   const activePermissionRequest = permissionRequests[0] ?? null
-  const hasActiveToolCall = useMemo(
-    () => hasPendingToolCall(transcript, activeRunId),
+  const activeRunLatestMessageId = useMemo(
+    () => findLatestRenderableMessageId(transcript, activeRunId),
     [transcript, activeRunId],
   )
-  const hasActiveReasoningPart = useMemo(
-    () => hasVisibleReasoningPart(transcript, activeRunId),
+  const activeRunLiveReasoningMessageId = useMemo(
+    () => findLiveReasoningMessageId(transcript, activeRunId),
     [transcript, activeRunId],
   )
-  const showThinkingIndicator = isRunning && !hasActiveToolCall && !hasActiveReasoningPart
+  const messageIdsBeforeLaterReasoning = useMemo(
+    () => findMessageIdsBeforeLaterReasoning(transcript),
+    [transcript],
+  )
+  const finalAssistantTextMessageIdByRun = useMemo(
+    () => findFinalAssistantTextMessageIdsByRun(transcript),
+    [transcript],
+  )
   const footerRunStatus = activeRunStatus === "running" || activeRunStatus === "queued" ? null : activeRunStatus
   const finishedRunNotice = getFinishedRunNotice(session?.activeRun?.id ?? null, session?.latestRun?.status ?? null)
   const sessionSummaryWithOptimisticSkills =
@@ -445,6 +453,15 @@ export function ChatArea({
           renderItem={(message, index) => {
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
             const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined
+            const shouldDelayFoldForLiveReasoning =
+              message.role === "assistant"
+              && message.runId === activeRunId
+              && Boolean(activeRunLiveReasoningMessageId)
+              && message.id !== activeRunLiveReasoningMessageId
+            const shouldFoldActivityImmediately =
+              message.role === "assistant"
+              && messageIdsBeforeLaterReasoning.has(message.id)
+              && !shouldDelayFoldForLiveReasoning
             return (
               <div className="mx-auto max-w-[54rem]">
                 {boundaryPart && boundaryPart.type === "compaction_boundary" ? (
@@ -456,7 +473,14 @@ export function ChatArea({
                   <Message
                     message={message}
                     previousTimestamp={prevTimestamp}
-                    isActiveRunMessage={message.runId === activeRunId && isRunning}
+                    isActiveRunMessage={message.id === activeRunLatestMessageId && isRunning}
+                    foldActivityAfterNextReasoning={shouldDelayFoldForLiveReasoning}
+                    foldActivityImmediately={shouldFoldActivityImmediately}
+                    isFinalRunAssistantTextMessage={
+                      message.runId && message.runId !== activeRunId
+                        ? finalAssistantTextMessageIdByRun.get(message.runId) === message.id
+                        : false
+                    }
                     waitingPermissionToolName={
                       message.runId === activeRunId ? activePermissionRequest?.toolName ?? null : null
                     }
@@ -507,37 +531,6 @@ export function ChatArea({
                 <RunFinishedNotice label={finishedRunNotice === "cancelled" ? text.chat.runFinishedCancelled : text.chat.runFinishedFailed} />
               ) : null}
 
-              {showThinkingIndicator ? (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3 }}
-                  className="relative flex min-h-7 items-center gap-2 py-1 pr-2"
-                  role="status"
-                  aria-live="polite"
-                  aria-label={text.message.thinking}
-                >
-                  <span className="flex h-5 w-1.5 shrink-0 items-center justify-center" aria-hidden="true">
-                    <svg
-                      viewBox="0 0 20 20"
-                      className="h-3 w-3 max-w-none shrink-0 animate-symbol-spin text-highlight"
-                    >
-                      <line
-                        x1="15.5"
-                        y1="2.5"
-                        x2="4.5"
-                        y2="17.5"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </span>
-                  <span className="text-[13px] font-medium leading-5 text-muted/70">
-                    {text.message.thinking}
-                  </span>
-                </motion.div>
-              ) : null}
             </div>
           }
         />
@@ -730,48 +723,114 @@ export function ChatArea({
   )
 }
 
-function hasPendingToolCall(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
+function findLatestRenderableMessageId(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
   if (!activeRunId) {
-    return false
+    return null
   }
 
-  return transcript.some((message) => {
+  let messageId: string | null = null
+
+  for (const message of transcript) {
     if (message.runId !== activeRunId) {
-      return false
+      continue
+    }
+
+    if ((message.parts ?? []).some(isRenderableTranscriptActivityPart)) {
+      messageId = message.id
+    }
+  }
+
+  return messageId
+}
+
+function findLiveReasoningMessageId(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
+  if (!activeRunId) {
+    return null
+  }
+
+  let messageId: string | null = null
+
+  for (const message of transcript) {
+    if (message.runId !== activeRunId) {
+      continue
     }
 
     const parts = message.parts ?? []
-    const resolvedCallIds = new Set(
-      parts
-        .filter((part) => part.type === "tool_result")
-        .map((part) => part.callId),
-    )
-
-    return parts.some((part) => {
-      if (part.type !== "tool_call") {
-        return false
+    let latestPart: MessagePart | null = null
+    for (let index = parts.length - 1; index >= 0; index -= 1) {
+      const part = parts[index]
+      if (isRenderableTranscriptActivityPart(part)) {
+        latestPart = part
+        break
       }
-
-      return !resolvedCallIds.has(part.callId)
-        && part.status !== "success"
-        && part.status !== "error"
-        && part.status !== "cancelled"
-    })
-  })
-}
-
-function hasVisibleReasoningPart(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
-  if (!activeRunId) {
-    return false
+    }
+    if (latestPart?.type === "reasoning" && latestPart.text.trim().length > 0) {
+      messageId = message.id
+    }
   }
 
-  return transcript.some((message) => {
-    if (message.runId !== activeRunId) {
-      return false
+  return messageId
+}
+
+function findMessageIdsBeforeLaterReasoning(transcript: DesktopTranscriptMessage[]) {
+  const messageIds = new Set<string>()
+  const previousAssistantMessageIdsByRun = new Map<string, string[]>()
+
+  for (const message of transcript) {
+    if (message.role !== "assistant" || !message.runId) {
+      continue
     }
 
-    return (message.parts ?? []).some((part) => part.type === "reasoning" && part.text.trim().length > 0)
-  })
+    const parts = message.parts ?? []
+    const hasRenderablePart = parts.some(isRenderableTranscriptActivityPart) || messageHasVisibleText(message)
+    const hasReasoningPart = parts.some(isRenderableReasoningPart)
+    const previousMessageIds = previousAssistantMessageIdsByRun.get(message.runId) ?? []
+
+    if (hasReasoningPart) {
+      for (const messageId of previousMessageIds) {
+        messageIds.add(messageId)
+      }
+    }
+
+    if (hasRenderablePart) {
+      previousAssistantMessageIdsByRun.set(message.runId, [...previousMessageIds, message.id])
+    }
+  }
+
+  return messageIds
+}
+
+function findFinalAssistantTextMessageIdsByRun(transcript: DesktopTranscriptMessage[]) {
+  const messageIds = new Map<string, string>()
+
+  for (const message of transcript) {
+    if (message.role !== "assistant" || !message.runId) {
+      continue
+    }
+
+    if (messageHasVisibleText(message)) {
+      messageIds.set(message.runId, message.id)
+    }
+  }
+
+  return messageIds
+}
+
+function messageHasVisibleText(message: DesktopTranscriptMessage) {
+  const parts = message.parts
+  if (!parts) {
+    return message.content.trim().length > 0
+  }
+
+  return parts.some((part) => part.type === "text" && part.text.trim().length > 0)
+}
+
+function isRenderableTranscriptActivityPart(part: MessagePart) {
+  return part.type !== "tool_result" && (part.type !== "text" || part.text.trim().length > 0)
+}
+
+function isRenderableReasoningPart(part: MessagePart) {
+  return part.type === "reasoning" && part.text.trim().length > 0
 }
 
 function getFinishedRunNotice(activeRunId: string | null, latestRunStatus: string | null | undefined) {

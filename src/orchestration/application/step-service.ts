@@ -580,6 +580,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
         try {
           const pendingToolCalls: ToolCallEvent[] = []
+          const modelCallStartedAt = now()
           const modelEvents = input.model.streamTurn({
             systemPrompt: stepInput.systemPrompt,
             lateContextMessage,
@@ -665,6 +666,10 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             })
             pendingToolCalls.push(item)
           }
+
+          assistantTurn.finishModelCall({
+            durationMs: Math.max(0, now() - modelCallStartedAt),
+          })
 
           const outcome = await executePendingToolCalls({
             items: pendingToolCalls,
@@ -936,6 +941,7 @@ function createAssistantTurnRecorder(input: {
   let nextPartSequence = 0
   let activeTextPart: { id: string; text: string } | null = null
   let activeReasoningPart: { id: string; text: string } | null = null
+  let latestReasoningPart: { id: string } | null = null
 
   function ensureMessage() {
     if (message) {
@@ -970,6 +976,9 @@ function createAssistantTurnRecorder(input: {
     nextPartSequence += 1
     activeTextPart = part.kind === "text" ? readActiveTextPart(createdPart) : null
     activeReasoningPart = part.kind === "reasoning" ? readActiveReasoningPart(createdPart) : null
+    if (activeReasoningPart) {
+      latestReasoningPart = { id: activeReasoningPart.id }
+    }
     return createdPart
   }
 
@@ -1016,6 +1025,18 @@ function createAssistantTurnRecorder(input: {
           callId: toolCall.callId,
           toolName: toolCall.toolName,
           inputText: toolCall.inputText,
+        },
+      })
+    },
+    finishModelCall(modelCall: { durationMs: number }) {
+      if (!latestReasoningPart) {
+        return
+      }
+
+      input.session.updateMessagePart({
+        partId: latestReasoningPart.id,
+        data: {
+          durationMs: modelCall.durationMs,
         },
       })
     },

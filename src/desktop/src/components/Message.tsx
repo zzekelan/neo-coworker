@@ -136,8 +136,19 @@ const MessageComponent: React.FC<{
   message: DesktopTranscriptMessage
   previousTimestamp?: string
   isActiveRunMessage?: boolean
+  foldActivityAfterNextReasoning?: boolean
+  foldActivityImmediately?: boolean
+  isFinalRunAssistantTextMessage?: boolean
   waitingPermissionToolName?: string | null
-}> = ({ message, previousTimestamp, isActiveRunMessage = false, waitingPermissionToolName = null }) => {
+}> = ({
+  message,
+  previousTimestamp,
+  isActiveRunMessage = false,
+  foldActivityAfterNextReasoning = false,
+  foldActivityImmediately = false,
+  isFinalRunAssistantTextMessage = false,
+  waitingPermissionToolName = null,
+}) => {
   const text = useDesktopText()
   const isUser = message.role === "user"
   const toolResultLookup = useMemo(
@@ -163,64 +174,101 @@ const MessageComponent: React.FC<{
 
   const timestampLabel = formatTimestampLabel(message.createdAt)
   const showTimestamp = shouldShowTimestamp(previousTimestamp, message.createdAt)
+  const renderSourceParts = useMemo(
+    () => message.parts ?? createAssistantTextParts(message),
+    [message.parts, message.role, message.content, message.runId],
+  )
+  const renderableParts = useMemo(
+    () => (renderSourceParts ?? []).filter(isRenderableTranscriptPart),
+    [renderSourceParts],
+  )
+  const latestRenderablePartIndex = renderableParts.length - 1
+  const renderItems = useMemo(
+    () => buildRenderItems(renderableParts, toolResultLookup),
+    [renderableParts, toolResultLookup],
+  )
+  const finalVisibleTextPartIndex = useMemo(
+    () => isFinalRunAssistantTextMessage ? findLastTextPartIndex(renderableParts) : -1,
+    [isFinalRunAssistantTextMessage, renderableParts],
+  )
+  const liveReasoningPartIndex =
+    isActiveRunMessage && renderableParts[latestRenderablePartIndex]?.type === "reasoning"
+      ? latestRenderablePartIndex
+      : -1
+  const [foldBeforePartIndex, setFoldBeforePartIndex] = useState<number | null>(null)
+  const [canFoldAfterNextReasoning, setCanFoldAfterNextReasoning] = useState(false)
+  const nextReasoningFoldTimerRef = useRef<number | null>(null)
+  const delayedFoldBeforePartIndex = foldBeforePartIndex !== null
+    ? foldBeforePartIndex
+    : canFoldAfterNextReasoning
+      ? Number.POSITIVE_INFINITY
+      : null
+  const effectiveFoldBeforePartIndex = foldActivityImmediately
+    ? Number.POSITIVE_INFINITY
+    : delayedFoldBeforePartIndex
+  const foldedRenderItems = useMemo(
+    () => effectiveFoldBeforePartIndex === null
+      ? []
+      : renderItems.filter((item) => shouldFoldRunItem(item, finalVisibleTextPartIndex, effectiveFoldBeforePartIndex)),
+    [renderItems, finalVisibleTextPartIndex, effectiveFoldBeforePartIndex],
+  )
+  const visibleRenderItems = useMemo(
+    () => effectiveFoldBeforePartIndex === null
+      ? renderItems
+      : renderItems.filter((item) => !shouldFoldRunItem(item, finalVisibleTextPartIndex, effectiveFoldBeforePartIndex)),
+    [renderItems, finalVisibleTextPartIndex, effectiveFoldBeforePartIndex],
+  )
+  const shouldShowCompletedActivityGroup = foldedRenderItems.length > 0
+  const completedActivityGroup = shouldShowCompletedActivityGroup ? (
+    <CompletedActivityGroup
+      label={buildCompletedActivityLabel(
+        text,
+        collectRenderItemParts(foldedRenderItems),
+      )}
+      renderItems={foldedRenderItems}
+      message={message}
+      toolResultLookup={toolResultLookup}
+      waitingPermissionToolName={waitingPermissionToolName}
+    />
+  ) : null
 
-  /** Group consecutive completed tool_call parts of the same normalized type. */
-  const renderItems = useMemo((): RenderItem[] => {
-    const filtered = (message.parts ?? []).filter((p) => p.type !== "tool_result" && (p.type !== "text" || p.text.trim().length > 0))
-    const items: RenderItem[] = []
-    let i = 0
-    while (i < filtered.length) {
-      const part = filtered[i]
-      if (part.type === "tool_call") {
-        const norm = normalizeToolName(part.toolName)
-        const result = toolResultLookup.get(part.callId) ?? null
-        const isCompleted = result !== null
-        const isCancelled = part.status === "cancelled"
-
-        if (isCompleted || isCancelled) {
-          const group: Array<{
-            part: ToolCallPart
-            result: ToolResultPart | null
-            isError: boolean
-            isCancelled: boolean
-          }> = [{
-            part,
-            result,
-            isError: (result?.isError ?? false) && !isCancelled,
-            isCancelled,
-          }]
-          let j = i + 1
-          while (j < filtered.length) {
-            const next = filtered[j]
-            if (next.type !== "tool_call") break
-            if (normalizeToolName(next.toolName) !== norm) break
-            const nextResult = toolResultLookup.get(next.callId) ?? null
-            const nextCompleted = nextResult !== null
-            const nextCancelled = next.status === "cancelled"
-            if (!nextCompleted && !nextCancelled) break
-            group.push({
-              part: next,
-              result: nextResult,
-              isError: (nextResult?.isError ?? false) && !nextCancelled,
-              isCancelled: nextCancelled,
-            })
-            j++
-          }
-
-          if (group.length >= 2) {
-            items.push({ kind: "group", entries: group, normalizedName: norm, startIndex: i })
-          } else {
-            items.push({ kind: "single", part, index: i })
-          }
-          i = j
-          continue
-        }
-      }
-      items.push({ kind: "single", part, index: i })
-      i++
+  useEffect(() => {
+    if (liveReasoningPartIndex <= 0) {
+      return
     }
-    return items
-  }, [message.parts, toolResultLookup])
+
+    const foldTimer = window.setTimeout(() => {
+      setFoldBeforePartIndex((current) => Math.max(current ?? -1, liveReasoningPartIndex))
+    }, 2000)
+
+    return () => window.clearTimeout(foldTimer)
+  }, [liveReasoningPartIndex])
+
+  useEffect(() => {
+    if (!foldActivityAfterNextReasoning || canFoldAfterNextReasoning || nextReasoningFoldTimerRef.current !== null) {
+      return
+    }
+
+    nextReasoningFoldTimerRef.current = window.setTimeout(() => {
+      setCanFoldAfterNextReasoning(true)
+      nextReasoningFoldTimerRef.current = null
+    }, 2000)
+  }, [canFoldAfterNextReasoning, foldActivityAfterNextReasoning])
+
+  useEffect(() => {
+    if (nextReasoningFoldTimerRef.current !== null) {
+      window.clearTimeout(nextReasoningFoldTimerRef.current)
+      nextReasoningFoldTimerRef.current = null
+    }
+    setFoldBeforePartIndex(null)
+    setCanFoldAfterNextReasoning(false)
+    return () => {
+      if (nextReasoningFoldTimerRef.current !== null) {
+        window.clearTimeout(nextReasoningFoldTimerRef.current)
+        nextReasoningFoldTimerRef.current = null
+      }
+    }
+  }, [message.id, message.runId])
 
   return (
     <ErrorBoundary>
@@ -235,26 +283,31 @@ const MessageComponent: React.FC<{
         ) : null}
 
         <div className={cn("flex flex-col", isUser ? "max-w-[78%] items-end pb-7" : "w-full items-start")}>
-          {message.parts ? (
+          {renderSourceParts ? (
             <div className={cn("w-full", isUser ? "space-y-2" : "space-y-0")}>
-              {renderItems.map((item) => {
-                if (item.kind === "group") {
-                  return (
-                    <ToolCallGroup
-                      key={`${message.id}:grp:${item.entries[0].part.callId}`}
-                      entries={item.entries}
-                      startIndex={item.startIndex}
+              {shouldShowCompletedActivityGroup ? (
+                <>
+                  {completedActivityGroup}
+                  {visibleRenderItems.map((item) => (
+                    <RenderMessageItem
+                      key={renderItemKey(message.id, item, "plain")}
+                      item={item}
+                      message={message}
+                      toolResultLookup={toolResultLookup}
+                      latestRenderablePartIndex={latestRenderablePartIndex}
+                      isActiveRunMessage={isActiveRunMessage}
+                      waitingPermissionToolName={waitingPermissionToolName}
                     />
-                  )
-                }
-                const part = item.part
+                  ))}
+                </>
+              ) : renderItems.map((item) => {
                 return (
-                  <MessagePartRenderer
-                    key={part.type === "tool_call" ? `${message.id}:tc:${part.callId}` : `${message.id}:${part.type}:${item.index}`}
-                    part={part}
-                    role={message.role}
-                    relatedResult={part.type === "tool_call" ? toolResultLookup.get(part.callId) ?? null : null}
-                    partIndex={item.index}
+                  <RenderMessageItem
+                    key={renderItemKey(message.id, item)}
+                    item={item}
+                    message={message}
+                    toolResultLookup={toolResultLookup}
+                    latestRenderablePartIndex={latestRenderablePartIndex}
                     isActiveRunMessage={isActiveRunMessage}
                     waitingPermissionToolName={waitingPermissionToolName}
                   />
@@ -378,14 +431,129 @@ function AssistantTextPart({
   )
 }
 
+function buildRenderItems(parts: MessagePart[], toolResultLookup: ReadonlyMap<string, ToolResultPart>): RenderItem[] {
+  const items: RenderItem[] = []
+  let i = 0
+  while (i < parts.length) {
+    const part = parts[i]
+    if (part.type === "tool_call") {
+      const norm = normalizeToolName(part.toolName)
+      const result = toolResultLookup.get(part.callId) ?? null
+      const isCompleted = result !== null
+      const isCancelled = part.status === "cancelled"
+
+      if (isCompleted || isCancelled) {
+        const group: Array<{
+          part: ToolCallPart
+          result: ToolResultPart | null
+          isError: boolean
+          isCancelled: boolean
+        }> = [{
+          part,
+          result,
+          isError: (result?.isError ?? false) && !isCancelled,
+          isCancelled,
+        }]
+        let j = i + 1
+        while (j < parts.length) {
+          const next = parts[j]
+          if (next.type !== "tool_call") break
+          if (normalizeToolName(next.toolName) !== norm) break
+          const nextResult = toolResultLookup.get(next.callId) ?? null
+          const nextCompleted = nextResult !== null
+          const nextCancelled = next.status === "cancelled"
+          if (!nextCompleted && !nextCancelled) break
+          group.push({
+            part: next,
+            result: nextResult,
+            isError: (nextResult?.isError ?? false) && !nextCancelled,
+            isCancelled: nextCancelled,
+          })
+          j++
+        }
+
+        if (group.length >= 2) {
+          items.push({ kind: "group", entries: group, normalizedName: norm, startIndex: i })
+        } else {
+          items.push({ kind: "single", part, index: i })
+        }
+        i = j
+        continue
+      }
+    }
+    items.push({ kind: "single", part, index: i })
+    i++
+  }
+  return items
+}
+
+const RenderMessageItem: React.FC<{
+  item: RenderItem
+  message: DesktopTranscriptMessage
+  toolResultLookup: ReadonlyMap<string, ToolResultPart>
+  latestRenderablePartIndex: number
+  isActiveRunMessage: boolean
+  waitingPermissionToolName?: string | null
+}> = React.memo(({
+  item,
+  message,
+  toolResultLookup,
+  latestRenderablePartIndex,
+  isActiveRunMessage,
+  waitingPermissionToolName = null,
+}) => {
+  if (item.kind === "group") {
+    return (
+      <ToolCallGroup
+        entries={item.entries}
+        startIndex={item.startIndex}
+      />
+    )
+  }
+
+  const part = item.part
+  return (
+    <MessagePartRenderer
+      part={part}
+      role={message.role}
+      relatedResult={part.type === "tool_call" ? toolResultLookup.get(part.callId) ?? null : null}
+      partIndex={item.index}
+      latestRenderablePartIndex={latestRenderablePartIndex}
+      isActiveRunMessage={isActiveRunMessage}
+      waitingPermissionToolName={waitingPermissionToolName}
+    />
+  )
+})
+
+function renderItemKey(messageId: string, item: RenderItem, prefix = "") {
+  const keyPrefix = prefix ? `${prefix}:` : ""
+  if (item.kind === "group") {
+    return `${messageId}:${keyPrefix}grp:${item.entries[0].part.callId}`
+  }
+
+  const part = item.part
+  return part.type === "tool_call"
+    ? `${messageId}:${keyPrefix}tc:${part.callId}`
+    : `${messageId}:${keyPrefix}${part.type}:${item.index}`
+}
+
 const MessagePartRenderer: React.FC<{
   part: MessagePart
   role?: DesktopTranscriptMessage["role"]
   relatedResult?: Extract<MessagePart, { type: "tool_result" }> | null
   partIndex?: number
+  latestRenderablePartIndex?: number
   isActiveRunMessage?: boolean
   waitingPermissionToolName?: string | null
-}> = ({ part, role, relatedResult = null, partIndex = 0, isActiveRunMessage = false, waitingPermissionToolName = null }) => {
+}> = ({
+  part,
+  role,
+  relatedResult = null,
+  partIndex = 0,
+  latestRenderablePartIndex = -1,
+  isActiveRunMessage = false,
+  waitingPermissionToolName = null,
+}) => {
   const text = useDesktopText()
 
   if (part.type === "text") {
@@ -470,17 +638,230 @@ const MessagePartRenderer: React.FC<{
   }
 
   if (part.type === "reasoning") {
-    return <ReasoningBlock text={part.text} partIndex={partIndex} isLive={isActiveRunMessage} />
+    const isLiveReasoning = isActiveRunMessage && partIndex === latestRenderablePartIndex
+    return (
+      <ReasoningBlock
+        text={part.text}
+        partIndex={partIndex}
+        isLive={isLiveReasoning}
+      />
+    )
   }
 
   // tool_result parts are filtered out before reaching here
   return null
 }
 
+const CompletedActivityGroup: React.FC<{
+  label: string
+  renderItems: RenderItem[]
+  message: DesktopTranscriptMessage
+  toolResultLookup: ReadonlyMap<string, ToolResultPart>
+  waitingPermissionToolName?: string | null
+}> = React.memo(({ label, renderItems, message, toolResultLookup, waitingPermissionToolName = null }) => {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const toggle = useCallback(() => setIsExpanded((previous) => !previous), [])
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="relative"
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        onKeyDown={expandKeyDown(toggle)}
+        aria-expanded={isExpanded}
+        className={cn(
+          "group flex w-full cursor-pointer items-center gap-2 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
+          ACTIVITY_ROW_CLASS,
+        )}
+      >
+        <span className={cn("min-w-0 flex-1 truncate text-left", ACTIVITY_LABEL_CLASS)}>
+          {label}
+        </span>
+        <span className={ACTIVITY_CHEVRON_SLOT_CLASS}>
+          <ChevronLeft
+            className={cn(
+              "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
+              isExpanded && "rotate-[-90deg]",
+            )}
+          />
+        </span>
+      </button>
+      <AnimatePresence initial={false}>
+        {isExpanded ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="ml-1">
+              {renderItems.map((item) => {
+                if (item.kind === "group") {
+                  return (
+                    <ToolCallGroup
+                      key={`${message.id}:folded-grp:${item.entries[0].part.callId}`}
+                      entries={item.entries}
+                      startIndex={item.startIndex}
+                    />
+                  )
+                }
+
+                const part = item.part
+                return (
+                  <MessagePartRenderer
+                    key={part.type === "tool_call" ? `${message.id}:folded-tc:${part.callId}` : `${message.id}:folded:${part.type}:${item.index}`}
+                    part={part}
+                    role={message.role}
+                    relatedResult={part.type === "tool_call" ? toolResultLookup.get(part.callId) ?? null : null}
+                    partIndex={item.index}
+                    latestRenderablePartIndex={-1}
+                    isActiveRunMessage={false}
+                    waitingPermissionToolName={waitingPermissionToolName}
+                  />
+                )
+              })}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
+  )
+})
+
+function isRenderableTranscriptPart(part: MessagePart) {
+  return part.type !== "tool_result" && (part.type !== "text" || part.text.trim().length > 0)
+}
+
+function createAssistantTextParts(message: DesktopTranscriptMessage): MessagePart[] | null {
+  if (message.role !== "assistant" || !message.runId || message.content.trim().length === 0) {
+    return null
+  }
+
+  return [{ type: "text", text: message.content }]
+}
+
+function findLastTextPartIndex(parts: MessagePart[]) {
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index]
+    if (part.type === "text" && part.text.trim().length > 0) {
+      return index
+    }
+  }
+
+  return -1
+}
+
+function shouldFoldRunItem(item: RenderItem, finalVisibleTextPartIndex: number, foldBeforePartIndex: number) {
+  if (renderItemContainsPartIndex(item, finalVisibleTextPartIndex)) {
+    return false
+  }
+
+  if (isPendingToolRenderItem(item)) {
+    return false
+  }
+
+  return getRenderItemEndIndex(item) < foldBeforePartIndex
+}
+
+function isPendingToolRenderItem(item: RenderItem) {
+  return item.kind === "single"
+    && item.part.type === "tool_call"
+    && item.part.status !== "success"
+    && item.part.status !== "error"
+    && item.part.status !== "cancelled"
+}
+
+function getRenderItemEndIndex(item: RenderItem) {
+  if (item.kind === "group") {
+    return item.startIndex + item.entries.length - 1
+  }
+
+  return item.index
+}
+
+function renderItemContainsPartIndex(item: RenderItem, partIndex: number) {
+  if (partIndex < 0) {
+    return false
+  }
+
+  if (item.kind === "group") {
+    return item.startIndex <= partIndex && partIndex <= getRenderItemEndIndex(item)
+  }
+
+  return item.index === partIndex
+}
+
+function collectRenderItemParts(items: RenderItem[]): MessagePart[] {
+  return items.flatMap((item) => {
+    if (item.kind === "group") {
+      return item.entries.map((entry) => entry.part)
+    }
+
+    return [item.part]
+  })
+}
+
+function buildCompletedActivityLabel(
+  labels: ReturnType<typeof useDesktopText>,
+  parts: MessagePart[],
+) {
+  const reasoningPart = parts.find((part): part is Extract<MessagePart, { type: "reasoning" }> => part.type === "reasoning")
+  const durationMs = reasoningPart?.durationMs
+  const duration = typeof durationMs === "number"
+    ? labels.message.formatDuration(durationMs)
+    : null
+  const toolNames = collectActivityToolNames(parts)
+  if (duration || toolNames.length > 0) {
+    return labels.message.completedRunActivity(duration, toolNames)
+  }
+
+  return buildCompletedReasoningLabel(labels, {
+    activityLabel: reasoningPart?.activityLabel,
+    durationMs,
+  })
+}
+
+function collectActivityToolNames(parts: MessagePart[]) {
+  const names = new Set<string>()
+
+  for (const part of parts) {
+    if (part.type === "tool_call") {
+      names.add(normalizeToolName(part.toolName))
+    }
+  }
+
+  return [...names]
+}
+
+function buildCompletedReasoningLabel(
+  labels: ReturnType<typeof useDesktopText>,
+  input: {
+    activityLabel?: string
+    durationMs?: number
+  },
+) {
+  const duration = typeof input.durationMs === "number"
+    ? labels.message.formatDuration(input.durationMs)
+    : null
+
+  return labels.message.completedActivity(input.activityLabel ?? labels.message.llmCall, duration)
+}
+
 /** Live reasoning stays visible while streaming; completed reasoning stays collapsed by default. */
-const ReasoningBlock: React.FC<{ text: string; partIndex: number; isLive?: boolean }> = React.memo(({ text, partIndex, isLive = false }) => {
+const ReasoningBlock: React.FC<{
+  text: string
+  partIndex: number
+  isLive?: boolean
+}> = React.memo(({ text, partIndex, isLive = false }) => {
   const labels = useDesktopText()
   const [isExpanded, setIsExpanded] = useState(isLive)
+  const [canShowCompletedSummaryLabel, setCanShowCompletedSummaryLabel] = useState(!isLive)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const wasLiveRef = useRef(isLive)
   const toggle = useCallback(() => setIsExpanded((prev) => !prev), [])
@@ -488,17 +869,20 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number; isLive?: boole
   useEffect(() => {
     if (isLive) {
       wasLiveRef.current = true
+      setCanShowCompletedSummaryLabel(false)
       setIsExpanded(true)
       return
     }
 
     if (!wasLiveRef.current) {
+      setCanShowCompletedSummaryLabel(true)
       setIsExpanded(false)
       return
     }
 
     const collapseTimer = window.setTimeout(() => {
       setIsExpanded(false)
+      setCanShowCompletedSummaryLabel(true)
       wasLiveRef.current = false
     }, 1000)
 
@@ -551,7 +935,7 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number; isLive?: boole
           </span>
         ) : null}
         <span className={cn("min-w-0 flex-1 text-left", THINKING_LABEL_CLASS)}>
-          {isLive ? labels.message.thinking : labels.message.reasoning}
+          {isLive || !canShowCompletedSummaryLabel ? labels.message.thinking : labels.message.reasoning}
         </span>
         <span className={ACTIVITY_CHEVRON_SLOT_CLASS}>
           <ChevronLeft

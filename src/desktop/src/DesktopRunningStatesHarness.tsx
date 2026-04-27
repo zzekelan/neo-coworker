@@ -17,22 +17,21 @@ import type {
 } from "./view-types"
 
 type RunningFixtureKind =
-  | "thinking"
   | "reasoning"
   | "tool"
   | "permission"
   | "queued"
+
+type ActivityDetailsPhase =
+  | "streaming"
+  | "tool-running"
+  | "next-reasoning"
 
 const FIXTURE_KINDS: Array<{
   kind: RunningFixtureKind
   label: string
   description: string
 }> = [
-  {
-    kind: "thinking",
-    label: "Thinking",
-    description: "Fallback thinking indicator while the run is active.",
-  },
   {
     kind: "reasoning",
     label: "Reasoning stream",
@@ -41,7 +40,7 @@ const FIXTURE_KINDS: Array<{
   {
     kind: "tool",
     label: "Running tool",
-    description: "Active tool call keeps the composer locked without fallback thinking.",
+    description: "Active tool call keeps the composer locked without live reasoning.",
   },
   {
     kind: "permission",
@@ -107,9 +106,11 @@ const LONG_TOOL_OUTPUT_ZH = Array.from({ length: 28 }, (_, index) =>
 const LONG_TOOL_OUTPUT_EN = Array.from({ length: 28 }, (_, index) =>
   `Tool output ${String(index + 1).padStart(2, "0")}: this long result line verifies that tool details use the same left-rail, internal scrollbar, and bounded height as reasoning content.`,
 ).join("\n")
+const ACTIVITY_REASONING_DURATION_MS = 4200
+const ACTIVITY_TOOL_RUNNING_HOLD_MS = 4200
 
 export function DesktopRunningStatesHarness() {
-  const [kind, setKind] = useState<RunningFixtureKind>("thinking")
+  const [kind, setKind] = useState<RunningFixtureKind>("reasoning")
   const [language, setLanguage] = useState<DesktopLanguage>("zh")
   const fixture = useMemo(() => createRunningFixture(kind, language), [kind, language])
 
@@ -217,19 +218,19 @@ export function DesktopActivityDetailsHarness() {
   const [language, setLanguage] = useState<DesktopLanguage>("zh")
   const reasoningLines = language === "zh" ? ACTIVITY_REASONING_LINES_ZH : ACTIVITY_REASONING_LINES_EN
   const [visibleLineCount, setVisibleLineCount] = useState(4)
-  const [isStreaming, setIsStreaming] = useState(true)
+  const [phase, setPhase] = useState<ActivityDetailsPhase>("streaming")
 
   useEffect(() => {
     setVisibleLineCount(4)
-    setIsStreaming(true)
+    setPhase("streaming")
   }, [language])
 
   useEffect(() => {
-    if (!isStreaming) return
+    if (phase !== "streaming") return
 
     if (visibleLineCount >= reasoningLines.length) {
       const finishTimer = window.setTimeout(() => {
-        setIsStreaming(false)
+        setPhase("tool-running")
       }, 600)
       return () => window.clearTimeout(finishTimer)
     }
@@ -239,16 +240,26 @@ export function DesktopActivityDetailsHarness() {
     }, 300)
 
     return () => window.clearTimeout(appendTimer)
-  }, [isStreaming, reasoningLines.length, visibleLineCount])
+  }, [phase, reasoningLines.length, visibleLineCount])
+
+  useEffect(() => {
+    if (phase !== "tool-running") return
+
+    const nextReasoningTimer = window.setTimeout(() => {
+      setPhase("next-reasoning")
+    }, ACTIVITY_TOOL_RUNNING_HOLD_MS)
+
+    return () => window.clearTimeout(nextReasoningTimer)
+  }, [phase])
 
   const fixture = useMemo(
-    () => createActivityDetailsFixture(language, reasoningLines.slice(0, visibleLineCount).join("\n"), isStreaming),
-    [isStreaming, language, reasoningLines, visibleLineCount],
+    () => createActivityDetailsFixture(language, reasoningLines.slice(0, visibleLineCount).join("\n"), phase),
+    [language, phase, reasoningLines, visibleLineCount],
   )
 
   const resetStreaming = () => {
     setVisibleLineCount(4)
-    setIsStreaming(true)
+    setPhase("streaming")
   }
 
   return (
@@ -293,8 +304,8 @@ export function DesktopActivityDetailsHarness() {
               <div className="space-y-3 text-xs leading-5 text-muted">
                 <p>
                   {language === "zh"
-                    ? "这个 fixture 会持续追加 reasoning 内容，结束后保持 1 秒再收起。"
-                    : "This fixture appends reasoning content, then collapses it one second after completion."}
+                    ? "这个 fixture 会持续追加 reasoning 内容；完成后先停留在 tool activity，再进入下一段 live reasoning 并收起前一段。"
+                    : "This fixture appends reasoning content; after completion it holds on tool activity before entering the next live reasoning state and folding the prior activity."}
                 </p>
                 <p>
                   {language === "zh"
@@ -350,12 +361,11 @@ export function DesktopActivityDetailsHarness() {
   )
 }
 
-function createActivityDetailsFixture(language: DesktopLanguage, reasoningText: string, isStreaming: boolean) {
-  const latestRunStatus: DesktopRun["status"] = isStreaming ? "running" : "completed"
+function createActivityDetailsFixture(language: DesktopLanguage, reasoningText: string, phase: ActivityDetailsPhase) {
   const run: DesktopRun = {
     id: RUN_ID,
     sessionId: SESSION_ID,
-    status: latestRunStatus,
+    status: "running",
     createdAt: NOW,
     activeSkills: ["browser"],
   }
@@ -368,7 +378,7 @@ function createActivityDetailsFixture(language: DesktopLanguage, reasoningText: 
     updatedAt: NOW,
     activeSkills: ["browser"],
     currentAgent: "general",
-    latestRunStatus,
+    latestRunStatus: "running",
   }
   const session: DesktopSessionSnapshot = {
     session: {
@@ -377,15 +387,15 @@ function createActivityDetailsFixture(language: DesktopLanguage, reasoningText: 
       currentAgent: "general",
     },
     latestRun: run,
-    activeRun: isStreaming ? run : undefined,
+    activeRun: run,
     contextUsage: CONTEXT_USAGE,
-    status: isStreaming ? "busy" : "idle",
+    status: "busy",
   }
 
   return {
     sessionSummary,
     session,
-    transcript: createActivityDetailsTranscript(language, reasoningText),
+    transcript: createActivityDetailsTranscript(language, reasoningText, phase),
   }
 }
 
@@ -436,8 +446,8 @@ function createRunningFixture(kind: RunningFixtureKind, language: DesktopLanguag
 function createTranscript(kind: RunningFixtureKind, language: DesktopLanguage): DesktopTranscriptMessage[] {
   const transcript: DesktopTranscriptMessage[] = [
     createMessage("fixture-user-1", "user", language === "zh"
-      ? "请检查长对话中，运行状态下输入栏、状态栏、thinking 与工具调用的视觉覆盖是否稳定。"
-      : "Check whether the composer, status bar, thinking state, and tool activity stay visually stable in a long conversation."),
+      ? "请检查长对话中，运行状态下输入栏、状态栏、reasoning 与工具调用的视觉覆盖是否稳定。"
+      : "Check whether the composer, status bar, reasoning state, and tool activity stay visually stable in a long conversation."),
     createMessage(
       "fixture-assistant-1",
       "assistant",
@@ -471,13 +481,88 @@ function createTranscript(kind: RunningFixtureKind, language: DesktopLanguage): 
   return transcript
 }
 
-function createActivityDetailsTranscript(language: DesktopLanguage, reasoningText: string): DesktopTranscriptMessage[] {
+function createActivityDetailsTranscript(language: DesktopLanguage, reasoningText: string, phase: ActivityDetailsPhase): DesktopTranscriptMessage[] {
   const longOutput = language === "zh" ? LONG_TOOL_OUTPUT_ZH : LONG_TOOL_OUTPUT_EN
+  const isStreaming = phase === "streaming"
+  const activityParts: MessagePart[] = [
+    {
+      type: "reasoning",
+      text: reasoningText,
+      activityLabel: language === "zh" ? "模型调用" : "LLM call",
+      durationMs: isStreaming ? undefined : ACTIVITY_REASONING_DURATION_MS,
+    },
+  ]
+
+  if (!isStreaming) {
+    activityParts.push(
+      {
+        type: "text",
+        text: language === "zh"
+          ? "我会先运行一组验证命令和浏览器检查，然后根据结果继续下一轮分析。"
+          : "I will run a set of verification commands and browser checks, then continue with the next round of analysis.",
+      },
+      {
+        type: "tool_call",
+        toolName: "shell",
+        callId: "activity-completed-shell-call",
+        status: "success",
+        toolInput: {
+          command: "bun test test/desktop/message.test.ts --watch=false",
+          reason: language === "zh"
+            ? "生成足够长的 tool 输入详情，验证展开后内部滚动条。"
+            : "Generate enough tool input detail to verify internal scrolling after expansion.",
+        },
+      },
+      {
+        type: "tool_result",
+        callId: "activity-completed-shell-call",
+        result: {
+          stdout: longOutput,
+        },
+      },
+      {
+        type: "tool_call",
+        toolName: "browser",
+        callId: "activity-browser-call",
+        status: phase === "tool-running" ? "pending" : "success",
+        progress: language === "zh"
+          ? "展开本行查看长 URL 和长输出区域"
+          : "Expand this row to inspect long URL and output details",
+        toolInput: {
+          url: "http://127.0.0.1:4173/?fixture=activity-details&very-long-query=reasoning-scroll-tool-details",
+          reason: language === "zh"
+            ? "完成的工具也应该复用 reasoning 风格的左边线详情区，并带内部滚动条。"
+            : "Completed tools should reuse the reasoning-style left-rail details area with internal scrolling.",
+        },
+      },
+    )
+
+    if (phase === "next-reasoning") {
+      activityParts.push({
+        type: "tool_result",
+        callId: "activity-browser-call",
+        result: {
+          output: longOutput,
+        },
+      }, {
+        type: "reasoning",
+        text: language === "zh"
+          ? [
+              "第二轮 reasoning 正在开始：上一轮的推理、说明文字和工具活动应该在这一段出现 2 秒后折叠为外层运行摘要。",
+              "这一段保持展开，继续展示正在思考的流式内容。",
+            ].join("\n")
+          : [
+              "Second reasoning pass is starting: the prior reasoning, explanation text, and tool activity should fold into an outer run summary two seconds after this appears.",
+              "This pass stays expanded and continues showing live reasoning content.",
+            ].join("\n"),
+      })
+    }
+  }
 
   return [
     createMessage("activity-user-1", "user", language === "zh"
-      ? "请验证 reasoning 内容持续输出时会自动滚到最新，结束后 1 秒收起，并检查 tool 详情滚动区域。"
-      : "Verify that reasoning output follows the newest content, collapses one second after completion, and that tool details scroll internally."),
+      ? "请验证 reasoning 内容持续输出时会自动滚到最新；下一段 live reasoning 开始时，前一段会收起成“已运行模型调用（时长）”，并检查 tool 详情滚动区域。"
+      : "Verify that reasoning output follows the newest content; when the next live reasoning state starts, the prior activity folds into “Ran LLM call (duration)”, and tool details scroll internally."),
     ...Array.from({ length: 12 }, (_, index) =>
       createMessage(
         `activity-history-${index}`,
@@ -490,53 +575,14 @@ function createActivityDetailsTranscript(language: DesktopLanguage, reasoningTex
     createMessage(
       "activity-assistant-live",
       "assistant",
-      [
-        {
-          type: "reasoning",
-          text: reasoningText,
-        },
-        {
-          type: "tool_call",
-          toolName: "shell",
-          callId: "activity-completed-shell-call",
-          status: "success",
-          toolInput: {
-            command: "bun test test/desktop/message.test.ts --watch=false",
-            reason: language === "zh"
-              ? "生成足够长的 tool 输入详情，验证展开后内部滚动条。"
-              : "Generate enough tool input detail to verify internal scrolling after expansion.",
-          },
-        },
-        {
-          type: "tool_result",
-          callId: "activity-completed-shell-call",
-          result: {
-            stdout: longOutput,
-          },
-        },
-        {
-          type: "tool_call",
-          toolName: "browser",
-          callId: "activity-running-browser-call",
-          status: "pending",
-          progress: language === "zh"
-            ? "展开本行查看长 URL 和长输出区域"
-            : "Expand this row to inspect long URL and output details",
-          toolInput: {
-            url: "http://127.0.0.1:4173/?fixture=activity-details&very-long-query=reasoning-scroll-tool-details",
-            reason: language === "zh"
-              ? "运行中工具也应该复用 reasoning 风格的左边线详情区，并带内部滚动条。"
-              : "Running tools should reuse the reasoning-style left-rail details area with internal scrolling.",
-          },
-        },
-      ],
+      activityParts,
       RUN_ID,
     ),
   ]
 }
 
 function createActiveAssistantMessage(kind: RunningFixtureKind, language: DesktopLanguage): DesktopTranscriptMessage | null {
-  if (kind === "thinking" || kind === "queued") {
+  if (kind === "queued") {
     return null
   }
 
@@ -757,12 +803,6 @@ function createActiveAssistantMessage(kind: RunningFixtureKind, language: Deskto
 }
 
 function getActivePrompt(kind: RunningFixtureKind, language: DesktopLanguage) {
-  if (kind === "thinking") {
-    return language === "zh"
-      ? "保持 fallback Thinking 状态，不要产生 reasoning 或 tool call。"
-      : "Keep the fallback Thinking state without producing reasoning or a tool call."
-  }
-
   if (kind === "reasoning") {
     return language === "zh"
       ? "保持 live reasoning 区块展开，检查思考区域是否贴近输入栏。"

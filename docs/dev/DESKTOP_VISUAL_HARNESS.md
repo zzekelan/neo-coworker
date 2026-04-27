@@ -6,7 +6,6 @@ This document describes the desktop renderer visual harness for states that are 
 
 The harness exists to make long-running desktop UI states stable enough to inspect visually. Use it when changing layout, spacing, opacity, sticky-bottom behavior, or interaction states around:
 
-- fallback thinking
 - live reasoning
 - active tool calls
 - waiting-permission cards
@@ -35,19 +34,19 @@ Both entry points are local-dev only. They are guarded to the Vite desktop dev s
 
 The harness currently exposes these fixed scenarios:
 
-- `Thinking`: active run with no visible reasoning part and no pending tool call, so the fallback thinking indicator stays visible.
 - `Reasoning stream`: active run with a live reasoning part.
 - `Running tool`: active run with a pending tool call.
 - `Waiting permission`: active run suspended on a pending permission request.
 - `Queued`: queued run before streaming begins.
 
-Each scenario uses a long transcript so content scrolls behind the composer area. This is intentional: it lets visual checks catch leaks around composer opacity, footer background, transcript width, bottom inset, and thinking placement.
+Each scenario uses a long transcript so content scrolls behind the composer area. This is intentional: it lets visual checks catch leaks around composer opacity, footer background, transcript width, bottom inset, and reasoning placement.
 
 The `activity-details` fixture focuses on details that require controlled local state:
 
 - live reasoning content appends over time so the reasoning panel can prove it scrolls to the newest output
-- the run completes after the deterministic stream finishes so completed reasoning can auto-collapse one second later
-- completed and running tool rows include long details that should render with the reasoning-style left rail and internal scrollbar
+- after the deterministic stream finishes, the fixture holds a realistic active tool state before starting the next live reasoning state
+- the completed activity between the two reasoning states folds into one summary row, including reasoning and completed tool rows
+- expanded completed tool rows include long details that should render with the reasoning-style left rail and internal scrollbar
 
 ## When To Use It
 
@@ -68,20 +67,21 @@ For changes that touch the real runtime, still verify the normal app path in add
 When verifying through browser-use:
 
 1. Open `http://127.0.0.1:4173/?fixture=running-states`.
-2. Capture the initial `Thinking` state.
-3. Click through `Reasoning stream`, `Running tool`, `Waiting permission`, and `Queued`.
+2. Capture the initial `Reasoning stream` state.
+3. Click through `Running tool`, `Waiting permission`, and `Queued`.
 4. Check the browser console for errors.
 5. Inspect the bottom composer area while each state is active.
 6. Open `http://127.0.0.1:4173/?fixture=activity-details`.
-7. Watch the reasoning panel while lines append, then confirm it collapses one second after the stream completes.
-8. Expand the completed and running tool rows and confirm their detail panels use internal scrolling rather than a separate card style.
+7. Watch the reasoning panel while lines append, then confirm the fixture pauses on active tool activity before the next live reasoning block appears.
+8. Confirm the completed activity between the old and new reasoning states collapses into one summary row.
+9. Expand the completed activity row, then expand the completed tool rows and confirm their detail panels use internal scrolling rather than a separate card style.
 
 Pay particular attention to:
 
 - transcript text not showing through the composer
 - transcript text not leaking at the composer sides
 - footer/status text sitting on an opaque background
-- thinking/reasoning/tool UI not being hidden by the input area
+- reasoning/tool UI not being hidden by the input area
 - scroll-to-bottom affordance staying clear of the composer
 
 ## Implementation
