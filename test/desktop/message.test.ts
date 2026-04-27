@@ -51,6 +51,8 @@ describe("desktop message", () => {
     expect(source).toContain("aria-expanded={isExpanded}")
     expect(source).toContain("ACTIVITY_ROW_CLASS")
     expect(source).toContain("ACTIVITY_RAIL_CLASS")
+    expect(source).toContain("ACTIVITY_LABEL_CLASS")
+    expect(source).toContain('className={ACTIVITY_LABEL_CLASS}')
   })
 
   test("labels reasoning activity as thinking in the desktop transcript", () => {

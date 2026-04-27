@@ -20,11 +20,15 @@ const PulsePlaceholder = () => <div className="pulse-placeholder" />
 const DEFAULT_COLLAPSED_CHAR_LIMIT = 280
 const DEFAULT_COLLAPSED_LINE_LIMIT = 8
 const ACTIVITY_ROW_CLASS =
-  "relative pl-6 pr-2 py-1 text-left transition-colors hover:bg-surface/35"
+  "relative min-h-7 pl-6 pr-2 py-1 text-left transition-colors hover:bg-surface/35"
 const ACTIVITY_MARKER_CLASS =
-  "absolute left-[7px] top-3 h-1.5 w-1.5 rounded-full bg-accent/70 ring-4 ring-paper"
+  "absolute left-[7px] top-[11px] h-1.5 w-1.5 rounded-full bg-accent/70 ring-4 ring-paper"
 const ACTIVITY_RAIL_CLASS =
   "before:absolute before:left-[9.5px] before:top-0 before:bottom-0 before:w-px before:bg-border"
+const ACTIVITY_LABEL_CLASS =
+  "text-[13px] font-medium leading-5 tracking-normal text-muted"
+const ACTIVITY_META_CLASS =
+  "text-[12px] font-medium leading-5 tracking-normal text-muted/70"
 const TOOL_DETAIL_KEYS = [
   "path",
   "paths",
@@ -258,7 +262,7 @@ const TimestampDivider: React.FC<{ timestamp: string; isUser: boolean }> = React
 
   return (
     <div className="my-2 flex w-full max-w-3xl items-center gap-3 pl-6">
-      <span className="shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted/65">
+      <span className="shrink-0 font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-muted/65">
         {timestamp}
       </span>
       <span className="h-px flex-1 bg-border/55" />
@@ -403,7 +407,7 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
         )}
       >
         <span className={ACTIVITY_MARKER_CLASS} />
-        <span className="text-[12px] font-medium tracking-[0.08em] text-muted">
+        <span className={ACTIVITY_LABEL_CLASS}>
           {labels.message.reasoning}
         </span>
         <div className="flex w-5 shrink-0 items-center justify-center">
@@ -480,16 +484,17 @@ const ToolCallGroup: React.FC<{
         <span className={cn(ACTIVITY_MARKER_CLASS, hasAnyError && "bg-danger/70", isAgent && "bg-highlight/70")} />
         <div className="flex min-w-0 flex-1 items-center">
           <span className={cn(
-            "min-w-0 truncate text-[13px] font-medium leading-snug",
+            "min-w-0 truncate",
+            ACTIVITY_LABEL_CLASS,
             allCancelled ? "text-muted/50 italic" : "text-muted",
           )}>
             {groupLabel}
           </span>
-          <span className="ml-1.5 shrink-0 text-[13px] leading-snug font-medium text-muted/70">
+          <span className={cn("ml-1.5 shrink-0", ACTIVITY_META_CLASS)}>
             ({entries.length})
           </span>
           {hasAnyError ? (
-            <span className="ml-1.5 shrink-0 text-[12px] leading-snug text-danger/80">
+            <span className="ml-1.5 shrink-0 text-[12px] leading-5 text-danger/80">
               · {errorCount} failed
             </span>
           ) : null}
@@ -578,11 +583,11 @@ const ToolIndicator: React.FC<{
         <span className={cn(ACTIVITY_MARKER_CLASS, status === "pending" && "bg-highlight/70", status === "error" && "bg-danger/70")} />
         {/* Title · Subtitle · Status — single line, truncated */}
         <div className="flex min-w-0 flex-1 items-center">
-          <span className="shrink-0 text-[13px] font-medium leading-snug text-muted">
+          <span className={cn("shrink-0", ACTIVITY_LABEL_CLASS)}>
             {title}
           </span>
-          <span className="mx-1.5 text-muted leading-snug select-none">·</span>
-          <span className="min-w-0 truncate text-[13px] leading-snug text-muted">
+          <span className="mx-1.5 leading-5 text-muted select-none">·</span>
+          <span className="min-w-0 truncate text-[13px] leading-5 text-muted">
             {subtitle}
           </span>
           <span className="ml-2 shrink-0" role="status" aria-live="polite">
@@ -709,7 +714,8 @@ const CompletedToolRow: React.FC<{
         <span className={cn(ACTIVITY_MARKER_CLASS, isError && "bg-danger/70", isAgent && "bg-highlight/70")} />
         <div className="flex min-w-0 flex-1 items-center overflow-hidden">
           <span className={cn(
-            "min-w-0 truncate text-[13px] font-medium leading-snug",
+            "min-w-0 truncate",
+            ACTIVITY_LABEL_CLASS,
             isCancelled
               ? "text-muted/50 italic"
               : isError
@@ -719,10 +725,10 @@ const CompletedToolRow: React.FC<{
             {summary}
           </span>
           {isCancelled && !isError && (
-            <span className="ml-1 shrink-0 text-[12px] leading-snug text-muted/50 italic">— {text.message.cancelledSuffix}</span>
+            <span className="ml-1 shrink-0 text-[12px] leading-5 text-muted/50 italic">— {text.message.cancelledSuffix}</span>
           )}
           {failSuffix ? (
-            <span className="ml-1 shrink-0 text-[12px] leading-snug text-danger/60">
+            <span className="ml-1 shrink-0 text-[12px] leading-5 text-danger/60">
               {failSuffix}
             </span>
           ) : null}
