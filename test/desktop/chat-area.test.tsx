@@ -4,8 +4,11 @@ import { readFileSync } from "node:fs"
 describe("desktop chat area", () => {
   test("uses a normal transcript viewport without smooth-scroll styling", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
 
     expect(source).toContain("overflow-y-auto px-4 md:px-8")
+    expect(vtSource).toContain('className={cn("transcript-scroll-container h-full overflow-y-auto outline-none", className)}')
+    expect(vtSource).toContain('className="relative min-h-0 flex-1"')
     expect(source).not.toContain("scroll-smooth")
   })
 
@@ -120,7 +123,7 @@ describe("desktop chat area", () => {
   test("keeps the composer and footer opaque while the agent is running", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
-    expect(source).toContain('className="pointer-events-none absolute right-0 bottom-0 left-0 bg-paper px-4 pb-1.5"')
+    expect(source).toContain('className="pointer-events-none absolute right-3 bottom-0 left-0 bg-paper px-4 pb-1.5"')
     expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl bg-paper"')
     expect(source).toContain('className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent"')
     expect(source).toContain('? "border-border"')

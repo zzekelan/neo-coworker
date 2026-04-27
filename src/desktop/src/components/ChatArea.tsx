@@ -536,7 +536,7 @@ export function ChatArea({
         />
       )}
 
-       <div className="pointer-events-none absolute right-0 bottom-0 left-0 bg-paper px-4 pb-1.5">
+       <div className="pointer-events-none absolute right-3 bottom-0 left-0 bg-paper px-4 pb-1.5">
         <motion.div ref={bottomCardRef} layout transition={SKILL_DRAWER_TRANSITION} className="pointer-events-auto relative mx-auto max-w-4xl bg-paper">
           <div ref={skillPanelShellRef}>
             <AnimatePresence initial={false}>
