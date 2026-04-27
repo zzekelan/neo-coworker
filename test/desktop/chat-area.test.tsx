@@ -167,6 +167,7 @@ describe("desktop chat area", () => {
     expect(source).toContain("key={activePermissionRequest.id}")
     expect(source).toContain("request={activePermissionRequest}")
     expect(source).toContain("autoFocus")
+    expect(source).toContain("variant=\"composer\"")
     expect(source).toContain("onReply={handlePermissionReply}")
     expect(source).not.toContain("permissionRequests.map(")
   })

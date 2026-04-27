@@ -21,6 +21,7 @@ describe("desktop running states harness", () => {
     expect(harnessSource).toContain('"permission"')
     expect(harnessSource).toContain('"queued"')
     expect(harnessSource).toContain("activeRun: run")
+    expect(harnessSource).toContain("Permission composer while the run is suspended.")
     expect(harnessSource).toContain("permissionRequests: kind === \"permission\" ? [createPermissionRequest()] : []")
     expect(harnessSource).toContain("This path is dev-only and does not call the app-server.")
   })

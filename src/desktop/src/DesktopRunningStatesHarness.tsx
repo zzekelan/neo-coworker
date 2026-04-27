@@ -45,7 +45,7 @@ const FIXTURE_KINDS: Array<{
   {
     kind: "permission",
     label: "Waiting permission",
-    description: "Permission card and locked composer while the run is suspended.",
+    description: "Permission composer while the run is suspended.",
   },
   {
     kind: "queued",
@@ -319,7 +319,7 @@ function getActivePrompt(kind: RunningFixtureKind) {
   }
 
   if (kind === "permission") {
-    return "保持 waiting permission 状态，检查 permission card 和输入栏锁定态。"
+    return "保持 waiting permission 状态，检查 permission 是否占住输入栏。"
   }
 
   return "保持 queued 状态，检查发送后但尚未开始 streaming 的输入栏。"
