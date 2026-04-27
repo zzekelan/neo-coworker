@@ -63,7 +63,6 @@ export function createOpenAIEventNormalizer() {
 
 export function createOpenAICompatibleEventNormalizer() {
   const toolCalls = new Map<number, OpenAICompatibleToolCallState>()
-  const thinkBlockParser = createThinkBlockParser()
   const reasoningDetailsParser = createReasoningDetailsParser()
 
   return {
@@ -82,7 +81,7 @@ export function createOpenAICompatibleEventNormalizer() {
         }
 
         if (choice.delta.content) {
-          events.push(...thinkBlockParser.push(choice.delta.content))
+          events.push({ type: "text.delta", text: choice.delta.content })
         }
 
         for (const toolCall of choice.delta.tool_calls ?? []) {
@@ -123,10 +122,7 @@ export function createOpenAICompatibleEventNormalizer() {
       return events
     },
     flush() {
-      return [
-        ...thinkBlockParser.flush(),
-        ...flushOpenAICompatibleToolCalls(toolCalls),
-      ]
+      return flushOpenAICompatibleToolCalls(toolCalls)
     },
   }
 }
@@ -163,112 +159,6 @@ function normalizeTokenCount(value: unknown) {
   }
 
   return Math.trunc(value)
-}
-
-function createThinkBlockParser() {
-  const closeTag = "</think>"
-  let pending = ""
-  let mode: "text" | "reasoning" = "text"
-
-  return {
-    push(text: string): ModelEvent[] {
-      pending += text
-      return drainPendingThinkBlocks({ final: false })
-    },
-    flush(): ModelEvent[] {
-      return drainPendingThinkBlocks({ final: true })
-    },
-  }
-
-  function drainPendingThinkBlocks(input: { final: boolean }): ModelEvent[] {
-    const events: ModelEvent[] = []
-
-    while (pending.length > 0) {
-      if (mode === "text") {
-        const openMatch = findOpenThinkTag(pending)
-        if (openMatch) {
-          const { index: openIndex, length: openLength } = openMatch
-          pushTextEvent(events, pending.slice(0, openIndex))
-          pending = pending.slice(openIndex + openLength)
-          mode = "reasoning"
-          continue
-        }
-
-        const keepLength = input.final ? 0 : partialOpenThinkTagSuffixLength(pending)
-        pushTextEvent(events, pending.slice(0, pending.length - keepLength))
-        pending = pending.slice(pending.length - keepLength)
-        break
-      }
-
-      const closeIndex = indexOfTag(pending, closeTag)
-      if (closeIndex >= 0) {
-        pushReasoningEvent(events, pending.slice(0, closeIndex))
-        pending = pending.slice(closeIndex + closeTag.length)
-        mode = "text"
-        continue
-      }
-
-      const keepLength = input.final ? 0 : partialTagSuffixLength(pending, closeTag)
-      pushReasoningEvent(events, pending.slice(0, pending.length - keepLength))
-      pending = pending.slice(pending.length - keepLength)
-      break
-    }
-
-    return events
-  }
-}
-
-function findOpenThinkTag(value: string) {
-  const match = /<think\b[^>]*>/i.exec(value)
-  if (!match || match.index == null) {
-    return null
-  }
-
-  return {
-    index: match.index,
-    length: match[0].length,
-  }
-}
-
-function partialOpenThinkTagSuffixLength(value: string) {
-  for (let start = value.length - 1; start >= 0; start -= 1) {
-    const suffix = value.slice(start)
-    const normalized = suffix.toLowerCase()
-
-    if ("<think".startsWith(normalized) || /^<think\b[^>]*$/i.test(suffix)) {
-      return suffix.length
-    }
-  }
-
-  return 0
-}
-
-function pushTextEvent(events: ModelEvent[], text: string) {
-  if (text.length > 0) {
-    events.push({ type: "text.delta", text })
-  }
-}
-
-function pushReasoningEvent(events: ModelEvent[], text: string) {
-  if (text.length > 0) {
-    events.push({ type: "reasoning.delta", text })
-  }
-}
-
-function indexOfTag(value: string, tag: string) {
-  return value.toLowerCase().indexOf(tag)
-}
-
-function partialTagSuffixLength(value: string, tag: string) {
-  const normalized = value.toLowerCase()
-
-  for (let length = Math.min(tag.length - 1, normalized.length); length > 0; length -= 1) {
-    if (tag.startsWith(normalized.slice(-length))) {
-      return length
-    }
-  }
-
-  return 0
 }
 
 function readOpenAICompatibleReasoningContent(
