@@ -111,9 +111,17 @@ describe("desktop chat area", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
     expect(source).toContain('<div className="mx-auto max-w-4xl">')
-    expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl"')
+    expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl bg-paper"')
     expect(source).not.toContain("content-fade-top")
     expect(source).not.toContain('<div className="w-full">')
+  })
+
+  test("keeps the composer and footer opaque while the agent is running", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl bg-paper"')
+    expect(source).toContain('? "border-border"')
+    expect(source).not.toContain("opacity-80")
   })
 
   test("closes the skill panel on outside click and defers Enter submission during IME composition", () => {

@@ -536,7 +536,7 @@ export function ChatArea({
       )}
 
        <div className="pointer-events-none absolute right-0 bottom-0 left-0 px-4 pb-4">
-        <motion.div ref={bottomCardRef} layout transition={SKILL_DRAWER_TRANSITION} className="pointer-events-auto relative mx-auto max-w-4xl">
+        <motion.div ref={bottomCardRef} layout transition={SKILL_DRAWER_TRANSITION} className="pointer-events-auto relative mx-auto max-w-4xl bg-paper">
           <div ref={skillPanelShellRef}>
             <AnimatePresence initial={false}>
               {isSkillPanelOpen ? (
@@ -583,7 +583,7 @@ export function ChatArea({
             className={cn(
               "relative flex flex-col rounded-2xl border bg-paper shadow-sm transition-all",
               isBusy
-                ? "border-border opacity-80"
+                ? "border-border"
                 : "border-border focus-within:border-highlight/50 focus-within:ring-4 focus-within:ring-highlight/10",
             )}
           >
