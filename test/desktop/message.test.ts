@@ -51,8 +51,10 @@ describe("desktop message", () => {
     expect(source).toContain("aria-expanded={isExpanded}")
     expect(source).toContain("THINKING_LABEL_CLASS")
     expect(source).toContain('className="py-1 pr-2"')
-    expect(source).toContain('className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"')
-    expect(source).toContain('className={THINKING_LABEL_CLASS}')
+    expect(source).toContain("ACTIVITY_CHEVRON_SLOT_CLASS")
+    expect(source).toContain('className="group flex w-full cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"')
+    expect(source).toContain('className={cn("min-w-0 flex-1 text-left", THINKING_LABEL_CLASS)}')
+    expect(source).toContain("className={ACTIVITY_CHEVRON_SLOT_CLASS}")
     expect(source).not.toContain("ACTIVITY_RAIL_CLASS")
   })
 
@@ -78,10 +80,25 @@ describe("desktop message", () => {
   test("keeps user copy action out of the message bubble flow", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
+    expect(source).toContain('isUser && copyableText && "group/msg"')
     expect(source).toContain('"max-w-[78%] items-end pb-7"')
     expect(source).toContain('"relative rounded-xl rounded-tr-md border border-border/35 bg-surface/65 px-4 py-2.5 text-ink"')
     expect(source).toContain('className="absolute right-2 top-[calc(100%+0.25rem)]"')
     expect(source).not.toContain('className="mt-2 self-end"')
+  })
+
+  test("does not render copy actions for assistant text", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+    const assistantTextPart = source.slice(
+      source.indexOf("function AssistantTextPart"),
+      source.indexOf("const MessagePartRenderer"),
+    )
+
+    expect(source).toContain("function AssistantTextPart")
+    expect(source).toContain("<AssistantTextPart")
+    expect(source).not.toContain("TextPartWithCopy")
+    expect(assistantTextPart).not.toContain("CopyMessageButton")
+    expect(assistantTextPart).not.toContain("copyLabel")
   })
 
   test("keeps agent tool rows aligned without a separate activity rail", () => {
@@ -98,7 +115,7 @@ describe("desktop message", () => {
     expect(source).not.toContain("isAgentTool(")
   })
 
-  test("keeps top-level tool labels aligned with thinking and assistant copy", () => {
+  test("keeps top-level tool labels aligned with thinking and assistant text", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
     expect(source).toContain(`const ACTIVITY_ROW_CLASS =
@@ -107,6 +124,13 @@ describe("desktop message", () => {
     expect(source).not.toContain("ACTIVITY_RAIL_CLASS")
     expect(source).not.toContain("relative min-h-7 pl-6 pr-2")
     expect(source).not.toContain('isUser ? "space-y-2" : "space-y-1.5"')
+  })
+
+  test("keeps grouped tool children on the same vertical rhythm as tool rows", () => {
+    const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
+
+    expect(source).toContain('className="ml-2 pl-4"')
+    expect(source).not.toContain('className="ml-2 mt-1 pl-4"')
   })
 
   test("summarizes skill tool rows with the affected skill name", () => {

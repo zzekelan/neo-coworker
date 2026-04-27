@@ -26,6 +26,8 @@ const ACTIVITY_LABEL_CLASS =
   "text-[13px] font-medium leading-5 tracking-normal text-muted"
 const THINKING_LABEL_CLASS =
   "text-[13px] font-medium leading-5 tracking-normal text-muted/70"
+const ACTIVITY_CHEVRON_SLOT_CLASS =
+  "flex w-5 shrink-0 items-center justify-center"
 const ACTIVITY_META_CLASS =
   "text-[12px] font-medium leading-5 tracking-normal text-muted/70"
 const TOOL_DETAIL_KEYS = [
@@ -223,7 +225,7 @@ const MessageComponent: React.FC<{
         initial={false}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className={cn("flex w-full flex-col", isUser ? "items-end" : "items-start", copyableText && "group/msg")}
+        className={cn("flex w-full flex-col", isUser ? "items-end" : "items-start", isUser && copyableText && "group/msg")}
       >
         {showTimestamp ? (
           <TimestampDivider timestamp={timestampLabel} />
@@ -277,11 +279,8 @@ const MessageComponent: React.FC<{
                   ) : null}
                 </>
               ) : (
-                <TextPartWithCopy
+                <AssistantTextPart
                   text={message.content}
-                  copyLabel={text.chat.copyMessage}
-                  copiedLabel={text.chat.copied}
-                  failedLabel={text.chat.clipboardUnavailable}
                   markdownClassName="text-[15px] leading-relaxed text-ink"
                 />
               )}
@@ -356,17 +355,11 @@ function CopyMessageButton({
   )
 }
 
-function TextPartWithCopy({
+function AssistantTextPart({
   text,
-  copyLabel,
-  copiedLabel,
-  failedLabel,
   markdownClassName,
 }: {
   text: string
-  copyLabel: string
-  copiedLabel: string
-  failedLabel: string
   markdownClassName: string
 }) {
   return (
@@ -376,15 +369,6 @@ function TextPartWithCopy({
           <MarkdownText text={text} className={markdownClassName} />
         </Suspense>
       </ErrorBoundary>
-      {text.trim().length > 0 ? (
-        <CopyMessageButton
-          text={text}
-          label={copyLabel}
-          copiedLabel={copiedLabel}
-          failedLabel={failedLabel}
-          className="-mt-1 mb-1"
-        />
-      ) : null}
     </div>
   )
 }
@@ -400,11 +384,8 @@ const MessagePartRenderer: React.FC<{
   if (part.type === "text") {
     if (role === "assistant") {
       return (
-        <TextPartWithCopy
+        <AssistantTextPart
           text={part.text}
-          copyLabel={text.chat.copyMessage}
-          copiedLabel={text.chat.copied}
-          failedLabel={text.chat.clipboardUnavailable}
           markdownClassName="py-2 text-[15px] leading-relaxed text-ink"
         />
       )
@@ -496,17 +477,19 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number }> = React.memo
         onClick={toggle}
         onKeyDown={expandKeyDown(toggle)}
         aria-expanded={isExpanded}
-        className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"
+        className="group flex w-full cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"
       >
-        <span className={THINKING_LABEL_CLASS}>
+        <span className={cn("min-w-0 flex-1 text-left", THINKING_LABEL_CLASS)}>
           {labels.message.reasoning}
         </span>
-        <ChevronLeft
-          className={cn(
-            "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
-            isExpanded && "rotate-[-90deg]",
-          )}
-        />
+        <span className={ACTIVITY_CHEVRON_SLOT_CLASS}>
+          <ChevronLeft
+            className={cn(
+              "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
+              isExpanded && "rotate-[-90deg]",
+            )}
+          />
+        </span>
       </button>
       <AnimatePresence initial={false}>
         {isExpanded ? (
@@ -582,7 +565,7 @@ const ToolCallGroup: React.FC<{
             </span>
           ) : null}
         </div>
-        <div className="flex w-5 shrink-0 items-center justify-center">
+        <div className={ACTIVITY_CHEVRON_SLOT_CLASS}>
           <ChevronLeft
             className={cn(
               "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
@@ -602,7 +585,7 @@ const ToolCallGroup: React.FC<{
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="ml-2 mt-1 pl-4">
+            <div className="ml-2 pl-4">
               {entries.map((entry) => {
                 const callDetails = buildToolCallDetails(text, entry.part.toolName, entry.part.toolInput)
                 const resultDetails = entry.result ? buildToolResultDetails(text, entry.result.result) : []
@@ -677,7 +660,7 @@ const ToolIndicator: React.FC<{
         </div>
 
         {/* Expand chevron */}
-        <div className="flex w-5 shrink-0 items-center justify-center">
+        <div className={ACTIVITY_CHEVRON_SLOT_CLASS}>
           {hasDetails ? (
             <ChevronLeft
               className={cn(
@@ -810,7 +793,7 @@ const CompletedToolRow: React.FC<{
           ) : null}
         </div>
 
-        <div className="flex w-5 shrink-0 items-center justify-center">
+        <div className={ACTIVITY_CHEVRON_SLOT_CLASS}>
           {hasDetails ? (
             <ChevronLeft
               className={cn(
