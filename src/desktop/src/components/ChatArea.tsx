@@ -41,6 +41,17 @@ const SKILL_DRAWER_TRANSITION = {
   ease: [0.22, 1, 0.36, 1] as const,
 }
 
+function getTranscriptItemBottomPadding(message: DesktopTranscriptMessage): string {
+  const parts = message.parts ?? []
+  const hasVisibleText = parts.some((part) => part.type === "text" && part.text.trim().length > 0)
+  const isActivityOnly =
+    parts.length > 0 &&
+    !hasVisibleText &&
+    parts.every((part) => part.type === "reasoning" || part.type === "tool_call" || part.type === "tool_result")
+
+  return isActivityOnly ? "0.25rem" : "0.875rem"
+}
+
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
   hasSessions: boolean
@@ -432,7 +443,7 @@ export function ChatArea({
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
             const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined
             return (
-              <div className="mx-auto max-w-4xl" style={{ paddingBottom: "1.5rem" }}>
+              <div className="mx-auto max-w-4xl" style={{ paddingBottom: getTranscriptItemBottomPadding(message) }}>
                 {boundaryPart && boundaryPart.type === "compaction_boundary" ? (
                   <CompactionDivider
                     tokensBefore={boundaryPart.tokensBefore}
