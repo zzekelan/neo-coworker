@@ -107,13 +107,15 @@ describe("desktop chat area", () => {
     expect(source).toContain("style={{ width: `${percent}%` }}")
   })
 
-  test("renders each pending permission request as its own card and only auto-focuses the first", () => {
+  test("renders only the first pending permission request as the active card", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
-    expect(source).toContain("permissionRequests.map((request, index) => (")
-    expect(source).toContain("key={request.id}")
-    expect(source).toContain("request={request}")
-    expect(source).toContain("autoFocus={index === 0}")
+    expect(source).toContain("const activePermissionRequest = permissionRequests[0] ?? null")
+    expect(source).toContain("activePermissionRequest ? (")
+    expect(source).toContain("key={activePermissionRequest.id}")
+    expect(source).toContain("request={activePermissionRequest}")
+    expect(source).toContain("autoFocus")
     expect(source).toContain("onReply={handlePermissionReply}")
+    expect(source).not.toContain("permissionRequests.map(")
   })
 })

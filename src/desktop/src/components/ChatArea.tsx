@@ -153,6 +153,7 @@ export function ChatArea({
   const isRunning = activeRunStatus === "running"
   const isBusy = isBusyRunStatus(activeRunStatus)
   const isRunSkillEditingLocked = Boolean(session?.activeRun)
+  const activePermissionRequest = permissionRequests[0] ?? null
   const sessionSummaryWithOptimisticSkills =
     sessionSummary && optimisticSessionSkills
       ? {
@@ -464,14 +465,14 @@ export function ChatArea({
                 </div>
               ) : null}
 
-              {permissionRequests.map((request, index) => (
+              {activePermissionRequest ? (
                 <PermissionRequest
-                  key={request.id}
-                  request={request}
-                  autoFocus={index === 0}
+                  key={activePermissionRequest.id}
+                  request={activePermissionRequest}
+                  autoFocus
                   onReply={handlePermissionReply}
                 />
-              ))}
+              ) : null}
 
               {isRunning ? (
                 <motion.div
