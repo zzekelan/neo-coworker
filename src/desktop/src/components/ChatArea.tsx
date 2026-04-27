@@ -40,6 +40,7 @@ const SKILL_DRAWER_TRANSITION = {
   duration: 0.22,
   ease: [0.22, 1, 0.36, 1] as const,
 }
+const TRANSCRIPT_BOTTOM_SAFE_AREA = 72
 
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
@@ -372,7 +373,7 @@ export function ChatArea({
         </div>
         <div
           className="flex-1 overflow-y-auto px-4 md:px-8"
-          style={{ paddingBottom: bottomCardHeight + 16 }}
+          style={{ paddingBottom: bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA }}
         >
           <EmptyChatState
             icon={<Play className="h-6 w-6 text-accent" />}
@@ -423,7 +424,7 @@ export function ChatArea({
       {transcript.length === 0 ? (
         <div
           className="flex-1 overflow-y-auto px-4 md:px-8"
-          style={{ paddingBottom: bottomCardHeight + 16 }}
+          style={{ paddingBottom: bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA }}
         >
           <EmptyChatState
             icon={<MessageSquare className="h-6 w-6 text-accent" />}
@@ -439,7 +440,7 @@ export function ChatArea({
           estimatedItemHeight={100}
           overscan={5}
           className="px-4 md:px-8"
-          bottomInset={bottomCardHeight + 16}
+          bottomInset={bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA}
           renderItem={(message, index) => {
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
             const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined

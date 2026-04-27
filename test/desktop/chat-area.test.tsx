@@ -22,7 +22,8 @@ describe("desktop chat area", () => {
     expect(source).toContain("if (!sessionSummary)")
     expect(source).toContain("hasSessions ? (")
     expect(source).toContain("{text.chat.selectSession}")
-    expect(source).toContain("style={{ paddingBottom: bottomCardHeight + 16 }}")
+    expect(source).toContain("TRANSCRIPT_BOTTOM_SAFE_AREA")
+    expect(source).toContain("style={{ paddingBottom: bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA }}")
     expect(source).toContain("offsetClassName=\"translate-y-2\"")
     expect(source).not.toContain("absolute top-4 left-4")
   })
@@ -40,7 +41,8 @@ describe("desktop chat area", () => {
 
     expect(chatSource).toContain("bottomCardRef")
     expect(chatSource).toContain("ResizeObserver")
-    expect(chatSource).toContain("bottomInset={bottomCardHeight + 16}")
+    expect(chatSource).toContain("const TRANSCRIPT_BOTTOM_SAFE_AREA = 72")
+    expect(chatSource).toContain("bottomInset={bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA}")
     expect(chatSource).not.toContain("pb-32")
 
     expect(vtSource).toContain("bottomInset")
