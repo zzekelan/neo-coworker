@@ -41,8 +41,9 @@ describe("desktop chat area", () => {
 
     expect(chatSource).toContain("bottomCardRef")
     expect(chatSource).toContain("ResizeObserver")
-    expect(chatSource).toContain("const TRANSCRIPT_BOTTOM_SAFE_AREA = 72")
+    expect(chatSource).toContain("const TRANSCRIPT_BOTTOM_SAFE_AREA = 42")
     expect(chatSource).toContain("bottomInset={bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA}")
+    expect(chatSource).toContain("scrollButtonOffset={bottomCardHeight + 16}")
     expect(chatSource).not.toContain("pb-32")
 
     expect(vtSource).toContain("bottomInset")

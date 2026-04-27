@@ -40,7 +40,7 @@ const SKILL_DRAWER_TRANSITION = {
   duration: 0.22,
   ease: [0.22, 1, 0.36, 1] as const,
 }
-const TRANSCRIPT_BOTTOM_SAFE_AREA = 72
+const TRANSCRIPT_BOTTOM_SAFE_AREA = 42
 
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
@@ -441,6 +441,7 @@ export function ChatArea({
           overscan={5}
           className="px-4 md:px-8"
           bottomInset={bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA}
+          scrollButtonOffset={bottomCardHeight + 16}
           renderItem={(message, index) => {
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
             const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined
