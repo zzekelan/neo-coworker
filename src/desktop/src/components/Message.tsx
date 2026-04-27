@@ -649,6 +649,56 @@ const ToolIndicator: React.FC<{
   const hasDetails = details.length > 0
   const isActive = status === "pending" || status === "waiting_permission"
 
+  if (isActive) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
+        className="relative"
+      >
+        <button
+          type="button"
+          className={cn(
+            "group flex w-full cursor-pointer items-center gap-2",
+            ACTIVITY_ROW_CLASS,
+            "focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
+          )}
+          onClick={hasDetails ? () => setIsDetailsOpen((previous) => !previous) : undefined}
+          aria-expanded={hasDetails ? isDetailsOpen : undefined}
+          onKeyDown={hasDetails ? expandKeyDown(() => setIsDetailsOpen(prev => !prev)) : undefined}
+        >
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-highlight animate-breathe" aria-hidden="true" />
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span className={cn("shrink-0", THINKING_LABEL_CLASS)}>
+              {status === "waiting_permission" ? text.message.waitingPermission : title}
+            </span>
+            <span className="shrink-0 text-[13px] leading-5 text-muted/45 select-none">·</span>
+            <span className="min-w-0 truncate text-[13px] leading-5 text-muted/70">
+              {subtitle}
+            </span>
+          </span>
+          <span className={ACTIVITY_CHEVRON_SLOT_CLASS}>
+            {hasDetails ? (
+              <ChevronLeft
+                className={cn(
+                  "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
+                  isDetailsOpen && "rotate-[-90deg]",
+                )}
+              />
+            ) : null}
+          </span>
+        </button>
+
+        <ToolDetailsPanel
+          isOpen={isDetailsOpen}
+          details={details}
+          emptyDetailsLabel={text.message.noAdditionalDetails}
+        />
+      </motion.div>
+    )
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
@@ -661,8 +711,6 @@ const ToolIndicator: React.FC<{
         className={cn(
           "group flex items-center gap-2",
           ACTIVITY_ROW_CLASS,
-          isActive && "rounded-md border-l-2 border-highlight/45 bg-highlight/5 pl-2",
-          status === "waiting_permission" && "border-highlight/70 bg-highlight/10",
           hasDetails && "cursor-pointer focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
         )}
         onClick={hasDetails ? () => setIsDetailsOpen((previous) => !previous) : undefined}
@@ -724,6 +772,35 @@ const ToolIndicator: React.FC<{
     </motion.div>
   )
 })
+
+const ToolDetailsPanel: React.FC<{
+  isOpen: boolean
+  details: DetailItem[]
+  emptyDetailsLabel: string
+}> = React.memo(({ isOpen, details, emptyDetailsLabel }) => (
+  <motion.div
+    initial={false}
+    animate={{
+      height: isOpen ? "auto" : 0,
+      opacity: isOpen ? 1 : 0,
+    }}
+    transition={{ duration: 0.2, ease: "easeOut" }}
+    className="overflow-hidden"
+  >
+    {isOpen ? (
+      <div className="ml-6 pb-2">
+        <ErrorBoundary>
+          <Suspense fallback={<PulsePlaceholder />}>
+            <ToolDetails
+              details={details}
+              emptyDetailsLabel={emptyDetailsLabel}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+    ) : null}
+  </motion.div>
+))
 
 const ToolStatusBadge: React.FC<{ status: ToolDisplayStatus }> = React.memo(({ status }) => {
   const text = useDesktopText()
