@@ -7,11 +7,15 @@ import { ChatArea } from "./components/ChatArea"
 import { KeyboardShortcutProvider } from "./providers/KeyboardShortcutProvider"
 import { ThemeProvider } from "./providers/ThemeProvider"
 import { CommandPalette } from "./components/CommandPalette"
-import { DesktopRunningStatesHarness } from "./DesktopRunningStatesHarness"
+import { DesktopActivityDetailsHarness, DesktopRunningStatesHarness } from "./DesktopRunningStatesHarness"
 
 export default function App() {
   if (shouldShowRunningStatesHarness()) {
     return <DesktopRunningStatesHarness />
+  }
+
+  if (shouldShowActivityDetailsHarness()) {
+    return <DesktopActivityDetailsHarness />
   }
 
   const {
@@ -167,6 +171,10 @@ export default function App() {
 
 function shouldShowRunningStatesHarness() {
   return isLocalDesktopDevServer() && new URLSearchParams(window.location.search).get("fixture") === "running-states"
+}
+
+function shouldShowActivityDetailsHarness() {
+  return isLocalDesktopDevServer() && new URLSearchParams(window.location.search).get("fixture") === "activity-details"
 }
 
 function isLocalDesktopDevServer() {

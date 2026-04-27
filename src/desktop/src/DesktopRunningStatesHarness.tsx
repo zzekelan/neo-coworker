@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ChatArea } from "./components/ChatArea"
 import { DesktopTextProvider } from "./i18n"
 import { KeyboardShortcutProvider } from "./providers/KeyboardShortcutProvider"
@@ -91,6 +91,22 @@ const CONTEXT_USAGE: DesktopContextUsage = {
   utilizationPercent: 6,
   source: "estimated",
 }
+
+const ACTIVITY_REASONING_LINES_ZH = Array.from({ length: 28 }, (_, index) =>
+  `步骤 ${String(index + 1).padStart(2, "0")}：持续追加 reasoning 内容，制造内部滚动区域，并确认最新输出会停在可视区域底部附近。`,
+)
+
+const ACTIVITY_REASONING_LINES_EN = Array.from({ length: 28 }, (_, index) =>
+  `Step ${String(index + 1).padStart(2, "0")}: append reasoning content to force internal scrolling and keep the newest output near the bottom of the visible panel.`,
+)
+
+const LONG_TOOL_OUTPUT_ZH = Array.from({ length: 28 }, (_, index) =>
+  `工具输出 ${String(index + 1).padStart(2, "0")}：这是一行很长的结果内容，用来确认 tool 详情区和推理内容一样使用左边线、内部滚动条和稳定的最大高度。`,
+).join("\n")
+
+const LONG_TOOL_OUTPUT_EN = Array.from({ length: 28 }, (_, index) =>
+  `Tool output ${String(index + 1).padStart(2, "0")}: this long result line verifies that tool details use the same left-rail, internal scrollbar, and bounded height as reasoning content.`,
+).join("\n")
 
 export function DesktopRunningStatesHarness() {
   const [kind, setKind] = useState<RunningFixtureKind>("thinking")
@@ -197,6 +213,182 @@ export function DesktopRunningStatesHarness() {
   )
 }
 
+export function DesktopActivityDetailsHarness() {
+  const [language, setLanguage] = useState<DesktopLanguage>("zh")
+  const reasoningLines = language === "zh" ? ACTIVITY_REASONING_LINES_ZH : ACTIVITY_REASONING_LINES_EN
+  const [visibleLineCount, setVisibleLineCount] = useState(4)
+  const [isStreaming, setIsStreaming] = useState(true)
+
+  useEffect(() => {
+    setVisibleLineCount(4)
+    setIsStreaming(true)
+  }, [language])
+
+  useEffect(() => {
+    if (!isStreaming) return
+
+    if (visibleLineCount >= reasoningLines.length) {
+      const finishTimer = window.setTimeout(() => {
+        setIsStreaming(false)
+      }, 600)
+      return () => window.clearTimeout(finishTimer)
+    }
+
+    const appendTimer = window.setTimeout(() => {
+      setVisibleLineCount((current) => Math.min(current + 1, reasoningLines.length))
+    }, 300)
+
+    return () => window.clearTimeout(appendTimer)
+  }, [isStreaming, reasoningLines.length, visibleLineCount])
+
+  const fixture = useMemo(
+    () => createActivityDetailsFixture(language, reasoningLines.slice(0, visibleLineCount).join("\n"), isStreaming),
+    [isStreaming, language, reasoningLines, visibleLineCount],
+  )
+
+  const resetStreaming = () => {
+    setVisibleLineCount(4)
+    setIsStreaming(true)
+  }
+
+  return (
+    <ThemeProvider theme="light" onThemeChange={() => {}}>
+      <KeyboardShortcutProvider
+        onNewSession={() => {}}
+        onClearTranscript={() => {}}
+        onCycleAgent={() => {}}
+      >
+        <DesktopTextProvider language={language}>
+          <div className="flex h-screen w-full overflow-hidden bg-paper font-sans text-ink selection:bg-accent/20 selection:text-ink">
+            <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-paper px-4 py-5">
+              <div className="mb-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Desktop fixture
+                </p>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <h1 className="text-lg font-semibold text-ink">
+                    Activity details
+                  </h1>
+                  <div className="flex rounded-md border border-border bg-surface p-0.5">
+                    {(["zh", "en"] as DesktopLanguage[]).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        aria-label={`Switch fixture language to ${option === "zh" ? "Chinese" : "English"}`}
+                        onClick={() => setLanguage(option)}
+                        className={[
+                          "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+                          language === option
+                            ? "bg-paper text-ink shadow-sm"
+                            : "text-muted hover:text-ink",
+                        ].join(" ")}
+                      >
+                        {option === "zh" ? "中文" : "EN"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-xs leading-5 text-muted">
+                <p>
+                  {language === "zh"
+                    ? "这个 fixture 会持续追加 reasoning 内容，结束后保持 1 秒再收起。"
+                    : "This fixture appends reasoning content, then collapses it one second after completion."}
+                </p>
+                <p>
+                  {language === "zh"
+                    ? "展开下面的 tool 行，检查详情区是否像 reasoning 一样用内部滚动条。"
+                    : "Expand the tool rows below to verify details use the same internal scrolling as reasoning."}
+                </p>
+                <button
+                  type="button"
+                  onClick={resetStreaming}
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:bg-paper"
+                >
+                  {language === "zh" ? "重播流式输出" : "Replay stream"}
+                </button>
+              </div>
+
+              <div className="mt-auto rounded-lg border border-border bg-surface px-3 py-2.5 text-xs leading-5 text-muted">
+                Open with <span className="font-mono text-ink">?fixture=activity-details</span>.
+                This path is dev-only and does not call the app-server.
+              </div>
+            </aside>
+
+            <div className="relative flex min-w-0 flex-1 flex-col bg-paper">
+              <ChatArea
+                sessionSummary={fixture.sessionSummary}
+                hasSessions
+                session={fixture.session}
+                skills={SKILLS}
+                transcript={fixture.transcript}
+                permissionRequests={[]}
+                contextUsage={CONTEXT_USAGE}
+                onSendMessage={() => undefined}
+                onCancelRun={() => undefined}
+                onReplyPermission={() => false}
+                onSetSessionActiveSkills={() => undefined}
+                onCreateSession={() => undefined}
+                isSidebarOpen
+                onToggleSidebar={() => undefined}
+                errorMessage={null}
+                skillWarningMessage={null}
+                compatibilityPrompt={null}
+                onStartNewSessionFromCompatibility={() => undefined}
+                onContinueWithoutThinking={() => undefined}
+                modelName="fixture-model"
+                currentAgent="general"
+                primaryAgents={PRIMARY_AGENTS}
+                onSetAgent={() => undefined}
+              />
+            </div>
+          </div>
+        </DesktopTextProvider>
+      </KeyboardShortcutProvider>
+    </ThemeProvider>
+  )
+}
+
+function createActivityDetailsFixture(language: DesktopLanguage, reasoningText: string, isStreaming: boolean) {
+  const latestRunStatus: DesktopRun["status"] = isStreaming ? "running" : "completed"
+  const run: DesktopRun = {
+    id: RUN_ID,
+    sessionId: SESSION_ID,
+    status: latestRunStatus,
+    createdAt: NOW,
+    activeSkills: ["browser"],
+  }
+  const sessionSummary: DesktopSession = {
+    id: SESSION_ID,
+    title: "Activity details fixture",
+    workspaceRoot: "/fixtures/workspace",
+    sessionId: SESSION_ID,
+    createdAt: NOW,
+    updatedAt: NOW,
+    activeSkills: ["browser"],
+    currentAgent: "general",
+    latestRunStatus,
+  }
+  const session: DesktopSessionSnapshot = {
+    session: {
+      id: SESSION_ID,
+      activeSkills: sessionSummary.activeSkills,
+      currentAgent: "general",
+    },
+    latestRun: run,
+    activeRun: isStreaming ? run : undefined,
+    contextUsage: CONTEXT_USAGE,
+    status: isStreaming ? "busy" : "idle",
+  }
+
+  return {
+    sessionSummary,
+    session,
+    transcript: createActivityDetailsTranscript(language, reasoningText),
+  }
+}
+
 function createRunningFixture(kind: RunningFixtureKind, language: DesktopLanguage) {
   const runStatus = kind === "permission"
     ? "waiting_permission"
@@ -277,6 +469,70 @@ function createTranscript(kind: RunningFixtureKind, language: DesktopLanguage): 
   }
 
   return transcript
+}
+
+function createActivityDetailsTranscript(language: DesktopLanguage, reasoningText: string): DesktopTranscriptMessage[] {
+  const longOutput = language === "zh" ? LONG_TOOL_OUTPUT_ZH : LONG_TOOL_OUTPUT_EN
+
+  return [
+    createMessage("activity-user-1", "user", language === "zh"
+      ? "请验证 reasoning 内容持续输出时会自动滚到最新，结束后 1 秒收起，并检查 tool 详情滚动区域。"
+      : "Verify that reasoning output follows the newest content, collapses one second after completion, and that tool details scroll internally."),
+    ...Array.from({ length: 12 }, (_, index) =>
+      createMessage(
+        `activity-history-${index}`,
+        index % 2 === 0 ? "assistant" : "user",
+        language === "zh"
+          ? `背景消息 ${String(index + 1).padStart(2, "0")}：制造足够长的对话，让 activity details fixture 更接近真实长会话。`
+          : `Background message ${String(index + 1).padStart(2, "0")}: this makes the activity details fixture behave more like a long real chat.`,
+      ),
+    ),
+    createMessage(
+      "activity-assistant-live",
+      "assistant",
+      [
+        {
+          type: "reasoning",
+          text: reasoningText,
+        },
+        {
+          type: "tool_call",
+          toolName: "shell",
+          callId: "activity-completed-shell-call",
+          status: "success",
+          toolInput: {
+            command: "bun test test/desktop/message.test.ts --watch=false",
+            reason: language === "zh"
+              ? "生成足够长的 tool 输入详情，验证展开后内部滚动条。"
+              : "Generate enough tool input detail to verify internal scrolling after expansion.",
+          },
+        },
+        {
+          type: "tool_result",
+          callId: "activity-completed-shell-call",
+          result: {
+            stdout: longOutput,
+          },
+        },
+        {
+          type: "tool_call",
+          toolName: "browser",
+          callId: "activity-running-browser-call",
+          status: "pending",
+          progress: language === "zh"
+            ? "展开本行查看长 URL 和长输出区域"
+            : "Expand this row to inspect long URL and output details",
+          toolInput: {
+            url: "http://127.0.0.1:4173/?fixture=activity-details&very-long-query=reasoning-scroll-tool-details",
+            reason: language === "zh"
+              ? "运行中工具也应该复用 reasoning 风格的左边线详情区，并带内部滚动条。"
+              : "Running tools should reuse the reasoning-style left-rail details area with internal scrolling.",
+          },
+        },
+      ],
+      RUN_ID,
+    ),
+  ]
 }
 
 function createActiveAssistantMessage(kind: RunningFixtureKind, language: DesktopLanguage): DesktopTranscriptMessage | null {

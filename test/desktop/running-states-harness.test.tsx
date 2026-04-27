@@ -6,10 +6,13 @@ describe("desktop running states harness", () => {
     const appSource = readFileSync("src/desktop/src/App.tsx", "utf8")
 
     expect(appSource).toContain("shouldShowRunningStatesHarness()")
+    expect(appSource).toContain("shouldShowActivityDetailsHarness()")
     expect(appSource).toContain('get("fixture") === "running-states"')
+    expect(appSource).toContain('get("fixture") === "activity-details"')
     expect(appSource).toContain("isLocalDesktopDevServer()")
     expect(appSource).toContain('window.location.port === "4173"')
     expect(appSource.indexOf("return <DesktopRunningStatesHarness />")).toBeLessThan(appSource.indexOf("useAgent()"))
+    expect(appSource.indexOf("return <DesktopActivityDetailsHarness />")).toBeLessThan(appSource.indexOf("useAgent()"))
   })
 
   test("keeps each long-running visual state available as a stable scenario", () => {
@@ -45,5 +48,19 @@ describe("desktop running states harness", () => {
     expect(harnessSource).toContain("Permission composer while the run is suspended.")
     expect(harnessSource).toContain("permissionRequests: kind === \"permission\" ? [createPermissionRequest()] : []")
     expect(harnessSource).toContain("This path is dev-only and does not call the app-server.")
+  })
+
+  test("adds a focused activity details fixture for scrolling reasoning and tool details", () => {
+    const harnessSource = readFileSync("src/desktop/src/DesktopRunningStatesHarness.tsx", "utf8")
+
+    expect(harnessSource).toContain("export function DesktopActivityDetailsHarness()")
+    expect(harnessSource).toContain("?fixture=activity-details")
+    expect(harnessSource).toContain("setVisibleLineCount((current) => Math.min(current + 1, reasoningLines.length))")
+    expect(harnessSource).toContain("setIsStreaming(false)")
+    expect(harnessSource).toContain("createActivityDetailsFixture(language, reasoningLines.slice(0, visibleLineCount).join(\"\\n\"), isStreaming)")
+    expect(harnessSource).toContain("activity-completed-shell-call")
+    expect(harnessSource).toContain("activity-running-browser-call")
+    expect(harnessSource).toContain("LONG_TOOL_OUTPUT_ZH")
+    expect(harnessSource).toContain("Replay stream")
   })
 })
