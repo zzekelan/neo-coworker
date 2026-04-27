@@ -18,7 +18,7 @@ export type DesktopSettings = {
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   language: "en",
-  theme: "dark",
+  theme: "light",
   provider: "",
   apiKey: "",
   model: "",

@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path"
 
 const DEFAULT_SETTINGS = {
   language: "en",
-  theme: "dark",
+  theme: "light",
   provider: "",
   apiKey: "",
   model: "",

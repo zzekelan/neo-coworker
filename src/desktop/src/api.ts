@@ -8,7 +8,7 @@ import type {
   DesktopSessionSummary,
   DesktopMessage,
 } from "./types"
-import type { DesktopServerMode, DesktopSettings } from "./desktop-settings"
+import { DEFAULT_DESKTOP_SETTINGS, type DesktopServerMode, type DesktopSettings } from "./desktop-settings"
 
 const SERVER_EVENT_TYPES = [
   "heartbeat",
@@ -65,16 +65,8 @@ export async function loadDesktopSettings() {
   if (!bridge.loadDesktopSettings) {
     return {
       settings: {
-        language: "en",
-        theme: "dark",
-        provider: "",
-        apiKey: "",
-        model: "",
-        baseURL: "",
-        timeoutMs: "",
-        thinkingEnabled: false,
-        reasoningEffortMode: "default",
-      } satisfies DesktopSettings,
+        ...DEFAULT_DESKTOP_SETTINGS,
+      },
       serverMode: (bridge.serverMode ?? "external") as DesktopServerMode,
     }
   }

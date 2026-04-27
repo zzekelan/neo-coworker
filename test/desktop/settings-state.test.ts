@@ -77,7 +77,7 @@ describe("desktop settings state", () => {
   test("uses blank LLM settings when neither env nor persisted settings are present", () => {
     expect(createDefaultDesktopSettings({})).toEqual({
       language: "en",
-      theme: "dark",
+      theme: "light",
       provider: "",
       apiKey: "",
       model: "",

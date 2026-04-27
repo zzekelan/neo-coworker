@@ -48,10 +48,10 @@ describe("desktop theme provider", () => {
     expect(css).toContain("--color-success")
   })
 
-  test("index.html defaults to dark class for FOUC prevention", () => {
+  test("index.html defaults to light class for FOUC prevention", () => {
     const html = readFileSync("src/desktop/index.html", "utf8")
 
-    expect(html).toContain('class="dark"')
+    expect(html).toContain('class="light"')
   })
 
   test("ChatArea header contains theme toggle button with Sun/Moon icons", () => {
