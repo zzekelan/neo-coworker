@@ -808,7 +808,7 @@ const ToolIndicator: React.FC<{
         className="overflow-hidden"
       >
         {isDetailsOpen ? (
-          <div className="ml-6 pb-2">
+          <div className="ml-1 mt-1 pb-2">
             <ErrorBoundary>
               <Suspense fallback={<PulsePlaceholder />}>
                 <ToolDetails
@@ -839,7 +839,7 @@ const ToolDetailsPanel: React.FC<{
     className="overflow-hidden"
   >
     {isOpen ? (
-      <div className="ml-6 pb-2">
+      <div className="ml-1 mt-1 pb-2">
         <ErrorBoundary>
           <Suspense fallback={<PulsePlaceholder />}>
             <ToolDetails
@@ -971,7 +971,7 @@ const CompletedToolRow: React.FC<{
         className="overflow-hidden"
       >
         {isDetailsOpen ? (
-          <div className="ml-6 pb-2">
+          <div className="ml-1 mt-1 pb-2">
             <ErrorBoundary>
               <Suspense fallback={<PulsePlaceholder />}>
                 <ToolDetails

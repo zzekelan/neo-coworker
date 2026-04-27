@@ -168,8 +168,9 @@ describe("desktop message", () => {
     expect(messageSource).toContain('p.type !== "text" || p.text.trim().length > 0')
     expect(messageSource).toContain("p.text.trim().length > 0")
     expect(messageSource).toContain("function compactPath(")
-    expect(detailsSource).toContain("max-h-80")
+    expect(detailsSource).toContain("max-h-64")
     expect(detailsSource).toContain("overflow-y-auto")
+    expect(detailsSource).toContain("border-l border-border/70")
   })
 
   test("does not render structured lifecycle diagnostics in the chat transcript", () => {
