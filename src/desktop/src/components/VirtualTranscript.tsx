@@ -105,7 +105,6 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
   return (
     <div
       className={cn("relative min-h-0 flex-1", className)}
-      style={bottomInset !== undefined ? { paddingBottom: bottomInset } : undefined}
     >
       <div
         ref={scrollContainerRef}
@@ -143,6 +142,13 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
           })}
         </div>
         {footer}
+        {bottomInset !== undefined ? (
+          <div
+            aria-hidden="true"
+            className="transcript-bottom-spacer"
+            style={{ height: bottomInset }}
+          />
+        ) : null}
       </div>
 
       <ScrollToBottomButton

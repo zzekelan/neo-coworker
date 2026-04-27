@@ -46,7 +46,9 @@ describe("desktop chat area", () => {
     expect(chatSource).not.toContain("pb-32")
 
     expect(vtSource).toContain("bottomInset")
-    expect(vtSource).toContain("paddingBottom: bottomInset")
+    expect(vtSource).toContain("transcript-bottom-spacer")
+    expect(vtSource).toContain("style={{ height: bottomInset }}")
+    expect(vtSource).not.toContain("paddingBottom: bottomInset")
   })
 
   test("delegates sticky-bottom scrolling to VirtualTranscript instead of inlining it", () => {
