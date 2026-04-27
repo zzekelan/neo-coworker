@@ -4,7 +4,7 @@ This file is the structure map for the coding and review agent collaborating in 
 It describes how the repo is organized and where new code belongs.
 It is not the behavioral source of truth for the runtime agent implemented under `src/`.
 
-Behavioral details still live in the design and task-contract docs under `docs/plans/` and `docs/task_contract/`.
+Behavioral details still live in the design docs under `docs/plans/`.
 
 ## Top-Level Map
 

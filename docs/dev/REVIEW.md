@@ -22,7 +22,7 @@ Prioritize, in order:
 1. bugs, regressions, and broken operator behavior
 2. boundary and contract violations
 3. missing or weak tests for the changed risk
-4. document drift against `docs/ARCHITECTURE.md`, `docs/dev/QUALITY_INVARIANTS.md`, plans, or task contracts
+4. document drift against `docs/ARCHITECTURE.md`, `docs/dev/QUALITY_INVARIANTS.md`, or plans
 
 Style comments are not findings unless they hide one of the risks above.
 
@@ -44,7 +44,7 @@ Every substantive review should cover these areas:
 - behavior risk: does the change break runtime behavior, operator behavior, or recovery paths?
 - boundary risk: does it violate architecture, error mapping, or public contract expectations?
 - test gap: is the changed risk covered by the right boundary-level test?
-- doc drift: do `docs/ARCHITECTURE.md`, `docs/dev/QUALITY_INVARIANTS.md`, plans, or task contracts now need updates?
+- doc drift: do `docs/ARCHITECTURE.md`, `docs/dev/QUALITY_INVARIANTS.md`, or plans now need updates?
 
 ## Valid Finding Format
 
