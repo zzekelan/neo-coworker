@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, Suspense } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react"
 import {
   AlertCircle,
   Check,
@@ -481,11 +481,41 @@ const MessagePartRenderer: React.FC<{
 const ReasoningBlock: React.FC<{ text: string; partIndex: number; isLive?: boolean }> = React.memo(({ text, partIndex, isLive = false }) => {
   const labels = useDesktopText()
   const [isExpanded, setIsExpanded] = useState(isLive)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const wasLiveRef = useRef(isLive)
   const toggle = useCallback(() => setIsExpanded((prev) => !prev), [])
 
   useEffect(() => {
-    setIsExpanded(isLive)
+    if (isLive) {
+      wasLiveRef.current = true
+      setIsExpanded(true)
+      return
+    }
+
+    if (!wasLiveRef.current) {
+      setIsExpanded(false)
+      return
+    }
+
+    const collapseTimer = window.setTimeout(() => {
+      setIsExpanded(false)
+      wasLiveRef.current = false
+    }, 1000)
+
+    return () => window.clearTimeout(collapseTimer)
   }, [isLive])
+
+  useEffect(() => {
+    if (!isLive || !isExpanded) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const node = contentRef.current
+      if (!node) return
+      node.scrollTop = node.scrollHeight
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isExpanded, isLive, text])
 
   return (
     <motion.div
@@ -541,7 +571,10 @@ const ReasoningBlock: React.FC<{ text: string; partIndex: number; isLive?: boole
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="ml-1 mt-1 max-h-64 overflow-y-auto border-l border-border/70 pl-3 whitespace-pre-wrap text-[13px] leading-relaxed text-muted">
+            <div
+              ref={contentRef}
+              className="ml-1 mt-1 max-h-64 overflow-y-auto border-l border-border/70 pl-3 whitespace-pre-wrap text-[13px] leading-relaxed text-muted"
+            >
               {text}
             </div>
           </motion.div>
