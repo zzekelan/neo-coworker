@@ -184,6 +184,7 @@ export function DesktopRunningStatesHarness() {
               <ChatArea
                 sessionSummary={fixture.sessionSummary}
                 hasSessions
+                activeWorkspaceName="nc-test"
                 session={fixture.session}
                 skills={SKILLS}
                 transcript={fixture.transcript}
@@ -331,6 +332,7 @@ export function DesktopActivityDetailsHarness() {
               <ChatArea
                 sessionSummary={fixture.sessionSummary}
                 hasSessions
+                activeWorkspaceName="nc-test"
                 session={fixture.session}
                 skills={SKILLS}
                 transcript={fixture.transcript}

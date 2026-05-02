@@ -26,6 +26,7 @@ type DesktopText = {
     selectSession: string
     startConversation: string
     createSessionToStart: string
+    readyInWorkspace(workspace: string, agent: string): string
     createSession: string
     agentRunning: string
     waitingPermission: string
@@ -239,7 +240,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     chat: {
       selectSession: "Select a session to start",
       startConversation: "Start a conversation with NeoCoworker",
-      createSessionToStart: "New a session to start",
+      createSessionToStart: "Start a new session",
+      readyInWorkspace(workspace: string, agent: string) {
+        return `Ready in ${workspace} with ${agent}.`
+      },
       createSession: "New Session",
       agentRunning: "Agent Running",
       waitingPermission: "Waiting Permission",
@@ -491,7 +495,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     chat: {
       selectSession: "选择一个会话开始",
       startConversation: "开始与 NeoCoworker 对话",
-      createSessionToStart: "新建一个会话以开始",
+      createSessionToStart: "开始一个新会话",
+      readyInWorkspace(workspace: string, agent: string) {
+        return `${workspace} 已就绪，当前使用 ${agent}。`
+      },
       createSession: "新建会话",
       agentRunning: "Agent 运行中",
       waitingPermission: "等待权限",

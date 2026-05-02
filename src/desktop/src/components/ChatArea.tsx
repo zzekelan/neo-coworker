@@ -46,6 +46,7 @@ const TRANSCRIPT_BOTTOM_SAFE_AREA = 42
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
   hasSessions: boolean
+  activeWorkspaceName: string | null
   session: DesktopSessionSnapshot | null
   skills: DesktopSkillCatalogEntry[]
   transcript: DesktopTranscriptMessage[]
@@ -79,6 +80,7 @@ export type CompatibilityPromptView = {
 export function ChatArea({
   sessionSummary,
   hasSessions,
+  activeWorkspaceName,
   session,
   skills,
   transcript,
@@ -386,6 +388,7 @@ export function ChatArea({
           <EmptyChatState
             icon={<Play className="h-6 w-6 text-accent" />}
             title={hasSessions ? text.chat.selectSession : text.chat.createSessionToStart}
+            subtitle={!hasSessions ? text.chat.readyInWorkspace(activeWorkspaceName ?? text.sidebar.workspace, currentAgentLabel) : undefined}
             offsetClassName="translate-y-2"
             action={
               !hasSessions ? (
@@ -982,6 +985,7 @@ function ThemeToggleButton() {
 function EmptyChatState(input: {
   icon: React.ReactNode
   title: string
+  subtitle?: string
   action?: React.ReactNode
   errorMessage: string | null
   offsetClassName?: string
@@ -1001,6 +1005,9 @@ function EmptyChatState(input: {
             {input.icon}
           </div>
           <p className="text-sm font-medium tracking-wide text-muted">{input.title}</p>
+          {input.subtitle ? (
+            <p className="mt-2 max-w-sm text-center text-xs leading-relaxed text-muted">{input.subtitle}</p>
+          ) : null}
           {input.action}
           {input.errorMessage ? (
             <p className="mt-3 max-w-sm text-center text-xs text-danger">{input.errorMessage}</p>

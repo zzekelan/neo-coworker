@@ -64,6 +64,10 @@ export default function App() {
     activeSessionId && clearedTranscriptState?.sessionId === activeSessionId
       ? transcript.slice(Math.min(clearedTranscriptState.hiddenCount, transcript.length))
       : transcript
+  const activeWorkspaceName =
+    workspaces.find((workspace) => workspace.workspaceRoot === activeWorkspaceRoot)?.name ??
+    workspaces[0]?.name ??
+    null
 
   const handleClearTranscriptDisplay = () => {
     if (!activeSessionId) {
@@ -134,6 +138,7 @@ export default function App() {
           <ChatArea
             sessionSummary={sessions.find((candidate) => candidate.id === activeSessionId) || null}
             hasSessions={sessions.length > 0}
+            activeWorkspaceName={activeWorkspaceName}
             session={session}
             skills={skills}
             transcript={visibleTranscript}

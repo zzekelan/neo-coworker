@@ -25,6 +25,8 @@ describe("desktop chat area", () => {
     expect(source).toContain("if (!sessionSummary)")
     expect(source).toContain("hasSessions ? (")
     expect(source).toContain("{text.chat.selectSession}")
+    expect(source).toContain("activeWorkspaceName: string | null")
+    expect(source).toContain("text.chat.readyInWorkspace(activeWorkspaceName ?? text.sidebar.workspace, currentAgentLabel)")
     expect(source).toContain("TRANSCRIPT_BOTTOM_SAFE_AREA")
     expect(source).toContain("style={{ paddingBottom: bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA }}")
     expect(source).toContain("offsetClassName=\"translate-y-2\"")
