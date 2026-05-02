@@ -106,12 +106,13 @@ describe("desktop message", () => {
     expect(source).toContain("aria-expanded={isExpanded}")
     expect(source).toContain("aria-live={isLive ? \"polite\" : undefined}")
     expect(source).toContain("THINKING_LABEL_CLASS")
+    expect(source).toContain("COMPLETED_ACTIVITY_ROW_CLASS")
     expect(source).toContain("isLive ? (")
     expect(source).toContain("animate-symbol-spin")
     expect(source).toContain("className=\"h-3 w-3 max-w-none shrink-0 animate-symbol-spin text-highlight\"")
-    expect(source).toContain('className="py-1 pr-2"')
+    expect(source).toContain('className={cn("py-1 pr-2", isLive && "rounded-lg bg-surface/20")}')
     expect(source).toContain("ACTIVITY_CHEVRON_SLOT_CLASS")
-    expect(source).toContain('className="group flex w-full cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"')
+    expect(source).toContain("isLive ? \"px-1.5 focus-visible:ring-highlight/40\" : \"focus-visible:ring-border/70\"")
     expect(source).toContain('className={cn("min-w-0 flex-1 text-left", THINKING_LABEL_CLASS)}')
     expect(source).toContain("className={ACTIVITY_CHEVRON_SLOT_CLASS}")
     expect(source).not.toContain("ACTIVITY_RAIL_CLASS")
@@ -186,7 +187,10 @@ describe("desktop message", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
     expect(source).toContain(`const ACTIVITY_ROW_CLASS =
-  "relative min-h-7 pr-2 py-1 text-left transition-colors hover:bg-surface/35"`)
+  "relative min-h-7 pr-2 py-1 text-left transition-colors hover:bg-surface/20"`)
+    expect(source).toContain(`const COMPLETED_ACTIVITY_ROW_CLASS =
+  "text-muted/75 hover:bg-surface/15 focus-visible:ring-1 focus-visible:ring-border/70 focus-visible:outline-none"`)
+    expect(source).toContain('isFinalAssistantTextPart ? "leading-7" : "leading-relaxed"')
     expect(source).toContain('className={cn("w-full", isUser ? "space-y-2" : "space-y-0")}')
     expect(source).not.toContain("ACTIVITY_RAIL_CLASS")
     expect(source).not.toContain("relative min-h-7 pl-6 pr-2")

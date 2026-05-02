@@ -127,7 +127,10 @@ describe("desktop chat area", () => {
 
     expect(source).toContain('className="pointer-events-none absolute right-3 bottom-0 left-0 bg-paper px-4 pb-1.5"')
     expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl bg-paper"')
-    expect(source).toContain('className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent"')
+    expect(source).toContain("Status strip — context · model/agent · run status · keyboard hints")
+    expect(source).toContain('className="mt-1.5 flex h-7 items-center justify-between gap-3 border-t border-border/60 px-1 pt-1 text-[11px] text-accent"')
+    expect(source).toContain("rounded-md border border-border/60 bg-surface/60 px-2 py-0.5 text-muted")
+    expect(source).toContain("{currentAgentLabel}")
     expect(source).toContain('? "border-border"')
     expect(source).not.toContain("opacity-80")
   })

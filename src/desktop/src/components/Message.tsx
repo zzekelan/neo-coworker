@@ -21,11 +21,13 @@ const DEFAULT_COLLAPSED_CHAR_LIMIT = 280
 const DEFAULT_COLLAPSED_LINE_LIMIT = 8
 const TIMESTAMP_VISIBLE_GAP_MS = 5 * 60 * 1000
 const ACTIVITY_ROW_CLASS =
-  "relative min-h-7 pr-2 py-1 text-left transition-colors hover:bg-surface/35"
+  "relative min-h-7 pr-2 py-1 text-left transition-colors hover:bg-surface/20"
 const ACTIVITY_LABEL_CLASS =
   "text-[13px] font-medium leading-5 tracking-normal text-muted"
+const COMPLETED_ACTIVITY_ROW_CLASS =
+  "text-muted/75 hover:bg-surface/15 focus-visible:ring-1 focus-visible:ring-border/70 focus-visible:outline-none"
 const THINKING_LABEL_CLASS =
-  "text-[13px] font-medium leading-5 tracking-normal text-muted/70"
+  "text-[13px] font-medium leading-5 tracking-normal text-muted/75"
 const ACTIVITY_CHEVRON_SLOT_CLASS =
   "flex w-5 shrink-0 items-center justify-center"
 const ACTIVITY_META_CLASS =
@@ -295,6 +297,7 @@ const MessageComponent: React.FC<{
                       message={message}
                       toolResultLookup={toolResultLookup}
                       latestRenderablePartIndex={latestRenderablePartIndex}
+                      finalVisibleTextPartIndex={finalVisibleTextPartIndex}
                       isActiveRunMessage={isActiveRunMessage}
                       waitingPermissionToolName={waitingPermissionToolName}
                     />
@@ -308,6 +311,7 @@ const MessageComponent: React.FC<{
                     message={message}
                     toolResultLookup={toolResultLookup}
                     latestRenderablePartIndex={latestRenderablePartIndex}
+                    finalVisibleTextPartIndex={finalVisibleTextPartIndex}
                     isActiveRunMessage={isActiveRunMessage}
                     waitingPermissionToolName={waitingPermissionToolName}
                   />
@@ -492,6 +496,7 @@ const RenderMessageItem: React.FC<{
   message: DesktopTranscriptMessage
   toolResultLookup: ReadonlyMap<string, ToolResultPart>
   latestRenderablePartIndex: number
+  finalVisibleTextPartIndex: number
   isActiveRunMessage: boolean
   waitingPermissionToolName?: string | null
 }> = React.memo(({
@@ -499,6 +504,7 @@ const RenderMessageItem: React.FC<{
   message,
   toolResultLookup,
   latestRenderablePartIndex,
+  finalVisibleTextPartIndex,
   isActiveRunMessage,
   waitingPermissionToolName = null,
 }) => {
@@ -519,6 +525,7 @@ const RenderMessageItem: React.FC<{
       relatedResult={part.type === "tool_call" ? toolResultLookup.get(part.callId) ?? null : null}
       partIndex={item.index}
       latestRenderablePartIndex={latestRenderablePartIndex}
+      isFinalAssistantTextPart={renderItemContainsPartIndex(item, finalVisibleTextPartIndex)}
       isActiveRunMessage={isActiveRunMessage}
       waitingPermissionToolName={waitingPermissionToolName}
     />
@@ -543,6 +550,7 @@ const MessagePartRenderer: React.FC<{
   relatedResult?: Extract<MessagePart, { type: "tool_result" }> | null
   partIndex?: number
   latestRenderablePartIndex?: number
+  isFinalAssistantTextPart?: boolean
   isActiveRunMessage?: boolean
   waitingPermissionToolName?: string | null
 }> = ({
@@ -551,6 +559,7 @@ const MessagePartRenderer: React.FC<{
   relatedResult = null,
   partIndex = 0,
   latestRenderablePartIndex = -1,
+  isFinalAssistantTextPart = false,
   isActiveRunMessage = false,
   waitingPermissionToolName = null,
 }) => {
@@ -561,7 +570,10 @@ const MessagePartRenderer: React.FC<{
       return (
         <AssistantTextPart
           text={part.text}
-          markdownClassName="py-2 text-[15px] leading-relaxed text-ink"
+          markdownClassName={cn(
+            "py-2 text-[15px] text-ink",
+            isFinalAssistantTextPart ? "leading-7" : "leading-relaxed",
+          )}
         />
       )
     }
@@ -675,8 +687,9 @@ const CompletedActivityGroup: React.FC<{
         onKeyDown={expandKeyDown(toggle)}
         aria-expanded={isExpanded}
         className={cn(
-          "group flex w-full cursor-pointer items-center gap-2 focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none",
+          "group flex w-full cursor-pointer items-center gap-2",
           ACTIVITY_ROW_CLASS,
+          COMPLETED_ACTIVITY_ROW_CLASS,
         )}
       >
         <span className={cn("min-w-0 flex-1 truncate text-left", ACTIVITY_LABEL_CLASS)}>
@@ -685,7 +698,7 @@ const CompletedActivityGroup: React.FC<{
         <span className={ACTIVITY_CHEVRON_SLOT_CLASS}>
           <ChevronLeft
             className={cn(
-              "h-3 w-3 text-muted/30 transition-all duration-200 group-hover:text-muted/60",
+              "h-3 w-3 text-muted/25 transition-all duration-200 group-hover:text-muted/50",
               isExpanded && "rotate-[-90deg]",
             )}
           />
@@ -906,7 +919,7 @@ const ReasoningBlock: React.FC<{
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(partIndex * 0.05, 0.5) }}
-      className="py-1 pr-2"
+      className={cn("py-1 pr-2", isLive && "rounded-lg bg-surface/20")}
     >
       <button
         type="button"
@@ -914,10 +927,13 @@ const ReasoningBlock: React.FC<{
         onKeyDown={expandKeyDown(toggle)}
         aria-expanded={isExpanded}
         aria-live={isLive ? "polite" : undefined}
-        className="group flex w-full cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:ring-1 focus-visible:ring-highlight/40 focus-visible:outline-none"
+        className={cn(
+          "group flex w-full cursor-pointer items-center gap-2 rounded-sm text-left focus-visible:ring-1 focus-visible:outline-none",
+          isLive ? "px-1.5 focus-visible:ring-highlight/40" : "focus-visible:ring-border/70",
+        )}
       >
         {isLive ? (
-          <span className="flex h-5 w-1.5 shrink-0 items-center justify-center" aria-hidden="true">
+          <span className="flex h-5 w-2 shrink-0 items-center justify-center" aria-hidden="true">
             <svg
               viewBox="0 0 20 20"
               className="h-3 w-3 max-w-none shrink-0 animate-symbol-spin text-highlight"
@@ -957,7 +973,10 @@ const ReasoningBlock: React.FC<{
           >
             <div
               ref={contentRef}
-              className="ml-1 mt-1 max-h-64 overflow-y-auto border-l border-border/70 pl-3 whitespace-pre-wrap text-[13px] leading-relaxed text-muted"
+              className={cn(
+                "mt-1 max-h-64 overflow-y-auto border-l pl-3 whitespace-pre-wrap text-[13px] leading-relaxed text-muted",
+                isLive ? "ml-2 border-highlight/40" : "ml-1 border-border/70",
+              )}
             >
               {text}
             </div>

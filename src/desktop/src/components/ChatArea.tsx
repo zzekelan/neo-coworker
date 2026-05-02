@@ -701,19 +701,24 @@ export function ChatArea({
             </motion.form>
           )}
 
-          {/* Status bar — context · model · run status · keyboard hints */}
-          <div className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent">
-            <div className="flex min-w-0 items-center gap-1.5">
+          {/* Status strip — context · model/agent · run status · keyboard hints */}
+          <div className="mt-1.5 flex h-7 items-center justify-between gap-3 border-t border-border/60 px-1 pt-1 text-[11px] text-accent">
+            <div className="flex min-w-0 items-center gap-2">
               <ContextBudgetBar usage={contextUsage} />
-              {modelName ? (
-                <>
-                  <span className="text-muted/40">·</span>
-                  <span className="shrink-0 text-accent" title={modelName}>{modelName}</span>
-                </>
-              ) : null}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+              {modelName ? (
+                <span className="min-w-0 truncate rounded-md border border-border/60 bg-surface/60 px-2 py-0.5 text-muted" title={modelName}>
+                  {modelName}
+                </span>
+              ) : null}
+              <span className="shrink-0 rounded-md border border-border/60 bg-surface/60 px-2 py-0.5 text-muted" title={currentAgentLabel}>
+                {currentAgentLabel}
+              </span>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-3">
               <RunStatusDot status={footerRunStatus} />
               <span className="text-muted/60 select-none">
                 ⏎ {text.chat.send} · ⇧⏎ {text.chat.newLine}
