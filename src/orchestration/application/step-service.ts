@@ -1212,6 +1212,8 @@ function collectUnresolvedRunToolCalls(input: {
   runId: string
 }) {
   const run = input.session.getRun(input.runId)
+  // Terminalization is intentionally current-run only; historical migration
+  // and malformed timeline repair belong outside the live run loop.
   const transcript = input.session.listTranscript(run.sessionId)
   const unresolvedToolCalls: Array<{
     sessionId: string
