@@ -230,6 +230,7 @@ describe("agent loop", () => {
         toolName: "shell_cmd",
         output: expect.stringContaining("Allowed tools:"),
         isError: true,
+        errorCode: "UNKNOWN_TOOL",
         metadata: expect.objectContaining({
           [TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY]: true,
           [TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]: expect.arrayContaining(["read", "shell"]),
@@ -1462,7 +1463,7 @@ describe("agent loop", () => {
     expect(activeRunMessages[1]?.parts).toHaveLength(1)
   })
 
-  test("persists malformed tool arguments as an error outcome and continues the run", async () => {
+  test("persists malformed tool arguments as a Tool Result Error and continues the run", async () => {
     const harness = await createHarness("tool-error", false)
     const started = startPromptRun({
       repository: harness.repository,
@@ -1526,10 +1527,17 @@ describe("agent loop", () => {
         ],
       },
     ])
-    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "error"])
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
     expect(activeRunMessages[1]?.parts[1]).toMatchObject({
-      kind: "error",
+      kind: "tool_result",
       text: expect.stringContaining("Malformed tool arguments for read"),
+      data: {
+        callId: "call_bad",
+        toolName: "read",
+        output: expect.stringContaining("Malformed tool arguments for read"),
+        isError: true,
+        errorCode: "MALFORMED_TOOL_ARGUMENTS",
+      },
     })
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })

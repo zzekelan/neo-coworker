@@ -192,6 +192,69 @@ describe("context builder", () => {
     ])
   })
 
+  test("projects canonical Tool Result Errors as tool messages", () => {
+    const transcript = [
+      {
+        id: "message_1",
+        sessionId: "session_1",
+        runId: "run_1",
+        role: "assistant",
+        sequence: 1,
+        createdAt: 1,
+        parts: [
+          {
+            kind: "tool_call",
+            text: "{}",
+            data: {
+              callId: "call_1",
+              toolName: "boom",
+              inputText: "{}",
+            },
+          },
+          {
+            kind: "tool_result",
+            text: "Tool boom failed: boom exploded",
+            data: {
+              callId: "call_1",
+              toolName: "boom",
+              output: "Tool boom failed: boom exploded",
+              isError: true,
+              errorCode: "TOOL_EXECUTION_FAILED",
+            },
+          },
+        ],
+      },
+    ] satisfies PersistedTranscriptMessage[]
+
+    const messages = buildTranscriptMessages(transcript)
+
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool_call",
+            callId: "call_1",
+            toolName: "boom",
+            inputText: "{}",
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_1",
+            toolName: "boom",
+            output: "Tool boom failed: boom exploded",
+            isError: true,
+          },
+        ],
+      },
+    ])
+  })
+
   test("preserves reasoning parts when replaying assistant tool-call messages", () => {
     const transcript = [
       {

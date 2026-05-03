@@ -824,19 +824,34 @@ async function executePendingToolCalls(input: {
       TOOL_FAILURE_MESSAGE_METADATA_KEY,
     )
     if (toolFailureMessage) {
-      input.assistantTurn.appendError({
-        text: toolFailureMessage,
-        data: {
-          source: "tool",
-          callId: result.callId,
-          toolName: result.toolName,
-        },
-      })
-
       if (readMetadataBoolean(result.metadata, TOOL_PERMISSION_DENIED_METADATA_KEY)) {
+        input.assistantTurn.appendError({
+          text: toolFailureMessage,
+          data: {
+            source: "tool",
+            callId: result.callId,
+            toolName: result.toolName,
+          },
+        })
         shouldCancel = true
+        continue
       }
 
+      input.assistantTurn.appendToolResult({
+        callId: result.callId,
+        toolName: result.toolName,
+        output: toolFailureMessage,
+        isError: true,
+        errorCode: result.errorCode ?? "TOOL_EXECUTION_FAILED",
+        metadata: result.metadata,
+      })
+      input.emit({
+        type: "tool.call.completed",
+        callId: result.callId,
+        name: result.toolName,
+        output: toolFailureMessage,
+        isError: true,
+      })
       continue
     }
 
@@ -845,6 +860,7 @@ async function executePendingToolCalls(input: {
       toolName: result.toolName,
       output: result.output,
       isError: result.isError,
+      errorCode: result.errorCode,
       metadata: result.metadata,
     })
     const isRecoverableUnknownTool = readMetadataBoolean(
@@ -898,13 +914,13 @@ function collectPendingToolCalls(input: {
     try {
       args = JSON.parse(item.inputText)
     } catch (error) {
-      input.assistantTurn.appendError({
-        text: `Malformed tool arguments for ${item.name}: ${getErrorMessage(error)}`,
-        data: {
-          source: "tool",
-          callId: item.callId,
-          toolName: item.name,
-        },
+      const output = `Malformed tool arguments for ${item.name}: ${getErrorMessage(error)}`
+      input.assistantTurn.appendToolResult({
+        callId: item.callId,
+        toolName: item.name,
+        output,
+        isError: true,
+        errorCode: "MALFORMED_TOOL_ARGUMENTS",
       })
       continue
     }
@@ -1045,6 +1061,7 @@ function createAssistantTurnRecorder(input: {
       toolName: string
       output: string
       isError?: boolean
+      errorCode?: string
       metadata?: Record<string, unknown>
     }) {
       createPart({
@@ -1055,6 +1072,7 @@ function createAssistantTurnRecorder(input: {
           toolName: toolResult.toolName,
           output: toolResult.output,
           isError: toolResult.isError,
+          errorCode: toolResult.errorCode,
           metadata: toolResult.metadata,
         },
       })

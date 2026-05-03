@@ -49,6 +49,7 @@ export function createOrchestrationToolBatchExecutor(): {
           toolName: call.toolName,
           output: result.output,
           isError: result.isError,
+          errorCode: result.errorCode,
           metadata: result.metadata,
         } satisfies OrchestrationBatchExecutionResult
       })
@@ -78,6 +79,7 @@ function createConcurrentToolDefinitions(input: {
         return {
           output: "",
           isError: true,
+          errorCode: "TOOL_EXECUTION_FAILED",
           metadata: {
             [TOOL_FAILURE_MESSAGE_METADATA_KEY]: `Tool ${toolInput.toolName} failed: ${getErrorMessage(error)}`,
             [TOOL_PERMISSION_DENIED_METADATA_KEY]: isToolPermissionDeniedError(error),

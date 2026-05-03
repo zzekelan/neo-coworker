@@ -239,6 +239,7 @@ describe("tool executor", () => {
       {
         output: "Tool 'shell_cmd' is not available. Allowed tools: read, glob. Use one of the allowed tools instead.",
         isError: true,
+        errorCode: "UNKNOWN_TOOL",
         metadata: {
           [TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY]: true,
           [TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]: ["read", "glob"],

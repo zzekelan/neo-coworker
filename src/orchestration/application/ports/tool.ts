@@ -22,6 +22,7 @@ export type OrchestrationToolExecutionInput = {
 export type OrchestrationToolExecutionResult = {
   output: string
   isError?: boolean
+  errorCode?: string
   metadata?: Record<string, unknown>
 }
 
@@ -42,6 +43,7 @@ export type OrchestrationBatchExecutionResult = {
   toolName: string
   output: string
   isError?: boolean
+  errorCode?: string
   metadata?: Record<string, unknown>
 }
 

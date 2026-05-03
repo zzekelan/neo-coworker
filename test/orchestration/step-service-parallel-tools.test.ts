@@ -40,19 +40,6 @@ describe("orchestration step service parallel tool execution", () => {
         }
       },
     }
-    const contextWindow: OrchestrationContextWindowPort = {
-      getContextWindow() {
-        return 200_000
-      },
-    }
-    const skill: OrchestrationSkillPort = {
-      async listCatalog() {
-        return []
-      },
-      async loadSkill() {
-        throw new Error("Unexpected skill load")
-      },
-    }
     const tools: OrchestrationToolPort = {
       list() {
         return [
@@ -101,8 +88,8 @@ describe("orchestration step service parallel tool execution", () => {
     const stepService = createOrchestrationStepService({
       session,
       model,
-      contextWindow,
-      skill,
+      contextWindow: createContextWindowStub(),
+      skill: createSkillPortStub(),
       now: createMonotonicClock(),
     })
     const startedAt = Date.now()
@@ -146,7 +133,134 @@ describe("orchestration step service parallel tool execution", () => {
         .sort(),
     ).toEqual(["call_glob", "call_read"])
   })
+
+  test("persists thrown tool execution failures as Tool Result Errors before the next model turn", async () => {
+    const session = createMemorySession()
+    const modelTranscripts: OrchestrationTranscriptMessage[][] = []
+    let turn = 0
+    const model: OrchestrationModelPort = {
+      async *streamTurn(request) {
+        modelTranscripts.push(request.transcript)
+        turn += 1
+
+        if (turn === 1) {
+          yield {
+            type: "tool.call" as const,
+            callId: "call_boom",
+            name: "boom",
+            inputText: "{}",
+          }
+          return
+        }
+
+        yield {
+          type: "text.delta" as const,
+          text: "Recovered after tool failure.",
+        }
+      },
+    }
+    const tools: OrchestrationToolPort = {
+      list() {
+        return [
+          {
+            name: "boom",
+            description: "Throws during execution",
+            concurrency: "read-only",
+          },
+        ]
+      },
+      async execute() {
+        throw new Error("boom exploded")
+      },
+      async executeBatch(input) {
+        return createOrchestrationToolBatchExecutor().execute({
+          calls: input.calls,
+          tools: this,
+          availableTools: this.list(),
+          workspaceRoot: input.workspaceRoot,
+          signal: input.signal,
+        })
+      },
+    }
+    const stepService = createOrchestrationStepService({
+      session,
+      model,
+      contextWindow: createContextWindowStub(),
+      skill: createSkillPortStub(),
+      now: createMonotonicClock(),
+    })
+
+    await expect(executeStep({ stepService, session, tools })).resolves.toEqual({ status: "repeat" })
+    await expect(executeStep({ stepService, session, tools })).resolves.toEqual({ status: "complete" })
+
+    const assistantMessage = session
+      .listTranscript(session.sessionId)
+      .find((message) => message.role === "assistant" && message.sequence === 1)
+    const failurePart = assistantMessage?.parts[1]
+    const replayedFailurePart = modelTranscripts[1]?.flatMap((message) => message.parts).find(
+      (part) =>
+        part.kind === "tool_result" &&
+        (part.data as { callId?: string } | undefined)?.callId === "call_boom",
+    )
+
+    expect(assistantMessage?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(failurePart).toMatchObject({
+      kind: "tool_result",
+      text: "Tool boom failed: boom exploded",
+      data: {
+        callId: "call_boom",
+        toolName: "boom",
+        output: "Tool boom failed: boom exploded",
+        isError: true,
+        errorCode: "TOOL_EXECUTION_FAILED",
+      },
+    })
+    expect(replayedFailurePart).toMatchObject({
+      kind: "tool_result",
+      data: {
+        callId: "call_boom",
+        toolName: "boom",
+        isError: true,
+        errorCode: "TOOL_EXECUTION_FAILED",
+      },
+    })
+  })
 })
+
+function executeStep(input: {
+  stepService: ReturnType<typeof createOrchestrationStepService>
+  session: ReturnType<typeof createMemorySession>
+  tools: OrchestrationToolPort
+}) {
+  return input.stepService.executeStep({
+    sessionId: input.session.sessionId,
+    runId: input.session.runId,
+    tools: input.tools,
+    workspaceRoot: "/workspace",
+    systemPrompt: "system",
+    signal: new AbortController().signal,
+    emit() {},
+  })
+}
+
+function createContextWindowStub(): OrchestrationContextWindowPort {
+  return {
+    getContextWindow() {
+      return 200_000
+    },
+  }
+}
+
+function createSkillPortStub(): OrchestrationSkillPort {
+  return {
+    async listCatalog() {
+      return []
+    },
+    async loadSkill() {
+      throw new Error("Unexpected skill load")
+    },
+  }
+}
 
 function createMemorySession() {
   const sessionId = "session_parallel"
