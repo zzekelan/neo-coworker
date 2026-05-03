@@ -457,9 +457,22 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       error: string
       emit: OrchestrationEventEmitter
     }) {
+      let error = runInput.error
+      try {
+        closeRunToolCalls({
+          session: input.session,
+          runId: runInput.runId,
+          now: input.now,
+          emit: runInput.emit,
+          output: "Run failed before this tool call completed.",
+          errorCode: "RUN_FAILED_TOOL_CALL",
+        })
+      } catch (terminalizationError) {
+        error = getErrorMessage(terminalizationError)
+      }
       input.session.failRun({
         runId: runInput.runId,
-        errorText: runInput.error,
+        errorText: error,
       })
       if (input.telemetry?.modelClassification?.providerFamily === "kimi") {
         runInput.emit({
@@ -471,7 +484,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       runInput.emit({
         type: "run.failed",
         runId: runInput.runId,
-        error: runInput.error,
+        error,
       })
     },
     cancelRun(runInput: {
@@ -1140,50 +1153,117 @@ function assertRunToolCallsClosed(input: {
   session: OrchestrationSessionPort
   runId: string
 }) {
+  const unresolvedToolCalls = collectUnresolvedRunToolCalls(input)
+
+  if (unresolvedToolCalls.length > 0) {
+    const toolCall = unresolvedToolCalls[0]!
+    throw new Error(`Run ${input.runId} cannot complete: unresolved tool call ${toolCall.callId} (${toolCall.toolName}).`)
+  }
+}
+
+function closeRunToolCalls(input: {
+  session: OrchestrationSessionPort
+  runId: string
+  now: () => number
+  emit: OrchestrationEventEmitter
+  output: string
+  errorCode: string
+}) {
+  const unresolvedToolCalls = collectUnresolvedRunToolCalls(input)
+
+  for (const toolCall of unresolvedToolCalls) {
+    input.session.createMessagePart({
+      sessionId: toolCall.sessionId,
+      runId: input.runId,
+      messageId: toolCall.messageId,
+      kind: "tool_result",
+      sequence: toolCall.sequence,
+      text: input.output,
+      data: {
+        callId: toolCall.callId,
+        toolName: toolCall.toolName,
+        output: input.output,
+        isError: true,
+        errorCode: input.errorCode,
+      },
+      createdAt: input.now(),
+    })
+    input.emit({
+      type: "tool.call.completed",
+      callId: toolCall.callId,
+      name: toolCall.toolName,
+      output: input.output,
+      isError: true,
+    })
+  }
+}
+
+function collectUnresolvedRunToolCalls(input: {
+  session: OrchestrationSessionPort
+  runId: string
+}) {
   const run = input.session.getRun(input.runId)
   const transcript = input.session.listTranscript(run.sessionId)
+  const unresolvedToolCalls: Array<{
+    sessionId: string
+    messageId: string
+    sequence: number
+    callId: string
+    toolName: string
+  }> = []
 
   for (const message of transcript) {
     if (message.runId !== input.runId || message.role !== "assistant") {
       continue
     }
 
-    assertAssistantMessageToolCallsClosed({
-      runId: input.runId,
-      message,
-    })
+    const messageId = message.id
+    let nextSequence = getNextPartSequence(message.parts)
+    const closedCallIds = new Set<string>()
+
+    for (const part of message.parts) {
+      const callId = readToolClosureCallId(part)
+      if (callId) {
+        closedCallIds.add(callId)
+      }
+    }
+
+    for (const part of message.parts) {
+      if (part.kind !== "tool_call") {
+        continue
+      }
+
+      const data = readObject(part.data)
+      const callId = readString(data, "callId")
+      const toolName = readString(data, "toolName")
+      if (!callId || !toolName) {
+        throw new Error(`Run ${input.runId} cannot complete: malformed tool call is missing callId or toolName.`)
+      }
+
+      if (closedCallIds.has(callId)) {
+        continue
+      }
+
+      if (!messageId) {
+        throw new Error(`Run ${input.runId} cannot terminalize unresolved tool call ${callId}: missing message id.`)
+      }
+
+      unresolvedToolCalls.push({
+        sessionId: run.sessionId,
+        messageId,
+        sequence: nextSequence,
+        callId,
+        toolName,
+      })
+      nextSequence += 1
+    }
   }
+
+  return unresolvedToolCalls
 }
 
-function assertAssistantMessageToolCallsClosed(input: {
-  runId: string
-  message: OrchestrationTranscriptMessage
-}) {
-  const closedCallIds = new Set<string>()
-
-  for (const part of input.message.parts) {
-    const callId = readToolClosureCallId(part)
-    if (callId) {
-      closedCallIds.add(callId)
-    }
-  }
-
-  for (const part of input.message.parts) {
-    if (part.kind !== "tool_call") {
-      continue
-    }
-
-    const data = readObject(part.data)
-    const callId = readString(data, "callId")
-    const toolName = readString(data, "toolName")
-    if (!callId || !toolName) {
-      throw new Error(`Run ${input.runId} cannot complete: malformed tool call is missing callId or toolName.`)
-    }
-
-    if (!closedCallIds.has(callId)) {
-      throw new Error(`Run ${input.runId} cannot complete: unresolved tool call ${callId} (${toolName}).`)
-    }
-  }
+function getNextPartSequence(parts: OrchestrationTranscriptMessage["parts"]) {
+  return parts.reduce((value, part) => Math.max(value, part.sequence ?? -1), -1) + 1
 }
 
 function readToolClosureCallId(part: OrchestrationTranscriptMessage["parts"][number]) {

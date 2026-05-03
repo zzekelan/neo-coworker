@@ -9,12 +9,17 @@ export type OrchestrationRunStatus =
   | "cancelled"
 
 export type OrchestrationTranscriptPart = {
+  id?: string
+  messageId?: string
   kind: string
+  sequence?: number
   text: string | null
   data?: unknown
 }
 
 export type OrchestrationTranscriptMessage = {
+  id?: string
+  sessionId?: string
   runId: string
   role: OrchestrationMessageRole
   sequence: number

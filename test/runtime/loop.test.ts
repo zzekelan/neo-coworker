@@ -217,7 +217,18 @@ describe("agent loop", () => {
       error: expect.stringContaining("unresolved tool call"),
     })
     expect(harness.repository.runs.get(started.run.id).status).toBe("failed")
-    expect(unresolvedMessage?.parts.map((part) => part.kind)).toEqual(["tool_call"])
+    expect(unresolvedMessage?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(unresolvedMessage?.parts[1]).toMatchObject({
+      kind: "tool_result",
+      text: "Run failed before this tool call completed.",
+      data: {
+        callId: "call_unresolved",
+        toolName: "shell",
+        output: "Run failed before this tool call completed.",
+        isError: true,
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      },
+    })
   })
 
   test("fails completion when a current-run tool call is malformed", async () => {
@@ -2036,6 +2047,163 @@ describe("agent loop", () => {
     })
   })
 
+  test("terminally closes unresolved tool calls before marking a run failed", async () => {
+    const harness = await createHarness("provider-failure-after-tool-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_provider_failure_after_tool_call",
+      messageId: "message_provider_failure_after_tool_call_user",
+      prompt: "Trigger a provider error after a tool call",
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          yield { type: "text.delta", text: "Starting." }
+          yield {
+            type: "tool.call",
+            callId: "call_failed_before_result",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          throw new Error("provider exploded with private detail")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const closureEventIndex = events.findIndex(
+      (event) => event.type === "tool.call.completed" && event.callId === "call_failed_before_result",
+    )
+    const failedEventIndex = events.findIndex((event) => event.type === "run.failed")
+
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
+      "text",
+      "tool_call",
+      "error",
+      "tool_result",
+    ])
+    expect(activeRunMessages[1]?.parts[3]).toMatchObject({
+      kind: "tool_result",
+      text: "Run failed before this tool call completed.",
+      data: {
+        callId: "call_failed_before_result",
+        toolName: "shell",
+        output: "Run failed before this tool call completed.",
+        isError: true,
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      },
+    })
+    expect(activeRunMessages[1]?.parts[3]?.text).not.toContain("private detail")
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "tool.call.completed",
+        callId: "call_failed_before_result",
+        name: "shell",
+        output: "Run failed before this tool call completed.",
+        isError: true,
+      }),
+    )
+    expect(closureEventIndex).toBeGreaterThan(-1)
+    expect(failedEventIndex).toBeGreaterThan(closureEventIndex)
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      status: "failed",
+      errorText: "provider exploded with private detail",
+    })
+  })
+
+  test("failed terminalization closes multiple unresolved tool calls in original order", async () => {
+    const harness = await createHarness("failed-multi-tool-closure", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_failed_multi_tool_closure",
+      messageId: "message_failed_multi_tool_closure_user",
+      prompt: "Recover from interrupted parallel tools",
+    })
+    const assistantMessage = harness.repository.messages.create({
+      id: "message_failed_multi_tool_closure_assistant",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_failed_multi_tool_call_a",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"path":"a.txt"}',
+      data: {
+        callId: "call_unresolved_a",
+        toolName: "read",
+        inputText: '{"path":"a.txt"}',
+      },
+    })
+    harness.repository.parts.create({
+      id: "part_failed_multi_tool_call_b",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 1,
+      text: '{"path":"b.txt"}',
+      data: {
+        callId: "call_unresolved_b",
+        toolName: "read",
+        inputText: '{"path":"b.txt"}',
+      },
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          throw new Error("provider stopped")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const closureMessage = transcript.find(
+      (message) => message.runId === started.run.id && message.sequence === 1,
+    )
+
+    expect(closureMessage?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+      "tool_call",
+      "tool_result",
+      "tool_result",
+    ])
+    expect(closureMessage?.parts.slice(2).map((part) => readPartDataString(part, "callId"))).toEqual([
+      "call_unresolved_a",
+      "call_unresolved_b",
+    ])
+    expect(closureMessage?.parts.slice(2).map((part) => readPartDataString(part, "errorCode"))).toEqual([
+      "RUN_FAILED_TOOL_CALL",
+      "RUN_FAILED_TOOL_CALL",
+    ])
+  })
+
   test("cancellation requested after run start still persists already-yielded output", async () => {
     const harness = await createHarness("cancelled-after-start", false)
     const started = startPromptRun({
@@ -2512,6 +2680,13 @@ function readMessageTexts(
 
 function hasPartKind(part: { kind?: unknown }, kind: string) {
   return String(part.kind) === kind
+}
+
+function readPartDataString(part: { data?: unknown }, key: string) {
+  const data = part.data != null && typeof part.data === "object"
+    ? (part.data as Record<string, unknown>)
+    : null
+  return typeof data?.[key] === "string" ? data[key] : null
 }
 
 function createMonotonicClock(start = 1) {
