@@ -157,6 +157,126 @@ describe("agent loop", () => {
     })
   })
 
+  test("fails completion when a current-run tool call remains unresolved", async () => {
+    const harness = await createHarness("complete-unresolved-tool-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_complete_unresolved_tool_call",
+      messageId: "message_complete_unresolved_tool_call_user",
+      prompt: "Continue after an interrupted tool call",
+    })
+    const assistantMessage = harness.repository.messages.create({
+      id: "message_complete_unresolved_tool_call_assistant",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_complete_unresolved_tool_call",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"command":"pwd"}',
+      data: {
+        callId: "call_unresolved",
+        toolName: "shell",
+        inputText: '{"command":"pwd"}',
+      },
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Trying to finish." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const unresolvedMessage = transcript.find(
+      (message) => message.runId === started.run.id && message.sequence === 1,
+    )
+
+    expect(events.map((event) => event.type)).not.toContain("run.completed")
+    expect(events.at(-1)).toMatchObject({
+      type: "run.failed",
+      runId: started.run.id,
+      error: expect.stringContaining("unresolved tool call"),
+    })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("failed")
+    expect(unresolvedMessage?.parts.map((part) => part.kind)).toEqual(["tool_call"])
+  })
+
+  test("fails completion when a current-run tool call is malformed", async () => {
+    const harness = await createHarness("complete-malformed-tool-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_complete_malformed_tool_call",
+      messageId: "message_complete_malformed_tool_call_user",
+      prompt: "Continue after a malformed tool call",
+    })
+    const assistantMessage = harness.repository.messages.create({
+      id: "message_complete_malformed_tool_call_assistant",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_complete_malformed_tool_call",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"command":"pwd"}',
+      data: {
+        callId: "call_malformed",
+        inputText: '{"command":"pwd"}',
+      },
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Trying to finish." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+
+    expect(events.map((event) => event.type)).not.toContain("run.completed")
+    expect(events.at(-1)).toMatchObject({
+      type: "run.failed",
+      runId: started.run.id,
+      error: expect.stringContaining("malformed tool call"),
+    })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("failed")
+  })
+
   test("recovers when the main model emits an unknown tool name", async () => {
     const harness = await createHarness("main-unknown-tool-recovery", true)
     const started = startPromptRun({

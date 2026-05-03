@@ -438,6 +438,10 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       runId: string
       emit: OrchestrationEventEmitter
     }) {
+      assertRunToolCallsClosed({
+        session: input.session,
+        runId: runInput.runId,
+      })
       input.session.completeRun(runInput.runId)
       if (input.telemetry?.modelClassification?.providerFamily === "kimi") {
         runInput.emit({
@@ -1130,6 +1134,69 @@ function readMetadataBoolean(metadata: Record<string, unknown> | undefined, key:
 function readMetadataStringArray(metadata: Record<string, unknown> | undefined, key: string) {
   const value = metadata?.[key]
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function assertRunToolCallsClosed(input: {
+  session: OrchestrationSessionPort
+  runId: string
+}) {
+  const run = input.session.getRun(input.runId)
+  const transcript = input.session.listTranscript(run.sessionId)
+
+  for (const message of transcript) {
+    if (message.runId !== input.runId || message.role !== "assistant") {
+      continue
+    }
+
+    assertAssistantMessageToolCallsClosed({
+      runId: input.runId,
+      message,
+    })
+  }
+}
+
+function assertAssistantMessageToolCallsClosed(input: {
+  runId: string
+  message: OrchestrationTranscriptMessage
+}) {
+  const closedCallIds = new Set<string>()
+
+  for (const part of input.message.parts) {
+    const callId = readToolClosureCallId(part)
+    if (callId) {
+      closedCallIds.add(callId)
+    }
+  }
+
+  for (const part of input.message.parts) {
+    if (part.kind !== "tool_call") {
+      continue
+    }
+
+    const data = readObject(part.data)
+    const callId = readString(data, "callId")
+    const toolName = readString(data, "toolName")
+    if (!callId || !toolName) {
+      throw new Error(`Run ${input.runId} cannot complete: malformed tool call is missing callId or toolName.`)
+    }
+
+    if (!closedCallIds.has(callId)) {
+      throw new Error(`Run ${input.runId} cannot complete: unresolved tool call ${callId} (${toolName}).`)
+    }
+  }
+}
+
+function readToolClosureCallId(part: OrchestrationTranscriptMessage["parts"][number]) {
+  const data = readObject(part.data)
+  if (part.kind === "tool_result") {
+    return readString(data, "callId")
+  }
+
+  if (part.kind === "error" && readString(data, "source") === "tool") {
+    return readString(data, "callId")
+  }
+
+  return null
 }
 
 async function partitionToolCallsForCurrentAgent(input: {
