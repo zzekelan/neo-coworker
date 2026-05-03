@@ -1,4 +1,4 @@
-import { readTranscriptViews } from "./artifact-views"
+import { readTimelineContentViews } from "./artifact-views"
 import type { EvalRunArtifact } from "../schemas/artifact"
 import type { EvalToolConsumptionExpectation } from "../schemas/task"
 
@@ -11,7 +11,7 @@ export function gradeToolConsumptionExpectation(input: {
   artifact: EvalRunArtifact
   expectation: EvalToolConsumptionExpectation
 }): EvalToolConsumptionGrade {
-  const messages = readTranscriptViews(input.artifact)
+  const messages = readTimelineContentViews(input.artifact)
   const failures: string[] = []
 
   for (const rule of input.expectation.requiredConsumptions) {

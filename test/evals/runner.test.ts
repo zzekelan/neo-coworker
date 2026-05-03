@@ -99,6 +99,40 @@ describe("eval runner", () => {
     expect(result.artifact.trace?.events.map((event) => event.eventType)).toContain(
       "model.turn.requested",
     )
+    expect(result.artifact.timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          producedByRunId: result.artifact.runId,
+          timelineSequence: 0,
+          parts: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "text",
+              producedByRunId: result.artifact.runId,
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          producedByRunId: result.artifact.runId,
+          timelineSequence: 1,
+        }),
+      ]),
+    )
+    expect(result.artifact.transcript).toEqual(
+      result.artifact.timeline.map((entry) =>
+        expect.objectContaining({
+          id: readRecordField(entry, "id"),
+          runId: readRecordField(entry, "producedByRunId"),
+          sequence: readRecordField(entry, "runSequence"),
+          parts: expect.any(Array),
+        }),
+      ),
+    )
+    expect(
+      result.artifact.timeline.some((entry) => readRecordField(entry, "eventType") !== undefined),
+    ).toBe(false)
+    expect(result.artifact.trace?.events.some((event) => "timelineSequence" in event)).toBe(false)
     expect(result.pass).toBe(true)
     expect(result.pass).toBe(true)
     expect(result.grades.trace).toEqual({
@@ -637,6 +671,14 @@ describe("eval runner", () => {
     ).rejects.toThrow("must stay inside workspace")
   })
 })
+
+function readRecordField(value: unknown, field: string) {
+  if (typeof value !== "object" || value === null) {
+    return undefined
+  }
+
+  return (value as Record<string, unknown>)[field]
+}
 
 function createProviderFactory(
   turns: Array<(request: ProviderTurnRequest) => AsyncIterable<ProviderEvent>>,

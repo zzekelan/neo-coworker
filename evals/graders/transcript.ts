@@ -1,4 +1,4 @@
-import { findOrderedMatches, readTranscriptViews } from "./artifact-views"
+import { findOrderedMatches, readTimelineContentViews } from "./artifact-views"
 import type { EvalRunArtifact } from "../schemas/artifact"
 import type { EvalTranscriptExpectation } from "../schemas/task"
 
@@ -14,7 +14,7 @@ export function gradeTranscriptExpectation(input: {
   artifact: EvalRunArtifact
   expectation: EvalTranscriptExpectation
 }): EvalTranscriptGrade {
-  const messages = readTranscriptViews(input.artifact)
+  const messages = readTimelineContentViews(input.artifact)
   const observedTexts = messages.flatMap((message) => message.texts)
   const ordered = findOrderedMatches(observedTexts, input.expectation.orderedTextIncludes)
   const checkpointFailures: string[] = []

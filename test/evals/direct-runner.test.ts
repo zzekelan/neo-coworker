@@ -70,10 +70,28 @@ describe("direct eval runner", () => {
     const readOnlyTrace = await Bun.file(
       join(resultsById.get("regression/read-only")!.artifactDir, "trace.json"),
     ).json()
+    const readOnlyTraceEvents = readOnlyTrace.events as Array<Record<string, unknown>>
     expect(readOnlyTrace).toMatchObject({
       runId: expect.any(String),
-      events: expect.any(Array),
     })
+    expect(Array.isArray(readOnlyTraceEvents)).toBe(true)
+
+    const readOnlyTimeline = await Bun.file(
+      join(resultsById.get("regression/read-only")!.artifactDir, "timeline.json"),
+    ).json()
+    expect(readOnlyTimeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          producedByRunId: expect.any(String),
+          timelineSequence: expect.any(Number),
+          parts: expect.any(Array),
+        }),
+      ]),
+    )
+    expect(readOnlyTimeline.some((entry: Record<string, unknown>) => "eventType" in entry)).toBe(
+      false,
+    )
+    expect(readOnlyTraceEvents.some((event) => "timelineSequence" in event)).toBe(false)
 
     const cancelGraders = await Bun.file(
       join(resultsById.get("regression/cancel-after-output")!.artifactDir, "grader-results.json"),

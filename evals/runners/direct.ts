@@ -122,6 +122,7 @@ async function persistEvalArtifacts(input: {
   await Promise.all([
     writeJsonFile(join(artifactDir, "trace.json"), input.result.artifact.trace),
     writeJsonFile(join(artifactDir, "runs.json"), input.result.artifact.runs),
+    writeJsonFile(join(artifactDir, "timeline.json"), input.result.artifact.timeline),
     writeJsonFile(join(artifactDir, "transcript.json"), input.result.artifact.transcript),
     writeJsonFile(join(artifactDir, "outcome.json"), input.result.artifact.outcome),
     writeJsonFile(join(artifactDir, "metrics.json"), input.result.artifact.metrics),
