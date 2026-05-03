@@ -28,17 +28,18 @@ afterEach(() => {
 })
 
 describe("storage repository", () => {
-  test("uses schema version 11 for agent tracking columns", () => {
-    expect(CURRENT_SESSION_SCHEMA_VERSION).toBe(11)
+  test("uses schema version 12 for session timeline entry ordering", () => {
+    expect(CURRENT_SESSION_SCHEMA_VERSION).toBe(12)
   })
 
-  test("creates fresh databases with general top-level current agent and persists message agents", () => {
-    const databasePath = createDatabasePath("schema-v11-fresh")
+  test("creates fresh databases with general top-level current agent and timeline entry ordering", () => {
+    const databasePath = createDatabasePath("schema-v12-fresh")
     const database = openStorageDatabase(databasePath)
     trackDatabase(database)
 
     expect(listTableColumns(database, "session")).toContain("current_agent")
     expect(listTableColumns(database, "message")).toContain("agent")
+    expect(listTableColumns(database, "message")).toContain("timeline_sequence")
 
     const repository = createStorageRepository({ database })
     const session = repository.sessions.create({
@@ -99,7 +100,7 @@ describe("storage repository", () => {
     ])
   })
 
-  test("migrates existing v10 databases to v11 without data loss", () => {
+  test("migrates existing v10 databases to v12 without data loss", () => {
     const databasePath = createDatabasePath("schema-v10-migration")
     createVersion10Database(databasePath)
 
@@ -109,7 +110,8 @@ describe("storage repository", () => {
 
     expect(listTableColumns(database, "session")).toContain("current_agent")
     expect(listTableColumns(database, "message")).toContain("agent")
-    expect(getUserVersion(database)).toBe(11)
+    expect(listTableColumns(database, "message")).toContain("timeline_sequence")
+    expect(getUserVersion(database)).toBe(12)
 
     const rawSession = database.query("SELECT * FROM session WHERE id = ?").get("session_1") as {
       directory: string
@@ -127,6 +129,7 @@ describe("storage repository", () => {
       run_id: string
       role: string
       sequence: number
+      timeline_sequence: number
       created_at: number
       agent: string | null
     }
@@ -147,6 +150,7 @@ describe("storage repository", () => {
       run_id: "run_1",
       role: "user",
       sequence: 0,
+      timeline_sequence: 0,
       created_at: 4,
       agent: null,
     })
@@ -163,6 +167,15 @@ describe("storage repository", () => {
       runId: "run_1",
       role: "user",
     })
+    expect(repository.timeline.listEntries("session_1")).toEqual([
+      expect.objectContaining({
+        id: "message_1",
+        agent: undefined,
+        role: "user",
+        timelineSequence: 0,
+        producedByRunId: "run_1",
+      }),
+    ])
   })
 
   test("surfaces undefined transcript agents for legacy null message rows", () => {
@@ -1055,6 +1068,55 @@ describe("storage repository", () => {
     ).toEqual(["run_b:first inserted", "run_a:second inserted"])
   })
 
+  test("reads session timeline entries in durable session order instead of run order", () => {
+    const { repository } = createTestRepository("timeline-session-order")
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    repository.runs.create({
+      id: "run_older",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "completed",
+      createdAt: 10,
+    })
+    repository.runs.create({
+      id: "run_newer",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "completed",
+      createdAt: 20,
+    })
+
+    repository.messages.create({
+      id: "message_first",
+      sessionId: "session_1",
+      runId: "run_newer",
+      role: "assistant",
+      sequence: 0,
+      createdAt: 30,
+    })
+    repository.messages.create({
+      id: "message_second",
+      sessionId: "session_1",
+      runId: "run_older",
+      role: "assistant",
+      sequence: 0,
+      createdAt: 31,
+    })
+
+    const timeline = repository.timeline.listEntries("session_1")
+
+    expect(timeline.map((entry) => entry.id)).toEqual(["message_first", "message_second"])
+    expect(timeline.map((entry) => entry.timelineSequence)).toEqual([0, 1])
+    expect(timeline.map((entry) => entry.producedByRunId)).toEqual(["run_newer", "run_older"])
+  })
+
   test("rejects mismatched parent ownership", () => {
     const { repository } = createTestRepository("ownership-mismatch")
 
@@ -1590,6 +1652,24 @@ function createVersion10Database(filePath: string) {
         FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
         UNIQUE (id, run_id, session_id),
         UNIQUE (run_id, sequence)
+      )
+    `)
+    database.exec(`
+      CREATE TABLE part (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        text_value TEXT,
+        data_json TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, message_id, run_id, session_id),
+        UNIQUE (message_id, sequence)
       )
     `)
     database.exec(`

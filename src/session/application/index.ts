@@ -18,6 +18,8 @@ export {
   type StoredPart,
   type StoredRun,
   type StoredSession,
+  type TimelineEntry,
+  type TimelinePart,
   type TranscriptMessage,
   type UpdatePartContentInput,
   type UpdateRunActiveSkillsInput,

@@ -80,6 +80,18 @@ export type TranscriptMessage = StoredMessage & {
   parts: StoredPart[]
 }
 
+export type TimelinePart = Omit<StoredPart, "runId" | "messageId"> & {
+  entryId: string
+  producedByRunId: string
+}
+
+export type TimelineEntry = Omit<StoredMessage, "runId" | "sequence"> & {
+  producedByRunId: string
+  runSequence: number
+  timelineSequence: number
+  parts: TimelinePart[]
+}
+
 type EntityType = "session" | "run" | "message" | "part"
 
 export type CreateSessionInput = {
@@ -267,6 +279,9 @@ export type SessionRepository = {
     create(message: CreateMessageInput): StoredMessage
     get(messageId: string): StoredMessage
     listSessionTranscript(sessionId: string): TranscriptMessage[]
+  }
+  timeline: {
+    listEntries(sessionId: string): TimelineEntry[]
   }
   parts: {
     create(part: CreatePartInput): StoredPart

@@ -33,6 +33,7 @@ import {
   type SessionRepository,
   type StoredRun,
   type StoredSession,
+  type TimelineEntry,
   type TranscriptMessage,
   type UpdatePartContentInput,
   type UpdateRunStatusInput,
@@ -44,11 +45,13 @@ import {
   mapPartRow,
   mapRunRow,
   mapSessionRow,
+  mapTimelineRow,
   serializeJson,
   type MessageRow,
   type PartRow,
   type RunRow,
   type SessionRow,
+  type TimelineRow,
   type TranscriptRow,
 } from "./sqlite-mappers"
 
@@ -353,6 +356,60 @@ const sessionMigrations = [
       `
         ALTER TABLE message
         ADD COLUMN agent TEXT
+      `,
+    ],
+  },
+  {
+    version: 12,
+    statements: [
+      `
+        ALTER TABLE message
+        ADD COLUMN timeline_sequence INTEGER NOT NULL DEFAULT -1
+      `,
+      `
+        WITH ordered_messages AS (
+          SELECT
+            message.id,
+            ROW_NUMBER() OVER (
+              PARTITION BY message.session_id
+              ORDER BY
+                run.created_at ASC,
+                run.session_sequence ASC,
+                message.sequence ASC,
+                message.id ASC
+            ) - 1 AS timeline_sequence
+          FROM message
+          JOIN run ON run.id = message.run_id AND run.session_id = message.session_id
+        )
+        UPDATE message
+        SET timeline_sequence = (
+          SELECT ordered_messages.timeline_sequence
+          FROM ordered_messages
+          WHERE ordered_messages.id = message.id
+        )
+        WHERE timeline_sequence < 0
+      `,
+      `
+        CREATE UNIQUE INDEX message_session_timeline_sequence_idx
+        ON message (session_id, timeline_sequence)
+        WHERE timeline_sequence >= 0
+      `,
+      `
+        CREATE TRIGGER message_assign_timeline_sequence_after_insert
+        AFTER INSERT ON message
+        FOR EACH ROW
+        WHEN NEW.timeline_sequence < 0
+        BEGIN
+          UPDATE message
+          SET timeline_sequence = (
+            SELECT COALESCE(MAX(timeline_sequence), -1) + 1
+            FROM message
+            WHERE session_id = NEW.session_id
+              AND id <> NEW.id
+              AND timeline_sequence >= 0
+          )
+          WHERE id = NEW.id;
+        END
       `,
     ],
   },
@@ -1009,6 +1066,88 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     },
   }
 
+  const timeline: SessionRepository["timeline"] = {
+    listEntries(sessionId: string): TimelineEntry[] {
+      requireSession(sessionId)
+
+      const rows = database
+        .query(
+          `
+            SELECT
+              message.id AS message_id,
+              message.session_id AS message_session_id,
+              message.run_id AS message_run_id,
+              message.agent AS message_agent,
+              message.role AS message_role,
+              message.sequence AS message_sequence,
+              message.timeline_sequence AS message_timeline_sequence,
+              message.created_at AS message_created_at,
+              part.id AS part_id,
+              part.session_id AS part_session_id,
+              part.run_id AS part_run_id,
+              part.message_id AS part_message_id,
+              part.kind AS part_kind,
+              part.sequence AS part_sequence,
+              part.text_value AS part_text_value,
+              part.data_json AS part_data_json,
+              part.created_at AS part_created_at
+            FROM message
+            LEFT JOIN part ON part.message_id = message.id
+            WHERE message.session_id = ?
+            ORDER BY
+              message.timeline_sequence ASC,
+              message.id ASC,
+              part.sequence ASC,
+              part.id ASC
+          `,
+        )
+        .all(sessionId) as TimelineRow[]
+
+      const entries: TimelineEntry[] = []
+      const entriesById = new Map<string, TimelineEntry>()
+
+      for (const row of rows) {
+        let entry = entriesById.get(row.message_id)
+
+        if (!entry) {
+          entry = mapTimelineRow(row)
+          entriesById.set(entry.id, entry)
+          entries.push(entry)
+        }
+
+        if (!row.part_id) {
+          continue
+        }
+
+        const part = mapPartRow({
+          id: row.part_id,
+          session_id: row.part_session_id!,
+          run_id: row.part_run_id!,
+          message_id: row.part_message_id!,
+          kind: row.part_kind!,
+          sequence: row.part_sequence!,
+          text_value: row.part_text_value,
+          data_json: row.part_data_json,
+          created_at: row.part_created_at!,
+        })
+
+        entry.parts.push({
+          id: part.id,
+          sessionId: part.sessionId,
+          producedByRunId: part.runId,
+          entryId: part.messageId,
+          kind: part.kind,
+          sequence: part.sequence,
+          text: part.text,
+          data: part.data,
+          createdAt: part.createdAt,
+        })
+      }
+
+      return entries
+    },
+  }
+
   const parts: SessionRepository["parts"] = {
     create(part: CreatePartInput): StoredPart {
       requireSession(part.sessionId)
@@ -1213,6 +1352,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     sessions,
     runs,
     messages,
+    timeline,
     parts,
     createQueuedRun(input: CreateQueuedRunInput) {
       return createQueuedRunTransaction(input)
