@@ -819,6 +819,107 @@ describe("storage repository", () => {
     ).not.toContain("part_child")
   })
 
+  test("keeps Session Timelines isolated across parent, child, and nested Sub-sessions", () => {
+    const { repository } = createTestRepository("sub-session-timeline-isolation")
+
+    const parent = repository.sessions.create({
+      id: "session_parent",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.createQueuedRunWithInitiatingMessageAndPart({
+      run: {
+        id: "run_parent",
+        sessionId: parent.id,
+        trigger: "prompt",
+        createdAt: 2,
+      },
+      message: {
+        id: "entry_parent",
+        sequence: 0,
+        createdAt: 3,
+      },
+      part: {
+        id: "part_parent",
+        kind: "text",
+        sequence: 0,
+        text: "parent prompt",
+        createdAt: 4,
+      },
+    })
+    const child = repository.createSubSessionWithRun({
+      session: {
+        id: "session_child",
+        directory: "/workspace/sub-agent",
+        workspaceRoot: "/workspace",
+        createdAt: 5,
+        parentSessionId: parent.id,
+      },
+      run: {
+        id: "run_child",
+        trigger: "prompt",
+        parentRunId: "run_parent",
+        createdAt: 6,
+      },
+      message: {
+        id: "entry_child",
+        sequence: 0,
+        createdAt: 7,
+      },
+      part: {
+        id: "part_child",
+        kind: "text",
+        sequence: 0,
+        text: "child prompt",
+        createdAt: 8,
+      },
+    })
+    const grandchild = repository.createSubSessionWithRun({
+      session: {
+        id: "session_grandchild",
+        directory: "/workspace/sub-agent/nested",
+        workspaceRoot: "/workspace",
+        createdAt: 9,
+        parentSessionId: child.session.id,
+      },
+      run: {
+        id: "run_grandchild",
+        trigger: "prompt",
+        parentRunId: child.run.id,
+        createdAt: 10,
+      },
+      message: {
+        id: "entry_grandchild",
+        sequence: 0,
+        createdAt: 11,
+      },
+      part: {
+        id: "part_grandchild",
+        kind: "text",
+        sequence: 0,
+        text: "grandchild prompt",
+        createdAt: 12,
+      },
+    })
+
+    expect(repository.timeline.listEntries(parent.id).map((entry) => entry.id)).toEqual([
+      "entry_parent",
+    ])
+    expect(repository.timeline.listEntries(child.session.id).map((entry) => entry.id)).toEqual([
+      "entry_child",
+    ])
+    expect(repository.timeline.listEntries(grandchild.session.id).map((entry) => entry.id)).toEqual([
+      "entry_grandchild",
+    ])
+    expect(repository.timeline.listEntries(child.session.id)[0]).toMatchObject({
+      producedByRunId: "run_child",
+      parts: [expect.objectContaining({ producedByRunId: "run_child" })],
+    })
+    expect(repository.runs.get(child.run.id).parentRunId).toBe("run_parent")
+    expect(repository.runs.get(grandchild.run.id).parentRunId).toBe(child.run.id)
+  })
+
   test("returns session transcript with stable message and part ordering", () => {
     const { repository } = createTestRepository("transcript-ordering")
 

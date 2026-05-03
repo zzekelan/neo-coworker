@@ -1506,6 +1506,7 @@ describe("subsession transcript isolation", () => {
     const childTranscriptAfterParentFailure = harness.repository.messages.listSessionTranscript(
       child.session.id,
     )
+    const childTimelineAfterParentFailure = harness.repository.timeline.listEntries(child.session.id)
 
     expect(parentTranscriptAfterFailure[1]?.parts.map((part) => part.kind)).toEqual([
       "tool_call",
@@ -1528,6 +1529,10 @@ describe("subsession transcript isolation", () => {
     expect(childTranscriptAfterParentFailure[1]?.parts.map((part) => part.kind)).toEqual([
       "tool_call",
     ])
+    expect(childTimelineAfterParentFailure[1]?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+    ])
+    expect(childTimelineAfterParentFailure[1]?.producedByRunId).toBe(child.run.id)
     expect(
       parentTranscriptAfterFailure
         .flatMap((message) => message.parts)
