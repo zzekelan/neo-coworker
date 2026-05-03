@@ -227,6 +227,130 @@ describe("orchestration step service parallel tool execution", () => {
   })
 })
 
+describe("orchestration step service terminalization", () => {
+  test("uses the default clock when closing failed run tool calls", () => {
+    const session = createMemorySession()
+    const events: RuntimeEvent[] = []
+    const assistantMessage = session.createAssistantMessage({
+      sessionId: session.sessionId,
+      runId: session.runId,
+      sequence: 1,
+      createdAt: 1,
+    })
+    session.createMessagePart({
+      sessionId: session.sessionId,
+      runId: session.runId,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"path":"alpha.txt"}',
+      data: {
+        callId: "call_default_clock",
+        toolName: "read",
+        inputText: '{"path":"alpha.txt"}',
+      },
+      createdAt: 1,
+    })
+    const stepService = createOrchestrationStepService({
+      session,
+      model: createNoopModel(),
+      contextWindow: createContextWindowStub(),
+      skill: createSkillPortStub(),
+    })
+
+    stepService.failRun({
+      runId: session.runId,
+      error: "provider failed",
+      emit(event) {
+        events.push(event)
+      },
+    })
+
+    const persistedAssistantMessage = session
+      .listTranscript(session.sessionId)
+      .find((message) => message.role === "assistant")
+
+    expect(session.getRun(session.runId).status).toBe("failed")
+    expect(persistedAssistantMessage?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+      "tool_result",
+    ])
+    expect(persistedAssistantMessage?.parts[1]).toMatchObject({
+      kind: "tool_result",
+      text: "Run failed before this tool call completed.",
+      data: {
+        callId: "call_default_clock",
+        toolName: "read",
+        isError: true,
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      },
+    })
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "tool.call.completed",
+        callId: "call_default_clock",
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      }),
+    )
+    expect(events.at(-1)).toMatchObject({
+      type: "run.failed",
+      error: "provider failed",
+    })
+  })
+
+  test("cancels malformed tool-call runs even when terminal closure cannot be written", () => {
+    const session = createMemorySession()
+    const events: RuntimeEvent[] = []
+    const assistantMessage = session.createAssistantMessage({
+      sessionId: session.sessionId,
+      runId: session.runId,
+      sequence: 1,
+      createdAt: 1,
+    })
+    session.createMessagePart({
+      sessionId: session.sessionId,
+      runId: session.runId,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"path":"alpha.txt"}',
+      data: {
+        callId: "call_malformed",
+        inputText: '{"path":"alpha.txt"}',
+      },
+      createdAt: 1,
+    })
+    const stepService = createOrchestrationStepService({
+      session,
+      model: createNoopModel(),
+      contextWindow: createContextWindowStub(),
+      skill: createSkillPortStub(),
+      now: createMonotonicClock(),
+    })
+
+    const result = stepService.cancelRun({
+      runId: session.runId,
+      emit(event) {
+        events.push(event)
+      },
+    })
+
+    const persistedAssistantMessage = session
+      .listTranscript(session.sessionId)
+      .find((message) => message.role === "assistant")
+
+    expect(result).toBe(true)
+    expect(session.getRun(session.runId).status).toBe("cancelled")
+    expect(persistedAssistantMessage?.parts.map((part) => part.kind)).toEqual(["tool_call"])
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "run.cancelled",
+        runId: session.runId,
+      }),
+    ])
+  })
+})
+
 function executeStep(input: {
   stepService: ReturnType<typeof createOrchestrationStepService>
   session: ReturnType<typeof createMemorySession>
@@ -259,6 +383,12 @@ function createSkillPortStub(): OrchestrationSkillPort {
     async loadSkill() {
       throw new Error("Unexpected skill load")
     },
+  }
+}
+
+function createNoopModel(): OrchestrationModelPort {
+  return {
+    async *streamTurn() {},
   }
 }
 
@@ -332,6 +462,8 @@ function createMemorySession() {
     createAssistantMessage(input) {
       const id = `assistant_message_${nextMessageId++}`
       const message: OrchestrationTranscriptMessage = {
+        id,
+        sessionId: input.sessionId,
         runId: input.runId,
         role: "assistant",
         sequence: input.sequence,
@@ -344,6 +476,8 @@ function createMemorySession() {
     createSyntheticMessage(input) {
       const id = `synthetic_message_${nextMessageId++}`
       const message: OrchestrationTranscriptMessage = {
+        id,
+        sessionId: input.sessionId,
         runId: input.runId,
         role: "synthetic",
         sequence: input.sequence,
@@ -359,9 +493,11 @@ function createMemorySession() {
         throw new Error(`Unknown message ${input.messageId}`)
       }
 
-      const part: OrchestrationPartRecord = {
+      const part: OrchestrationPartRecord & { messageId: string; sequence: number } = {
         id: `part_${nextPartId++}`,
+        messageId: input.messageId,
         kind: input.kind,
+        sequence: input.sequence,
         text: input.text ?? null,
         data: input.data,
       }

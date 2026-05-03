@@ -462,7 +462,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         closeRunToolCalls({
           session: input.session,
           runId: runInput.runId,
-          now: input.now,
+          now,
           emit: runInput.emit,
           output: "Run failed before this tool call completed.",
           errorCode: "RUN_FAILED_TOOL_CALL",
@@ -496,14 +496,19 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         return false
       }
 
-      closeRunToolCalls({
-        session: input.session,
-        runId: runInput.runId,
-        now: input.now,
-        emit: runInput.emit ?? (() => {}),
-        output: "Run was cancelled before this tool call completed.",
-        errorCode: "RUN_CANCELLED_TOOL_CALL",
-      })
+      try {
+        closeRunToolCalls({
+          session: input.session,
+          runId: runInput.runId,
+          now,
+          emit: runInput.emit ?? (() => {}),
+          output: "Run was cancelled before this tool call completed.",
+          errorCode: "RUN_CANCELLED_TOOL_CALL",
+        })
+      } catch {
+        // Cancellation is the recovery path; malformed terminal closure must
+        // not keep the run non-terminal.
+      }
       input.session.cancelRun(runInput.runId)
       runInput.emit?.({ type: "run.cancelled", runId: runInput.runId })
       return true
