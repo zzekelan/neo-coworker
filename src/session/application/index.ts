@@ -4,6 +4,8 @@ export {
   SessionNotFoundError,
   SessionOwnershipError,
   SessionRepositoryError,
+  type AppendTimelineEntryInput,
+  type AppendTimelinePartInput,
   type CreateAssistantMessageWithFirstPartInput,
   type CreateMessageInput,
   type CreatePartInput,

@@ -568,31 +568,31 @@ function createSessionPort(input: {
     },
     createAssistantMessage(message) {
       const session = input.repository.sessions.get(message.sessionId)
-      return input.repository.messages.create({
+      return input.repository.timeline.appendEntry({
         sessionId: message.sessionId,
-        runId: message.runId,
+        producedByRunId: message.runId,
         agent: session.currentAgent,
         role: "assistant",
-        sequence: message.sequence,
+        runSequence: message.sequence,
         createdAt: message.createdAt,
       })
     },
     createSyntheticMessage(message) {
       const session = input.repository.sessions.get(message.sessionId)
-      return input.repository.messages.create({
+      return input.repository.timeline.appendEntry({
         sessionId: message.sessionId,
-        runId: message.runId,
+        producedByRunId: message.runId,
         agent: session.currentAgent,
         role: "synthetic",
-        sequence: message.sequence,
+        runSequence: message.sequence,
         createdAt: message.createdAt,
       })
     },
     createMessagePart(part) {
-      return input.repository.parts.create({
+      return input.repository.timeline.appendPart({
         sessionId: part.sessionId,
-        runId: part.runId,
-        messageId: part.messageId,
+        producedByRunId: part.runId,
+        entryId: part.messageId,
         kind: part.kind as never,
         sequence: part.sequence,
         text: part.text,

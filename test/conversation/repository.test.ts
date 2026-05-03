@@ -1117,6 +1117,79 @@ describe("storage repository", () => {
     expect(timeline.map((entry) => entry.producedByRunId)).toEqual(["run_newer", "run_older"])
   })
 
+  test("appends timeline entries and entry-local parts with Produced By Run provenance", () => {
+    const { repository } = createTestRepository("timeline-append")
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "running",
+      createdAt: 2,
+    })
+
+    const entry = repository.timeline.appendEntry({
+      id: "entry_1",
+      sessionId: "session_1",
+      producedByRunId: "run_1",
+      agent: "plan",
+      role: "assistant",
+      runSequence: 0,
+      createdAt: 3,
+    })
+    const toolCall = repository.timeline.appendPart({
+      id: "part_call",
+      sessionId: "session_1",
+      producedByRunId: "run_1",
+      entryId: entry.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: "{\"cmd\":\"date\"}",
+      data: { callId: "call_1", toolName: "shell" },
+      createdAt: 4,
+    })
+    repository.timeline.appendPart({
+      id: "part_result",
+      sessionId: "session_1",
+      producedByRunId: "run_1",
+      entryId: entry.id,
+      kind: "tool_result",
+      sequence: 1,
+      text: "Mon May 4",
+      data: { callId: "call_1", toolName: "shell", output: "Mon May 4" },
+      createdAt: 5,
+    })
+
+    expect(entry).toMatchObject({
+      id: "entry_1",
+      producedByRunId: "run_1",
+      runSequence: 0,
+      timelineSequence: 0,
+    })
+    expect(toolCall).toMatchObject({
+      id: "part_call",
+      entryId: "entry_1",
+      producedByRunId: "run_1",
+      sequence: 0,
+    })
+    expect(repository.timeline.listEntries("session_1")).toEqual([
+      expect.objectContaining({
+        id: "entry_1",
+        producedByRunId: "run_1",
+        parts: [
+          expect.objectContaining({ id: "part_call", entryId: "entry_1" }),
+          expect.objectContaining({ id: "part_result", entryId: "entry_1" }),
+        ],
+      }),
+    ])
+  })
+
   test("rejects mismatched parent ownership", () => {
     const { repository } = createTestRepository("ownership-mismatch")
 

@@ -34,6 +34,7 @@ import {
   type StoredRun,
   type StoredSession,
   type TimelineEntry,
+  type TimelinePart,
   type TranscriptMessage,
   type UpdatePartContentInput,
   type UpdateRunStatusInput,
@@ -614,6 +615,46 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
       .get(partId) as PartRow | null
   }
 
+  function getMessageTimelineSequence(messageId: string) {
+    const row = database
+      .query("SELECT timeline_sequence FROM message WHERE id = ?")
+      .get(messageId) as { timeline_sequence: number } | null
+
+    if (!row) {
+      throw new SessionNotFoundError("message", messageId)
+    }
+
+    return row.timeline_sequence
+  }
+
+  function mapMessageToTimelineEntry(message: StoredMessage): TimelineEntry {
+    return {
+      id: message.id,
+      sessionId: message.sessionId,
+      producedByRunId: message.runId,
+      agent: message.agent,
+      role: message.role,
+      runSequence: message.sequence,
+      timelineSequence: getMessageTimelineSequence(message.id),
+      createdAt: message.createdAt,
+      parts: [],
+    }
+  }
+
+  function mapStoredPartToTimelinePart(part: StoredPart): TimelinePart {
+    return {
+      id: part.id,
+      sessionId: part.sessionId,
+      producedByRunId: part.runId,
+      entryId: part.messageId,
+      kind: part.kind,
+      sequence: part.sequence,
+      text: part.text,
+      data: part.data,
+      createdAt: part.createdAt,
+    }
+  }
+
   function requireSession(sessionId: string) {
     const row = getSessionRow(sessionId)
     if (!row) {
@@ -1067,6 +1108,34 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
   }
 
   const timeline: SessionRepository["timeline"] = {
+    appendEntry(entry) {
+      const message = messages.create({
+        id: entry.id,
+        sessionId: entry.sessionId,
+        runId: entry.producedByRunId,
+        agent: entry.agent,
+        role: entry.role,
+        sequence: entry.runSequence,
+        createdAt: entry.createdAt,
+      })
+
+      return mapMessageToTimelineEntry(message)
+    },
+    appendPart(part) {
+      const created = parts.create({
+        id: part.id,
+        sessionId: part.sessionId,
+        runId: part.producedByRunId,
+        messageId: part.entryId,
+        kind: part.kind,
+        sequence: part.sequence,
+        text: part.text,
+        data: part.data,
+        createdAt: part.createdAt,
+      })
+
+      return mapStoredPartToTimelinePart(created)
+    },
     listEntries(sessionId: string): TimelineEntry[] {
       requireSession(sessionId)
 
