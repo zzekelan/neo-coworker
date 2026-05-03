@@ -284,7 +284,7 @@ describe("run command", () => {
     expect(output.join("")).toContain(
       `permission.requested write write ${join(harness.workspaceRoot, "notes.txt")}`,
     )
-    expect(output.join("")).toContain("error Tool write failed: Permission denied")
+    expect(output.join("")).toContain("tool.call.completed write: Tool write failed: Permission denied")
     expect(output.join("")).toContain(`run.cancelled ${run.id}`)
     expect(output.join("")).not.toContain("This turn should not run.")
   })

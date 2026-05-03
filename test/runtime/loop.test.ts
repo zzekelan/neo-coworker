@@ -1600,14 +1600,16 @@ describe("agent loop", () => {
     const permissionRequests = harness.permissionRepository.requests.listByRun(started.run.id)
 
     expect(requests).toHaveLength(1)
-    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "error"])
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "tool_result"])
     expect(activeRunMessages[1]?.parts[2]).toMatchObject({
-      kind: "error",
+      kind: "tool_result",
       text: "Tool write failed: Permission denied",
       data: {
-        source: "tool",
         callId: "call_write",
         toolName: "write",
+        output: "Tool write failed: Permission denied",
+        isError: true,
+        errorCode: "TOOL_PERMISSION_DENIED",
       },
     })
     expect(permissionRequests).toMatchObject([
@@ -1714,16 +1716,18 @@ describe("agent loop", () => {
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
       "tool_call",
       "tool_call",
-      "error",
+      "tool_result",
       "tool_result",
     ])
     expect(activeRunMessages[1]?.parts[2]).toMatchObject({
-      kind: "error",
+      kind: "tool_result",
       text: "Tool webfetch failed: Permission denied",
       data: {
-        source: "tool",
         callId: "call_webfetch_denied",
         toolName: "webfetch",
+        output: "Tool webfetch failed: Permission denied",
+        isError: true,
+        errorCode: "TOOL_PERMISSION_DENIED",
       },
     })
     expect(activeRunMessages[1]?.parts[3]).toMatchObject({

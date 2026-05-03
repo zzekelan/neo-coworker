@@ -1,5 +1,6 @@
 import {
   TOOL_FAILURE_MESSAGE_METADATA_KEY,
+  TOOL_PERMISSION_DENIED_ERROR_CODE,
   TOOL_PERMISSION_DENIED_METADATA_KEY,
   type OrchestrationBatchExecutionResult,
   type OrchestrationTool,
@@ -76,13 +77,15 @@ function createConcurrentToolDefinitions(input: {
           throw error
         }
 
+        const permissionDenied = isToolPermissionDeniedError(error)
+
         return {
           output: "",
           isError: true,
-          errorCode: "TOOL_EXECUTION_FAILED",
+          errorCode: permissionDenied ? TOOL_PERMISSION_DENIED_ERROR_CODE : "TOOL_EXECUTION_FAILED",
           metadata: {
             [TOOL_FAILURE_MESSAGE_METADATA_KEY]: `Tool ${toolInput.toolName} failed: ${getErrorMessage(error)}`,
-            [TOOL_PERMISSION_DENIED_METADATA_KEY]: isToolPermissionDeniedError(error),
+            [TOOL_PERMISSION_DENIED_METADATA_KEY]: permissionDenied,
           },
         }
       }

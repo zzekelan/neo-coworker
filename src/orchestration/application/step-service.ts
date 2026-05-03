@@ -10,6 +10,8 @@ import type { OrchestrationSkillPort } from "./ports/skill"
 import {
   type OrchestrationBatchExecutionResult,
   TOOL_FAILURE_MESSAGE_METADATA_KEY,
+  AGENT_TOOL_DENIED_ERROR_CODE,
+  TOOL_PERMISSION_DENIED_ERROR_CODE,
   TOOL_PERMISSION_DENIED_METADATA_KEY,
   TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
   TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
@@ -825,13 +827,13 @@ async function executePendingToolCalls(input: {
     )
     if (toolFailureMessage) {
       if (readMetadataBoolean(result.metadata, TOOL_PERMISSION_DENIED_METADATA_KEY)) {
-        input.assistantTurn.appendError({
-          text: toolFailureMessage,
-          data: {
-            source: "tool",
-            callId: result.callId,
-            toolName: result.toolName,
-          },
+        input.assistantTurn.appendToolResult({
+          callId: result.callId,
+          toolName: result.toolName,
+          output: toolFailureMessage,
+          isError: true,
+          errorCode: result.errorCode ?? TOOL_PERMISSION_DENIED_ERROR_CODE,
+          metadata: result.metadata,
         })
         shouldCancel = true
         continue
@@ -1161,6 +1163,7 @@ async function partitionToolCallsForCurrentAgent(input: {
       output: access.deniedMessage
         ?? `Tool '${toolCall.name}' is not available for the current agent.`,
       isError: true,
+      errorCode: AGENT_TOOL_DENIED_ERROR_CODE,
     })
   }
 

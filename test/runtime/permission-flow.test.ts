@@ -392,14 +392,16 @@ describe("runtime permission flow", () => {
       toolName: "plan_exit",
       status: "denied",
     })
-    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "error"])
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
     expect(activeRunMessages[1]?.parts[1]).toMatchObject({
-      kind: "error",
+      kind: "tool_result",
       text: "Tool plan_exit failed: Permission denied",
       data: {
-        source: "tool",
         callId: "call_plan_exit_deny",
         toolName: "plan_exit",
+        output: "Tool plan_exit failed: Permission denied",
+        isError: true,
+        errorCode: "TOOL_PERMISSION_DENIED",
       },
     })
     expect(remainingEvents.at(-1)).toMatchObject({
