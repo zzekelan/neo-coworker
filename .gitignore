@@ -9,6 +9,7 @@ node_modules/
 docs/plans
 docs/project-rules
 docs/ref
+docs/draft
 
 #dev
 /.github/

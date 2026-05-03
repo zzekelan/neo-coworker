@@ -26,6 +26,7 @@ type DesktopText = {
     selectSession: string
     startConversation: string
     createSessionToStart: string
+    readyInWorkspace(workspace: string, agent: string): string
     createSession: string
     agentRunning: string
     waitingPermission: string
@@ -161,6 +162,10 @@ type DesktopText = {
     completedSkillActivation(name: string): string
     completedSkillList: string
     completedSkills: string
+    completedActivity(label: string, duration: string | null): string
+    completedRunActivity(duration: string | null, toolNames: string[]): string
+    formatDuration(durationMs: number): string
+    llmCall: string
     cancelledSuffix: string
     failedSuffix: string
     reasoning: string
@@ -235,7 +240,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     chat: {
       selectSession: "Select a session to start",
       startConversation: "Start a conversation with NeoCoworker",
-      createSessionToStart: "New a session to start",
+      createSessionToStart: "Start a new session",
+      readyInWorkspace(workspace: string, agent: string) {
+        return `Ready in ${workspace} with ${agent}.`
+      },
       createSession: "New Session",
       agentRunning: "Agent Running",
       waitingPermission: "Waiting Permission",
@@ -400,6 +408,19 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedSkillActivation(name: string) { return `Activated ${name}` },
       completedSkillList: "Listed skills",
       completedSkills: "Updated skills",
+      completedActivity(label: string, duration: string | null) {
+        return duration ? `Ran ${label} (${duration})` : `Ran ${label}`
+      },
+      completedRunActivity(duration: string | null, toolNames: string[]) {
+        const ranText = duration ? `Ran ${duration}` : "Ran activity"
+        if (toolNames.length === 0) return ranText
+        const toolText = toolNames.join(", ")
+        return `${ranText}; called ${toolText} ${toolNames.length === 1 ? "tool" : "tools"}`
+      },
+      formatDuration(durationMs: number) {
+        return `${(durationMs / 1000).toFixed(1)}s`
+      },
+      llmCall: "LLM call",
       cancelledSuffix: "(cancelled)",
       failedSuffix: "failed",
       reasoning: "Reasoning",
@@ -474,7 +495,10 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
     chat: {
       selectSession: "选择一个会话开始",
       startConversation: "开始与 NeoCoworker 对话",
-      createSessionToStart: "新建一个会话以开始",
+      createSessionToStart: "开始一个新会话",
+      readyInWorkspace(workspace: string, agent: string) {
+        return `${workspace} 已就绪，当前使用 ${agent}。`
+      },
       createSession: "新建会话",
       agentRunning: "Agent 运行中",
       waitingPermission: "等待权限",
@@ -530,7 +554,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       showLess: "收起",
       viewDetails: "查看详情",
       hideDetails: "收起详情",
-      thinking: "思考",
+      thinking: "正在思考",
       running: "进行中",
       waitingPermission: "等待授权",
       completed: "已完成",
@@ -639,6 +663,18 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       completedSkillActivation(name: string) { return `激活了 ${name}` },
       completedSkillList: "列出了技能",
       completedSkills: "更新了技能",
+      completedActivity(label: string, duration: string | null) {
+        return duration ? `已运行${label}（${duration}）` : `已运行${label}`
+      },
+      completedRunActivity(duration: string | null, toolNames: string[]) {
+        const ranText = duration ? `已运行 ${duration}` : "已运行"
+        if (toolNames.length === 0) return ranText
+        return `${ranText}，调用了 ${toolNames.join("、")} 工具`
+      },
+      formatDuration(durationMs: number) {
+        return `${(durationMs / 1000).toFixed(1)} 秒`
+      },
+      llmCall: "模型调用",
       cancelledSuffix: "（已取消）",
       failedSuffix: "失败",
       reasoning: "推理摘要",

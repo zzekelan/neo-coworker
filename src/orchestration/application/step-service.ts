@@ -10,6 +10,8 @@ import type { OrchestrationSkillPort } from "./ports/skill"
 import {
   type OrchestrationBatchExecutionResult,
   TOOL_FAILURE_MESSAGE_METADATA_KEY,
+  AGENT_TOOL_DENIED_ERROR_CODE,
+  TOOL_PERMISSION_DENIED_ERROR_CODE,
   TOOL_PERMISSION_DENIED_METADATA_KEY,
   TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY,
   TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
@@ -436,6 +438,10 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       runId: string
       emit: OrchestrationEventEmitter
     }) {
+      assertRunToolCallsClosed({
+        session: input.session,
+        runId: runInput.runId,
+      })
       input.session.completeRun(runInput.runId)
       if (input.telemetry?.modelClassification?.providerFamily === "kimi") {
         runInput.emit({
@@ -451,9 +457,22 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       error: string
       emit: OrchestrationEventEmitter
     }) {
+      let error = runInput.error
+      try {
+        closeRunToolCalls({
+          session: input.session,
+          runId: runInput.runId,
+          now,
+          emit: runInput.emit,
+          output: "Run failed before this tool call completed.",
+          errorCode: "RUN_FAILED_TOOL_CALL",
+        })
+      } catch (terminalizationError) {
+        error = getErrorMessage(terminalizationError)
+      }
       input.session.failRun({
         runId: runInput.runId,
-        errorText: runInput.error,
+        errorText: error,
       })
       if (input.telemetry?.modelClassification?.providerFamily === "kimi") {
         runInput.emit({
@@ -465,7 +484,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
       runInput.emit({
         type: "run.failed",
         runId: runInput.runId,
-        error: runInput.error,
+        error,
       })
     },
     cancelRun(runInput: {
@@ -477,6 +496,19 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         return false
       }
 
+      try {
+        closeRunToolCalls({
+          session: input.session,
+          runId: runInput.runId,
+          now,
+          emit: runInput.emit ?? (() => {}),
+          output: "Run was cancelled before this tool call completed.",
+          errorCode: "RUN_CANCELLED_TOOL_CALL",
+        })
+      } catch {
+        // Cancellation is the recovery path; malformed terminal closure must
+        // not keep the run non-terminal.
+      }
       input.session.cancelRun(runInput.runId)
       runInput.emit?.({ type: "run.cancelled", runId: runInput.runId })
       return true
@@ -580,6 +612,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
         try {
           const pendingToolCalls: ToolCallEvent[] = []
+          const modelCallStartedAt = now()
           const modelEvents = input.model.streamTurn({
             systemPrompt: stepInput.systemPrompt,
             lateContextMessage,
@@ -665,6 +698,10 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             })
             pendingToolCalls.push(item)
           }
+
+          assistantTurn.finishModelCall({
+            durationMs: Math.max(0, now() - modelCallStartedAt),
+          })
 
           const outcome = await executePendingToolCalls({
             items: pendingToolCalls,
@@ -819,19 +856,34 @@ async function executePendingToolCalls(input: {
       TOOL_FAILURE_MESSAGE_METADATA_KEY,
     )
     if (toolFailureMessage) {
-      input.assistantTurn.appendError({
-        text: toolFailureMessage,
-        data: {
-          source: "tool",
+      if (readMetadataBoolean(result.metadata, TOOL_PERMISSION_DENIED_METADATA_KEY)) {
+        input.assistantTurn.appendToolResult({
           callId: result.callId,
           toolName: result.toolName,
-        },
-      })
-
-      if (readMetadataBoolean(result.metadata, TOOL_PERMISSION_DENIED_METADATA_KEY)) {
+          output: toolFailureMessage,
+          isError: true,
+          errorCode: result.errorCode ?? TOOL_PERMISSION_DENIED_ERROR_CODE,
+          metadata: result.metadata,
+        })
         shouldCancel = true
+        continue
       }
 
+      input.assistantTurn.appendToolResult({
+        callId: result.callId,
+        toolName: result.toolName,
+        output: toolFailureMessage,
+        isError: true,
+        errorCode: result.errorCode ?? "TOOL_EXECUTION_FAILED",
+        metadata: result.metadata,
+      })
+      input.emit({
+        type: "tool.call.completed",
+        callId: result.callId,
+        name: result.toolName,
+        output: toolFailureMessage,
+        isError: true,
+      })
       continue
     }
 
@@ -840,6 +892,7 @@ async function executePendingToolCalls(input: {
       toolName: result.toolName,
       output: result.output,
       isError: result.isError,
+      errorCode: result.errorCode,
       metadata: result.metadata,
     })
     const isRecoverableUnknownTool = readMetadataBoolean(
@@ -893,13 +946,13 @@ function collectPendingToolCalls(input: {
     try {
       args = JSON.parse(item.inputText)
     } catch (error) {
-      input.assistantTurn.appendError({
-        text: `Malformed tool arguments for ${item.name}: ${getErrorMessage(error)}`,
-        data: {
-          source: "tool",
-          callId: item.callId,
-          toolName: item.name,
-        },
+      const output = `Malformed tool arguments for ${item.name}: ${getErrorMessage(error)}`
+      input.assistantTurn.appendToolResult({
+        callId: item.callId,
+        toolName: item.name,
+        output,
+        isError: true,
+        errorCode: "MALFORMED_TOOL_ARGUMENTS",
       })
       continue
     }
@@ -936,6 +989,7 @@ function createAssistantTurnRecorder(input: {
   let nextPartSequence = 0
   let activeTextPart: { id: string; text: string } | null = null
   let activeReasoningPart: { id: string; text: string } | null = null
+  let latestReasoningPart: { id: string } | null = null
 
   function ensureMessage() {
     if (message) {
@@ -970,6 +1024,9 @@ function createAssistantTurnRecorder(input: {
     nextPartSequence += 1
     activeTextPart = part.kind === "text" ? readActiveTextPart(createdPart) : null
     activeReasoningPart = part.kind === "reasoning" ? readActiveReasoningPart(createdPart) : null
+    if (activeReasoningPart) {
+      latestReasoningPart = { id: activeReasoningPart.id }
+    }
     return createdPart
   }
 
@@ -1019,11 +1076,24 @@ function createAssistantTurnRecorder(input: {
         },
       })
     },
+    finishModelCall(modelCall: { durationMs: number }) {
+      if (!latestReasoningPart) {
+        return
+      }
+
+      input.session.updateMessagePart({
+        partId: latestReasoningPart.id,
+        data: {
+          durationMs: modelCall.durationMs,
+        },
+      })
+    },
     appendToolResult(toolResult: {
       callId: string
       toolName: string
       output: string
       isError?: boolean
+      errorCode?: string
       metadata?: Record<string, unknown>
     }) {
       createPart({
@@ -1034,6 +1104,7 @@ function createAssistantTurnRecorder(input: {
           toolName: toolResult.toolName,
           output: toolResult.output,
           isError: toolResult.isError,
+          errorCode: toolResult.errorCode,
           metadata: toolResult.metadata,
         },
       })
@@ -1091,6 +1162,139 @@ function readMetadataStringArray(metadata: Record<string, unknown> | undefined, 
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
+function assertRunToolCallsClosed(input: {
+  session: OrchestrationSessionPort
+  runId: string
+}) {
+  const unresolvedToolCalls = collectUnresolvedRunToolCalls(input)
+
+  if (unresolvedToolCalls.length > 0) {
+    const toolCall = unresolvedToolCalls[0]!
+    throw new Error(`Run ${input.runId} cannot complete: unresolved tool call ${toolCall.callId} (${toolCall.toolName}).`)
+  }
+}
+
+function closeRunToolCalls(input: {
+  session: OrchestrationSessionPort
+  runId: string
+  now: () => number
+  emit: OrchestrationEventEmitter
+  output: string
+  errorCode: string
+}) {
+  const unresolvedToolCalls = collectUnresolvedRunToolCalls(input)
+
+  for (const toolCall of unresolvedToolCalls) {
+    input.session.createMessagePart({
+      sessionId: toolCall.sessionId,
+      runId: input.runId,
+      messageId: toolCall.messageId,
+      kind: "tool_result",
+      sequence: toolCall.sequence,
+      text: input.output,
+      data: {
+        callId: toolCall.callId,
+        toolName: toolCall.toolName,
+        output: input.output,
+        isError: true,
+        errorCode: input.errorCode,
+      },
+      createdAt: input.now(),
+    })
+    input.emit({
+      type: "tool.call.completed",
+      callId: toolCall.callId,
+      name: toolCall.toolName,
+      output: input.output,
+      isError: true,
+      errorCode: input.errorCode,
+    })
+  }
+}
+
+function collectUnresolvedRunToolCalls(input: {
+  session: OrchestrationSessionPort
+  runId: string
+}) {
+  const run = input.session.getRun(input.runId)
+  // Terminalization is intentionally current-run only; historical migration
+  // and malformed timeline repair belong outside the live run loop.
+  const transcript = input.session.listTranscript(run.sessionId)
+  const unresolvedToolCalls: Array<{
+    sessionId: string
+    messageId: string
+    sequence: number
+    callId: string
+    toolName: string
+  }> = []
+
+  for (const message of transcript) {
+    if (message.runId !== input.runId || message.role !== "assistant") {
+      continue
+    }
+
+    const messageId = message.id
+    let nextSequence = getNextPartSequence(message.parts)
+    const closedCallIds = new Set<string>()
+
+    for (const part of message.parts) {
+      const callId = readToolClosureCallId(part)
+      if (callId) {
+        closedCallIds.add(callId)
+      }
+    }
+
+    for (const part of message.parts) {
+      if (part.kind !== "tool_call") {
+        continue
+      }
+
+      const data = readObject(part.data)
+      const callId = readString(data, "callId")
+      const toolName = readString(data, "toolName")
+      if (!callId || !toolName) {
+        throw new Error(`Run ${input.runId} cannot complete: malformed tool call is missing callId or toolName.`)
+      }
+
+      if (closedCallIds.has(callId)) {
+        continue
+      }
+
+      if (!messageId) {
+        throw new Error(`Run ${input.runId} cannot terminalize unresolved tool call ${callId}: missing message id.`)
+      }
+
+      unresolvedToolCalls.push({
+        sessionId: run.sessionId,
+        messageId,
+        sequence: nextSequence,
+        callId,
+        toolName,
+      })
+      nextSequence += 1
+    }
+  }
+
+  return unresolvedToolCalls
+}
+
+function getNextPartSequence(parts: OrchestrationTranscriptMessage["parts"]) {
+  return parts.reduce((value, part) => Math.max(value, part.sequence ?? -1), -1) + 1
+}
+
+function readToolClosureCallId(part: OrchestrationTranscriptMessage["parts"][number]) {
+  const data = readObject(part.data)
+  if (part.kind === "tool_result") {
+    return readString(data, "callId")
+  }
+
+  if (part.kind === "error" && readString(data, "source") === "tool") {
+    return readString(data, "callId")
+  }
+
+  return null
+}
+
 async function partitionToolCallsForCurrentAgent(input: {
   pendingToolCalls: PendingToolCall[]
   currentAgentName?: string
@@ -1122,6 +1326,7 @@ async function partitionToolCallsForCurrentAgent(input: {
       output: access.deniedMessage
         ?? `Tool '${toolCall.name}' is not available for the current agent.`,
       isError: true,
+      errorCode: AGENT_TOOL_DENIED_ERROR_CODE,
     })
   }
 

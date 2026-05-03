@@ -97,6 +97,76 @@ describe("desktop transcript mapper", () => {
     })
   })
 
+  test("derives failed tool status from canonical Tool Result Errors", () => {
+    const message: DesktopMessage = {
+      id: "message-assistant-error",
+      sessionId: "session-1",
+      runId: "run-error",
+      role: "assistant",
+      sequence: 1,
+      createdAt: 1_710_000_000_800,
+      parts: [
+        {
+          id: "part-call-error",
+          sessionId: "session-1",
+          runId: "run-error",
+          messageId: "message-assistant-error",
+          kind: "tool_call",
+          sequence: 0,
+          text: null,
+          data: { callId: "call-error", toolName: "shell", command: "pwd" },
+          createdAt: 1_710_000_000_800,
+        },
+        {
+          id: "part-result-error",
+          sessionId: "session-1",
+          runId: "run-error",
+          messageId: "message-assistant-error",
+          kind: "tool_result",
+          sequence: 1,
+          text: "Run failed before this tool call completed.",
+          data: {
+            callId: "call-error",
+            toolName: "shell",
+            output: "Run failed before this tool call completed.",
+            isError: true,
+            errorCode: "RUN_FAILED_TOOL_CALL",
+          },
+          createdAt: 1_710_000_000_900,
+        },
+      ],
+    }
+
+    expect(mapTranscriptMessage(message)).toEqual({
+      id: "message-assistant-error",
+      role: "assistant",
+      content: "",
+      parts: [
+        {
+          type: "tool_call",
+          toolName: "shell",
+          toolInput: { callId: "call-error", toolName: "shell", command: "pwd" },
+          callId: "call-error",
+          status: "error",
+        },
+        {
+          type: "tool_result",
+          callId: "call-error",
+          result: {
+            callId: "call-error",
+            toolName: "shell",
+            output: "Run failed before this tool call completed.",
+            isError: true,
+            errorCode: "RUN_FAILED_TOOL_CALL",
+          },
+          isError: true,
+        },
+      ],
+      createdAt: new Date(1_710_000_000_800).toISOString(),
+      runId: "run-error",
+    })
+  })
+
   test("marks unresolved tool calls as cancelled when the run is already cancelled", () => {
     const message: DesktopMessage = {
       id: "message-assistant-2",
@@ -369,10 +439,90 @@ describe("desktop transcript mapper", () => {
 
     const result = mapTranscriptMessage(message)
     expect(result.parts).toEqual([
-      { type: "reasoning", text: "Step 1: inspect the file. Step 2: plan the edit." },
+      {
+        type: "reasoning",
+        text: "Step 1: inspect the file. Step 2: plan the edit.",
+        durationMs: 100,
+      },
       { type: "text", text: "Here is the edited file." },
     ])
     expect(result.content).toBe("Here is the edited file.")
+  })
+
+  test("derives a per-LLM-call reasoning duration from the next generated part", () => {
+    const message: DesktopMessage = {
+      id: "message-assistant-reasoning-tool",
+      sessionId: "session-1",
+      runId: "run-r3",
+      role: "assistant",
+      sequence: 1,
+      createdAt: 1_710_000_007_000,
+      parts: [
+        {
+          id: "part-reasoning-tool-1",
+          sessionId: "session-1",
+          runId: "run-r3",
+          messageId: "message-assistant-reasoning-tool",
+          kind: "reasoning",
+          sequence: 0,
+          text: "Need to fetch the page.",
+          data: null,
+          createdAt: 1_710_000_007_200,
+        },
+        {
+          id: "part-tool-call-1",
+          sessionId: "session-1",
+          runId: "run-r3",
+          messageId: "message-assistant-reasoning-tool",
+          kind: "tool_call",
+          sequence: 1,
+          text: null,
+          data: { callId: "call-fetch", toolName: "webfetch", url: "http://127.0.0.1:4173/" },
+          createdAt: 1_710_000_009_500,
+        },
+      ],
+    }
+
+    const result = mapTranscriptMessage(message)
+    expect(result.parts?.[0]).toEqual({
+      type: "reasoning",
+      text: "Need to fetch the page.",
+      durationMs: 2500,
+    })
+  })
+
+  test("preserves completed reasoning activity metadata for desktop summaries", () => {
+    const message: DesktopMessage = {
+      id: "message-assistant-reasoning-summary",
+      sessionId: "session-1",
+      runId: "run-r2",
+      role: "assistant",
+      sequence: 1,
+      createdAt: 1_710_000_006_000,
+      parts: [
+        {
+          id: "part-reasoning-summary-1",
+          sessionId: "session-1",
+          runId: "run-r2",
+          messageId: "message-assistant-reasoning-summary",
+          kind: "reasoning",
+          sequence: 0,
+          text: "Plan the next call.",
+          data: { activityLabel: "LLM call", durationMs: 2400 },
+          createdAt: 1_710_000_006_000,
+        },
+      ],
+    }
+
+    const result = mapTranscriptMessage(message)
+    expect(result.parts).toEqual([
+      {
+        type: "reasoning",
+        text: "Plan the next call.",
+        activityLabel: "LLM call",
+        durationMs: 2400,
+      },
+    ])
   })
 
 })

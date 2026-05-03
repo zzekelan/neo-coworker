@@ -21,6 +21,7 @@ import type {
   DesktopSessionSnapshot,
   DesktopSkillCatalogEntry,
   DesktopTranscriptMessage,
+  MessagePart,
 } from "../view-types"
 import { cn } from "../lib/utils"
 import { createSkillUpdateQueue, type SkillUpdateQueue } from "../skill-update-queue"
@@ -40,11 +41,12 @@ const SKILL_DRAWER_TRANSITION = {
   duration: 0.22,
   ease: [0.22, 1, 0.36, 1] as const,
 }
-const TRANSCRIPT_BOTTOM_SAFE_AREA = 72
+const TRANSCRIPT_BOTTOM_SAFE_AREA = 42
 
 interface ChatAreaProps {
   sessionSummary: DesktopSession | null
   hasSessions: boolean
+  activeWorkspaceName: string | null
   session: DesktopSessionSnapshot | null
   skills: DesktopSkillCatalogEntry[]
   transcript: DesktopTranscriptMessage[]
@@ -78,6 +80,7 @@ export type CompatibilityPromptView = {
 export function ChatArea({
   sessionSummary,
   hasSessions,
+  activeWorkspaceName,
   session,
   skills,
   transcript,
@@ -156,15 +159,22 @@ export function ChatArea({
   const isBusy = isBusyRunStatus(activeRunStatus)
   const isRunSkillEditingLocked = Boolean(session?.activeRun)
   const activePermissionRequest = permissionRequests[0] ?? null
-  const hasActiveToolCall = useMemo(
-    () => hasPendingToolCall(transcript, activeRunId),
+  const activeRunLatestMessageId = useMemo(
+    () => findLatestRenderableMessageId(transcript, activeRunId),
     [transcript, activeRunId],
   )
-  const hasActiveReasoningPart = useMemo(
-    () => hasVisibleReasoningPart(transcript, activeRunId),
+  const activeRunLiveReasoningMessageId = useMemo(
+    () => findLiveReasoningMessageId(transcript, activeRunId),
     [transcript, activeRunId],
   )
-  const showThinkingIndicator = isRunning && !hasActiveToolCall && !hasActiveReasoningPart
+  const messageIdsBeforeLaterReasoning = useMemo(
+    () => findMessageIdsBeforeLaterReasoning(transcript),
+    [transcript],
+  )
+  const finalAssistantTextMessageIdByRun = useMemo(
+    () => findFinalAssistantTextMessageIdsByRun(transcript),
+    [transcript],
+  )
   const footerRunStatus = activeRunStatus === "running" || activeRunStatus === "queued" ? null : activeRunStatus
   const finishedRunNotice = getFinishedRunNotice(session?.activeRun?.id ?? null, session?.latestRun?.status ?? null)
   const sessionSummaryWithOptimisticSkills =
@@ -378,6 +388,7 @@ export function ChatArea({
           <EmptyChatState
             icon={<Play className="h-6 w-6 text-accent" />}
             title={hasSessions ? text.chat.selectSession : text.chat.createSessionToStart}
+            subtitle={!hasSessions ? text.chat.readyInWorkspace(activeWorkspaceName ?? text.sidebar.workspace, currentAgentLabel) : undefined}
             offsetClassName="translate-y-2"
             action={
               !hasSessions ? (
@@ -441,11 +452,21 @@ export function ChatArea({
           overscan={5}
           className="px-4 md:px-8"
           bottomInset={bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA}
+          scrollButtonOffset={bottomCardHeight + 16}
           renderItem={(message, index) => {
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
             const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined
+            const shouldDelayFoldForLiveReasoning =
+              message.role === "assistant"
+              && message.runId === activeRunId
+              && Boolean(activeRunLiveReasoningMessageId)
+              && message.id !== activeRunLiveReasoningMessageId
+            const shouldFoldActivityImmediately =
+              message.role === "assistant"
+              && messageIdsBeforeLaterReasoning.has(message.id)
+              && !shouldDelayFoldForLiveReasoning
             return (
-              <div className="mx-auto max-w-4xl">
+              <div className="mx-auto max-w-[54rem]">
                 {boundaryPart && boundaryPart.type === "compaction_boundary" ? (
                   <CompactionDivider
                     tokensBefore={boundaryPart.tokensBefore}
@@ -455,7 +476,14 @@ export function ChatArea({
                   <Message
                     message={message}
                     previousTimestamp={prevTimestamp}
-                    isActiveRunMessage={message.runId === activeRunId && isRunning}
+                    isActiveRunMessage={message.id === activeRunLatestMessageId && isRunning}
+                    foldActivityAfterNextReasoning={shouldDelayFoldForLiveReasoning}
+                    foldActivityImmediately={shouldFoldActivityImmediately}
+                    isFinalRunAssistantTextMessage={
+                      message.runId && message.runId !== activeRunId
+                        ? finalAssistantTextMessageIdByRun.get(message.runId) === message.id
+                        : false
+                    }
                     waitingPermissionToolName={
                       message.runId === activeRunId ? activePermissionRequest?.toolName ?? null : null
                     }
@@ -465,7 +493,7 @@ export function ChatArea({
             )
           }}
           footer={
-            <div className="mx-auto max-w-4xl">
+            <div className="mx-auto max-w-[54rem]">
               {compatibilityPrompt ? (
                 <div
                   role="alertdialog"
@@ -502,41 +530,17 @@ export function ChatArea({
                 </div>
               ) : null}
 
-              {activePermissionRequest ? (
-                <PermissionRequest
-                  key={activePermissionRequest.id}
-                  request={activePermissionRequest}
-                  autoFocus
-                  onReply={handlePermissionReply}
-                />
-              ) : null}
-
               {finishedRunNotice ? (
                 <RunFinishedNotice label={finishedRunNotice === "cancelled" ? text.chat.runFinishedCancelled : text.chat.runFinishedFailed} />
               ) : null}
 
-              {showThinkingIndicator ? (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3 }}
-                  className="flex items-center py-3"
-                  role="status"
-                  aria-live="polite"
-                  aria-label={text.message.thinking}
-                >
-                  <span className="text-[13px] font-medium leading-5 text-muted/70">
-                    {text.message.thinking}
-                  </span>
-                </motion.div>
-              ) : null}
             </div>
           }
         />
       )}
 
-       <div className="pointer-events-none absolute right-0 bottom-0 left-0 px-4 pb-4">
-        <motion.div ref={bottomCardRef} layout transition={SKILL_DRAWER_TRANSITION} className="pointer-events-auto relative mx-auto max-w-4xl">
+       <div className="pointer-events-none absolute right-3 bottom-0 left-0 bg-paper px-4 pb-1.5">
+        <motion.div ref={bottomCardRef} layout transition={SKILL_DRAWER_TRANSITION} className="pointer-events-auto relative mx-auto max-w-4xl bg-paper">
           <div ref={skillPanelShellRef}>
             <AnimatePresence initial={false}>
               {isSkillPanelOpen ? (
@@ -576,130 +580,145 @@ export function ChatArea({
             </AnimatePresence>
           </div>
 
-          <motion.form
-            layout
-            transition={SKILL_DRAWER_TRANSITION}
-            onSubmit={handleSubmit}
-            className={cn(
-              "relative flex flex-col rounded-2xl border bg-paper shadow-sm transition-all",
-              isBusy
-                ? "border-border opacity-80"
-                : "border-border focus-within:border-highlight/50 focus-within:ring-4 focus-within:ring-highlight/10",
-            )}
-          >
-            <textarea
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onCompositionStart={() => setIsComposing(true)}
-              onCompositionEnd={() => setIsComposing(false)}
-              placeholder={
-                isBusy
-                  ? text.chat.agentBusyPlaceholder
-                  : text.chat.askPlaceholder
-              }
-              disabled={isInputLocked}
-              aria-label={text.chat.askPlaceholder}
-              className="min-h-[96px] max-h-64 flex-1 resize-none border-0 bg-transparent px-4 pt-3 pb-2 text-[15px] leading-relaxed text-ink placeholder:text-accent outline-none focus:ring-0"
-              rows={2}
-              onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !isComposing &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault()
-                  void submitMessage()
-                }
-              }}
+          {activePermissionRequest ? (
+            <PermissionRequest
+              key={activePermissionRequest.id}
+              request={activePermissionRequest}
+              autoFocus
+              variant="composer"
+              onReply={handlePermissionReply}
             />
+          ) : (
+            <motion.form
+              layout
+              transition={SKILL_DRAWER_TRANSITION}
+              onSubmit={handleSubmit}
+              className={cn(
+                "relative flex flex-col rounded-2xl border bg-paper shadow-sm transition-all",
+                isBusy
+                  ? "border-border"
+                  : "border-border focus-within:border-highlight/50 focus-within:ring-4 focus-within:ring-highlight/10",
+              )}
+            >
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => setIsComposing(false)}
+                placeholder={
+                  isBusy
+                    ? text.chat.agentBusyPlaceholder
+                    : text.chat.askPlaceholder
+                }
+                disabled={isInputLocked}
+                aria-label={text.chat.askPlaceholder}
+                className="min-h-[96px] max-h-64 flex-1 resize-none border-0 bg-transparent px-4 pt-3 pb-2 text-[15px] leading-relaxed text-ink placeholder:text-accent outline-none focus:ring-0"
+                rows={2}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !isComposing &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault()
+                    void submitMessage()
+                  }
+                }}
+              />
 
-            <div className="flex items-center justify-between mx-2 px-0.5 pt-1 pb-1.5">
-              <div className="flex items-center gap-2">
-                <div ref={agentSelectorShellRef} className="relative">
-                  <AgentBadge
-                    agentLabel={currentAgentLabel}
-                    isOpen={isAgentSelectorOpen}
-                    onClick={() => setIsAgentSelectorOpen((prev) => !prev)}
-                  />
-                  <AgentSelector
-                    isOpen={isAgentSelectorOpen}
-                    agents={primaryAgents}
-                    currentAgent={currentAgent}
-                    onSelect={handleAgentSelect}
-                  />
+              <div className="flex items-center justify-between mx-2 px-0.5 pt-1 pb-1.5">
+                <div className="flex items-center gap-2">
+                  <div ref={agentSelectorShellRef} className="relative">
+                    <AgentBadge
+                      agentLabel={currentAgentLabel}
+                      isOpen={isAgentSelectorOpen}
+                      onClick={() => setIsAgentSelectorOpen((prev) => !prev)}
+                    />
+                    <AgentSelector
+                      isOpen={isAgentSelectorOpen}
+                      agents={primaryAgents}
+                      currentAgent={currentAgent}
+                      onSelect={handleAgentSelect}
+                    />
+                  </div>
+
+                  {skills.length > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsSkillPanelOpen((previous) => !previous)}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition-colors",
+                          isSkillPanelOpen
+                            ? "bg-surface text-ink"
+                            : "text-accent hover:bg-surface hover:text-ink",
+                        )}
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        {text.chat.skills}
+                        <ChevronDown
+                          className={cn("h-3 w-3 transition-transform", !isSkillPanelOpen && "rotate-180")}
+                        />
+                      </button>
+
+                      {visibleActiveSkills.length > 0 ? (
+                        visibleActiveSkills.map((skillName) => (
+                          <span
+                            key={skillName}
+                            className="inline-flex items-center gap-1 rounded-md bg-highlight/10 px-1.5 py-0.5 text-[11px] font-medium text-highlight"
+                          >
+                            <Zap className="h-2.5 w-2.5" />
+                            {skillName}
+                          </span>
+                        ))
+                      ) : null}
+                    </>
+                  ) : null}
                 </div>
 
-                {skills.length > 0 ? (
-                  <>
+                <div className="flex items-center gap-2">
+                  {isBusy ? (
                     <button
                       type="button"
-                      onClick={() => setIsSkillPanelOpen((previous) => !previous)}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition-colors",
-                        isSkillPanelOpen
-                          ? "bg-surface text-ink"
-                          : "text-accent hover:bg-surface hover:text-ink",
-                      )}
+                      onClick={() => void onCancelRun()}
+                      className="rounded-lg border border-danger/30 bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
+                      title="Cancel Run"
                     >
-                      <Sparkles className="h-3 w-3" />
-                      {text.chat.skills}
-                      <ChevronDown
-                        className={cn("h-3 w-3 transition-transform", !isSkillPanelOpen && "rotate-180")}
-                      />
+                      <Square className="h-4 w-4 fill-current" />
                     </button>
-
-                    {visibleActiveSkills.length > 0 ? (
-                      visibleActiveSkills.map((skillName) => (
-                        <span
-                          key={skillName}
-                          className="inline-flex items-center gap-1 rounded-md bg-highlight/10 px-1.5 py-0.5 text-[11px] font-medium text-highlight"
-                        >
-                          <Zap className="h-2.5 w-2.5" />
-                          {skillName}
-                        </span>
-                      ))
-                    ) : null}
-                  </>
-                ) : null}
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={!input.trim() || isComposing || isSubmittingMessage}
+                      className="rounded-lg bg-ink p-2 text-paper shadow-sm transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 disabled:hover:bg-ink disabled:hover:text-paper"
+                    >
+                      <ArrowUp className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
               </div>
+            </motion.form>
+          )}
 
-              <div className="flex items-center gap-2">
-                {isBusy ? (
-                  <button
-                    type="button"
-                    onClick={() => void onCancelRun()}
-                    className="rounded-lg border border-danger/30 bg-danger/10 p-2 text-danger transition-colors hover:bg-danger/20"
-                    title="Cancel Run"
-                  >
-                    <Square className="h-4 w-4 fill-current" />
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={!input.trim() || isComposing || isSubmittingMessage}
-                    className="rounded-lg bg-ink p-2 text-paper shadow-sm transition-colors hover:bg-surface hover:text-ink disabled:opacity-50 disabled:hover:bg-ink disabled:hover:text-paper"
-                  >
-                    <ArrowUp className="h-5 w-5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </motion.form>
-
-          {/* Status bar — context · model · run status · keyboard hints */}
-          <div className="mt-1.5 flex h-6 items-center justify-between px-1 text-[11px] text-accent">
-            <div className="flex min-w-0 items-center gap-1.5">
+          {/* Status strip — context · model/agent · run status · keyboard hints */}
+          <div className="mt-1.5 flex h-7 items-center justify-between gap-3 border-t border-border/60 px-1 pt-1 text-[11px] text-accent">
+            <div className="flex min-w-0 items-center gap-2">
               <ContextBudgetBar usage={contextUsage} />
-              {modelName ? (
-                <>
-                  <span className="text-muted/40">·</span>
-                  <span className="shrink-0 text-accent" title={modelName}>{modelName}</span>
-                </>
-              ) : null}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+              {modelName ? (
+                <span className="min-w-0 truncate rounded-md border border-border/60 bg-surface/60 px-2 py-0.5 text-muted" title={modelName}>
+                  {modelName}
+                </span>
+              ) : null}
+              <span className="shrink-0 rounded-md border border-border/60 bg-surface/60 px-2 py-0.5 text-muted" title={currentAgentLabel}>
+                {currentAgentLabel}
+              </span>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-3">
               <RunStatusDot status={footerRunStatus} />
               <span className="text-muted/60 select-none">
                 ⏎ {text.chat.send} · ⇧⏎ {text.chat.newLine}
@@ -712,48 +731,114 @@ export function ChatArea({
   )
 }
 
-function hasPendingToolCall(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
+function findLatestRenderableMessageId(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
   if (!activeRunId) {
-    return false
+    return null
   }
 
-  return transcript.some((message) => {
+  let messageId: string | null = null
+
+  for (const message of transcript) {
     if (message.runId !== activeRunId) {
-      return false
+      continue
+    }
+
+    if ((message.parts ?? []).some(isRenderableTranscriptActivityPart)) {
+      messageId = message.id
+    }
+  }
+
+  return messageId
+}
+
+function findLiveReasoningMessageId(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
+  if (!activeRunId) {
+    return null
+  }
+
+  let messageId: string | null = null
+
+  for (const message of transcript) {
+    if (message.runId !== activeRunId) {
+      continue
     }
 
     const parts = message.parts ?? []
-    const resolvedCallIds = new Set(
-      parts
-        .filter((part) => part.type === "tool_result")
-        .map((part) => part.callId),
-    )
-
-    return parts.some((part) => {
-      if (part.type !== "tool_call") {
-        return false
+    let latestPart: MessagePart | null = null
+    for (let index = parts.length - 1; index >= 0; index -= 1) {
+      const part = parts[index]
+      if (isRenderableTranscriptActivityPart(part)) {
+        latestPart = part
+        break
       }
-
-      return !resolvedCallIds.has(part.callId)
-        && part.status !== "success"
-        && part.status !== "error"
-        && part.status !== "cancelled"
-    })
-  })
-}
-
-function hasVisibleReasoningPart(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
-  if (!activeRunId) {
-    return false
+    }
+    if (latestPart?.type === "reasoning" && latestPart.text.trim().length > 0) {
+      messageId = message.id
+    }
   }
 
-  return transcript.some((message) => {
-    if (message.runId !== activeRunId) {
-      return false
+  return messageId
+}
+
+function findMessageIdsBeforeLaterReasoning(transcript: DesktopTranscriptMessage[]) {
+  const messageIds = new Set<string>()
+  const previousAssistantMessageIdsByRun = new Map<string, string[]>()
+
+  for (const message of transcript) {
+    if (message.role !== "assistant" || !message.runId) {
+      continue
     }
 
-    return (message.parts ?? []).some((part) => part.type === "reasoning" && part.text.trim().length > 0)
-  })
+    const parts = message.parts ?? []
+    const hasRenderablePart = parts.some(isRenderableTranscriptActivityPart) || messageHasVisibleText(message)
+    const hasReasoningPart = parts.some(isRenderableReasoningPart)
+    const previousMessageIds = previousAssistantMessageIdsByRun.get(message.runId) ?? []
+
+    if (hasReasoningPart) {
+      for (const messageId of previousMessageIds) {
+        messageIds.add(messageId)
+      }
+    }
+
+    if (hasRenderablePart) {
+      previousAssistantMessageIdsByRun.set(message.runId, [...previousMessageIds, message.id])
+    }
+  }
+
+  return messageIds
+}
+
+function findFinalAssistantTextMessageIdsByRun(transcript: DesktopTranscriptMessage[]) {
+  const messageIds = new Map<string, string>()
+
+  for (const message of transcript) {
+    if (message.role !== "assistant" || !message.runId) {
+      continue
+    }
+
+    if (messageHasVisibleText(message)) {
+      messageIds.set(message.runId, message.id)
+    }
+  }
+
+  return messageIds
+}
+
+function messageHasVisibleText(message: DesktopTranscriptMessage) {
+  const parts = message.parts
+  if (!parts) {
+    return message.content.trim().length > 0
+  }
+
+  return parts.some((part) => part.type === "text" && part.text.trim().length > 0)
+}
+
+function isRenderableTranscriptActivityPart(part: MessagePart) {
+  return part.type !== "tool_result" && (part.type !== "text" || part.text.trim().length > 0)
+}
+
+function isRenderableReasoningPart(part: MessagePart) {
+  return part.type === "reasoning" && part.text.trim().length > 0
 }
 
 function getFinishedRunNotice(activeRunId: string | null, latestRunStatus: string | null | undefined) {
@@ -905,6 +990,7 @@ function ThemeToggleButton() {
 function EmptyChatState(input: {
   icon: React.ReactNode
   title: string
+  subtitle?: string
   action?: React.ReactNode
   errorMessage: string | null
   offsetClassName?: string
@@ -924,6 +1010,9 @@ function EmptyChatState(input: {
             {input.icon}
           </div>
           <p className="text-sm font-medium tracking-wide text-muted">{input.title}</p>
+          {input.subtitle ? (
+            <p className="mt-2 max-w-sm text-center text-xs leading-relaxed text-muted">{input.subtitle}</p>
+          ) : null}
           {input.action}
           {input.errorMessage ? (
             <p className="mt-3 max-w-sm text-center text-xs text-danger">{input.errorMessage}</p>

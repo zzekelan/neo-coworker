@@ -22,11 +22,14 @@ export type OrchestrationToolExecutionInput = {
 export type OrchestrationToolExecutionResult = {
   output: string
   isError?: boolean
+  errorCode?: string
   metadata?: Record<string, unknown>
 }
 
 export const TOOL_FAILURE_MESSAGE_METADATA_KEY = "__orchestrationToolFailureMessage"
 export const TOOL_PERMISSION_DENIED_METADATA_KEY = "__orchestrationToolPermissionDenied"
+export const TOOL_PERMISSION_DENIED_ERROR_CODE = "TOOL_PERMISSION_DENIED"
+export const AGENT_TOOL_DENIED_ERROR_CODE = "AGENT_TOOL_DENIED"
 export const TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY = "__orchestrationRecoverableUnknownTool"
 export const TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY = "__orchestrationUnknownToolAllowedNames"
 
@@ -42,6 +45,7 @@ export type OrchestrationBatchExecutionResult = {
   toolName: string
   output: string
   isError?: boolean
+  errorCode?: string
   metadata?: Record<string, unknown>
 }
 

@@ -5,7 +5,8 @@ describe("desktop permission request", () => {
   test("uses linear card-style design with CSS variables", () => {
     const source = readFileSync("src/desktop/src/components/PermissionRequest.tsx", "utf8")
 
-    expect(source).toContain("border-border bg-surface")
+    expect(source).toContain("border border-border shadow-sm")
+    expect(source).toContain("rounded-xl bg-surface")
     expect(source).toContain("px-5 py-4")
     expect(source).toContain("rounded-xl")
 

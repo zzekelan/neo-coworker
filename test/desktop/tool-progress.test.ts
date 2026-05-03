@@ -39,6 +39,9 @@ describe("Tool Progress UI (Source Analysis)", () => {
     expect(cssSource).toContain("@keyframes typing-dot")
     expect(cssSource).toContain(".animate-typing-dot")
     expect(cssSource).toContain("animation: typing-dot")
+    expect(cssSource).toContain("@keyframes symbol-spin")
+    expect(cssSource).toContain(".animate-symbol-spin")
+    expect(cssSource).toContain("animation: symbol-spin 4s linear infinite")
   })
 
   test("should have status indicators in ToolIndicator for pending status", () => {
@@ -48,7 +51,14 @@ describe("Tool Progress UI (Source Analysis)", () => {
     expect(messageSource).toContain("text-danger")
     expect(messageSource).toContain('status === "waiting_permission"')
     expect(messageSource).toContain("text.message.waitingPermission")
-    expect(messageSource).toContain("border-l-2 border-highlight/45 bg-highlight/5 pl-2")
+    expect(messageSource).toContain('className="relative"')
+    expect(messageSource).toContain("ACTIVITY_ROW_CLASS")
+    expect(messageSource).toContain("items-center gap-2")
+    expect(messageSource).toContain("h-1.5 w-1.5 shrink-0")
+    expect(messageSource).toContain("flex min-w-0 flex-1 items-center gap-1.5")
+    expect(messageSource).toContain("THINKING_LABEL_CLASS")
+    expect(messageSource).toContain("ToolDetailsPanel")
+    expect(messageSource).not.toContain("border-l-2 border-highlight/45 bg-highlight/5 pl-2")
   })
 
   test("should extract progress text to subtitle in ToolIndicator", () => {

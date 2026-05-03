@@ -14,8 +14,9 @@ export function mapTranscriptMessage(
     ? message.parts.filter((p) => p.kind !== "text")
     : message.parts
   const callStatuses = collectToolCallStatuses(filteredParts, input.runStatusById?.get(message.runId))
+  const derivedReasoningDurationMs = deriveReasoningDurationMs(message, filteredParts)
   const parts = filteredParts
-    .map((part) => mapMessagePart(part, callStatuses))
+    .map((part) => mapMessagePart(part, callStatuses, derivedReasoningDurationMs))
     .filter((part): part is MessagePart => part !== null)
   const content = buildMessageContent(parts)
   const hasStructuredParts = parts.some((part) => part.type !== "text")
@@ -44,7 +45,7 @@ function collectToolCallStatuses(parts: DesktopPart[], runStatus: RunStatus | un
     if (part.kind === "tool_result") {
       const callId = readObjectString(part.data, "callId")
       if (callId) {
-        statuses.set(callId, "success")
+        statuses.set(callId, readObjectBoolean(part.data, "isError") ? "error" : "success")
       }
       continue
     }
@@ -71,6 +72,7 @@ function collectToolCallStatuses(parts: DesktopPart[], runStatus: RunStatus | un
 function mapMessagePart(
   part: DesktopPart,
   callStatuses: Map<string, ToolCallStatus>,
+  derivedReasoningDurationMs: number | null,
 ): MessagePart | null {
   if (part.kind === "tool_call") {
     const callId = readObjectString(part.data, "callId") ?? part.id
@@ -89,6 +91,7 @@ function mapMessagePart(
       type: "tool_result",
       callId: readObjectString(part.data, "callId") ?? part.id,
       result: part.data ?? part.text ?? "",
+      isError: readObjectBoolean(part.data, "isError") || undefined,
     }
   }
 
@@ -119,10 +122,19 @@ function mapMessagePart(
     if (!reasoningText) {
       return null
     }
-    return {
+    const mappedPart: MessagePart = {
       type: "reasoning",
       text: reasoningText,
     }
+    const activityLabel = readObjectString(part.data, "activityLabel")
+    const durationMs = readObjectNumber(part.data, "durationMs")
+    if (activityLabel) {
+      mappedPart.activityLabel = activityLabel
+    }
+    if (durationMs !== null || derivedReasoningDurationMs !== null) {
+      mappedPart.durationMs = durationMs ?? derivedReasoningDurationMs ?? undefined
+    }
+    return mappedPart
   }
 
   const text = formatPlainPart(part)
@@ -151,6 +163,23 @@ function buildMessageContent(parts: MessagePart[]) {
     .filter((part): part is Extract<MessagePart, { type: "text" }> => part.type === "text")
     .map((part) => part.text)
     .join("\n\n")
+}
+
+function deriveReasoningDurationMs(message: DesktopMessage, parts: DesktopPart[]) {
+  const reasoningPart = parts.find((part) => part.kind === "reasoning" && (part.text ?? "").trim().length > 0)
+  if (!reasoningPart || readObjectNumber(reasoningPart.data, "durationMs") !== null) {
+    return null
+  }
+
+  const endPart = parts.find((part) =>
+    part.sequence > reasoningPart.sequence
+    && (part.kind === "tool_call" || part.kind === "text")
+  )
+  if (!endPart) {
+    return null
+  }
+
+  return Math.max(0, endPart.createdAt - message.createdAt)
 }
 
 function formatPlainPart(part: DesktopPart) {
@@ -193,6 +222,15 @@ function readObjectNumber(value: unknown, key: string) {
 
   const candidate = (value as Record<string, unknown>)[key]
   return typeof candidate === "number" ? candidate : null
+}
+
+function readObjectBoolean(value: unknown, key: string) {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const candidate = (value as Record<string, unknown>)[key]
+  return typeof candidate === "boolean" ? candidate : null
 }
 
 function toIsoString(value: number) {

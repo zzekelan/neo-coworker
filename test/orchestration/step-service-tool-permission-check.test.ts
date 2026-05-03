@@ -77,6 +77,7 @@ describe("orchestration step service tool permission interception", () => {
           toolName: "shell",
           output: buildToolDeniedMessage("shell", "plan"),
           isError: true,
+          errorCode: "AGENT_TOOL_DENIED",
         },
       },
     ])

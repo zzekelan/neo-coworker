@@ -7,8 +7,17 @@ import { ChatArea } from "./components/ChatArea"
 import { KeyboardShortcutProvider } from "./providers/KeyboardShortcutProvider"
 import { ThemeProvider } from "./providers/ThemeProvider"
 import { CommandPalette } from "./components/CommandPalette"
+import { DesktopActivityDetailsHarness, DesktopRunningStatesHarness } from "./DesktopRunningStatesHarness"
 
 export default function App() {
+  if (shouldShowRunningStatesHarness()) {
+    return <DesktopRunningStatesHarness />
+  }
+
+  if (shouldShowActivityDetailsHarness()) {
+    return <DesktopActivityDetailsHarness />
+  }
+
   const {
     workspaces,
     activeWorkspaceRoot,
@@ -55,6 +64,10 @@ export default function App() {
     activeSessionId && clearedTranscriptState?.sessionId === activeSessionId
       ? transcript.slice(Math.min(clearedTranscriptState.hiddenCount, transcript.length))
       : transcript
+  const activeWorkspaceName =
+    workspaces.find((workspace) => workspace.workspaceRoot === activeWorkspaceRoot)?.name ??
+    workspaces[0]?.name ??
+    null
 
   const handleClearTranscriptDisplay = () => {
     if (!activeSessionId) {
@@ -125,6 +138,7 @@ export default function App() {
           <ChatArea
             sessionSummary={sessions.find((candidate) => candidate.id === activeSessionId) || null}
             hasSessions={sessions.length > 0}
+            activeWorkspaceName={activeWorkspaceName}
             session={session}
             skills={skills}
             transcript={visibleTranscript}
@@ -158,4 +172,17 @@ export default function App() {
     </KeyboardShortcutProvider>
     </ThemeProvider>
   )
+}
+
+function shouldShowRunningStatesHarness() {
+  return isLocalDesktopDevServer() && new URLSearchParams(window.location.search).get("fixture") === "running-states"
+}
+
+function shouldShowActivityDetailsHarness() {
+  return isLocalDesktopDevServer() && new URLSearchParams(window.location.search).get("fixture") === "activity-details"
+}
+
+function isLocalDesktopDevServer() {
+  return window.location.port === "4173"
+    && (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost")
 }

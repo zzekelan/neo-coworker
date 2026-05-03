@@ -169,6 +169,7 @@ function createRecoverableUnknownToolResult(input: {
   return {
     output: `Tool '${input.toolName}' is not available. Allowed tools: ${allowedToolList}. Use one of the allowed tools instead.`,
     isError: true,
+    errorCode: "UNKNOWN_TOOL",
     metadata: {
       [TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY]: true,
       [TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]: input.allowedToolNames,

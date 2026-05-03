@@ -284,7 +284,7 @@ describe("run command", () => {
     expect(output.join("")).toContain(
       `permission.requested write write ${join(harness.workspaceRoot, "notes.txt")}`,
     )
-    expect(output.join("")).toContain("error Tool write failed: Permission denied")
+    expect(output.join("")).toContain("tool.call.completed write: Tool write failed: Permission denied")
     expect(output.join("")).toContain(`run.cancelled ${run.id}`)
     expect(output.join("")).not.toContain("This turn should not run.")
   })
@@ -454,8 +454,8 @@ describe("run command", () => {
     expect(output.join("")).toContain(`run.cancelled ${run.id}`)
   })
 
-  test("retries the same session after permission-time cancellation without replaying the stale tool call", async () => {
-    let secondRunSawCancelledToolCall = false
+  test("retries the same session after permission-time cancellation with the cancelled tool call closed", async () => {
+    let secondRunSawClosedCancelledToolCall = false
     const harness = await createHarness(
       "cli-run-permission-cancel-retry",
       createTurnProvider([
@@ -471,13 +471,25 @@ describe("run command", () => {
           }
         },
         async function* (request) {
-          secondRunSawCancelledToolCall = request.messages.some(
+          const sawCancelledToolCall = request.messages.some(
             (message) =>
               message.role === "assistant" &&
               message.parts.some(
                 (part) => part.type === "tool_call" && part.callId === "call_write_first",
               ),
           )
+          const sawCancellationResult = request.messages.some(
+            (message) =>
+              message.role === "tool" &&
+              message.parts.some(
+                (part) =>
+                  part.type === "tool_result" &&
+                  part.callId === "call_write_first" &&
+                  part.isError === true &&
+                  part.output === "Run was cancelled before this tool call completed.",
+              ),
+          )
+          secondRunSawClosedCancelledToolCall = sawCancelledToolCall && sawCancellationResult
 
           yield {
             type: "tool.call",
@@ -543,7 +555,7 @@ describe("run command", () => {
 
     const runs = harness.repository.runs.listBySession(sessionId)
 
-    expect(secondRunSawCancelledToolCall).toBe(false)
+    expect(secondRunSawClosedCancelledToolCall).toBe(true)
     expect(runs.map((run) => run.status)).toEqual(["cancelled", "completed"])
     expect(
       harness.permissionRepository.requests.listByRun(runs[0]!.id).map((request) => request.status),

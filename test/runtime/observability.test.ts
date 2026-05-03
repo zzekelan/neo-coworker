@@ -110,6 +110,120 @@ describe("runtime observability", () => {
     ])
   })
 
+  test("exports terminalization-created tool closures before terminal run events", async () => {
+    const failedHarness = await createHarness("trace-failed-tool-closure", false)
+    const failedRun = startPromptRun({
+      repository: failedHarness.repository,
+      service: failedHarness.service,
+      sessionId: failedHarness.session.id,
+      runId: "run_trace_failed_tool_closure",
+      messageId: "message_trace_failed_tool_closure",
+      prompt: "Fail after emitting a tool call",
+    })
+    const failedRuntime = createRuntime({
+      provider: createTurnProvider([
+        async function* () {
+          yield {
+            type: "tool.call",
+            callId: "call_trace_failed",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          throw new Error("provider failed")
+        },
+      ]),
+      repository: failedHarness.repository,
+      permissionRepository: failedHarness.permissionRepository,
+      observability: failedHarness.observability,
+      now: failedHarness.now,
+    })
+
+    await collectEvents((await failedRuntime.run({
+      sessionId: failedHarness.session.id,
+      runId: failedRun.run.id,
+    })).events)
+
+    const failedTrace = failedHarness.observability.exportRunTrace(failedRun.run.id)
+    const failedClosureIndex = (failedTrace?.events ?? []).findIndex(
+      (event) => event.eventType === "tool.call.completed" && event.data.callId === "call_trace_failed",
+    )
+    const failedTerminalIndex = (failedTrace?.events ?? []).findIndex((event) => event.eventType === "run.failed")
+    expect(failedTrace?.events[failedClosureIndex]?.data).toMatchObject({
+      callId: "call_trace_failed",
+      name: "shell",
+      output: "Run failed before this tool call completed.",
+      isError: true,
+      errorCode: "RUN_FAILED_TOOL_CALL",
+    })
+    expect(failedClosureIndex).toBeGreaterThan(-1)
+    expect(failedTerminalIndex).toBeGreaterThan(failedClosureIndex)
+
+    const cancelledHarness = await createHarness("trace-cancelled-tool-closure", false)
+    const cancelledRun = startPromptRun({
+      repository: cancelledHarness.repository,
+      service: cancelledHarness.service,
+      sessionId: cancelledHarness.session.id,
+      runId: "run_trace_cancelled_tool_closure",
+      messageId: "message_trace_cancelled_tool_closure",
+      prompt: "Cancel after emitting a tool call",
+    })
+    let resolveToolCallPersisted: () => void = () => {}
+    const toolCallPersisted = new Promise<void>((resolve) => {
+      resolveToolCallPersisted = resolve
+    })
+    const cancelledRuntime = createRuntime({
+      provider: createTurnProvider([
+        async function* (request: { signal: AbortSignal }) {
+          yield {
+            type: "tool.call",
+            callId: "call_trace_cancelled",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          resolveToolCallPersisted()
+          await new Promise<void>((_, reject) => {
+            request.signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("cancelled by operator")
+                error.name = "AbortError"
+                reject(error)
+              },
+              { once: true },
+            )
+          })
+        },
+      ]),
+      repository: cancelledHarness.repository,
+      permissionRepository: cancelledHarness.permissionRepository,
+      observability: cancelledHarness.observability,
+      now: cancelledHarness.now,
+    })
+
+    const cancelledHandle = await cancelledRuntime.run({
+      sessionId: cancelledHarness.session.id,
+      runId: cancelledRun.run.id,
+    })
+    await toolCallPersisted
+    cancelledHandle.cancel()
+    await collectEvents(cancelledHandle.events)
+
+    const cancelledTrace = cancelledHarness.observability.exportRunTrace(cancelledRun.run.id)
+    const cancelledClosureIndex = (cancelledTrace?.events ?? []).findIndex(
+      (event) => event.eventType === "tool.call.completed" && event.data.callId === "call_trace_cancelled",
+    )
+    const cancelledTerminalIndex = (cancelledTrace?.events ?? []).findIndex((event) => event.eventType === "run.cancelled")
+    expect(cancelledTrace?.events[cancelledClosureIndex]?.data).toMatchObject({
+      callId: "call_trace_cancelled",
+      name: "shell",
+      output: "Run was cancelled before this tool call completed.",
+      isError: true,
+      errorCode: "RUN_CANCELLED_TOOL_CALL",
+    })
+    expect(cancelledClosureIndex).toBeGreaterThan(-1)
+    expect(cancelledTerminalIndex).toBeGreaterThan(cancelledClosureIndex)
+  })
+
   test("captures subagent protocol telemetry across parent and child runs", async () => {
     const harness = await createHarness("trace-subagent-protocol", true)
     const childPrompt = "Collect a structured source note from README.md."

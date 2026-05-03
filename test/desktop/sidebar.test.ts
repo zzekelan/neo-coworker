@@ -36,4 +36,13 @@ describe("desktop sidebar", () => {
     expect(source).toContain("settings={settings}")
     expect(source).toContain("text.sidebar.settings")
   })
+
+  test("keeps workspace dropdown visually light with breathing room before sessions", () => {
+    const source = readFileSync("src/desktop/src/components/Sidebar.tsx", "utf8")
+
+    expect(source).toContain('<section className="pb-5">')
+    expect(source).toContain('<section className="flex min-h-0 flex-1 flex-col pt-5">')
+    expect(source).toContain("rounded-lg border border-border bg-paper shadow-[0_12px_28px_rgba(18,17,14,0.12)]")
+    expect(source).not.toContain("bg-paper shadow-xl backdrop-blur-sm transition-all duration-200")
+  })
 })

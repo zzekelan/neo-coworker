@@ -122,6 +122,7 @@ export type OrchestrationRuntimeEvent =
       name: string
       output: string
       isError?: boolean
+      errorCode?: string
       recoverable?: boolean
       attemptedTool?: string
       allowedTools?: string[]

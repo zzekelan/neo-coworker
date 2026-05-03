@@ -4,8 +4,11 @@ import { readFileSync } from "node:fs"
 describe("desktop chat area", () => {
   test("uses a normal transcript viewport without smooth-scroll styling", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
 
     expect(source).toContain("overflow-y-auto px-4 md:px-8")
+    expect(vtSource).toContain('className={cn("transcript-scroll-container h-full overflow-y-auto outline-none", className)}')
+    expect(vtSource).toContain('className="relative min-h-0 flex-1"')
     expect(source).not.toContain("scroll-smooth")
   })
 
@@ -22,6 +25,8 @@ describe("desktop chat area", () => {
     expect(source).toContain("if (!sessionSummary)")
     expect(source).toContain("hasSessions ? (")
     expect(source).toContain("{text.chat.selectSession}")
+    expect(source).toContain("activeWorkspaceName: string | null")
+    expect(source).toContain("text.chat.readyInWorkspace(activeWorkspaceName ?? text.sidebar.workspace, currentAgentLabel)")
     expect(source).toContain("TRANSCRIPT_BOTTOM_SAFE_AREA")
     expect(source).toContain("style={{ paddingBottom: bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA }}")
     expect(source).toContain("offsetClassName=\"translate-y-2\"")
@@ -41,8 +46,9 @@ describe("desktop chat area", () => {
 
     expect(chatSource).toContain("bottomCardRef")
     expect(chatSource).toContain("ResizeObserver")
-    expect(chatSource).toContain("const TRANSCRIPT_BOTTOM_SAFE_AREA = 72")
+    expect(chatSource).toContain("const TRANSCRIPT_BOTTOM_SAFE_AREA = 42")
     expect(chatSource).toContain("bottomInset={bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA}")
+    expect(chatSource).toContain("scrollButtonOffset={bottomCardHeight + 16}")
     expect(chatSource).not.toContain("pb-32")
 
     expect(vtSource).toContain("bottomInset")
@@ -107,13 +113,26 @@ describe("desktop chat area", () => {
     expect(messageSource).not.toContain("\"mb-6 flex w-full flex-col\"")
   })
 
-  test("keeps transcript messages and the composer on the same centered measure", () => {
+  test("keeps transcript messages slightly narrower than the composer", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
-    expect(source).toContain('<div className="mx-auto max-w-4xl">')
-    expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl"')
+    expect(source).toContain('<div className="mx-auto max-w-[54rem]">')
+    expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl bg-paper"')
     expect(source).not.toContain("content-fade-top")
     expect(source).not.toContain('<div className="w-full">')
+  })
+
+  test("keeps the composer and footer opaque while the agent is running", () => {
+    const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
+
+    expect(source).toContain('className="pointer-events-none absolute right-3 bottom-0 left-0 bg-paper px-4 pb-1.5"')
+    expect(source).toContain('className="pointer-events-auto relative mx-auto max-w-4xl bg-paper"')
+    expect(source).toContain("Status strip — context · model/agent · run status · keyboard hints")
+    expect(source).toContain('className="mt-1.5 flex h-7 items-center justify-between gap-3 border-t border-border/60 px-1 pt-1 text-[11px] text-accent"')
+    expect(source).toContain("rounded-md border border-border/60 bg-surface/60 px-2 py-0.5 text-muted")
+    expect(source).toContain("{currentAgentLabel}")
+    expect(source).toContain('? "border-border"')
+    expect(source).not.toContain("opacity-80")
   })
 
   test("closes the skill panel on outside click and defers Enter submission during IME composition", () => {
@@ -153,24 +172,39 @@ describe("desktop chat area", () => {
     expect(source).toContain("key={activePermissionRequest.id}")
     expect(source).toContain("request={activePermissionRequest}")
     expect(source).toContain("autoFocus")
+    expect(source).toContain("variant=\"composer\"")
     expect(source).toContain("onReply={handlePermissionReply}")
     expect(source).not.toContain("permissionRequests.map(")
   })
 
-  test("keeps live thinking distinct from active tool and terminal run states", () => {
+  test("does not render fallback thinking without a live reasoning part", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
-    expect(source).toContain("const hasActiveToolCall = useMemo(")
-    expect(source).toContain("const hasActiveReasoningPart = useMemo(")
-    expect(source).toContain("const showThinkingIndicator = isRunning && !hasActiveToolCall && !hasActiveReasoningPart")
-    expect(source).toContain("aria-label={text.message.thinking}")
-    expect(source).toContain("{text.message.thinking}")
-    expect(source).not.toContain("{text.chat.thinking}")
+    expect(source).not.toContain("showThinkingIndicator")
+    expect(source).not.toContain("hasPendingToolCall(")
+    expect(source).not.toContain("hasVisibleReasoningPart(")
+    expect(source).not.toContain("aria-label={text.message.thinking}")
     expect(source).toContain('const footerRunStatus = activeRunStatus === "running" || activeRunStatus === "queued" ? null : activeRunStatus')
     expect(source).toContain("<RunStatusDot status={footerRunStatus} />")
-    expect(source).toContain("function hasPendingToolCall(")
-    expect(source).toContain("function hasVisibleReasoningPart(")
-    expect(source).toContain("isActiveRunMessage={message.runId === activeRunId && isRunning}")
+    expect(source).toContain("function findLatestRenderableMessageId(")
+    expect(source).toContain("const finalAssistantTextMessageIdByRun = useMemo(")
+    expect(source).toContain("function findFinalAssistantTextMessageIdsByRun(")
+    expect(source).toContain("messageHasVisibleText(message)")
+    expect(source).toContain("isFinalRunAssistantTextMessage={")
+    expect(source).toContain("message.runId && message.runId !== activeRunId")
+    expect(source).toContain("isActiveRunMessage={message.id === activeRunLatestMessageId && isRunning}")
+    expect(source).toContain("const activeRunLiveReasoningMessageId = useMemo(")
+    expect(source).toContain("findLiveReasoningMessageId(transcript, activeRunId)")
+    expect(source).toContain("function findLiveReasoningMessageId(")
+    expect(source).toContain("const messageIdsBeforeLaterReasoning = useMemo(")
+    expect(source).toContain("findMessageIdsBeforeLaterReasoning(transcript)")
+    expect(source).toContain("function findMessageIdsBeforeLaterReasoning(")
+    expect(source).toContain("function isRenderableReasoningPart(")
+    expect(source).not.toContain("isRunActiveMessage={")
+    expect(source).toContain("const shouldDelayFoldForLiveReasoning =")
+    expect(source).toContain("const shouldFoldActivityImmediately =")
+    expect(source).toContain("foldActivityAfterNextReasoning={")
+    expect(source).toContain("foldActivityImmediately={shouldFoldActivityImmediately}")
     expect(source).toContain("waitingPermissionToolName={")
     expect(source).toContain("function RunFinishedNotice(")
     expect(source).toContain("text.chat.runFinishedCancelled")

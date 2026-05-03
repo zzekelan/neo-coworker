@@ -16,6 +16,7 @@ interface VirtualTranscriptProps<T extends VirtualTranscriptItem> {
   footer?: React.ReactNode
   scrollToBottomRef?: { current: ((() => void) | null) }
   bottomInset?: number
+  scrollButtonOffset?: number
 }
 
 export function VirtualTranscript<T extends VirtualTranscriptItem>({
@@ -27,6 +28,7 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
   footer,
   scrollToBottomRef: externalScrollRef,
   bottomInset,
+  scrollButtonOffset,
 }: VirtualTranscriptProps<T>) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
@@ -103,15 +105,13 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
   )
 
   return (
-    <div
-      className={cn("relative min-h-0 flex-1", className)}
-    >
+    <div className="relative min-h-0 flex-1">
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
         tabIndex={0}
-        className="transcript-scroll-container h-full overflow-y-auto outline-none"
+        className={cn("transcript-scroll-container h-full overflow-y-auto outline-none", className)}
         style={{ overflowAnchor: "none" }}
       >
         <div
@@ -154,7 +154,7 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
       <ScrollToBottomButton
         visible={!isAtBottom && messages.length > 0}
         onClick={scrollToBottom}
-        offset={bottomInset !== undefined ? bottomInset + 16 : undefined}
+        offset={scrollButtonOffset}
       />
     </div>
   )

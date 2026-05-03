@@ -29,6 +29,10 @@ describe("desktop settings panel", () => {
     expect(panelSource).toContain("llmFieldsDisabled || isApplying || hasBusySession")
     expect(panelSource).toContain("text.settings.externalHint")
     expect(panelSource).toContain("text.settings.stopRunsFirst")
+    expect(panelSource).toContain('<SectionHeading title={text.settings.llm} />\n                {serverMode !== "managed-local" ? (')
+    expect(panelSource).toContain("disabled && \"cursor-not-allowed border-border/70 bg-surface/70 text-muted shadow-none\"")
+    expect(panelSource).toContain('applyDisabled')
+    expect(panelSource).toContain('"border border-border bg-surface text-muted shadow-none"')
   })
 
   test("renders a Reasoning subsection with capability-driven warning, thinking toggle, and effort options", () => {

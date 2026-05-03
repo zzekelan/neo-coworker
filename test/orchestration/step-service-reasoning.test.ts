@@ -65,7 +65,7 @@ describe("orchestration step service reasoning persistence", () => {
             id: "part_0",
             kind: "reasoning",
             text: "Need to inspect the README before answering.",
-            data: undefined,
+            data: { durationMs: expect.any(Number) },
           },
           {
             id: "part_1",
@@ -76,6 +76,9 @@ describe("orchestration step service reasoning persistence", () => {
         ],
       },
     ])
+    const reasoningPart = session.listTranscript(session.sessionId)[1]?.parts[0]
+    expect(reasoningPart?.data).toEqual({ durationMs: expect.any(Number) })
+    expect((reasoningPart?.data as { durationMs: number }).durationMs).toBeGreaterThan(0)
   })
 })
 

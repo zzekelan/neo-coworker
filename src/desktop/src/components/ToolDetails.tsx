@@ -26,14 +26,14 @@ type ToolDetailsProps = {
 const ToolDetailsComponent: React.FC<ToolDetailsProps> = ({ details, emptyDetailsLabel }) => {
   if (details.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border/50 bg-paper px-3 py-2 text-[12px] text-muted">
+      <div className="border-l border-border/70 py-1 pl-3 pr-2 text-[12px] text-muted">
         {emptyDetailsLabel}
       </div>
     )
   }
 
   return (
-    <div className="max-h-80 space-y-3 overflow-y-auto rounded-xl border border-border/50 bg-paper p-3">
+    <div className="max-h-64 space-y-3 overflow-y-auto border-l border-border/70 py-1 pl-3 pr-2">
       {details.map((detail, index) => (
         <ToolDetailRow key={`${detail.label}:${index}`} detail={detail} />
       ))}

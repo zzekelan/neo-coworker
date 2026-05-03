@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState } from "react"
 import { motion } from "framer-motion"
 import type { DesktopPermissionRequest } from "../view-types"
 import { useDesktopText } from "../i18n"
+import { cn } from "../lib/utils"
 
 interface Props {
   request: DesktopPermissionRequest
   onReply: (id: string, decision: "allow" | "deny") => boolean | Promise<boolean>
   autoFocus?: boolean
+  variant?: "card" | "composer"
 }
 
 function getRiskIndicator(toolName: string) {
@@ -22,10 +24,11 @@ function getRiskIndicator(toolName: string) {
   return { colorClass: "bg-highlight", textClass: "text-highlight", label: "mutating" }
 }
 
-export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus = false }) => {
+export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus = false, variant = "card" }) => {
   const cardRef = useRef<HTMLDivElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const text = useDesktopText()
+  const isComposer = variant === "composer"
 
   useEffect(() => {
     if (!autoFocus) {
@@ -85,23 +88,39 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
           void submitReply("deny")
         }
       }}
-      className="relative my-6 max-w-3xl overflow-hidden rounded-xl border border-border bg-surface px-5 py-4 shadow-sm"
+      className={cn(
+        "relative overflow-hidden border border-border shadow-sm",
+        isComposer
+          ? "min-h-[132px] rounded-2xl bg-paper px-4 py-3"
+          : "my-6 max-w-3xl rounded-xl bg-surface px-5 py-4",
+      )}
     >
       <div className={`absolute bottom-0 left-0 top-0 w-[3px] ${risk.colorClass}`} />
       
       <div className="mb-2 flex items-center gap-2">
-        <span className="font-semibold text-ink">{request.toolName}</span>
+        {isComposer ? (
+          <span className="text-[13px] font-semibold text-ink">
+            {text.permission.title}
+          </span>
+        ) : null}
+        <span className={cn("font-semibold text-ink", isComposer && "text-[13px] text-muted")}>
+          {request.toolName}
+        </span>
         <span className={`rounded-full bg-border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${risk.textClass}`}>
           {risk.label}
         </span>
       </div>
 
-      <div className="mb-4 font-mono text-[13px] text-muted break-all">
+      <div className={cn(
+        "font-mono text-[13px] text-muted break-all",
+        isComposer ? "mb-5 leading-relaxed" : "mb-4",
+      )}>
         {argsText}
       </div>
 
       <div className="flex items-center justify-end gap-2">
         <button
+          type="button"
           disabled={isSubmitting}
           onClick={() => void submitReply("deny")}
           className="rounded-md bg-transparent px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-border/50"
@@ -109,6 +128,7 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
           {text.permission.deny}
         </button>
         <button
+          type="button"
           disabled={isSubmitting}
           onClick={() => void submitReply("allow")}
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-paper transition-colors hover:opacity-90"

@@ -229,7 +229,7 @@ export function Sidebar({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col px-3 py-3">
-          <section className="pb-4">
+          <section className="pb-5">
             <div className="mb-3 flex items-center justify-between px-1">
               <label className="text-[11px] font-semibold tracking-[0.16em] text-accent uppercase">
                 {text.sidebar.workspace}
@@ -286,7 +286,7 @@ export function Sidebar({
                   </div>
                   <div
                     className={cn(
-                      "absolute top-[calc(100%+0.5rem)] left-0 right-0 z-20 origin-top overflow-hidden rounded-xl border border-border bg-paper shadow-xl backdrop-blur-sm transition-all duration-200",
+                      "absolute top-[calc(100%+0.5rem)] left-0 right-0 z-20 origin-top overflow-hidden rounded-lg border border-border bg-paper shadow-[0_12px_28px_rgba(18,17,14,0.12)] backdrop-blur-sm transition-all duration-200",
                       isWorkspaceMenuOpen
                         ? "pointer-events-auto translate-y-0 opacity-100"
                         : "pointer-events-none -translate-y-1 opacity-0",
@@ -345,7 +345,7 @@ export function Sidebar({
 
           <div className="mx-1 border-t border-border" />
 
-          <section className="flex min-h-0 flex-1 flex-col pt-4">
+          <section className="flex min-h-0 flex-1 flex-col pt-5">
             <div className="mb-3 flex items-center justify-between px-1">
               <label className="text-[11px] font-semibold tracking-[0.16em] text-accent uppercase">
                 {text.sidebar.sessions}

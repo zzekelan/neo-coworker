@@ -157,6 +157,230 @@ describe("agent loop", () => {
     })
   })
 
+  test("fails completion when a current-run tool call remains unresolved", async () => {
+    const harness = await createHarness("complete-unresolved-tool-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_complete_unresolved_tool_call",
+      messageId: "message_complete_unresolved_tool_call_user",
+      prompt: "Continue after an interrupted tool call",
+    })
+    const assistantMessage = harness.repository.messages.create({
+      id: "message_complete_unresolved_tool_call_assistant",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_complete_unresolved_tool_call",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"command":"pwd"}',
+      data: {
+        callId: "call_unresolved",
+        toolName: "shell",
+        inputText: '{"command":"pwd"}',
+      },
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Trying to finish." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const unresolvedMessage = transcript.find(
+      (message) => message.runId === started.run.id && message.sequence === 1,
+    )
+
+    expect(events.map((event) => event.type)).not.toContain("run.completed")
+    expect(events.at(-1)).toMatchObject({
+      type: "run.failed",
+      runId: started.run.id,
+      error: expect.stringContaining("unresolved tool call"),
+    })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("failed")
+    expect(unresolvedMessage?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(unresolvedMessage?.parts[1]).toMatchObject({
+      kind: "tool_result",
+      text: "Run failed before this tool call completed.",
+      data: {
+        callId: "call_unresolved",
+        toolName: "shell",
+        output: "Run failed before this tool call completed.",
+        isError: true,
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      },
+    })
+  })
+
+  test("fails completion when a current-run tool call is malformed", async () => {
+    const harness = await createHarness("complete-malformed-tool-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_complete_malformed_tool_call",
+      messageId: "message_complete_malformed_tool_call_user",
+      prompt: "Continue after a malformed tool call",
+    })
+    const assistantMessage = harness.repository.messages.create({
+      id: "message_complete_malformed_tool_call_assistant",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_complete_malformed_tool_call",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"command":"pwd"}',
+      data: {
+        callId: "call_malformed",
+        inputText: '{"command":"pwd"}',
+      },
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Trying to finish." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+
+    expect(events.map((event) => event.type)).not.toContain("run.completed")
+    expect(events.at(-1)).toMatchObject({
+      type: "run.failed",
+      runId: started.run.id,
+      error: expect.stringContaining("malformed tool call"),
+    })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("failed")
+  })
+
+  test("treats legacy tool error parts as closures without rewriting them", async () => {
+    const harness = await createHarness("legacy-tool-error-closure", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_legacy_tool_error_closure",
+      messageId: "message_legacy_tool_error_closure_user",
+      prompt: "Continue after a legacy tool error closure.",
+    })
+    const assistantMessage = harness.repository.messages.create({
+      id: "message_legacy_tool_error_closure_assistant",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_legacy_tool_error_closure_call",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"command":"pwd"}',
+      data: {
+        callId: "call_legacy_error",
+        toolName: "shell",
+        inputText: '{"command":"pwd"}',
+      },
+    })
+    harness.repository.parts.create({
+      id: "part_legacy_tool_error_closure_error",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "error",
+      sequence: 1,
+      text: "legacy shell failed",
+      data: {
+        source: "tool",
+        callId: "call_legacy_error",
+        toolName: "shell",
+      },
+    })
+    const requests: ProviderTurnRequest[] = []
+    const runtime = createRuntime({
+      provider: createTurnProvider(requests, [
+        async function* () {
+          yield { type: "text.delta", text: "Recovered from the legacy closure." }
+        },
+      ]),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+
+    expect(requests[0]?.messages).toContainEqual({
+      role: "tool",
+      parts: [
+        {
+          type: "tool_result",
+          callId: "call_legacy_error",
+          toolName: "shell",
+          output: "Error: legacy shell failed",
+          isError: true,
+        },
+      ],
+    })
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+      "error",
+    ])
+    expect(activeRunMessages[1]?.parts.map((part) => readPartDataString(part, "callId"))).toEqual([
+      "call_legacy_error",
+      "call_legacy_error",
+    ])
+    expect(activeRunMessages[1]?.parts.some((part) => part.kind === "tool_result")).toBe(false)
+    expect(activeRunMessages[2]?.parts).toMatchObject([
+      { kind: "text", text: "Recovered from the legacy closure." },
+    ])
+    expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
+    expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
+  })
+
   test("recovers when the main model emits an unknown tool name", async () => {
     const harness = await createHarness("main-unknown-tool-recovery", true)
     const started = startPromptRun({
@@ -230,6 +454,7 @@ describe("agent loop", () => {
         toolName: "shell_cmd",
         output: expect.stringContaining("Allowed tools:"),
         isError: true,
+        errorCode: "UNKNOWN_TOOL",
         metadata: expect.objectContaining({
           [TOOL_RECOVERABLE_UNKNOWN_METADATA_KEY]: true,
           [TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]: expect.arrayContaining(["read", "shell"]),
@@ -1458,11 +1683,22 @@ describe("agent loop", () => {
           toolName: "skill",
         },
       },
+      {
+        kind: "tool_result",
+        text: "Run was cancelled before this tool call completed.",
+        data: {
+          callId: "call_skill_cancelled",
+          toolName: "skill",
+          output: "Run was cancelled before this tool call completed.",
+          isError: true,
+          errorCode: "RUN_CANCELLED_TOOL_CALL",
+        },
+      },
     ])
-    expect(activeRunMessages[1]?.parts).toHaveLength(1)
+    expect(activeRunMessages[1]?.parts).toHaveLength(2)
   })
 
-  test("persists malformed tool arguments as an error outcome and continues the run", async () => {
+  test("persists malformed tool arguments as a Tool Result Error and continues the run", async () => {
     const harness = await createHarness("tool-error", false)
     const started = startPromptRun({
       repository: harness.repository,
@@ -1526,10 +1762,17 @@ describe("agent loop", () => {
         ],
       },
     ])
-    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "error"])
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
     expect(activeRunMessages[1]?.parts[1]).toMatchObject({
-      kind: "error",
+      kind: "tool_result",
       text: expect.stringContaining("Malformed tool arguments for read"),
+      data: {
+        callId: "call_bad",
+        toolName: "read",
+        output: expect.stringContaining("Malformed tool arguments for read"),
+        isError: true,
+        errorCode: "MALFORMED_TOOL_ARGUMENTS",
+      },
     })
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
@@ -1592,14 +1835,16 @@ describe("agent loop", () => {
     const permissionRequests = harness.permissionRepository.requests.listByRun(started.run.id)
 
     expect(requests).toHaveLength(1)
-    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "error"])
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "tool_result"])
     expect(activeRunMessages[1]?.parts[2]).toMatchObject({
-      kind: "error",
+      kind: "tool_result",
       text: "Tool write failed: Permission denied",
       data: {
-        source: "tool",
         callId: "call_write",
         toolName: "write",
+        output: "Tool write failed: Permission denied",
+        isError: true,
+        errorCode: "TOOL_PERMISSION_DENIED",
       },
     })
     expect(permissionRequests).toMatchObject([
@@ -1706,16 +1951,18 @@ describe("agent loop", () => {
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
       "tool_call",
       "tool_call",
-      "error",
+      "tool_result",
       "tool_result",
     ])
     expect(activeRunMessages[1]?.parts[2]).toMatchObject({
-      kind: "error",
+      kind: "tool_result",
       text: "Tool webfetch failed: Permission denied",
       data: {
-        source: "tool",
         callId: "call_webfetch_denied",
         toolName: "webfetch",
+        output: "Tool webfetch failed: Permission denied",
+        isError: true,
+        errorCode: "TOOL_PERMISSION_DENIED",
       },
     })
     expect(activeRunMessages[1]?.parts[3]).toMatchObject({
@@ -1902,6 +2149,413 @@ describe("agent loop", () => {
       runId: started.run.id,
       error: "provider exploded",
     })
+  })
+
+  test("terminally closes unresolved tool calls before marking a run failed", async () => {
+    const harness = await createHarness("provider-failure-after-tool-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_provider_failure_after_tool_call",
+      messageId: "message_provider_failure_after_tool_call_user",
+      prompt: "Trigger a provider error after a tool call",
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          yield { type: "text.delta", text: "Starting." }
+          yield {
+            type: "tool.call",
+            callId: "call_failed_before_result",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          throw new Error("provider exploded with private detail")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const closureEventIndex = events.findIndex(
+      (event) => event.type === "tool.call.completed" && event.callId === "call_failed_before_result",
+    )
+    const failedEventIndex = events.findIndex((event) => event.type === "run.failed")
+
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual([
+      "text",
+      "tool_call",
+      "error",
+      "tool_result",
+    ])
+    expect(activeRunMessages[1]?.parts[3]).toMatchObject({
+      kind: "tool_result",
+      text: "Run failed before this tool call completed.",
+      data: {
+        callId: "call_failed_before_result",
+        toolName: "shell",
+        output: "Run failed before this tool call completed.",
+        isError: true,
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      },
+    })
+    expect(activeRunMessages[1]?.parts[3]?.text).not.toContain("private detail")
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "tool.call.completed",
+        callId: "call_failed_before_result",
+        name: "shell",
+        output: "Run failed before this tool call completed.",
+        isError: true,
+      }),
+    )
+    expect(closureEventIndex).toBeGreaterThan(-1)
+    expect(failedEventIndex).toBeGreaterThan(closureEventIndex)
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      status: "failed",
+      errorText: "provider exploded with private detail",
+    })
+  })
+
+  test("failed terminalization closes multiple unresolved tool calls in original order", async () => {
+    const harness = await createHarness("failed-multi-tool-closure", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_failed_multi_tool_closure",
+      messageId: "message_failed_multi_tool_closure_user",
+      prompt: "Recover from interrupted parallel tools",
+    })
+    const assistantMessage = harness.repository.messages.create({
+      id: "message_failed_multi_tool_closure_assistant",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_failed_multi_tool_call_a",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"path":"a.txt"}',
+      data: {
+        callId: "call_unresolved_a",
+        toolName: "read",
+        inputText: '{"path":"a.txt"}',
+      },
+    })
+    harness.repository.parts.create({
+      id: "part_failed_multi_tool_call_b",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 1,
+      text: '{"path":"b.txt"}',
+      data: {
+        callId: "call_unresolved_b",
+        toolName: "read",
+        inputText: '{"path":"b.txt"}',
+      },
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          throw new Error("provider stopped")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const closureMessage = transcript.find(
+      (message) => message.runId === started.run.id && message.sequence === 1,
+    )
+
+    expect(closureMessage?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+      "tool_call",
+      "tool_result",
+      "tool_result",
+    ])
+    expect(closureMessage?.parts.slice(2).map((part) => readPartDataString(part, "callId"))).toEqual([
+      "call_unresolved_a",
+      "call_unresolved_b",
+    ])
+    expect(closureMessage?.parts.slice(2).map((part) => readPartDataString(part, "errorCode"))).toEqual([
+      "RUN_FAILED_TOOL_CALL",
+      "RUN_FAILED_TOOL_CALL",
+    ])
+  })
+
+  test("failed terminalization does not repair unresolved tool calls from older runs", async () => {
+    const harness = await createHarness("failed-terminalization-no-history-repair", false)
+    harness.repository.runs.create({
+      id: "run_legacy_unresolved_tool_call",
+      sessionId: harness.session.id,
+      trigger: "prompt",
+      status: "failed",
+      errorText: "legacy run failed before terminal closure existed",
+    })
+    const legacyAssistant = harness.repository.messages.create({
+      id: "message_legacy_unresolved_tool_call_assistant",
+      sessionId: harness.session.id,
+      runId: "run_legacy_unresolved_tool_call",
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_legacy_unresolved_tool_call",
+      sessionId: harness.session.id,
+      runId: "run_legacy_unresolved_tool_call",
+      messageId: legacyAssistant.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"command":"pwd"}',
+      data: {
+        callId: "call_legacy_unresolved",
+        toolName: "shell",
+        inputText: '{"command":"pwd"}',
+      },
+    })
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_current_failed_terminalization",
+      messageId: "message_current_failed_terminalization_user",
+      prompt: "Fail the current run with a separate pending tool call.",
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          yield {
+            type: "tool.call",
+            callId: "call_current_unresolved",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          throw new Error("current provider stopped")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const legacyMessage = transcript.find(
+      (message) => message.runId === "run_legacy_unresolved_tool_call",
+    )
+    const currentMessage = transcript.find(
+      (message) => message.runId === started.run.id && message.role === "assistant",
+    )
+
+    expect(legacyMessage?.parts.map((part) => part.kind)).toEqual(["tool_call"])
+    expect(currentMessage?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+      "error",
+      "tool_result",
+    ])
+    expect(currentMessage?.parts[2]).toMatchObject({
+      kind: "tool_result",
+      data: {
+        callId: "call_current_unresolved",
+        toolName: "shell",
+        isError: true,
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      },
+    })
+    expect(
+      transcript
+        .flatMap((message) => message.parts)
+        .filter((part) => part.kind === "tool_result")
+        .map((part) => readPartDataString(part, "callId")),
+    ).toEqual(["call_current_unresolved"])
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "tool.call.completed",
+        callId: "call_current_unresolved",
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      }),
+    )
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "tool.call.completed",
+        callId: "call_legacy_unresolved",
+      }),
+    )
+    expect(harness.repository.runs.get("run_legacy_unresolved_tool_call").status).toBe("failed")
+    expect(harness.repository.runs.get(started.run.id).status).toBe("failed")
+  })
+
+  test("failed terminalization rejects malformed current-run tool calls without fallback repair", async () => {
+    const harness = await createHarness("failed-terminalization-malformed-current-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_failed_terminalization_malformed_current_call",
+      messageId: "message_failed_terminalization_malformed_current_call_user",
+      prompt: "Fail after a malformed current-run tool call.",
+    })
+    const assistantMessage = harness.repository.messages.create({
+      id: "message_failed_terminalization_malformed_current_call_assistant",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      role: "assistant",
+      sequence: 1,
+    })
+    harness.repository.parts.create({
+      id: "part_failed_terminalization_malformed_current_call",
+      sessionId: harness.session.id,
+      runId: started.run.id,
+      messageId: assistantMessage.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"command":"pwd"}',
+      data: {
+        callId: "call_malformed_current",
+        inputText: '{"command":"pwd"}',
+      },
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          throw new Error("provider stopped before repair")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const malformedMessage = transcript.find(
+      (message) => message.runId === started.run.id && message.sequence === 1,
+    )
+
+    expect(events.map((event) => event.type)).not.toContain("tool.call.completed")
+    expect(events.at(-1)).toMatchObject({
+      type: "run.failed",
+      runId: started.run.id,
+      error: expect.stringContaining("malformed tool call"),
+    })
+    expect(malformedMessage?.parts.map((part) => part.kind)).toEqual(["tool_call"])
+    expect(malformedMessage?.parts[0]).toMatchObject({
+      kind: "tool_call",
+      data: {
+        callId: "call_malformed_current",
+      },
+    })
+    expect(harness.repository.runs.get(started.run.id)).toMatchObject({
+      status: "failed",
+      errorText: expect.stringContaining("malformed tool call"),
+    })
+  })
+
+  test("terminally closes unresolved tool calls before marking a run cancelled", async () => {
+    const harness = await createHarness("cancelled-after-tool-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_cancelled_after_tool_call",
+      messageId: "message_cancelled_after_tool_call_user",
+      prompt: "Start a tool call and then cancel",
+    })
+    let resolveToolCallPersisted: () => void = () => {}
+    const toolCallPersisted = new Promise<void>((resolve) => {
+      resolveToolCallPersisted = resolve
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn(request: { signal: AbortSignal }) {
+          yield {
+            type: "tool.call",
+            callId: "call_cancelled_before_result",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          resolveToolCallPersisted()
+          await new Promise<void>((_, reject) => {
+            request.signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("cancelled by operator")
+                error.name = "AbortError"
+                reject(error)
+              },
+              { once: true },
+            )
+          })
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await toolCallPersisted
+    handle.cancel()
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const closureEventIndex = events.findIndex(
+      (event) => event.type === "tool.call.completed" && event.callId === "call_cancelled_before_result",
+    )
+    const cancelledEventIndex = events.findIndex((event) => event.type === "run.cancelled")
+
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(activeRunMessages[1]?.parts[1]).toMatchObject({
+      kind: "tool_result",
+      text: "Run was cancelled before this tool call completed.",
+      data: {
+        callId: "call_cancelled_before_result",
+        toolName: "shell",
+        output: "Run was cancelled before this tool call completed.",
+        isError: true,
+        errorCode: "RUN_CANCELLED_TOOL_CALL",
+      },
+    })
+    expect(activeRunMessages[1]?.parts[1]?.text).not.toContain("cancelled by operator")
+    expect(closureEventIndex).toBeGreaterThan(-1)
+    expect(cancelledEventIndex).toBeGreaterThan(closureEventIndex)
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
   })
 
   test("cancellation requested after run start still persists already-yielded output", async () => {
@@ -2380,6 +3034,13 @@ function readMessageTexts(
 
 function hasPartKind(part: { kind?: unknown }, kind: string) {
   return String(part.kind) === kind
+}
+
+function readPartDataString(part: { data?: unknown }, key: string) {
+  const data = part.data != null && typeof part.data === "object"
+    ? (part.data as Record<string, unknown>)
+    : null
+  return typeof data?.[key] === "string" ? data[key] : null
 }
 
 function createMonotonicClock(start = 1) {

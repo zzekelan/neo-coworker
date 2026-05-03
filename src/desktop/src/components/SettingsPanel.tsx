@@ -151,6 +151,11 @@ export function SettingsPanel({
             ) : (
               <section className="space-y-4">
                 <SectionHeading title={text.settings.llm} />
+                {serverMode !== "managed-local" ? (
+                  <p className="rounded-xl border border-highlight/30 bg-highlight/10 px-3 py-2.5 text-xs leading-relaxed text-highlight">
+                    {text.settings.externalHint}
+                  </p>
+                ) : null}
                 <div className="grid gap-3">
                   <Field label={text.settings.provider}>
                     <SettingsSelect
@@ -223,12 +228,6 @@ export function SettingsPanel({
             )}
 
             <div className="mt-5 space-y-3">
-              {activeSection === "llm" && serverMode !== "managed-local" ? (
-                <p className="rounded-xl border border-highlight/30 bg-highlight/10 px-3 py-2.5 text-xs leading-relaxed text-highlight">
-                  {text.settings.externalHint}
-                </p>
-              ) : null}
-
               {activeSection === "llm" && hasBusySession ? (
                 <p className="rounded-xl border border-highlight/30 bg-highlight/10 px-3 py-2.5 text-xs leading-relaxed text-highlight">
                   {text.settings.stopRunsFirst}
@@ -250,7 +249,12 @@ export function SettingsPanel({
               onClick={() =>
                 void (isGeneralSection ? onApplyGeneralSettings() : onApplyLlmSettings())
               }
-              className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-paper shadow-[0_12px_24px_rgba(18,17,14,0.18)] transition-colors hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-ink disabled:hover:text-paper"
+              className={cn(
+                "rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed",
+                applyDisabled
+                  ? "border border-border bg-surface text-muted shadow-none"
+                  : "bg-ink text-paper shadow-[0_12px_24px_rgba(18,17,14,0.18)] hover:bg-surface hover:text-ink",
+              )}
             >
               {isApplying
                 ? text.settings.applying
@@ -307,7 +311,7 @@ function Field(input: {
 function fieldClassName(disabled: boolean) {
   return cn(
     "h-11 w-full rounded-lg border border-border bg-paper px-3.5 text-sm text-ink shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-ink)_8%,transparent)] outline-none transition-colors focus:border-border focus:ring-2 focus:ring-border",
-    disabled && "cursor-not-allowed bg-surface text-accent shadow-none",
+    disabled && "cursor-not-allowed border-border/70 bg-surface/70 text-muted shadow-none",
   )
 }
 
