@@ -1202,6 +1202,7 @@ function closeRunToolCalls(input: {
       name: toolCall.toolName,
       output: input.output,
       isError: true,
+      errorCode: input.errorCode,
     })
   }
 }
