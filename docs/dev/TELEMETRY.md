@@ -3,8 +3,6 @@
 This document explains the current developer-facing telemetry and runtime observability surface in this repository.
 It is a practical guide for inspection, debugging, and iteration.
 
-It is not the design source of truth for the observability refactor.
-For the design target and trade-offs, read [`docs/plans/2026-03-26-runtime-observability-and-eval-foundation-design.md`](../plans/2026-03-26-runtime-observability-and-eval-foundation-design.md).
 
 ## Scope
 

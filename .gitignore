@@ -10,6 +10,8 @@ docs/plans
 docs/project-rules
 docs/ref
 docs/draft
+docs/dr
+docs/agents
 
 #dev
 /.github/
@@ -20,3 +22,5 @@ AGENTS.md
 .worktrees/
 /.sisyphus/
 *.png
+skills-lock.json
+.DS_Store

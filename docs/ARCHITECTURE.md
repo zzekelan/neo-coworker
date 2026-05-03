@@ -25,9 +25,9 @@ Approved top-level modules under `src/` fall into four groups:
   - `orchestration`: the agent loop, run progression, suspend/resume, streaming, and coordination through explicit capability ports
 - Shell modules:
   - `bootstrap`: shared composition root and cross-module assembly
-  - `cli`: CLI adapter and entrypoint
-  - `app-server`: HTTP/SSE adapter and entrypoint
-  - `desktop`: desktop product surface, entrypoint, and local UI shell
+  - `cli`: CLI client surface, transport, and entrypoint
+  - `app-server`: HTTP/SSE App Server adapter and entrypoint
+  - `desktop`: desktop App Client surface, entrypoint, and local UI shell
 - Shared kernel:
   - `kernel`: truly global, stable, non-business contracts only
 
@@ -121,9 +121,13 @@ Shell modules do not share a fixed subdirectory vocabulary in this round.
 They own transport, adapter, entrypoint, and composition behavior according to their role:
 
 - `bootstrap` owns cross-module assembly
-- `cli` owns CLI transport behavior
-- `app-server` owns HTTP and SSE transport behavior
-- `desktop` owns the desktop product surface, local UI shell, and desktop-specific operator behavior
+- `cli` owns CLI client presentation, transport, and entrypoint behavior
+- `app-server` owns HTTP and SSE exposure of the App Server boundary
+- `desktop` owns the desktop App Client surface, local UI shell, and desktop-specific operator behavior
+
+CLI and Desktop are App Clients.
+They must drive Neo Coworker through the App Server boundary.
+The CLI may use an in-process App Server adapter for local one-shot use, but that adapter must preserve the same App Server semantics instead of becoming a separate product model.
 
 ### Shared Kernel
 
@@ -273,9 +277,9 @@ Use these questions to place code:
 - Is this the module's explicit public boundary, a stable factory or adapter meant for callers, or a light boundary projection over application contracts? Put it in `public/`.
 - Is this a truly global, stable, non-business contract with no single-module owner? Put it in `kernel/contracts/`.
 - Is this cross-module composition or application assembly? Put it in `bootstrap/`.
-- Is this CLI transport behavior? Put it in `cli/`.
-- Is this HTTP or SSE transport behavior? Put it in `app-server/`.
-- Is this desktop product-surface or local UI shell behavior? Put it in `desktop/`.
+- Is this CLI client presentation, transport, or entrypoint behavior over the App Server contract? Put it in `cli/`.
+- Is this HTTP or SSE exposure of the App Server boundary? Put it in `app-server/`.
+- Is this desktop App Client product-surface or local UI shell behavior? Put it in `desktop/`.
 
 Defaults, constants, and policy values follow the owner that is responsible for interpreting them:
 
