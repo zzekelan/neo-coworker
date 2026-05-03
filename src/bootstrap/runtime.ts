@@ -8,6 +8,7 @@ import {
   createSessionRuntimeApi,
   openSessionDatabase as openStorageDatabase,
   resolvePermissionPendingRunStatus,
+  timelineEntriesToTranscriptMessages,
   type SessionDatabase,
   type SessionProvider,
   type SessionRepository as StorageRepository,
@@ -548,7 +549,7 @@ function createSessionPort(input: {
       return input.repository.runs.get(runId)
     },
     listTranscript(sessionId) {
-      return input.repository.messages.listSessionTranscript(sessionId)
+      return timelineEntriesToTranscriptMessages(input.repository.timeline.listEntries(sessionId))
     },
     createRun(run) {
       return input.repository.runs.create({

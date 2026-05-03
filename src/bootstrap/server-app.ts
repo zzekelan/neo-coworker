@@ -2,6 +2,8 @@ import {
   assertRunStatusTransition,
   createSessionRuntimeApi,
   SessionBusyError,
+  timelineEntryToTranscriptMessage,
+  timelinePartToTranscriptPart,
   type RunTrigger,
   type SessionRepository as StorageRepository,
   type StoredMessage,
@@ -406,6 +408,25 @@ export function createObservedRepository(input: {
         events.publish({
           type: "message.created",
           message: created,
+        })
+        return created
+      },
+    },
+    timeline: {
+      ...repository.timeline,
+      appendEntry(entry) {
+        const created = repository.timeline.appendEntry(entry)
+        events.publish({
+          type: "message.created",
+          message: timelineEntryToTranscriptMessage(created),
+        })
+        return created
+      },
+      appendPart(part) {
+        const created = repository.timeline.appendPart(part)
+        events.publish({
+          type: "message.part.updated",
+          part: timelinePartToTranscriptPart(created),
         })
         return created
       },

@@ -413,6 +413,88 @@ describe("server HTTP API and SSE", () => {
     ])
   })
 
+  test("transcript endpoint projects Session Timeline order into compatibility shape", async () => {
+    const harness = await createHarness("server-timeline-transcript", createTurnProvider([]))
+    const session = harness.repository.sessions.create({
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: harness.now(),
+    })
+    harness.repository.runs.create({
+      id: "run_older",
+      sessionId: session.id,
+      trigger: "prompt",
+      status: "completed",
+      createdAt: 10,
+    })
+    harness.repository.runs.create({
+      id: "run_newer",
+      sessionId: session.id,
+      trigger: "prompt",
+      status: "completed",
+      createdAt: 20,
+    })
+
+    const firstEntry = harness.repository.timeline.appendEntry({
+      id: "entry_first",
+      sessionId: session.id,
+      producedByRunId: "run_newer",
+      role: "assistant",
+      runSequence: 0,
+      createdAt: 30,
+    })
+    harness.repository.timeline.appendPart({
+      id: "part_first",
+      sessionId: session.id,
+      producedByRunId: "run_newer",
+      entryId: firstEntry.id,
+      kind: "text",
+      sequence: 0,
+      text: "timeline first",
+      createdAt: 31,
+    })
+    const secondEntry = harness.repository.timeline.appendEntry({
+      id: "entry_second",
+      sessionId: session.id,
+      producedByRunId: "run_older",
+      role: "assistant",
+      runSequence: 0,
+      createdAt: 32,
+    })
+    harness.repository.timeline.appendPart({
+      id: "part_second",
+      sessionId: session.id,
+      producedByRunId: "run_older",
+      entryId: secondEntry.id,
+      kind: "text",
+      sequence: 0,
+      text: "timeline second",
+      createdAt: 33,
+    })
+
+    const transcript = await requestJson(harness.server, "GET", `/sessions/${session.id}/transcript`)
+
+    expect(transcript.status).toBe(200)
+    expect(transcript.body.data.transcript.map((message: { id: string }) => message.id)).toEqual([
+      "entry_first",
+      "entry_second",
+    ])
+    expect(transcript.body.data.transcript).toMatchObject([
+      {
+        id: "entry_first",
+        runId: "run_newer",
+        sequence: 0,
+        parts: [{ id: "part_first", messageId: "entry_first", runId: "run_newer" }],
+      },
+      {
+        id: "entry_second",
+        runId: "run_older",
+        sequence: 0,
+        parts: [{ id: "part_second", messageId: "entry_second", runId: "run_older" }],
+      },
+    ])
+  })
+
   test("excludes sub-sessions from the session list API", async () => {
     const harness = await createHarness("server-list-top-level-only", createTurnProvider([]))
     const session = harness.repository.sessions.create({

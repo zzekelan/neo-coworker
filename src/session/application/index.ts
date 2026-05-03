@@ -62,6 +62,9 @@ export {
 export {
   RunInitiatingMessageNotFoundError,
   createSessionTranscriptService,
+  timelineEntryToTranscriptMessage,
+  timelineEntriesToTranscriptMessages,
+  timelinePartToTranscriptPart,
   type SessionTranscriptService,
 } from "./transcript-service"
 export {
