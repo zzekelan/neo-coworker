@@ -1590,8 +1590,19 @@ describe("agent loop", () => {
           toolName: "skill",
         },
       },
+      {
+        kind: "tool_result",
+        text: "Run was cancelled before this tool call completed.",
+        data: {
+          callId: "call_skill_cancelled",
+          toolName: "skill",
+          output: "Run was cancelled before this tool call completed.",
+          isError: true,
+          errorCode: "RUN_CANCELLED_TOOL_CALL",
+        },
+      },
     ])
-    expect(activeRunMessages[1]?.parts).toHaveLength(1)
+    expect(activeRunMessages[1]?.parts).toHaveLength(2)
   })
 
   test("persists malformed tool arguments as a Tool Result Error and continues the run", async () => {
@@ -2202,6 +2213,80 @@ describe("agent loop", () => {
       "RUN_FAILED_TOOL_CALL",
       "RUN_FAILED_TOOL_CALL",
     ])
+  })
+
+  test("terminally closes unresolved tool calls before marking a run cancelled", async () => {
+    const harness = await createHarness("cancelled-after-tool-call", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_cancelled_after_tool_call",
+      messageId: "message_cancelled_after_tool_call_user",
+      prompt: "Start a tool call and then cancel",
+    })
+    let resolveToolCallPersisted: () => void = () => {}
+    const toolCallPersisted = new Promise<void>((resolve) => {
+      resolveToolCallPersisted = resolve
+    })
+    const runtime = createRuntime({
+      provider: {
+        async *streamTurn(request: { signal: AbortSignal }) {
+          yield {
+            type: "tool.call",
+            callId: "call_cancelled_before_result",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          resolveToolCallPersisted()
+          await new Promise<void>((_, reject) => {
+            request.signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("cancelled by operator")
+                error.name = "AbortError"
+                reject(error)
+              },
+              { once: true },
+            )
+          })
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await toolCallPersisted
+    handle.cancel()
+    const events = await collectEvents(handle.events)
+    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
+    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const closureEventIndex = events.findIndex(
+      (event) => event.type === "tool.call.completed" && event.callId === "call_cancelled_before_result",
+    )
+    const cancelledEventIndex = events.findIndex((event) => event.type === "run.cancelled")
+
+    expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(activeRunMessages[1]?.parts[1]).toMatchObject({
+      kind: "tool_result",
+      text: "Run was cancelled before this tool call completed.",
+      data: {
+        callId: "call_cancelled_before_result",
+        toolName: "shell",
+        output: "Run was cancelled before this tool call completed.",
+        isError: true,
+        errorCode: "RUN_CANCELLED_TOOL_CALL",
+      },
+    })
+    expect(activeRunMessages[1]?.parts[1]?.text).not.toContain("cancelled by operator")
+    expect(closureEventIndex).toBeGreaterThan(-1)
+    expect(cancelledEventIndex).toBeGreaterThan(closureEventIndex)
+    expect(harness.repository.runs.get(started.run.id).status).toBe("cancelled")
   })
 
   test("cancellation requested after run start still persists already-yielded output", async () => {

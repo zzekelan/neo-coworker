@@ -496,6 +496,14 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         return false
       }
 
+      closeRunToolCalls({
+        session: input.session,
+        runId: runInput.runId,
+        now: input.now,
+        emit: runInput.emit ?? (() => {}),
+        output: "Run was cancelled before this tool call completed.",
+        errorCode: "RUN_CANCELLED_TOOL_CALL",
+      })
       input.session.cancelRun(runInput.runId)
       runInput.emit?.({ type: "run.cancelled", runId: runInput.runId })
       return true
