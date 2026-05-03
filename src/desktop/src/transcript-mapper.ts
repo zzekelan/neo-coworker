@@ -45,7 +45,7 @@ function collectToolCallStatuses(parts: DesktopPart[], runStatus: RunStatus | un
     if (part.kind === "tool_result") {
       const callId = readObjectString(part.data, "callId")
       if (callId) {
-        statuses.set(callId, "success")
+        statuses.set(callId, readObjectBoolean(part.data, "isError") ? "error" : "success")
       }
       continue
     }
@@ -91,6 +91,7 @@ function mapMessagePart(
       type: "tool_result",
       callId: readObjectString(part.data, "callId") ?? part.id,
       result: part.data ?? part.text ?? "",
+      isError: readObjectBoolean(part.data, "isError") || undefined,
     }
   }
 
@@ -221,6 +222,15 @@ function readObjectNumber(value: unknown, key: string) {
 
   const candidate = (value as Record<string, unknown>)[key]
   return typeof candidate === "number" ? candidate : null
+}
+
+function readObjectBoolean(value: unknown, key: string) {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const candidate = (value as Record<string, unknown>)[key]
+  return typeof candidate === "boolean" ? candidate : null
 }
 
 function toIsoString(value: number) {

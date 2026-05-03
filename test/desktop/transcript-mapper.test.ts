@@ -97,6 +97,76 @@ describe("desktop transcript mapper", () => {
     })
   })
 
+  test("derives failed tool status from canonical Tool Result Errors", () => {
+    const message: DesktopMessage = {
+      id: "message-assistant-error",
+      sessionId: "session-1",
+      runId: "run-error",
+      role: "assistant",
+      sequence: 1,
+      createdAt: 1_710_000_000_800,
+      parts: [
+        {
+          id: "part-call-error",
+          sessionId: "session-1",
+          runId: "run-error",
+          messageId: "message-assistant-error",
+          kind: "tool_call",
+          sequence: 0,
+          text: null,
+          data: { callId: "call-error", toolName: "shell", command: "pwd" },
+          createdAt: 1_710_000_000_800,
+        },
+        {
+          id: "part-result-error",
+          sessionId: "session-1",
+          runId: "run-error",
+          messageId: "message-assistant-error",
+          kind: "tool_result",
+          sequence: 1,
+          text: "Run failed before this tool call completed.",
+          data: {
+            callId: "call-error",
+            toolName: "shell",
+            output: "Run failed before this tool call completed.",
+            isError: true,
+            errorCode: "RUN_FAILED_TOOL_CALL",
+          },
+          createdAt: 1_710_000_000_900,
+        },
+      ],
+    }
+
+    expect(mapTranscriptMessage(message)).toEqual({
+      id: "message-assistant-error",
+      role: "assistant",
+      content: "",
+      parts: [
+        {
+          type: "tool_call",
+          toolName: "shell",
+          toolInput: { callId: "call-error", toolName: "shell", command: "pwd" },
+          callId: "call-error",
+          status: "error",
+        },
+        {
+          type: "tool_result",
+          callId: "call-error",
+          result: {
+            callId: "call-error",
+            toolName: "shell",
+            output: "Run failed before this tool call completed.",
+            isError: true,
+            errorCode: "RUN_FAILED_TOOL_CALL",
+          },
+          isError: true,
+        },
+      ],
+      createdAt: new Date(1_710_000_000_800).toISOString(),
+      runId: "run-error",
+    })
+  })
+
   test("marks unresolved tool calls as cancelled when the run is already cancelled", () => {
     const message: DesktopMessage = {
       id: "message-assistant-2",
