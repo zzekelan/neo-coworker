@@ -1418,6 +1418,181 @@ describe("subsession transcript isolation", () => {
     expect(events.at(-1)).toMatchObject({ type: "run.completed", runId: started.run.id })
   })
 
+  test("terminal tool-call closure stays scoped to the current run and sub-session", async () => {
+    const harness = await createHarness("subsession-terminal-tool-scope", false)
+    const started = startPromptRun({
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_parent_terminal_tool_scope",
+      messageId: "message_parent_terminal_tool_scope_user",
+      prompt: "Parent run fails while a child run still has a pending tool call.",
+    })
+    const childSessionInput = buildCreateSubSessionInput({
+      parentSession: harness.session,
+      prompt: "Child run keeps an unresolved read call.",
+      trigger: "prompt",
+    })
+    const child = harness.repository.createSubSessionWithRun({
+      session: childSessionInput,
+      run: {
+        id: "run_child_terminal_tool_scope",
+        trigger: "prompt",
+        createdAt: harness.now(),
+        activeSkills: childSessionInput.activeSkills,
+        parentRunId: started.run.id,
+      },
+      message: {
+        id: "message_child_terminal_tool_scope_user",
+        sequence: 0,
+        createdAt: harness.now(),
+      },
+      part: {
+        kind: "text",
+        sequence: 0,
+        text: "Child run keeps an unresolved read call.",
+        createdAt: harness.now(),
+      },
+    })
+    const childAssistant = harness.repository.messages.create({
+      id: "message_child_terminal_tool_scope_assistant",
+      sessionId: child.session.id,
+      runId: child.run.id,
+      role: "assistant",
+      sequence: 1,
+      createdAt: harness.now(),
+    })
+    harness.repository.parts.create({
+      id: "part_child_terminal_tool_scope_call",
+      sessionId: child.session.id,
+      runId: child.run.id,
+      messageId: childAssistant.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: '{"path":"child.md"}',
+      data: {
+        callId: "call_child_unresolved",
+        toolName: "read",
+        inputText: '{"path":"child.md"}',
+      },
+      createdAt: harness.now(),
+    })
+    const parentRuntime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          yield {
+            type: "tool.call",
+            callId: "call_parent_unresolved",
+            name: "shell",
+            inputText: '{"command":"pwd"}',
+          }
+          throw new Error("parent provider stopped")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+
+    const parentHandle = await parentRuntime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    const parentEvents = await collectEvents(parentHandle.events)
+    const parentTranscriptAfterFailure = harness.repository.messages.listSessionTranscript(
+      harness.session.id,
+    )
+    const childTranscriptAfterParentFailure = harness.repository.messages.listSessionTranscript(
+      child.session.id,
+    )
+
+    expect(parentTranscriptAfterFailure[1]?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+      "error",
+      "tool_result",
+    ])
+    expect(parentTranscriptAfterFailure[1]?.parts[2]).toMatchObject({
+      kind: "tool_result",
+      data: {
+        callId: "call_parent_unresolved",
+        toolName: "shell",
+        isError: true,
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      },
+    })
+    expect(childTranscriptAfterParentFailure.map((message) => message.runId)).toEqual([
+      child.run.id,
+      child.run.id,
+    ])
+    expect(childTranscriptAfterParentFailure[1]?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+    ])
+    expect(
+      parentTranscriptAfterFailure
+        .flatMap((message) => message.parts)
+        .map((part) => readPartDataString(part, "callId")),
+    ).not.toContain("call_child_unresolved")
+    expect(parentEvents).toContainEqual(
+      expect.objectContaining({
+        type: "tool.call.completed",
+        callId: "call_parent_unresolved",
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      }),
+    )
+
+    const childRuntime = createRuntime({
+      provider: {
+        async *streamTurn() {
+          throw new Error("child provider stopped")
+        },
+      },
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      now: harness.now,
+    })
+    const childHandle = await childRuntime.run({
+      sessionId: child.session.id,
+      runId: child.run.id,
+    })
+    const childEvents = await collectEvents(childHandle.events)
+    const parentTranscriptAfterChildFailure = harness.repository.messages.listSessionTranscript(
+      harness.session.id,
+    )
+    const childTranscriptAfterChildFailure = harness.repository.messages.listSessionTranscript(
+      child.session.id,
+    )
+
+    expect(childTranscriptAfterChildFailure[1]?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+      "tool_result",
+    ])
+    expect(childTranscriptAfterChildFailure[1]?.parts[1]).toMatchObject({
+      kind: "tool_result",
+      data: {
+        callId: "call_child_unresolved",
+        toolName: "read",
+        isError: true,
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      },
+    })
+    expect(
+      childTranscriptAfterChildFailure
+        .flatMap((message) => message.parts)
+        .map((part) => readPartDataString(part, "callId")),
+    ).not.toContain("call_parent_unresolved")
+    expect(parentTranscriptAfterChildFailure).toEqual(parentTranscriptAfterFailure)
+    expect(childEvents).toContainEqual(
+      expect.objectContaining({
+        type: "tool.call.completed",
+        callId: "call_child_unresolved",
+        errorCode: "RUN_FAILED_TOOL_CALL",
+      }),
+    )
+    expect(harness.repository.runs.get(started.run.id).status).toBe("failed")
+    expect(harness.repository.runs.get(child.run.id).status).toBe("failed")
+  })
+
 })
 
 async function createHarness(prefix: string, withFixtureWorkspace: boolean) {
@@ -1550,6 +1725,13 @@ function readTranscriptText(
         : [],
     ),
   )
+}
+
+function readPartDataString(part: { data?: unknown }, key: string) {
+  const data = part.data
+  return data && typeof data === "object" && key in data
+    ? (data as Record<string, unknown>)[key]
+    : undefined
 }
 
 function createMonotonicClock(start = 1) {
