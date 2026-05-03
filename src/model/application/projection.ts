@@ -314,10 +314,21 @@ function collectResolvedToolCallIds(transcript: ModelTranscriptMessage[]) {
 }
 
 function createResolvedToolCallKey(message: ModelTranscriptMessage, callId: string) {
-  const runId =
-    "runId" in message && typeof message.runId === "string" ? message.runId : null
+  const runId = readTimelineProducedByRunId(message)
 
   return runId ? `${runId}:${callId}` : callId
+}
+
+function readTimelineProducedByRunId(message: ModelTranscriptMessage) {
+  if ("producedByRunId" in message && typeof message.producedByRunId === "string") {
+    return message.producedByRunId
+  }
+
+  if ("runId" in message && typeof message.runId === "string") {
+    return message.runId
+  }
+
+  return null
 }
 
 function isTextPart(kind: ModelTranscriptPart["kind"]) {

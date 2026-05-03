@@ -15,6 +15,15 @@ type PersistedTranscriptMessage = ModelTranscriptMessage & {
   createdAt: number
 }
 
+type PersistedTimelineEntry = ModelTranscriptMessage & {
+  id: string
+  sessionId: string
+  producedByRunId: string
+  runSequence: number
+  timelineSequence: number
+  createdAt: number
+}
+
 describe("context builder", () => {
   const basePrompt = "You are Neo Coworker, a versatile day-to-day work assistant."
 
@@ -368,6 +377,129 @@ describe("context builder", () => {
       {
         role: "user",
         parts: [{ type: "text", text: "Try again" }],
+      },
+    ])
+  })
+
+  test("resolves tool calls by Produced By Run provenance for timeline entries", () => {
+    const timeline = [
+      {
+        id: "entry_1",
+        sessionId: "session_1",
+        producedByRunId: "run_1",
+        role: "assistant",
+        runSequence: 0,
+        timelineSequence: 0,
+        createdAt: 1,
+        parts: [
+          {
+            kind: "tool_call",
+            text: null,
+            data: {
+              callId: "call_reused",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          },
+        ],
+      },
+      {
+        id: "entry_2",
+        sessionId: "session_1",
+        producedByRunId: "run_2",
+        role: "assistant",
+        runSequence: 0,
+        timelineSequence: 1,
+        createdAt: 2,
+        parts: [
+          {
+            kind: "tool_result",
+            text: "run 2 result",
+            data: {
+              callId: "call_reused",
+              toolName: "read",
+              output: "run 2 result",
+            },
+          },
+        ],
+      },
+    ] satisfies PersistedTimelineEntry[]
+
+    const messages = buildTranscriptMessages(timeline)
+
+    expect(messages).toEqual([
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_reused",
+            toolName: "read",
+            output: "run 2 result",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("projects legacy tool error parts from timeline entries during migration", () => {
+    const timeline = [
+      {
+        id: "entry_1",
+        sessionId: "session_1",
+        producedByRunId: "run_1",
+        role: "assistant",
+        runSequence: 0,
+        timelineSequence: 0,
+        createdAt: 1,
+        parts: [
+          {
+            kind: "tool_call",
+            text: "{}",
+            data: {
+              callId: "call_legacy",
+              toolName: "read",
+              inputText: "{}",
+            },
+          },
+          {
+            kind: "error",
+            text: "legacy tool failure",
+            data: {
+              source: "tool",
+              callId: "call_legacy",
+              toolName: "read",
+            },
+          },
+        ],
+      },
+    ] satisfies PersistedTimelineEntry[]
+
+    const messages = buildTranscriptMessages(timeline)
+
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool_call",
+            callId: "call_legacy",
+            toolName: "read",
+            inputText: "{}",
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_legacy",
+            toolName: "read",
+            output: "Error: legacy tool failure",
+            isError: true,
+          },
+        ],
       },
     ])
   })
