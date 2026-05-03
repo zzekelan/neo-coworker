@@ -10,7 +10,9 @@ export type OrchestrationRunStatus =
 
 export type OrchestrationTranscriptPart = {
   id?: string
+  entryId?: string
   messageId?: string
+  producedByRunId?: string
   kind: string
   sequence?: number
   text: string | null
@@ -20,9 +22,12 @@ export type OrchestrationTranscriptPart = {
 export type OrchestrationTranscriptMessage = {
   id?: string
   sessionId?: string
+  producedByRunId?: string
   runId: string
   role: OrchestrationMessageRole
+  runSequence?: number
   sequence: number
+  timelineSequence?: number
   parts: OrchestrationTranscriptPart[]
 }
 

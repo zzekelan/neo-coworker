@@ -203,6 +203,33 @@ describe("orchestration compaction service", () => {
     expect(result).toEqual({ status: "completed" })
     expect(readLatestSummaryText(harness.session.transcript)).toContain("Solve gamma")
   })
+
+  test("auto compaction reads Produced By Run provenance on timeline entries", async () => {
+    const harness = createHarness({
+      summaryTexts: [buildStructuredSummary("timeline")],
+      transcript: [
+        makeTimelineTextEntry("run_active", "assistant", 0, 0, "Current run content only."),
+      ],
+    })
+    harness.session.addRun("run_active")
+
+    const result = await harness.service.maybeAutoCompact({
+      contextWindow: 20_000,
+      sessionId: harness.session.sessionId,
+      runId: "run_active",
+      run: harness.session.getRun("run_active"),
+      systemPrompt: "system",
+      workspaceRoot: "/workspace",
+      skillCatalog: [],
+      tools: [],
+      transcript: harness.session.transcript,
+      signal: new AbortController().signal,
+      emit() {},
+    })
+
+    expect(result).toEqual({ compacted: false })
+    expect(harness.modelCapture.projectRequests).toHaveLength(0)
+  })
 })
 
 function createHarness(input: {
@@ -388,6 +415,22 @@ function makeTextMessage(
     sequence,
     parts: [{ kind: "text", text }],
   }
+}
+
+function makeTimelineTextEntry(
+  producedByRunId: string,
+  role: OrchestrationTranscriptMessage["role"],
+  runSequence: number,
+  timelineSequence: number,
+  text: string,
+): OrchestrationTranscriptMessage {
+  return {
+    producedByRunId,
+    role,
+    runSequence,
+    timelineSequence,
+    parts: [{ kind: "text", text }],
+  } as unknown as OrchestrationTranscriptMessage
 }
 
 function makeToolCallMessage(

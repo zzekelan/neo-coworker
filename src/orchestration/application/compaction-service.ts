@@ -271,7 +271,7 @@ export function createOrchestrationCompactionService(input: {
         if (attemptCount >= AUTO_COMPACTION_FAILURE_LIMIT) {
           const breakerText =
             "⚠️ Automatic compaction has been paused. Run /compact successfully to re-enable it."
-          appendSyntheticMessageParts({
+          appendCompactionEntryParts({
             session: input.session,
             sessionId: inputValue.sessionId,
             runId: inputValue.run.id,
@@ -602,7 +602,7 @@ async function performCompactionRun(input: CompactionRunInput & {
       },
     })
 
-    const syntheticMessage = appendSyntheticMessageParts({
+    const compactionEntry = appendCompactionEntryParts({
       session: input.session,
       sessionId: input.sessionId,
       runId: input.run.id,
@@ -626,7 +626,7 @@ async function performCompactionRun(input: CompactionRunInput & {
     })
 
     return {
-      boundaryPartId: syntheticMessage.parts[0]!.id,
+      boundaryPartId: compactionEntry.parts[0]!.id,
       summarizeRunId,
       tokensBefore: input.tokensBefore,
     } satisfies CompactionRunResult
@@ -1040,7 +1040,7 @@ function hasAutoCompactionSourceContext(
   transcript: OrchestrationTranscriptMessage[],
   currentRunId: string,
 ) {
-  return transcript.some((message) => message.runId !== currentRunId)
+  return transcript.some((message) => readProducedByRunId(message) !== currentRunId)
 }
 
 function isAwaitingFirstPostManualCompactionReply(transcript: OrchestrationTranscriptMessage[]) {
@@ -1085,7 +1085,7 @@ function appendCompactionFailureArtifacts(input: {
 }) {
   const label =
     input.trigger === "auto" ? "Automatic compaction failed" : "Manual compaction failed"
-  appendSyntheticMessageParts({
+  appendCompactionEntryParts({
     session: input.session,
     sessionId: input.sessionId,
     runId: input.runId,
@@ -1118,7 +1118,7 @@ function readCompactionSummarizeRunId(error: unknown) {
   return error instanceof CompactionRunError ? error.summarizeRunId : null
 }
 
-function appendSyntheticMessageParts(input: {
+function appendCompactionEntryParts(input: {
   session: OrchestrationSessionPort
   sessionId: string
   runId: string
@@ -1250,10 +1250,18 @@ function createTurnKey(runId: string, messageSequence: number) {
 
 function getNextMessageSequence(transcript: OrchestrationTranscriptMessage[], runId: string) {
   const highestSequence = transcript
-    .filter((message) => message.runId === runId)
-    .reduce((value, message) => Math.max(value, message.sequence), -1)
+    .filter((message) => readProducedByRunId(message) === runId)
+    .reduce((value, message) => Math.max(value, readRunSequence(message)), -1)
 
   return highestSequence + 1
+}
+
+function readProducedByRunId(message: OrchestrationTranscriptMessage) {
+  return message.producedByRunId ?? message.runId
+}
+
+function readRunSequence(message: OrchestrationTranscriptMessage) {
+  return message.runSequence ?? message.sequence
 }
 
 function recordObservedRuntimeEvent(input: {
