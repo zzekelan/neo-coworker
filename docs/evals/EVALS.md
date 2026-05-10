@@ -144,10 +144,20 @@ Each task artifact bundle currently contains:
 
 - `trace.json`
 - `runs.json`
+- `timeline.json`
 - `transcript.json`
 - `outcome.json`
 - `metrics.json`
 - `grader-results.json`
+
+`timeline.json` is the durable Session Timeline content artifact.
+Use it as the content-history source of truth for replay, ordering, and content-oriented grader checks.
+
+`transcript.json` is the compatibility projection from the same Session Timeline entries.
+It keeps the older transcript-shaped consumer contract available while the durable content owner remains `timeline.json`.
+
+`trace.json` is the observability-owned per-run telemetry export.
+Use it for execution-behavior checks such as lifecycle events, retries, permissions, tool execution, and terminal run state.
 
 The CLI summary also prints:
 

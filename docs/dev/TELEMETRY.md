@@ -32,17 +32,20 @@ Current producer categories are:
 The durable unit is one run.
 One run exports as one trace.
 
-## Telemetry vs Transcript
+## Telemetry vs Timeline Content
 
-Do not treat transcript and telemetry as the same thing.
+Do not treat Timeline content, transcript compatibility projections, and telemetry as the same thing.
 
-`session` still owns transcript.
-Transcript is the content history used for replay and runtime context.
+`session` owns the durable Session Timeline.
+Timeline entries are the content history used for replay and runtime context.
+
+Transcript-shaped data is a compatibility projection over the Session Timeline.
+Use it only when an existing consumer still needs the older transcript contract.
 
 `observability` owns telemetry.
 Telemetry answers how the run executed, where it stalled, what retried, and what terminal path was taken.
 
-Use transcript when you need conversation content.
+Use Timeline content when you need conversation content.
 Use telemetry when you need runtime behavior.
 
 ## Durable Record Shape
@@ -149,10 +152,12 @@ The relevant path is:
 
 - runtime produces `run_event`
 - observability exports a per-run trace
-- [`evals/runner.ts`](../../evals/runner.ts) packages `trace`, `transcript`, `outcome`, and `metrics`
+- [`evals/runner.ts`](../../evals/runner.ts) packages `timeline`, transcript compatibility, `trace`, `outcome`, and `metrics`
 - graders under [`evals/graders`](../../evals/graders) inspect those artifacts
 
 This keeps runtime telemetry and developer eval infrastructure separate while still forming one debugging loop.
+Content graders should inspect the Timeline content artifact, falling back to transcript compatibility only for older artifacts.
+Execution-behavior graders should inspect trace artifacts.
 
 ## Current Limits
 
