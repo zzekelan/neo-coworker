@@ -115,6 +115,80 @@ describe("desktop timeline state", () => {
     ])
   })
 
+  test("normalizes canonical app-server timeline payloads for desktop refreshes", () => {
+    const timeline = normalizeTimeline([
+      {
+        id: "message-assistant-1",
+        sessionId: "session-1",
+        producedByRunId: "run-1",
+        agent: "general",
+        role: "assistant",
+        runSequence: 1,
+        timelineSequence: 1,
+        createdAt: 20,
+        parts: [
+          {
+            id: "part-tool-1",
+            sessionId: "session-1",
+            producedByRunId: "run-1",
+            entryId: "message-assistant-1",
+            kind: "tool_call",
+            sequence: 1,
+            text: null,
+            data: { callId: "call-1", toolName: "read" },
+            createdAt: 22,
+          },
+          {
+            id: "part-reasoning-1",
+            sessionId: "session-1",
+            producedByRunId: "run-1",
+            entryId: "message-assistant-1",
+            kind: "reasoning",
+            sequence: 0,
+            text: "Need to inspect the file.",
+            data: { durationMs: 1200 },
+            createdAt: 21,
+          },
+        ],
+      } as unknown as DesktopMessage,
+    ])
+
+    expect(timeline).toEqual([
+      {
+        id: "message-assistant-1",
+        sessionId: "session-1",
+        runId: "run-1",
+        role: "assistant",
+        sequence: 1,
+        createdAt: 20,
+        parts: [
+          {
+            id: "part-reasoning-1",
+            sessionId: "session-1",
+            runId: "run-1",
+            messageId: "message-assistant-1",
+            kind: "reasoning",
+            sequence: 0,
+            text: "Need to inspect the file.",
+            data: { durationMs: 1200 },
+            createdAt: 21,
+          },
+          {
+            id: "part-tool-1",
+            sessionId: "session-1",
+            runId: "run-1",
+            messageId: "message-assistant-1",
+            kind: "tool_call",
+            sequence: 1,
+            text: null,
+            data: { callId: "call-1", toolName: "read" },
+            createdAt: 22,
+          },
+        ],
+      },
+    ])
+  })
+
   test("updates progress for the matching tool call without type escapes", () => {
     const messages = [
       createMessage({

@@ -1,10 +1,23 @@
 import type { DesktopMessage, DesktopPart } from "./types"
 
-export function normalizeTimeline(messages: DesktopMessage[]) {
-  return messages.map((message) => ({
-    ...message,
-    parts: sortParts(message.parts),
-  }))
+type CanonicalTimelinePart = Omit<DesktopPart, "runId" | "messageId"> & {
+  producedByRunId: string
+  entryId: string
+}
+
+type CanonicalTimelineMessage = Omit<DesktopMessage, "runId" | "sequence" | "parts"> & {
+  producedByRunId: string
+  runSequence: number
+  timelineSequence: number
+  agent?: string
+  parts: CanonicalTimelinePart[]
+}
+
+type TimelineInputMessage = DesktopMessage | CanonicalTimelineMessage
+type TimelineInputPart = DesktopPart | CanonicalTimelinePart
+
+export function normalizeTimeline(messages: TimelineInputMessage[]) {
+  return messages.map(normalizeTimelineMessage)
 }
 
 export function upsertTimelineMessage(messages: DesktopMessage[], message: DesktopMessage) {
@@ -49,6 +62,32 @@ export function upsertTimelineMessagePart(
   }
 
   return normalizeTimeline(next)
+}
+
+function normalizeTimelineMessage(message: TimelineInputMessage): DesktopMessage {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    runId: "runId" in message ? message.runId : message.producedByRunId,
+    role: message.role,
+    sequence: "sequence" in message ? message.sequence : message.runSequence,
+    createdAt: message.createdAt,
+    parts: sortParts(message.parts.map(normalizeTimelinePart)),
+  }
+}
+
+function normalizeTimelinePart(part: TimelineInputPart): DesktopPart {
+  return {
+    id: part.id,
+    sessionId: part.sessionId,
+    runId: "runId" in part ? part.runId : part.producedByRunId,
+    messageId: "messageId" in part ? part.messageId : part.entryId,
+    kind: part.kind,
+    sequence: part.sequence,
+    text: part.text,
+    data: part.data,
+    createdAt: part.createdAt,
+  }
 }
 
 function sortParts(parts: DesktopPart[]) {
