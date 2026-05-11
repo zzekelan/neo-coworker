@@ -74,7 +74,7 @@ describe("integration: error resilience", () => {
         skillCatalog: [],
         activeSkills: [],
         tools: [],
-        transcript: [],
+        timeline: [],
         signal: new AbortController().signal,
       }),
     )
@@ -141,7 +141,7 @@ describe("integration: error resilience", () => {
         skillCatalog: [],
         activeSkills: [],
         tools: [],
-        transcript: [],
+        timeline: [],
         signal: new AbortController().signal,
         sessionId: "session_rotation",
         runId: "run_rotation",
@@ -219,7 +219,7 @@ describe("integration: error resilience", () => {
         skillCatalog: [],
         activeSkills: [],
         tools: [],
-        transcript: [
+        timeline: [
           {
             role: "assistant",
             parts: [
@@ -333,7 +333,7 @@ describe("integration: error resilience", () => {
         skillCatalog: [],
         activeSkills: [],
         tools: [],
-        transcript: [],
+        timeline: [],
         signal: new AbortController().signal,
         sessionId: "session_override",
         runId: "run_override_disabled",
@@ -349,7 +349,7 @@ describe("integration: error resilience", () => {
         skillCatalog: [],
         activeSkills: [],
         tools: [],
-        transcript: [],
+        timeline: [],
         signal: new AbortController().signal,
         sessionId: "session_override",
         runId: "run_override_restored",
@@ -428,7 +428,7 @@ describe("integration: error resilience", () => {
         skillCatalog: [],
         activeSkills: [],
         tools: [],
-        transcript: [],
+        timeline: [],
         signal: new AbortController().signal,
         thinking: { enabled: false },
       }),

@@ -20,7 +20,7 @@ import type {
   DesktopSession,
   DesktopSessionSnapshot,
   DesktopSkillCatalogEntry,
-  DesktopTranscriptMessage,
+  DesktopTimelineMessage,
   MessagePart,
 } from "../view-types"
 import { cn } from "../lib/utils"
@@ -31,7 +31,7 @@ import { CompactionDivider } from "./CompactionDivider"
 import { PermissionRequest } from "./PermissionRequest"
 import { SkillPanel } from "./SkillPanel"
 import { getEffectiveActiveSkills, toggleSkill } from "./skill-state"
-import { VirtualTranscript } from "./VirtualTranscript"
+import { VirtualTimeline } from "./VirtualTimeline"
 import { AgentBadge } from "./AgentBadge"
 import { AgentSelector } from "./AgentSelector"
 import { useDesktopText } from "../i18n"
@@ -49,7 +49,7 @@ interface ChatAreaProps {
   activeWorkspaceName: string | null
   session: DesktopSessionSnapshot | null
   skills: DesktopSkillCatalogEntry[]
-  transcript: DesktopTranscriptMessage[]
+  timeline: DesktopTimelineMessage[]
   permissionRequests: DesktopPermissionRequest[]
   contextUsage: DesktopContextUsage | null
   onSendMessage: (msg: string) => void | Promise<unknown>
@@ -83,7 +83,7 @@ export function ChatArea({
   activeWorkspaceName,
   session,
   skills,
-  transcript,
+  timeline,
   permissionRequests,
   contextUsage,
   onSendMessage,
@@ -160,20 +160,20 @@ export function ChatArea({
   const isRunSkillEditingLocked = Boolean(session?.activeRun)
   const activePermissionRequest = permissionRequests[0] ?? null
   const activeRunLatestMessageId = useMemo(
-    () => findLatestRenderableMessageId(transcript, activeRunId),
-    [transcript, activeRunId],
+    () => findLatestRenderableMessageId(timeline, activeRunId),
+    [timeline, activeRunId],
   )
   const activeRunLiveReasoningMessageId = useMemo(
-    () => findLiveReasoningMessageId(transcript, activeRunId),
-    [transcript, activeRunId],
+    () => findLiveReasoningMessageId(timeline, activeRunId),
+    [timeline, activeRunId],
   )
   const messageIdsBeforeLaterReasoning = useMemo(
-    () => findMessageIdsBeforeLaterReasoning(transcript),
-    [transcript],
+    () => findMessageIdsBeforeLaterReasoning(timeline),
+    [timeline],
   )
   const finalAssistantTextMessageIdByRun = useMemo(
-    () => findFinalAssistantTextMessageIdsByRun(transcript),
-    [transcript],
+    () => findFinalAssistantTextMessageIdsByRun(timeline),
+    [timeline],
   )
   const footerRunStatus = activeRunStatus === "running" || activeRunStatus === "queued" ? null : activeRunStatus
   const finishedRunNotice = getFinishedRunNotice(session?.activeRun?.id ?? null, session?.latestRun?.status ?? null)
@@ -432,7 +432,7 @@ export function ChatArea({
         </div>
       </div>
 
-      {transcript.length === 0 ? (
+      {timeline.length === 0 ? (
         <div
           className="flex-1 overflow-y-auto px-4 md:px-8"
           style={{ paddingBottom: bottomCardHeight + TRANSCRIPT_BOTTOM_SAFE_AREA }}
@@ -445,8 +445,8 @@ export function ChatArea({
           />
         </div>
       ) : (
-        <VirtualTranscript
-          messages={transcript}
+        <VirtualTimeline
+          messages={timeline}
           scrollToBottomRef={scrollToBottomRef}
           estimatedItemHeight={100}
           overscan={5}
@@ -455,7 +455,7 @@ export function ChatArea({
           scrollButtonOffset={bottomCardHeight + 16}
           renderItem={(message, index) => {
             const boundaryPart = message.parts?.find((p) => p.type === "compaction_boundary")
-            const prevTimestamp = index > 0 ? transcript[index - 1].createdAt : undefined
+            const prevTimestamp = index > 0 ? timeline[index - 1].createdAt : undefined
             const shouldDelayFoldForLiveReasoning =
               message.role === "assistant"
               && message.runId === activeRunId
@@ -731,19 +731,19 @@ export function ChatArea({
   )
 }
 
-function findLatestRenderableMessageId(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
+function findLatestRenderableMessageId(timeline: DesktopTimelineMessage[], activeRunId: string | null) {
   if (!activeRunId) {
     return null
   }
 
   let messageId: string | null = null
 
-  for (const message of transcript) {
+  for (const message of timeline) {
     if (message.runId !== activeRunId) {
       continue
     }
 
-    if ((message.parts ?? []).some(isRenderableTranscriptActivityPart)) {
+    if ((message.parts ?? []).some(isRenderableTimelineActivityPart)) {
       messageId = message.id
     }
   }
@@ -751,14 +751,14 @@ function findLatestRenderableMessageId(transcript: DesktopTranscriptMessage[], a
   return messageId
 }
 
-function findLiveReasoningMessageId(transcript: DesktopTranscriptMessage[], activeRunId: string | null) {
+function findLiveReasoningMessageId(timeline: DesktopTimelineMessage[], activeRunId: string | null) {
   if (!activeRunId) {
     return null
   }
 
   let messageId: string | null = null
 
-  for (const message of transcript) {
+  for (const message of timeline) {
     if (message.runId !== activeRunId) {
       continue
     }
@@ -767,7 +767,7 @@ function findLiveReasoningMessageId(transcript: DesktopTranscriptMessage[], acti
     let latestPart: MessagePart | null = null
     for (let index = parts.length - 1; index >= 0; index -= 1) {
       const part = parts[index]
-      if (isRenderableTranscriptActivityPart(part)) {
+      if (isRenderableTimelineActivityPart(part)) {
         latestPart = part
         break
       }
@@ -780,17 +780,17 @@ function findLiveReasoningMessageId(transcript: DesktopTranscriptMessage[], acti
   return messageId
 }
 
-function findMessageIdsBeforeLaterReasoning(transcript: DesktopTranscriptMessage[]) {
+function findMessageIdsBeforeLaterReasoning(timeline: DesktopTimelineMessage[]) {
   const messageIds = new Set<string>()
   const previousAssistantMessageIdsByRun = new Map<string, string[]>()
 
-  for (const message of transcript) {
+  for (const message of timeline) {
     if (message.role !== "assistant" || !message.runId) {
       continue
     }
 
     const parts = message.parts ?? []
-    const hasRenderablePart = parts.some(isRenderableTranscriptActivityPart) || messageHasVisibleText(message)
+    const hasRenderablePart = parts.some(isRenderableTimelineActivityPart) || messageHasVisibleText(message)
     const hasReasoningPart = parts.some(isRenderableReasoningPart)
     const previousMessageIds = previousAssistantMessageIdsByRun.get(message.runId) ?? []
 
@@ -808,10 +808,10 @@ function findMessageIdsBeforeLaterReasoning(transcript: DesktopTranscriptMessage
   return messageIds
 }
 
-function findFinalAssistantTextMessageIdsByRun(transcript: DesktopTranscriptMessage[]) {
+function findFinalAssistantTextMessageIdsByRun(timeline: DesktopTimelineMessage[]) {
   const messageIds = new Map<string, string>()
 
-  for (const message of transcript) {
+  for (const message of timeline) {
     if (message.role !== "assistant" || !message.runId) {
       continue
     }
@@ -824,7 +824,7 @@ function findFinalAssistantTextMessageIdsByRun(transcript: DesktopTranscriptMess
   return messageIds
 }
 
-function messageHasVisibleText(message: DesktopTranscriptMessage) {
+function messageHasVisibleText(message: DesktopTimelineMessage) {
   const parts = message.parts
   if (!parts) {
     return message.content.trim().length > 0
@@ -833,7 +833,7 @@ function messageHasVisibleText(message: DesktopTranscriptMessage) {
   return parts.some((part) => part.type === "text" && part.text.trim().length > 0)
 }
 
-function isRenderableTranscriptActivityPart(part: MessagePart) {
+function isRenderableTimelineActivityPart(part: MessagePart) {
   return part.type !== "tool_result" && (part.type !== "text" || part.text.trim().length > 0)
 }
 

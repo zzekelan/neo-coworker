@@ -81,7 +81,7 @@ describe("desktop app state flow", () => {
     expect(source).toContain("void loadPrimaryAgents(refreshData.resolvedWorkspaceRoot ?? undefined)")
   })
 
-  test("does not append structured lifecycle events to the active transcript", () => {
+  test("does not append structured lifecycle events to the active timeline", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 
     expect(source).not.toContain("isLifecycleEvent(event)")
@@ -101,7 +101,7 @@ describe("desktop app state flow", () => {
 
     expect(source).toContain("async compactSession()")
     expect(source).toContain("await compactSession(sessionId)")
-    expect(source).toContain("preserveTranscript: true")
+    expect(source).toContain("preserveTimeline: true")
   })
 
   test("compactSession requires an active session and surfaces an error if none exists", () => {

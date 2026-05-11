@@ -3,7 +3,7 @@ import type {
   StoredRun,
   TimelineEntry,
   TimelinePart,
-  TranscriptMessage,
+  TimelineMessage,
 } from "./ports/repository"
 
 export class RunInitiatingMessageNotFoundError extends Error {
@@ -16,22 +16,22 @@ export class RunInitiatingMessageNotFoundError extends Error {
   }
 }
 
-export type CreateSessionTranscriptServiceInput = {
+export type CreateSessionTimelineServiceInput = {
   repository: SessionRepository
 }
 
-export function createSessionTranscriptService(
-  input: CreateSessionTranscriptServiceInput,
+export function createSessionTimelineService(
+  input: CreateSessionTimelineServiceInput,
 ) {
   const repository = input.repository
 
   return {
-    listSessionTranscript(sessionId: string) {
-      return timelineEntriesToTranscriptMessages(repository.timeline.listEntries(sessionId))
+    listSessionTimeline(sessionId: string) {
+      return timelineEntriesToTimelineMessages(repository.timeline.listEntries(sessionId))
     },
     getInitiatingMessage(run: StoredRun) {
-      const sessionTranscript = repository.messages.listSessionTranscript(run.sessionId)
-      const initiatingMessage = sessionTranscript.find(
+      const sessionTimeline = repository.messages.listSessionTimeline(run.sessionId)
+      const initiatingMessage = sessionTimeline.find(
         (message) => message.runId === run.id && message.role === "user" && message.sequence === 0,
       )
 
@@ -44,13 +44,13 @@ export function createSessionTranscriptService(
   }
 }
 
-export type SessionTranscriptService = ReturnType<typeof createSessionTranscriptService>
+export type SessionTimelineService = ReturnType<typeof createSessionTimelineService>
 
-export function timelineEntriesToTranscriptMessages(entries: TimelineEntry[]): TranscriptMessage[] {
-  return entries.map(timelineEntryToTranscriptMessage)
+export function timelineEntriesToTimelineMessages(entries: TimelineEntry[]): TimelineMessage[] {
+  return entries.map(timelineEntryToTimelineMessage)
 }
 
-export function timelineEntryToTranscriptMessage(entry: TimelineEntry): TranscriptMessage {
+export function timelineEntryToTimelineMessage(entry: TimelineEntry): TimelineMessage {
   return {
     id: entry.id,
     sessionId: entry.sessionId,
@@ -59,11 +59,11 @@ export function timelineEntryToTranscriptMessage(entry: TimelineEntry): Transcri
     role: entry.role,
     sequence: entry.runSequence,
     createdAt: entry.createdAt,
-    parts: entry.parts.map(timelinePartToTranscriptPart),
+    parts: entry.parts.map(timelinePartToTimelinePart),
   }
 }
 
-export function timelinePartToTranscriptPart(part: TimelinePart) {
+export function timelinePartToTimelinePart(part: TimelinePart) {
   return {
     id: part.id,
     sessionId: part.sessionId,
@@ -77,4 +77,4 @@ export function timelinePartToTranscriptPart(part: TimelinePart) {
   }
 }
 
-export type { TranscriptMessage }
+export type { TimelineMessage }

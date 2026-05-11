@@ -54,7 +54,7 @@
       "run.completed"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "orderedTextIncludes": [
       "Review: reviewer active",
       "context recovery fixture",

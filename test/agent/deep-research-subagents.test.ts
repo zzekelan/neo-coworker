@@ -71,7 +71,7 @@ function createSubAgentInput(
       },
     ],
   ])
-  const transcripts = new Map<string, ReturnType<CreateSubAgentRunInput["session"]["listTranscript"]>>()
+  const timelines = new Map<string, ReturnType<CreateSubAgentRunInput["session"]["listTimeline"]>>()
   const runs = new Map<string, ReturnType<CreateSubAgentRunInput["session"]["getRun"]>>()
 
   const session: CreateSubAgentRunInput["session"] = {
@@ -93,8 +93,8 @@ function createSubAgentInput(
         }
       )
     },
-    listTranscript(sessionId) {
-      return transcripts.get(sessionId) ?? []
+    listTimeline(sessionId) {
+      return timelines.get(sessionId) ?? []
     },
     createRun(run) {
       const record = {
@@ -113,8 +113,8 @@ function createSubAgentInput(
     createAssistantMessage() {
       return { id: "assistant-message" }
     },
-    createSyntheticMessage() {
-      return { id: "synthetic-message" }
+    createCompactionMessage() {
+      return { id: "compaction-message" }
     },
     createMessagePart(part) {
       return { id: "part", kind: part.kind, text: part.text ?? null, data: part.data }
@@ -196,7 +196,7 @@ function createSubAgentInput(
         createdAt,
         activeSkills,
       })
-      transcripts.set(subSessionId, [
+      timelines.set(subSessionId, [
         {
           runId: subRunId,
           role: "user",

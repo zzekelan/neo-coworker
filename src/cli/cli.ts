@@ -1218,14 +1218,14 @@ async function resumeExistingChatSession(input: {
   const activeRun = snapshot.activeRun
 
   if (!activeRun) {
-    const transcript = await input.client.listSessionTranscript(input.sessionId)
+    const timeline = await input.client.listSessionTimeline(input.sessionId)
     const renderer = createCliChatRenderer({
       io: input.io,
       workspaceRoot: input.workspaceRoot,
     })
 
-    renderer.hydrateTranscript({
-      transcript,
+    renderer.hydrateTimeline({
+      timeline,
     })
     renderer.finish()
     return "continue" as const
@@ -1250,9 +1250,9 @@ async function resumeExistingChatSession(input: {
   })
 
   try {
-    const transcript = await input.client.listSessionTranscript(input.sessionId)
-    renderer.hydrateTranscript({
-      transcript,
+    const timeline = await input.client.listSessionTimeline(input.sessionId)
+    renderer.hydrateTimeline({
+      timeline,
       activeRunId: activeRun.id,
       activeRunTrigger: activeRun.trigger,
       renderLiveActivity: activeRun.status === "running",

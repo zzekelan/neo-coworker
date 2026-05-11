@@ -3,11 +3,11 @@ import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronDown } from "lucide-react"
 import { cn } from "../lib/utils"
 
-interface VirtualTranscriptItem {
+interface VirtualTimelineItem {
   id: string
 }
 
-interface VirtualTranscriptProps<T extends VirtualTranscriptItem> {
+interface VirtualTimelineProps<T extends VirtualTimelineItem> {
   messages: T[]
   renderItem: (item: T, index: number) => React.ReactNode
   estimatedItemHeight?: number
@@ -19,7 +19,7 @@ interface VirtualTranscriptProps<T extends VirtualTranscriptItem> {
   scrollButtonOffset?: number
 }
 
-export function VirtualTranscript<T extends VirtualTranscriptItem>({
+export function VirtualTimeline<T extends VirtualTimelineItem>({
   messages,
   renderItem,
   estimatedItemHeight = 100,
@@ -29,7 +29,7 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
   scrollToBottomRef: externalScrollRef,
   bottomInset,
   scrollButtonOffset,
-}: VirtualTranscriptProps<T>) {
+}: VirtualTimelineProps<T>) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
   const previousCountRef = useRef(messages.length)
@@ -111,7 +111,7 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
         tabIndex={0}
-        className={cn("transcript-scroll-container h-full overflow-y-auto outline-none", className)}
+        className={cn("timeline-scroll-container h-full overflow-y-auto outline-none", className)}
         style={{ overflowAnchor: "none" }}
       >
         <div
@@ -145,7 +145,7 @@ export function VirtualTranscript<T extends VirtualTranscriptItem>({
         {bottomInset !== undefined ? (
           <div
             aria-hidden="true"
-            className="transcript-bottom-spacer"
+            className="timeline-bottom-spacer"
             style={{ height: bottomInset }}
           />
         ) : null}

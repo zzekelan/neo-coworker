@@ -1,14 +1,14 @@
 import type { DesktopMessage, DesktopPart, RunStatus } from "./types"
-import type { DesktopTranscriptMessage, MessagePart } from "./view-types"
+import type { DesktopTimelineMessage, MessagePart } from "./view-types"
 
 type ToolCallStatus = "pending" | "success" | "error" | "cancelled"
 
-export function mapTranscriptMessage(
+export function mapTimelineMessage(
   message: DesktopMessage,
   input: {
     runStatusById?: ReadonlyMap<string, RunStatus>
   } = {},
-): DesktopTranscriptMessage {
+): DesktopTimelineMessage {
   const hasCompactionBoundary = message.parts.some((p) => p.kind === "compaction_boundary")
   const filteredParts = hasCompactionBoundary
     ? message.parts.filter((p) => p.kind !== "text")

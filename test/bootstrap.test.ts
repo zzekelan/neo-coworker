@@ -409,7 +409,7 @@ describe("bootstrap", () => {
       systemPrompt: "system",
       skillCatalog: [],
       activeSkills: [],
-      transcript: [],
+      timeline: [],
       tools: [],
       signal: new AbortController().signal,
       thinking: {

@@ -25,7 +25,7 @@ Current goals:
 - fast deterministic regression coverage through scripted provider scenarios
 - opt-in validation of the real env-backed provider path through live mode
 - artifact bundles that can be inspected without querying runtime memory directly
-- graders that can verify transcript ordering, trace sequence, tool-result consumption, and skill disclosure
+- graders that can verify timeline ordering, trace sequence, tool-result consumption, and skill disclosure
 
 The eval harness is not an end-user feature.
 Its artifacts and grader outputs are developer/operator material.
@@ -145,16 +145,12 @@ Each task artifact bundle currently contains:
 - `trace.json`
 - `runs.json`
 - `timeline.json`
-- `transcript.json`
 - `outcome.json`
 - `metrics.json`
 - `grader-results.json`
 
 `timeline.json` is the durable Session Timeline content artifact.
 Use it as the content-history source of truth for replay, ordering, and content-oriented grader checks.
-
-`transcript.json` is the compatibility projection from the same Session Timeline entries.
-It keeps the older transcript-shaped consumer contract available while the durable content owner remains `timeline.json`.
 
 `trace.json` is the observability-owned per-run telemetry export.
 Use it for execution-behavior checks such as lifecycle events, retries, permissions, tool execution, and terminal run state.
@@ -193,7 +189,7 @@ Current richer task fields:
 - `contextWindow` for forcing a smaller runtime context window during a task
 - `steps` for multi-run session scripts such as prompt → command → prompt flows
 - `providerFaults.summarizeFailures` for deterministically faulting the next N compaction summarize turns inside the eval harness
-- `transcriptExpectation` for transcript ordering and structured checkpoints
+- `timelineExpectation` for timeline ordering and structured checkpoints
 - `traceSequenceExpectation` for ordered trace assertions
 - `traceDataExpectation` for checking trace payload fields on the final run or an earlier run by index
 - `toolConsumptionExpectation` for verifying assistant follow-up after tool results

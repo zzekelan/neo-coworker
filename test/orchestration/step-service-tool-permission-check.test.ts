@@ -12,7 +12,7 @@ import {
   type OrchestrationRunRecord,
   type OrchestrationSessionPort,
   type OrchestrationSkillPort,
-  type OrchestrationTranscriptMessage,
+  type OrchestrationTimelineMessage,
   type OrchestrationToolPort,
 } from "../../src/orchestration"
 import { buildToolDeniedMessage } from "../../src/agent/application/tool-permission-check"
@@ -61,7 +61,7 @@ describe("orchestration step service tool permission interception", () => {
     expect(requests).toHaveLength(2)
     expect(requests[0]?.tools.map((tool) => tool.name)).toEqual(["read", "shell", "lsp_symbols"])
     expect(tools.executedBatches).toEqual([])
-    expect(session.listTranscript(session.sessionId)[1]?.parts).toMatchObject([
+    expect(session.listTimeline(session.sessionId)[1]?.parts).toMatchObject([
       {
         kind: "tool_call",
         data: {
@@ -377,7 +377,7 @@ function createMemorySession(input: {
   const runId = `run_tool_permission_${crypto.randomUUID()}`
   let nextMessageId = 0
   let nextPartId = 0
-  const transcript: OrchestrationTranscriptMessage[] = [
+  const timeline: OrchestrationTimelineMessage[] = [
     {
       runId,
       role: "user",
@@ -385,7 +385,7 @@ function createMemorySession(input: {
       parts: [{ kind: "text", text: input.userText, data: undefined }],
     },
   ]
-  const messageIds = new Map<string, OrchestrationTranscriptMessage>()
+  const messageIds = new Map<string, OrchestrationTimelineMessage>()
   const partIds = new Map<string, OrchestrationPartRecord>()
   const run: OrchestrationRunRecord = {
     id: runId,
@@ -421,12 +421,12 @@ function createMemorySession(input: {
 
       return run
     },
-    listTranscript(requestedSessionId) {
+    listTimeline(requestedSessionId) {
       if (requestedSessionId !== sessionId) {
         throw new Error(`Unknown session ${requestedSessionId}`)
       }
 
-      return transcript
+      return timeline
     },
     createRun(runInput) {
       return {
@@ -442,25 +442,25 @@ function createMemorySession(input: {
     },
     createAssistantMessage(messageInput) {
       const id = `assistant_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+      const message: OrchestrationTimelineMessage = {
         runId: messageInput.runId,
         role: "assistant",
         sequence: messageInput.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },
-    createSyntheticMessage(messageInput) {
-      const id = `synthetic_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+    createCompactionMessage(messageInput) {
+      const id = `compaction_message_${nextMessageId++}`
+      const message: OrchestrationTimelineMessage = {
         runId: messageInput.runId,
-        role: "synthetic",
+        role: "compaction",
         sequence: messageInput.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },

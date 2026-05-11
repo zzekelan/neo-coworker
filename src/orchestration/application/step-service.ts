@@ -1,7 +1,7 @@
 import type {
   OrchestrationSessionPort,
   OrchestrationPartRecord,
-  OrchestrationTranscriptMessage,
+  OrchestrationTimelineMessage,
 } from "./ports/session"
 import type { OrchestrationModelPort } from "./ports/model"
 import type { OrchestrationAgentProfilePort } from "./ports/agent-profile"
@@ -523,7 +523,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         }
     > {
       const contextWindow = input.contextWindow.getContextWindow() || DEFAULT_CONTEXT_WINDOW_SIZE
-      let transcript = input.session.listTranscript(stepInput.sessionId)
+      let timeline = input.session.listTimeline(stepInput.sessionId)
       const run = input.session.getRun(stepInput.runId)
       const skillCatalog = await input.skill.listCatalog(stepInput.workspaceRoot)
       const availableTools = stepInput.tools.list()
@@ -548,7 +548,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
 
       const pendingReminderBatch = skillReminders.peekSystemReminderBatch(stepInput.sessionId)
       const autoCompaction = compactionService.shouldDeferAutoCompactionUntilAfterManualRecovery({
-        transcript,
+        timeline,
         reminderBatch: pendingReminderBatch,
       })
         ? { compacted: false as const }
@@ -564,12 +564,12 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             signal: stepInput.signal,
             emit: stepInput.emit,
             run,
-            transcript,
+            timeline,
           })
       if (autoCompaction.compacted) {
-        transcript = input.session.listTranscript(stepInput.sessionId)
+        timeline = input.session.listTimeline(stepInput.sessionId)
       }
-      transcript = input.session.listTranscript(stepInput.sessionId)
+      timeline = input.session.listTimeline(stepInput.sessionId)
       const activeSkills = skillReminders.resolveActiveSkills(stepInput.sessionId, sessionActiveSkills)
       const systemReminderBatch = skillReminders.consumeSystemReminderBatch(stepInput.sessionId)
       const systemReminders = systemReminderBatch?.messages ?? []
@@ -591,13 +591,13 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
         systemReminders,
         now,
       })
-      const turnKey = createTurnKey(stepInput.runId, getNextMessageSequence(transcript, stepInput.runId))
+      const turnKey = createTurnKey(stepInput.runId, getNextMessageSequence(timeline, stepInput.runId))
       const effectiveThinking = input.resolveThinking?.(stepInput.sessionId) ?? input.thinking
       const assistantTurn = createAssistantTurnRecorder({
         session: input.session,
         sessionId: stepInput.sessionId,
         runId: stepInput.runId,
-        messageSequence: getNextMessageSequence(transcript, stepInput.runId),
+        messageSequence: getNextMessageSequence(timeline, stepInput.runId),
         emit: stepInput.emit,
         now,
       })
@@ -628,7 +628,7 @@ export function createOrchestrationStepService(input: CreateOrchestrationStepSer
             thinking: effectiveThinking,
             temperature: agentLateContext?.temperature,
             tools: availableTools,
-            transcript,
+            timeline,
             compressibleToolNames,
             sessionId: stepInput.sessionId,
             runId: stepInput.runId,
@@ -967,10 +967,10 @@ function collectPendingToolCalls(input: {
 }
 
 function getNextMessageSequence(
-  transcript: OrchestrationTranscriptMessage[],
+  timeline: OrchestrationTimelineMessage[],
   runId: string,
 ) {
-  const highestSequence = transcript
+  const highestSequence = timeline
     .filter((message) => message.runId === runId)
     .reduce((value, message) => Math.max(value, message.sequence), -1)
 
@@ -1219,7 +1219,7 @@ function collectUnresolvedRunToolCalls(input: {
   const run = input.session.getRun(input.runId)
   // Terminalization is intentionally current-run only; historical migration
   // and malformed timeline repair belong outside the live run loop.
-  const transcript = input.session.listTranscript(run.sessionId)
+  const timeline = input.session.listTimeline(run.sessionId)
   const unresolvedToolCalls: Array<{
     sessionId: string
     messageId: string
@@ -1228,7 +1228,7 @@ function collectUnresolvedRunToolCalls(input: {
     toolName: string
   }> = []
 
-  for (const message of transcript) {
+  for (const message of timeline) {
     if (message.runId !== input.runId || message.role !== "assistant") {
       continue
     }
@@ -1278,11 +1278,11 @@ function collectUnresolvedRunToolCalls(input: {
   return unresolvedToolCalls
 }
 
-function getNextPartSequence(parts: OrchestrationTranscriptMessage["parts"]) {
+function getNextPartSequence(parts: OrchestrationTimelineMessage["parts"]) {
   return parts.reduce((value, part) => Math.max(value, part.sequence ?? -1), -1) + 1
 }
 
-function readToolClosureCallId(part: OrchestrationTranscriptMessage["parts"][number]) {
+function readToolClosureCallId(part: OrchestrationTimelineMessage["parts"][number]) {
   const data = readObject(part.data)
   if (part.kind === "tool_result") {
     return readString(data, "callId")

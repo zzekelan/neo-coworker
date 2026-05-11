@@ -14,7 +14,7 @@ import {
 } from "../../src/session"
 import {
   SYSTEM_REMINDER_NOTICE,
-  buildTranscriptMessages,
+  buildTimelineMessages,
   createModelRuntimeApi,
   type ProviderEvent,
   type ProviderTurnRequest,
@@ -46,7 +46,7 @@ afterEach(async () => {
 })
 
 describe("agent loop", () => {
-  test("reads prior transcript, roundtrips tool results, and completes the same run", async () => {
+  test("reads prior timeline, roundtrips tool results, and completes the same run", async () => {
     const harness = await createHarness("single-roundtrip", true)
     seedCompletedRun({
       repository: harness.repository,
@@ -90,8 +90,8 @@ describe("agent loop", () => {
     })
     const events = await collectEvents(handle.events)
     const requestTexts = requests.map(readRequestText)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requestTexts[0]?.join("\n")).toContain("Earlier assistant context.")
     expect(requestTexts[0]?.join("\n")).toContain("Inspect README.md")
@@ -205,8 +205,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const unresolvedMessage = transcript.find(
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const unresolvedMessage = timeline.find(
       (message) => message.runId === started.run.id && message.sequence === 1,
     )
 
@@ -350,8 +350,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requests[0]?.messages).toContainEqual({
       role: "tool",
@@ -432,8 +432,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
     const unknownResult = activeRunMessages
       .flatMap((message) => message.parts)
       .find(
@@ -518,8 +518,8 @@ describe("agent loop", () => {
     })
     await collectEvents(handle.events)
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requests).toHaveLength(3)
     expect(requests[1]?.messages.at(-1)).toEqual({
@@ -587,8 +587,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requests).toHaveLength(2)
     expect(requests[1]?.messages.slice(-3)[0]).toEqual({
@@ -713,8 +713,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requests).toHaveLength(3)
     expect(requests[1]?.messages.slice(-2)).toEqual([
@@ -781,7 +781,7 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
-  test("auto compacts prior transcript into a synthetic boundary summary before continuing", async () => {
+  test("auto compacts prior timeline into a compaction boundary summary before continuing", async () => {
     const harness = await createHarness("auto-compact", true)
     seedCompletedRunWithToolResults({
       repository: harness.repository,
@@ -854,8 +854,8 @@ describe("agent loop", () => {
 
     const runs = harness.repository.runs.listBySession(harness.session.id)
     const summarizeRun = runs.find((run) => run.trigger === "summarize")
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
     const boundaryMessage = activeRunMessages.find((message) =>
       message.parts.some((part) => hasPartKind(part, "compaction_boundary")),
     )
@@ -873,7 +873,7 @@ describe("agent loop", () => {
       inputTokens: expect.any(Number),
       outputTokens: expect.any(Number),
     })
-    expect(boundaryMessage?.role).toBe("synthetic")
+    expect(boundaryMessage?.role).toBe("compaction")
     expect(boundaryMessage?.parts.map((part) => part.kind)).toEqual(["compaction_boundary", "text"])
     expect(boundaryMessage?.parts[0]).toMatchObject({
       kind: "compaction_boundary",
@@ -959,8 +959,8 @@ describe("agent loop", () => {
       runId: compactRun.run.id,
     })
     const compactEvents = await collectEvents(compactHandle.events)
-    const compactTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const compactBoundary = compactTranscript.find(
+    const compactTimeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const compactBoundary = compactTimeline.find(
       (message) =>
         message.runId === compactRun.run.id &&
         message.parts.some((part) => hasPartKind(part, "compaction_boundary")),
@@ -984,7 +984,7 @@ describe("agent loop", () => {
         }),
       ]),
     )
-    expect(compactBoundary?.role).toBe("synthetic")
+    expect(compactBoundary?.role).toBe("compaction")
     expect(compactBoundary?.parts[0]).toMatchObject({
       kind: "compaction_boundary",
       data: {
@@ -1017,7 +1017,7 @@ describe("agent loop", () => {
     expect(readRequestText(requests[1]!).join("\n")).not.toContain("shell output")
     expect(
       harness.repository.messages
-        .listSessionTranscript(harness.session.id)
+        .listSessionTimeline(harness.session.id)
         .filter((message) => message.role === "user")
         .map((message) => message.parts[0]?.text),
     ).toEqual(["Previous shell-heavy work", "Continue after manual compaction"])
@@ -1412,8 +1412,8 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).activeSkills).toEqual(["reviewer"])
     expect(harness.repository.sessions.get(harness.session.id).activeSkills).toEqual(["reviewer"])
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
     expect(activeRunMessages[1]?.parts).toMatchObject([
       {
         kind: "tool_call",
@@ -1571,8 +1571,8 @@ describe("agent loop", () => {
     })
     await collectEvents(handle.events)
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     const toolCallPart = activeRunMessages[1]?.parts[0]
     const toolResultPart = activeRunMessages[1]?.parts[1]
@@ -1673,8 +1673,8 @@ describe("agent loop", () => {
       activeSkills: [],
     })
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
     expect(activeRunMessages[1]?.parts).toMatchObject([
       {
         kind: "tool_call",
@@ -1734,8 +1734,8 @@ describe("agent loop", () => {
     })
     await collectEvents(handle.events)
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requests[1]?.messages.slice(-2)).toEqual([
       {
@@ -1830,8 +1830,8 @@ describe("agent loop", () => {
       }
     }
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
     const permissionRequests = harness.permissionRepository.requests.listByRun(started.run.id)
 
     expect(requests).toHaveLength(1)
@@ -1940,8 +1940,8 @@ describe("agent loop", () => {
       }
     }
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
     const completedEventIndex = events.findIndex((event) => event.type === "tool.call.completed")
     const cancelledEventIndex = events.findIndex((event) => event.type === "run.cancelled")
 
@@ -2032,8 +2032,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(attempts).toBe(3)
     expect(activeRunMessages[1]?.parts).toMatchObject([
@@ -2079,8 +2079,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(attempts).toBe(3)
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["error"])
@@ -2130,8 +2130,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(attempts).toBe(1)
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["text", "error"])
@@ -2184,8 +2184,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
     const closureEventIndex = events.findIndex(
       (event) => event.type === "tool.call.completed" && event.callId === "call_failed_before_result",
     )
@@ -2287,8 +2287,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const closureMessage = transcript.find(
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const closureMessage = timeline.find(
       (message) => message.runId === started.run.id && message.sequence === 1,
     )
 
@@ -2368,11 +2368,11 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const legacyMessage = transcript.find(
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const legacyMessage = timeline.find(
       (message) => message.runId === "run_legacy_unresolved_tool_call",
     )
-    const currentMessage = transcript.find(
+    const currentMessage = timeline.find(
       (message) => message.runId === started.run.id && message.role === "assistant",
     )
 
@@ -2392,7 +2392,7 @@ describe("agent loop", () => {
       },
     })
     expect(
-      transcript
+      timeline
         .flatMap((message) => message.parts)
         .filter((part) => part.kind === "tool_result")
         .map((part) => readPartDataString(part, "callId")),
@@ -2460,8 +2460,8 @@ describe("agent loop", () => {
       runId: started.run.id,
     })
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const malformedMessage = transcript.find(
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const malformedMessage = timeline.find(
       (message) => message.runId === started.run.id && message.sequence === 1,
     )
 
@@ -2533,8 +2533,8 @@ describe("agent loop", () => {
     await toolCallPersisted
     handle.cancel()
     const events = await collectEvents(handle.events)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
     const closureEventIndex = events.findIndex(
       (event) => event.type === "tool.call.completed" && event.callId === "call_cancelled_before_result",
     )
@@ -2609,8 +2609,8 @@ describe("agent loop", () => {
       }
     }
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(observedTypes).toContain("message.delta")
     expect(observedTypes.at(-1)).toBe("run.cancelled")
@@ -2669,8 +2669,8 @@ describe("agent loop", () => {
       }
     }
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(observedTypes.at(-1)).toBe("run.cancelled")
     expect(activeRunMessages[1]?.parts).toMatchObject([{ kind: "text", text: "Partial output." }])
@@ -2766,8 +2766,8 @@ describe("agent loop", () => {
       }
 
       if (next.value.type === "message.delta") {
-        const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-        const reconstructed = buildTranscriptMessages(transcript)
+        const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+        const reconstructed = buildTimelineMessages(timeline)
         expect(readMessageTexts(reconstructed)).toContain("Already persisted.")
         expect(harness.repository.runs.get(started.run.id).status).toBe("running")
         handle.cancel()

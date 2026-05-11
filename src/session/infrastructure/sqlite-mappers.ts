@@ -63,7 +63,7 @@ export type PartRow = {
   created_at: number
 }
 
-export type TranscriptRow = {
+export type TimelineJoinedRow = {
   message_id: string
   message_session_id: string
   message_run_id: string
@@ -82,7 +82,7 @@ export type TranscriptRow = {
   part_created_at: number | null
 }
 
-export type TimelineRow = TranscriptRow & {
+export type TimelineRow = TimelineJoinedRow & {
   message_timeline_sequence: number
 }
 

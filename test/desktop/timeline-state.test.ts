@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import {
-  normalizeTranscript,
+  normalizeTimeline,
   updateToolProgress,
-  upsertTranscriptMessage,
-} from "../../src/desktop/src/transcript-state"
+  upsertTimelineMessage,
+} from "../../src/desktop/src/timeline-state"
 import type { DesktopMessage, DesktopPart } from "../../src/desktop/src/types"
 
-describe("desktop transcript state", () => {
-  test("keeps the server transcript order across multiple runs", () => {
-    const transcript = normalizeTranscript([
+describe("desktop timeline state", () => {
+  test("keeps the server timeline order across multiple runs", () => {
+    const timeline = normalizeTimeline([
       createMessage({
         id: "message-user-1",
         role: "user",
@@ -32,7 +32,7 @@ describe("desktop transcript state", () => {
       }),
     ])
 
-    expect(transcript.map((message) => message.id)).toEqual([
+    expect(timeline.map((message) => message.id)).toEqual([
       "message-user-1",
       "message-assistant-1",
       "message-user-2",
@@ -40,7 +40,7 @@ describe("desktop transcript state", () => {
   })
 
   test("appends a newly streamed assistant reply instead of regrouping by sequence", () => {
-    const transcript = upsertTranscriptMessage(
+    const timeline = upsertTimelineMessage(
       [
         createMessage({
           id: "message-user-1",
@@ -73,7 +73,7 @@ describe("desktop transcript state", () => {
       }),
     )
 
-    expect(transcript.map((message) => message.id)).toEqual([
+    expect(timeline.map((message) => message.id)).toEqual([
       "message-user-1",
       "message-assistant-1",
       "message-user-2",
@@ -81,8 +81,8 @@ describe("desktop transcript state", () => {
     ])
   })
 
-  test("preserves ordering when a synthetic compaction boundary message arrives mid-transcript", () => {
-    const transcript = upsertTranscriptMessage(
+  test("preserves ordering when a compaction boundary message arrives mid-timeline", () => {
+    const timeline = upsertTimelineMessage(
       [
         createMessage({
           id: "message-user-1",
@@ -100,18 +100,18 @@ describe("desktop transcript state", () => {
         }),
       ],
       createMessage({
-        id: "message-synthetic-compaction",
-        role: "synthetic",
+        id: "message-compaction-compaction",
+        role: "compaction",
         runId: "run-1",
         sequence: 2,
         createdAt: 25,
       }),
     )
 
-    expect(transcript.map((message) => message.id)).toEqual([
+    expect(timeline.map((message) => message.id)).toEqual([
       "message-user-1",
       "message-assistant-1",
-      "message-synthetic-compaction",
+      "message-compaction-compaction",
     ])
   })
 

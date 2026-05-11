@@ -149,8 +149,8 @@ describe("runtime permission flow", () => {
 
     await collectEvents(handle.events[Symbol.asyncIterator]())
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requests).toHaveLength(2)
     expect(harness.permissionRepository.requests.listByRun(started.run.id)).toEqual([])
@@ -226,8 +226,8 @@ describe("runtime permission flow", () => {
 
     await collectEvents(handle.events[Symbol.asyncIterator]())
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(harness.permissionRepository.requests.listByRun(started.run.id)).toEqual([])
     expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("general")
@@ -304,8 +304,8 @@ describe("runtime permission flow", () => {
     })
 
     const remainingEvents = await collectEvents(iterator)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("general")
     expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
@@ -383,8 +383,8 @@ describe("runtime permission flow", () => {
     })
 
     const remainingEvents = await collectEvents(iterator)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(harness.repository.sessions.getCurrentAgent(harness.session.id)).toBe("plan")
     expect(harness.permissionRepository.requests.get(permissionEvent.requestId)).toMatchObject({
@@ -463,8 +463,8 @@ describe("runtime permission flow", () => {
     })
 
     const remainingEvents = await collectEvents(iterator)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requests).toHaveLength(2)
     expect(activeRunMessages[1]?.parts).toMatchObject([
@@ -586,8 +586,8 @@ describe("runtime permission flow", () => {
     })
 
     const remainingEvents = await collectEvents(iterator)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(requests).toHaveLength(2)
     expect(activeRunMessages[1]?.parts).toMatchObject([
@@ -696,8 +696,8 @@ describe("runtime permission flow", () => {
     })
 
     const remainingEvents = await collectEvents(iterator)
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const activeRunMessages = transcript.filter((message) => message.runId === started.run.id)
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const activeRunMessages = timeline.filter((message) => message.runId === started.run.id)
 
     expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe("hello")
     expect(requests).toHaveLength(2)

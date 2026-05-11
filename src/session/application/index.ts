@@ -22,7 +22,7 @@ export {
   type StoredSession,
   type TimelineEntry,
   type TimelinePart,
-  type TranscriptMessage,
+  type TimelineMessage,
   type UpdatePartContentInput,
   type UpdateRunActiveSkillsInput,
   type UpdateRunTokenUsageInput,
@@ -61,12 +61,12 @@ export {
 } from "./run-state-machine"
 export {
   RunInitiatingMessageNotFoundError,
-  createSessionTranscriptService,
-  timelineEntryToTranscriptMessage,
-  timelineEntriesToTranscriptMessages,
-  timelinePartToTranscriptPart,
-  type SessionTranscriptService,
-} from "./transcript-service"
+  createSessionTimelineService,
+  timelineEntryToTimelineMessage,
+  timelineEntriesToTimelineMessages,
+  timelinePartToTimelinePart,
+  type SessionTimelineService,
+} from "./timeline-service"
 export {
   createSessionRuntimeApi,
   type SessionProvider,

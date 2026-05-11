@@ -161,7 +161,7 @@ describe("session run service", () => {
 
     expect(second.run.id).toBe("run_2")
     expect(second.run.id).not.toBe(first.run.id)
-    expect(repository.messages.listSessionTranscript(session.id).map((message) => message.runId)).toEqual([
+    expect(repository.messages.listSessionTimeline(session.id).map((message) => message.runId)).toEqual([
       "run_1",
       "run_2",
     ])
@@ -400,7 +400,7 @@ describe("session run service", () => {
     expect(second.message.agent).toBe("plan")
     expect(repository.messages.get(first.message.id).agent).toBe("general")
     expect(repository.messages.get(second.message.id).agent).toBe("plan")
-    expect(repository.messages.listSessionTranscript(session.id).map((message) => message.agent)).toEqual([
+    expect(repository.messages.listSessionTimeline(session.id).map((message) => message.agent)).toEqual([
       "general",
       "plan",
     ])

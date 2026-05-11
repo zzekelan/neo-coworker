@@ -35,7 +35,7 @@ import {
   type StoredSession,
   type TimelineEntry,
   type TimelinePart,
-  type TranscriptMessage,
+  type TimelineMessage,
   type UpdatePartContentInput,
   type UpdateRunStatusInput,
   type UpdateRunTokenUsageInput,
@@ -52,8 +52,8 @@ import {
   type PartRow,
   type RunRow,
   type SessionRow,
+  type TimelineJoinedRow,
   type TimelineRow,
-  type TranscriptRow,
 } from "./sqlite-mappers"
 
 export type SessionDatabase = Database
@@ -411,6 +411,142 @@ const sessionMigrations = [
           )
           WHERE id = NEW.id;
         END
+      `,
+    ],
+  },
+  {
+    version: 13,
+    statements: [
+      `
+        CREATE TABLE part_v13_backup AS
+        SELECT
+          id,
+          session_id,
+          run_id,
+          message_id,
+          kind,
+          sequence,
+          text_value,
+          data_json,
+          created_at
+        FROM part
+      `,
+      `
+        DROP TABLE part
+      `,
+      `
+        CREATE TABLE message_v13 (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN (${messageRoleCheck})),
+          sequence INTEGER NOT NULL CHECK (sequence >= 0),
+          created_at INTEGER NOT NULL,
+          agent TEXT,
+          timeline_sequence INTEGER NOT NULL DEFAULT -1,
+          FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+          FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+          UNIQUE (id, run_id, session_id),
+          UNIQUE (run_id, sequence)
+        )
+      `,
+      `
+        INSERT INTO message_v13 (
+          id,
+          session_id,
+          run_id,
+          role,
+          sequence,
+          created_at,
+          agent,
+          timeline_sequence
+        )
+        SELECT
+          id,
+          session_id,
+          run_id,
+          CASE role
+            WHEN 'synthetic' THEN 'compaction'
+            ELSE role
+          END,
+          sequence,
+          created_at,
+          agent,
+          timeline_sequence
+        FROM message
+      `,
+      `
+        DROP TABLE message
+      `,
+      `
+        ALTER TABLE message_v13 RENAME TO message
+      `,
+      `
+        CREATE UNIQUE INDEX message_session_timeline_sequence_idx
+        ON message (session_id, timeline_sequence)
+        WHERE timeline_sequence >= 0
+      `,
+      `
+        CREATE TRIGGER message_assign_timeline_sequence_after_insert
+        AFTER INSERT ON message
+        FOR EACH ROW
+        WHEN NEW.timeline_sequence < 0
+        BEGIN
+          UPDATE message
+          SET timeline_sequence = (
+            SELECT COALESCE(MAX(timeline_sequence), -1) + 1
+            FROM message
+            WHERE session_id = NEW.session_id
+              AND id <> NEW.id
+              AND timeline_sequence >= 0
+          )
+          WHERE id = NEW.id;
+        END
+      `,
+      `
+        CREATE TABLE part (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          run_id TEXT NOT NULL,
+          message_id TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN (${partKindCheck})),
+          sequence INTEGER NOT NULL CHECK (sequence >= 0),
+          text_value TEXT,
+          data_json TEXT,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+          FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+          FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+          UNIQUE (id, message_id, run_id, session_id),
+          UNIQUE (message_id, sequence)
+        )
+      `,
+      `
+        INSERT INTO part (
+          id,
+          session_id,
+          run_id,
+          message_id,
+          kind,
+          sequence,
+          text_value,
+          data_json,
+          created_at
+        )
+        SELECT
+          id,
+          session_id,
+          run_id,
+          message_id,
+          kind,
+          sequence,
+          text_value,
+          data_json,
+          created_at
+        FROM part_v13_backup
+      `,
+      `
+        DROP TABLE part_v13_backup
       `,
     ],
   },
@@ -1025,7 +1161,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
     get(messageId: string) {
       return requireMessage(messageId)
     },
-    listSessionTranscript(sessionId: string): TranscriptMessage[] {
+    listSessionTimeline(sessionId: string): TimelineMessage[] {
       requireSession(sessionId)
 
       const rows = database
@@ -1061,10 +1197,10 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
               part.id ASC
           `,
         )
-        .all(sessionId) as TranscriptRow[]
+        .all(sessionId) as TimelineJoinedRow[]
 
-      const transcript: TranscriptMessage[] = []
-      const messagesById = new Map<string, TranscriptMessage>()
+      const timeline: TimelineMessage[] = []
+      const messagesById = new Map<string, TimelineMessage>()
 
       for (const row of rows) {
         let message = messagesById.get(row.message_id)
@@ -1081,7 +1217,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
             parts: [],
           }
           messagesById.set(message.id, message)
-          transcript.push(message)
+          timeline.push(message)
         }
 
         if (!row.part_id) {
@@ -1103,7 +1239,7 @@ export function createSessionRepository(input: CreateSessionRepositoryInput): Se
         )
       }
 
-      return transcript
+      return timeline
     },
   }
 

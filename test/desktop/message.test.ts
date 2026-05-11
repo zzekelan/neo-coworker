@@ -133,7 +133,7 @@ describe("desktop message", () => {
     expect(source).not.toContain('reasoning: "Thinking"')
   })
 
-  test("keeps transcript timestamps sparse and visually quiet", () => {
+  test("keeps timeline timestamps sparse and visually quiet", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
     expect(source).toContain("const TIMESTAMP_VISIBLE_GAP_MS = 5 * 60 * 1000")
@@ -228,7 +228,7 @@ describe("desktop message", () => {
     expect(detailsSource).toContain("border-l border-border/70")
   })
 
-  test("does not render structured lifecycle diagnostics in the chat transcript", () => {
+  test("does not render structured lifecycle diagnostics in the chat timeline", () => {
     const source = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
     const i18nSource = readFileSync("src/desktop/src/i18n.tsx", "utf8")
 

@@ -22,8 +22,8 @@ export type {
   OrchestrationRunStatus,
   OrchestrationSessionPort,
   OrchestrationSessionRecord,
-  OrchestrationTranscriptMessage,
-  OrchestrationTranscriptPart,
+  OrchestrationTimelineMessage,
+  OrchestrationTimelinePart,
 } from "./ports/session"
 export type {
   OrchestrationActiveSkill,

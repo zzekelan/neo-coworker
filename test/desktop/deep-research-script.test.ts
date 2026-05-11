@@ -20,11 +20,11 @@ describe("desktop deep-research real-path verifier script", () => {
     expect(scriptSource).toContain("screenshot.png")
     expect(scriptSource).toContain("session-summary.json")
     expect(scriptSource).toContain("lifecycle-summary.json")
-    expect(scriptSource).toContain("transcript-summary.json")
+    expect(scriptSource).toContain("timeline-summary.json")
     expect(scriptSource).toContain("sqlite-telemetry-summary.json")
     expect(scriptSource).toContain("writeEvidenceSummaries")
     expect(scriptSource.indexOf("writeEvidenceSummaries({")).toBeLessThan(
-      scriptSource.indexOf("assertSubagentUsage({ lifecycleSummary, transcriptSummary, sqliteTelemetry })"),
+      scriptSource.indexOf("assertSubagentUsage({ lifecycleSummary, timelineSummary, sqliteTelemetry })"),
     )
     expect(scriptSource).toContain("SUMMARY_PREVIEW_LIMIT = 500")
     expect(scriptSource).toContain("SUBAGENT_RESULT_SIZE_LIMIT = 50_000")

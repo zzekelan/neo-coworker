@@ -280,11 +280,11 @@ export function createAgentServer(input: {
         })
       }
 
-      const sessionTranscriptMatch = matchPath(path, ["sessions", ":sessionId", "transcript"])
-      if (request.method === "GET" && sessionTranscriptMatch) {
+      const sessionTimelineMatch = matchPath(path, ["sessions", ":sessionId", "timeline"])
+      if (request.method === "GET" && sessionTimelineMatch) {
         return jsonResponse(200, {
           data: {
-            transcript: app.sessions.transcript(sessionTranscriptMatch.sessionId),
+            timeline: app.sessions.timeline(sessionTimelineMatch.sessionId),
           },
         })
       }

@@ -12,7 +12,7 @@ import {
   type OrchestrationRunRecord,
   type OrchestrationSessionPort,
   type OrchestrationSkillPort,
-  type OrchestrationTranscriptMessage,
+  type OrchestrationTimelineMessage,
   type OrchestrationToolPort,
 } from "../../src/orchestration"
 import { buildLateContextMessage } from "../../src/orchestration/application/prompt-composer"
@@ -319,7 +319,7 @@ function createMemorySession(input: {
   const runId = "run_agent_instructions"
   let nextMessageId = 0
   let nextPartId = 0
-  const transcript: OrchestrationTranscriptMessage[] = [
+  const timeline: OrchestrationTimelineMessage[] = [
     {
       runId,
       role: "user",
@@ -327,7 +327,7 @@ function createMemorySession(input: {
       parts: [{ kind: "text", text: input.userText, data: undefined }],
     },
   ]
-  const messageIds = new Map<string, OrchestrationTranscriptMessage>()
+  const messageIds = new Map<string, OrchestrationTimelineMessage>()
   const partIds = new Map<string, OrchestrationPartRecord>()
   const run: OrchestrationRunRecord = {
     id: runId,
@@ -363,12 +363,12 @@ function createMemorySession(input: {
 
       return run
     },
-    listTranscript(requestedSessionId) {
+    listTimeline(requestedSessionId) {
       if (requestedSessionId !== sessionId) {
         throw new Error(`Unknown session ${requestedSessionId}`)
       }
 
-      return transcript
+      return timeline
     },
     createRun(runInput) {
       return {
@@ -384,25 +384,25 @@ function createMemorySession(input: {
     },
     createAssistantMessage(messageInput) {
       const id = `assistant_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+      const message: OrchestrationTimelineMessage = {
         runId: messageInput.runId,
         role: "assistant",
         sequence: messageInput.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },
-    createSyntheticMessage(messageInput) {
-      const id = `synthetic_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+    createCompactionMessage(messageInput) {
+      const id = `compaction_message_${nextMessageId++}`
+      const message: OrchestrationTimelineMessage = {
         runId: messageInput.runId,
-        role: "synthetic",
+        role: "compaction",
         sequence: messageInput.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },

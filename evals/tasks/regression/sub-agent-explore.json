@@ -35,7 +35,7 @@
       "shell"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "orderedTextIncludes": [
       "Read README.md and report the heading.",
       "Sub-agent explored README heading.",

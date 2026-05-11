@@ -43,7 +43,7 @@ export type RunStatus =
   | "failed"
   | "cancelled"
 
-export type MessageRole = "user" | "assistant" | "synthetic"
+export type MessageRole = "user" | "assistant" | "compaction"
 
 export type PartKind =
   | "text"

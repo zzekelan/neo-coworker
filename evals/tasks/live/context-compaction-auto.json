@@ -33,7 +33,7 @@
       "run.completed"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "orderedTextIncludes": [
       "context recovery fixture",
       "Prepared auto compaction",

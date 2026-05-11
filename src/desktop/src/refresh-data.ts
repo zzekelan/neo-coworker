@@ -7,14 +7,14 @@ import type {
   DesktopSkillCatalogEntry,
   DesktopWorkspaceSummary,
 } from "./types"
-import { normalizeTranscript } from "./transcript-state"
+import { normalizeTimeline } from "./timeline-state"
 
 type DesktopRefreshLoaders = {
   loadWorkspaces(): Promise<{ workspaces: DesktopWorkspaceSummary[] }>
   loadWorkspaceSessions(workspaceRoot: string): Promise<{ sessions: DesktopSessionSummary[] }>
   loadWorkspaceSkills(workspaceRoot: string): Promise<{ skills: DesktopSkillCatalogEntry[] }>
   loadSession(sessionId: string): Promise<DesktopSessionSnapshot>
-  loadTranscript(sessionId: string): Promise<{ transcript: DesktopMessage[] }>
+  loadTimeline(sessionId: string): Promise<{ timeline: DesktopMessage[] }>
   loadSessionRuns(sessionId: string): Promise<{ runs: DesktopRun[] }>
   loadRun(runId: string): Promise<{
     run: DesktopRun
@@ -29,7 +29,7 @@ export type DesktopRefreshCoreResult = {
   activeSessionId: string | null
   snapshot: DesktopSessionSnapshot | null
   sessionRuns: DesktopRun[]
-  transcript: DesktopMessage[]
+  timeline: DesktopMessage[]
   permissionRequests: DesktopPermissionRequest[]
   sessionRestoreError: unknown
   loadSkills(): Promise<{
@@ -61,7 +61,7 @@ export async function loadDesktopRefreshCore(input: {
 
   let snapshot: DesktopSessionSnapshot | null = null
   let sessionRuns: DesktopRun[] = []
-  let transcript: DesktopMessage[] = []
+  let timeline: DesktopMessage[] = []
   let permissionRequests: DesktopPermissionRequest[] = []
   let sessionRestoreError: unknown = null
 
@@ -70,8 +70,8 @@ export async function loadDesktopRefreshCore(input: {
       snapshot = await input.loaders.loadSession(activeSessionId)
       const runsData = await input.loaders.loadSessionRuns(activeSessionId)
       sessionRuns = runsData.runs
-      const transcriptData = await input.loaders.loadTranscript(activeSessionId)
-      transcript = normalizeTranscript(transcriptData.transcript)
+      const timelineData = await input.loaders.loadTimeline(activeSessionId)
+      timeline = normalizeTimeline(timelineData.timeline)
 
       if (snapshot.activeRun) {
         const runState = await input.loaders.loadRun(snapshot.activeRun.id)
@@ -98,7 +98,7 @@ export async function loadDesktopRefreshCore(input: {
     activeSessionId,
     snapshot,
     sessionRuns,
-    transcript,
+    timeline,
     permissionRequests,
     sessionRestoreError,
     async loadSkills() {

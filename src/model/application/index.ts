@@ -14,7 +14,7 @@ export {
   buildModelPromptSections,
   buildModelTurnProjection,
   buildModelTurnInput,
-  buildTranscriptMessages,
+  buildTimelineMessages,
   projectModelTurn,
 } from "./projection"
 export {
@@ -53,8 +53,8 @@ export type {
   ModelToolCallPart,
   ModelTokenUsageSource,
   ModelToolResultPart,
-  ModelTranscriptMessage,
-  ModelTranscriptPart,
+  ModelTimelineMessage,
+  ModelTimelinePart,
   ModelTurnRequest,
   ModelUsageEvent,
 } from "../domain"

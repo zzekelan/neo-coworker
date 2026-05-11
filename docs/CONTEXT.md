@@ -9,8 +9,8 @@ A long-lived agent workspace that contains the durable content history and repla
 _Avoid_: Run, Turn
 
 **Session Timeline**:
-The durable, replayable content history of a **Session**; "Transcript" is a legacy/API-facing alias, not the canonical domain term.
-_Avoid_: Run history, execution log, Transcript as the canonical term
+The durable, replayable content history of a **Session**.
+_Avoid_: Run history, execution log
 
 **Timeline Entry**:
 An ordered item in a **Session Timeline** that may be produced by a **Run**.
@@ -30,7 +30,7 @@ _Avoid_: source Run, parent Run, Run ownership
 
 **Run**:
 An execution lifecycle that may produce **Timeline Entries** while it moves through states such as running, waiting, completed, failed, or cancelled.
-_Avoid_: Turn, Transcript owner, history owner, conversation turn
+_Avoid_: Turn, Timeline owner, history owner, conversation turn
 
 **Sub-session**:
 A child **Session** created to isolate sub-agent work from its parent **Session**.
@@ -42,7 +42,7 @@ _Avoid_: child Run owned by parent Run
 
 **Model Projection**:
 A temporary transformation from a **Session Timeline** into provider-facing model input.
-_Avoid_: canonical history, stored transcript
+_Avoid_: canonical history, stored timeline
 
 **Model Message**:
 A provider-facing message produced by **Model Projection** for an LLM request.
@@ -54,7 +54,7 @@ _Avoid_: Model Projection, provider context
 
 **Compaction Entry**:
 A system-generated **Timeline Entry** that records a compaction boundary or compaction summary.
-_Avoid_: Synthetic Timeline Entry as the canonical term, ordinary runtime event, hidden user input, provider system prompt, assistant output, generic synthetic event, compaction notice
+_Avoid_: ordinary runtime event, hidden user input, provider system prompt, assistant output, generic generated event, compaction notice
 
 **Compaction Boundary**:
 A **Timeline Part** that marks where **Model Projection** resumes replay after compaction.
@@ -62,7 +62,7 @@ _Avoid_: user-visible message text, model-visible content
 
 **Compaction Summary**:
 Text in a **Compaction Entry** that replaces older **Session Timeline** content during **Model Projection**.
-_Avoid_: full transcript copy, UI notification
+_Avoid_: full timeline copy, UI notification
 
 **Runtime Notice**:
 A sanitized, replayable, user-facing runtime fact that **UI Projection** may display alongside the **Session Timeline** without making it timeline content or model context.
@@ -156,17 +156,17 @@ _Avoid_: Timeline Entry, chat message
 ## Flagged ambiguities
 
 - "message" can mean persisted history, provider input, or streamed UI output — resolved: use **Timeline Entry** for persisted session history and avoid naked "Message" in domain language.
-- "run history" suggests a **Run** owns transcript content — resolved: durable history belongs to the **Session Timeline**.
+- "run history" suggests a **Run** owns timeline content — resolved: durable history belongs to the **Session Timeline**.
 - A bare `runId` on history records suggests ownership — resolved: use **Produced By Run** as the canonical provenance relationship.
 - Independent run provenance on **Timeline Parts** is unnecessary until cross-run mutation of a single **Timeline Entry** becomes a real use case.
-- Run-based transcript ordering suggests **Runs** own history — resolved: top-level ordering belongs to the **Session Timeline**, while **Timeline Parts** use entry-local ordering.
+- Run-based timeline ordering suggests **Runs** own history — resolved: top-level ordering belongs to the **Session Timeline**, while **Timeline Parts** use entry-local ordering.
 - Run lifecycle state can be user-visible without being timeline content — resolved: **UI Projection** may display **Run** state, but **Runs** are not **Timeline Entries**.
 - One **Run** can look like one user entry plus one assistant entry in simple prompts, but tool loops can produce multiple assistant **Timeline Entries** in the same **Run** — resolved: closure logic must locate the entry that contains the tool call rather than assuming one assistant entry per Run.
 - Permission approval flow can be user-visible without being timeline content — resolved: **Permission Requests** are separate state shown by **UI Projection**, while the **Session Timeline** records durable content such as tool calls/results.
-- "transcript" suggests a text-only chat record — resolved: use **Session Timeline** as the canonical term because the history also contains tool calls, tool results, patches, errors, reasoning, and compaction boundaries.
+- "timeline" suggests a text-only chat record — resolved: use **Session Timeline** as the canonical term because the history also contains tool calls, tool results, patches, errors, reasoning, and compaction boundaries.
 - "fork" suggests a user-visible branch from a timeline position — resolved: current parent/child session behavior is **Sub-session** for sub-agent isolation, not fork.
 - "parent run" can suggest ownership — resolved: a **Spawned Run** belongs to its own **Sub-session** and only records which parent **Run** started it.
 - Runtime diagnostics can be user-visible without being model-visible or timeline content — resolved: **UI Projection** can combine **Session Timeline** content with sanitized **Runtime Notices**, while **Model Projection** reads only model-relevant session context.
 - `kind="error"` suggests any error may be timeline content — resolved: canonical error-like timeline content is limited to **Tool Result Error** for tool-call protocol closure; provider failures belong to **Run** lifecycle state and compaction failures that affect users become **Compaction Notices**.
-- "synthetic" describes what a timeline entry is not, rather than what it is — resolved: use **Compaction Entry** as the canonical term; current implementations may still expose a legacy synthetic role until migrated.
+- Generated compaction history can sound like an ordinary runtime event — resolved: use **Compaction Entry** as the canonical term and `compaction` as the persisted role for compaction-generated timeline entries.
 - `command` and `summarize` run triggers encode current compaction implementation details — resolved: use **Compaction Run** for user-requested compaction lifecycle, and treat compaction summary model calls as observability/model-call detail rather than canonical Runs.

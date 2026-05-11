@@ -42,7 +42,7 @@ afterEach(async () => {
 })
 
 describe("server recovery and operator errors", () => {
-  test("restart preserves a two-run transcript and keeps a failed run failed", async () => {
+  test("restart preserves a two-run timeline and keeps a failed run failed", async () => {
     const harness = await createHarness(
       "server-restart-failed",
       createTurnProvider([
@@ -104,26 +104,26 @@ describe("server recovery and operator errors", () => {
       },
     ])
 
-    const transcript = await requestJson(harness.server, "GET", `/sessions/${sessionId}/transcript`)
-    expect(transcript.status).toBe(200)
-    expect(transcript.body.data.transcript).toMatchObject([
+    const timeline = await requestJson(harness.server, "GET", `/sessions/${sessionId}/timeline`)
+    expect(timeline.status).toBe(200)
+    expect(timeline.body.data.timeline).toMatchObject([
       {
-        runId: firstRunId,
+        producedByRunId: firstRunId,
         role: "user",
         parts: [{ kind: "text", text: "First prompt" }],
       },
       {
-        runId: firstRunId,
+        producedByRunId: firstRunId,
         role: "assistant",
         parts: [{ kind: "text", text: "First run completed." }],
       },
       {
-        runId: secondRunId,
+        producedByRunId: secondRunId,
         role: "user",
         parts: [{ kind: "text", text: "Second prompt" }],
       },
       {
-        runId: secondRunId,
+        producedByRunId: secondRunId,
         role: "assistant",
         parts: [
           { kind: "text", text: "Second run before failure." },
@@ -202,16 +202,16 @@ describe("server recovery and operator errors", () => {
       status: "cancelled",
     })
 
-    const transcript = await requestJson(harness.server, "GET", `/sessions/${sessionId}/transcript`)
-    expect(transcript.status).toBe(200)
-    expect(transcript.body.data.transcript).toMatchObject([
+    const timeline = await requestJson(harness.server, "GET", `/sessions/${sessionId}/timeline`)
+    expect(timeline.status).toBe(200)
+    expect(timeline.body.data.timeline).toMatchObject([
       {
-        runId,
+        producedByRunId: runId,
         role: "user",
         parts: [{ kind: "text", text: "Cancel me" }],
       },
       {
-        runId,
+        producedByRunId: runId,
         role: "assistant",
         parts: [{ kind: "text", text: "Partial output before cancel." }],
       },
@@ -683,8 +683,8 @@ async function waitForAssistantPart(
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < timeoutMs) {
-    const transcript = repository.messages.listSessionTranscript(sessionId)
-    const assistantMessage = transcript.find(
+    const timeline = repository.messages.listSessionTimeline(sessionId)
+    const assistantMessage = timeline.find(
       (message) =>
         message.runId === runId &&
         message.role === "assistant" &&

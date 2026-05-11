@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 
 describe("desktop chat area", () => {
-  test("uses a normal transcript viewport without smooth-scroll styling", () => {
+  test("uses a normal timeline viewport without smooth-scroll styling", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
-    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTimeline.tsx", "utf8")
 
     expect(source).toContain("overflow-y-auto px-4 md:px-8")
-    expect(vtSource).toContain('className={cn("transcript-scroll-container h-full overflow-y-auto outline-none", className)}')
+    expect(vtSource).toContain('className={cn("timeline-scroll-container h-full overflow-y-auto outline-none", className)}')
     expect(vtSource).toContain('className="relative min-h-0 flex-1"')
     expect(source).not.toContain("scroll-smooth")
   })
@@ -40,9 +40,9 @@ describe("desktop chat area", () => {
     expect(source).toContain("flex flex-col items-center justify-center")
   })
 
-  test("sizes the transcript bottom inset to match the input card height", () => {
+  test("sizes the timeline bottom inset to match the input card height", () => {
     const chatSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
-    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTimeline.tsx", "utf8")
 
     expect(chatSource).toContain("bottomCardRef")
     expect(chatSource).toContain("ResizeObserver")
@@ -52,17 +52,17 @@ describe("desktop chat area", () => {
     expect(chatSource).not.toContain("pb-32")
 
     expect(vtSource).toContain("bottomInset")
-    expect(vtSource).toContain("transcript-bottom-spacer")
+    expect(vtSource).toContain("timeline-bottom-spacer")
     expect(vtSource).toContain("style={{ height: bottomInset }}")
     expect(vtSource).not.toContain("paddingBottom: bottomInset")
   })
 
-  test("delegates sticky-bottom scrolling to VirtualTranscript instead of inlining it", () => {
+  test("delegates sticky-bottom scrolling to VirtualTimeline instead of inlining it", () => {
     const chatSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
-    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTimeline.tsx", "utf8")
 
     expect(chatSource).toContain("scrollToBottomRef")
-    expect(chatSource).toContain("<VirtualTranscript")
+    expect(chatSource).toContain("<VirtualTimeline")
     expect(chatSource).not.toContain("scrollIntoView")
 
     expect(vtSource).toContain("stickToBottomRef")
@@ -95,8 +95,8 @@ describe("desktop chat area", () => {
     expect(source).toContain("return onReplyPermission(requestId, decision)")
   })
 
-  test("keeps virtualized transcript rows stable via @tanstack/react-virtual", () => {
-    const vtSource = readFileSync("src/desktop/src/components/VirtualTranscript.tsx", "utf8")
+  test("keeps virtualized timeline rows stable via @tanstack/react-virtual", () => {
+    const vtSource = readFileSync("src/desktop/src/components/VirtualTimeline.tsx", "utf8")
     const chatSource = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
     const messageSource = readFileSync("src/desktop/src/components/Message.tsx", "utf8")
 
@@ -106,14 +106,14 @@ describe("desktop chat area", () => {
     expect(vtSource).toContain("style={{ overflowAnchor: \"none\" }}")
     expect(vtSource).toContain("useLayoutEffect")
 
-    expect(chatSource).not.toContain("getTranscriptItemBottomPadding")
+    expect(chatSource).not.toContain("getTimelineItemBottomPadding")
 
     expect(messageSource).toContain("initial={false}")
     expect(messageSource).not.toContain("initial={{ opacity: 0, y: 10 }}")
     expect(messageSource).not.toContain("\"mb-6 flex w-full flex-col\"")
   })
 
-  test("keeps transcript messages slightly narrower than the composer", () => {
+  test("keeps timeline messages slightly narrower than the composer", () => {
     const source = readFileSync("src/desktop/src/components/ChatArea.tsx", "utf8")
 
     expect(source).toContain('<div className="mx-auto max-w-[54rem]">')
@@ -194,10 +194,10 @@ describe("desktop chat area", () => {
     expect(source).toContain("message.runId && message.runId !== activeRunId")
     expect(source).toContain("isActiveRunMessage={message.id === activeRunLatestMessageId && isRunning}")
     expect(source).toContain("const activeRunLiveReasoningMessageId = useMemo(")
-    expect(source).toContain("findLiveReasoningMessageId(transcript, activeRunId)")
+    expect(source).toContain("findLiveReasoningMessageId(timeline, activeRunId)")
     expect(source).toContain("function findLiveReasoningMessageId(")
     expect(source).toContain("const messageIdsBeforeLaterReasoning = useMemo(")
-    expect(source).toContain("findMessageIdsBeforeLaterReasoning(transcript)")
+    expect(source).toContain("findMessageIdsBeforeLaterReasoning(timeline)")
     expect(source).toContain("function findMessageIdsBeforeLaterReasoning(")
     expect(source).toContain("function isRenderableReasoningPart(")
     expect(source).not.toContain("isRunActiveMessage={")

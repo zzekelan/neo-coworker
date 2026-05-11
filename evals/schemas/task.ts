@@ -17,9 +17,9 @@ export const EvalTraceExpectationSchema = z.object({
   requiredEventTypes: z.array(z.string()).default([]),
 })
 
-export const EvalTranscriptCheckpointSchema = z.object({
+export const EvalTimelineCheckpointSchema = z.object({
   messageIndex: z.number().int().nonnegative(),
-  role: z.enum(["user", "assistant", "synthetic"]).optional(),
+  role: z.enum(["user", "assistant", "compaction"]).optional(),
   partKinds: z.array(z.string()).default([]),
   textIncludes: z.array(z.string()).default([]),
   toolNames: z.array(z.string()).default([]),
@@ -27,9 +27,9 @@ export const EvalTranscriptCheckpointSchema = z.object({
   toolResultCount: z.number().int().nonnegative().optional(),
 })
 
-export const EvalTranscriptExpectationSchema = z.object({
+export const EvalTimelineExpectationSchema = z.object({
   orderedTextIncludes: z.array(z.string()).default([]),
-  checkpoints: z.array(EvalTranscriptCheckpointSchema).default([]),
+  checkpoints: z.array(EvalTimelineCheckpointSchema).default([]),
 })
 
 export const EvalTraceSequenceExpectationSchema = z.object({
@@ -196,7 +196,7 @@ export const EvalTaskSchema = z.object({
   traceExpectation: EvalTraceExpectationSchema.default({
     requiredEventTypes: [],
   }),
-  transcriptExpectation: EvalTranscriptExpectationSchema.default({
+  timelineExpectation: EvalTimelineExpectationSchema.default({
     orderedTextIncludes: [],
     checkpoints: [],
   }),
@@ -223,7 +223,7 @@ export const EvalTaskSchema = z.object({
 export type EvalTask = z.infer<typeof EvalTaskSchema>
 export type EvalProviderMode = z.infer<typeof EvalProviderModeSchema>
 export type EvalTraceExpectation = z.infer<typeof EvalTraceExpectationSchema>
-export type EvalTranscriptExpectation = z.infer<typeof EvalTranscriptExpectationSchema>
+export type EvalTimelineExpectation = z.infer<typeof EvalTimelineExpectationSchema>
 export type EvalTraceSequenceExpectation = z.infer<typeof EvalTraceSequenceExpectationSchema>
 export type EvalOutcomeExpectation = z.infer<typeof EvalOutcomeExpectationSchema>
 export type EvalProtocolExpectation = z.infer<typeof EvalProtocolExpectationSchema>

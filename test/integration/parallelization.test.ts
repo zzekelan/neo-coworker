@@ -100,8 +100,8 @@ describe("integration: bootstrap parallelization wiring", () => {
       },
     })
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const toolResults = transcript
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const toolResults = timeline
       .flatMap((message) => message.parts)
       .filter((part) => part.kind === "tool_result")
 

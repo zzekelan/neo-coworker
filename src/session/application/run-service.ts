@@ -9,7 +9,7 @@ import {
   createRunStateMachine,
   isActiveRunStatus,
 } from "./run-state-machine"
-import { createSessionTranscriptService } from "./transcript-service"
+import { createSessionTimelineService } from "./timeline-service"
 
 export type SessionActivityStatus = "idle" | "busy"
 
@@ -130,7 +130,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
     repository,
     now,
   })
-  const transcript = createSessionTranscriptService({ repository })
+  const timeline = createSessionTimelineService({ repository })
 
   function getSessionState(sessionId: string): SessionRunState {
     const session = repository.sessions.get(sessionId)
@@ -241,7 +241,7 @@ export function createSessionRunService(input: CreateSessionRunServiceInput) {
       })
     }
 
-    const sourceInitiatingMessage = transcript.getInitiatingMessage(sourceRun)
+    const sourceInitiatingMessage = timeline.getInitiatingMessage(sourceRun)
     const nextRun = startRun({
       ...run,
       trigger: "retry",

@@ -1,6 +1,6 @@
 import type { EvalRunArtifact } from "../schemas/artifact"
 
-export type TranscriptPartView = {
+export type TimelinePartView = {
   kind: string
   text: string
   toolName: string | null
@@ -8,7 +8,7 @@ export type TranscriptPartView = {
   isError: boolean
 }
 
-export type TranscriptMessageView = {
+export type TimelineEntryView = {
   index: number
   role: string | null
   partKinds: string[]
@@ -35,10 +35,10 @@ export type PromptAssemblyEventView = {
   systemReminderLength: number | null
 }
 
-export function readTimelineContentViews(artifact: EvalRunArtifact): TranscriptMessageView[] {
-  return readContentEntries(artifact).map((message, index) => {
+export function readTimelineContentViews(artifact: EvalRunArtifact): TimelineEntryView[] {
+  return artifact.timeline.map((message, index) => {
     const role = readStringField(message, "role")
-    const parts = readTranscriptParts(message)
+    const parts = readTimelineParts(message)
     const texts = parts.map((part) => part.text).filter((text) => text.length > 0)
     const toolNames = [...new Set(parts.map((part) => part.toolName).filter(isNonEmptyString))]
     const toolResults = parts
@@ -58,10 +58,6 @@ export function readTimelineContentViews(artifact: EvalRunArtifact): TranscriptM
       toolResults,
     }
   })
-}
-
-export function readTranscriptViews(artifact: EvalRunArtifact): TranscriptMessageView[] {
-  return readTimelineContentViews(artifact)
 }
 
 export function readPromptAssemblyEvents(artifact: EvalRunArtifact): PromptAssemblyEventView[] {
@@ -127,7 +123,7 @@ export function findOrderedMatches(
   }
 }
 
-function readTranscriptParts(message: unknown): TranscriptPartView[] {
+function readTimelineParts(message: unknown): TimelinePartView[] {
   if (!isRecord(message) || !Array.isArray(message.parts)) {
     return []
   }
@@ -150,18 +146,6 @@ function readTranscriptParts(message: unknown): TranscriptPartView[] {
         isError,
       }
     })
-}
-
-function readContentEntries(artifact: EvalRunArtifact) {
-  if (Array.isArray(artifact.timeline) && artifact.timeline.length > 0) {
-    return artifact.timeline
-  }
-
-  if (Array.isArray(artifact.transcript)) {
-    return artifact.transcript
-  }
-
-  return []
 }
 
 function readStringArrayField(value: unknown, field: string) {

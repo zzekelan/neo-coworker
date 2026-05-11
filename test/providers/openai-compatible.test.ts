@@ -550,7 +550,7 @@ describe("openai-compatible provider", () => {
     ])
   })
 
-  test("serializes structured tool transcript for follow-up turns", async () => {
+  test("serializes structured tool timeline for follow-up turns", async () => {
     let receivedBody: unknown
 
     const provider = createProvider({

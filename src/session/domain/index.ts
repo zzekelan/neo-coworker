@@ -2,7 +2,7 @@ export {
   MESSAGE_ROLES,
   type MessageRole,
   type StoredMessage,
-  type TranscriptMessage,
+  type TimelineMessage,
 } from "./message"
 export { PART_KINDS, type PartKind, type StoredPart } from "./part"
 export {

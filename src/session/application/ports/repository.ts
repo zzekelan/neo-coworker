@@ -1,4 +1,4 @@
-export type MessageRole = "user" | "assistant" | "synthetic"
+export type MessageRole = "user" | "assistant" | "compaction"
 export type PartKind =
   | "text"
   | "reasoning"
@@ -8,6 +8,7 @@ export type PartKind =
   | "step_finish"
   | "error"
   | "patch"
+  | "compaction_boundary"
 export type RunTrigger =
   | "cli"
   | "prompt"
@@ -76,7 +77,7 @@ export type StoredPart = {
   createdAt: number
 }
 
-export type TranscriptMessage = StoredMessage & {
+export type TimelineMessage = StoredMessage & {
   parts: StoredPart[]
 }
 
@@ -300,7 +301,7 @@ export type SessionRepository = {
   messages: {
     create(message: CreateMessageInput): StoredMessage
     get(messageId: string): StoredMessage
-    listSessionTranscript(sessionId: string): TranscriptMessage[]
+    listSessionTimeline(sessionId: string): TimelineMessage[]
   }
   timeline: {
     appendEntry(input: AppendTimelineEntryInput): TimelineEntry

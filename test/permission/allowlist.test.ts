@@ -353,7 +353,7 @@ function createSchema9Database(filePath: string) {
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL,
         run_id TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'synthetic')),
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'compaction')),
         sequence INTEGER NOT NULL CHECK (sequence >= 0),
         created_at INTEGER NOT NULL,
         FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,

@@ -7,8 +7,8 @@ import type {
   ModelProjectionInput,
   ModelSkillCatalogEntry,
   ModelTextPart,
-  ModelTranscriptMessage,
-  ModelTranscriptPart,
+  ModelTimelineMessage,
+  ModelTimelinePart,
   ModelTurnRequest,
 } from "../domain"
 import { isAbsolute, join } from "node:path"
@@ -61,24 +61,24 @@ export function buildModelTurnInput(
 export function buildModelTurnProjection(
   input: ModelProjectionInput & Pick<ModelTurnRequest, "temperature">,
 ): ModelTurnProjection {
-  const replayTranscript = sliceTranscriptFromLatestCompactionBoundary(input.transcript)
+  const replayTimeline = sliceTimelineFromLatestCompactionBoundary(input.timeline)
   const sections = buildModelPromptSections(input)
   const reminderMessages = buildSystemReminderMessages(sections.systemReminderMessages)
   const lateContextMessages = buildLateContextMessages(sections.lateContextMessage)
-  const transcriptMessages = injectLateContextBeforeLastUser({
-    messages: buildTranscriptMessages(replayTranscript),
+  const timelineMessages = injectLateContextBeforeLastUser({
+    messages: buildTimelineMessages(replayTimeline),
     lateContextMessages,
   })
   const system = buildStaticSystemPrompt(sections)
   const unmodifiedRequest = {
     system,
-    messages: [...transcriptMessages, ...reminderMessages],
+    messages: [...timelineMessages, ...reminderMessages],
     ...(input.temperature !== undefined && { temperature: input.temperature }),
     tools: input.tools,
   } satisfies Pick<ModelTurnRequest, "system" | "messages" | "tools" | "temperature">
 
   const microcompact = buildMicrocompactSummary({
-    transcript: replayTranscript,
+    timeline: replayTimeline,
     contextWindow: input.contextWindow,
     system,
     tools: input.tools,
@@ -99,7 +99,7 @@ export function buildModelTurnProjection(
       system,
       messages: [
         ...injectLateContextBeforeLastUser({
-          messages: buildTranscriptMessages(replayTranscript, {
+          messages: buildTimelineMessages(replayTimeline, {
             clearedToolResults: microcompact.clearedToolResults,
           }),
           lateContextMessages,
@@ -148,19 +148,19 @@ export function projectModelTurn(
   }
 }
 
-export function buildTranscriptMessages(
-  transcript: ModelTranscriptMessage[],
+export function buildTimelineMessages(
+  timeline: ModelTimelineMessage[],
   options: {
-    clearedToolResults?: ReadonlySet<ModelTranscriptPart>
+    clearedToolResults?: ReadonlySet<ModelTimelinePart>
   } = {},
 ): ModelMessage[] {
-  const replayTranscript = sliceTranscriptFromLatestCompactionBoundary(transcript)
+  const replayTimeline = sliceTimelineFromLatestCompactionBoundary(timeline)
   const messages: ModelMessage[] = []
-  const resolvedToolCallIds = collectResolvedToolCallIds(replayTranscript)
+  const resolvedToolCallIds = collectResolvedToolCallIds(replayTimeline)
 
-  for (const message of replayTranscript) {
+  for (const message of replayTimeline) {
     const role =
-      message.role === "synthetic" ? "assistant" : message.role === "system" ? "user" : message.role
+      message.role === "compaction" ? "assistant" : message.role === "system" ? "user" : message.role
 
     if (role === "assistant") {
       messages.push(...buildAssistantMessages(message, resolvedToolCallIds, options))
@@ -209,24 +209,24 @@ function injectLateContextBeforeLastUser(input: {
   return [...input.messages, ...input.lateContextMessages]
 }
 
-function sliceTranscriptFromLatestCompactionBoundary(transcript: ModelTranscriptMessage[]) {
+function sliceTimelineFromLatestCompactionBoundary(timeline: ModelTimelineMessage[]) {
   let boundaryIndex = -1
 
-  for (let index = transcript.length - 1; index >= 0; index -= 1) {
-    if (transcript[index]?.parts.some((part) => part.kind === "compaction_boundary")) {
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    if (timeline[index]?.parts.some((part) => part.kind === "compaction_boundary")) {
       boundaryIndex = index
       break
     }
   }
 
-  return boundaryIndex < 0 ? transcript : transcript.slice(boundaryIndex)
+  return boundaryIndex < 0 ? timeline : timeline.slice(boundaryIndex)
 }
 
 function buildAssistantMessages(
-  message: ModelTranscriptMessage,
+  message: ModelTimelineMessage,
   resolvedToolCallIds: ReadonlySet<string>,
   options: {
-    clearedToolResults?: ReadonlySet<ModelTranscriptPart>
+    clearedToolResults?: ReadonlySet<ModelTimelinePart>
   },
 ): ModelMessage[] {
   const assistantParts: ModelMessagePart[] = []
@@ -292,10 +292,10 @@ function buildAssistantMessages(
   return messages
 }
 
-function collectResolvedToolCallIds(transcript: ModelTranscriptMessage[]) {
+function collectResolvedToolCallIds(timeline: ModelTimelineMessage[]) {
   const resolvedToolCallIds = new Set<string>()
 
-  for (const message of transcript) {
+  for (const message of timeline) {
     for (const part of message.parts) {
       if (part.kind === "tool_result") {
         const rendered = renderToolResultPart(part)
@@ -313,13 +313,13 @@ function collectResolvedToolCallIds(transcript: ModelTranscriptMessage[]) {
   return resolvedToolCallIds
 }
 
-function createResolvedToolCallKey(message: ModelTranscriptMessage, callId: string) {
+function createResolvedToolCallKey(message: ModelTimelineMessage, callId: string) {
   const runId = readTimelineProducedByRunId(message)
 
   return runId ? `${runId}:${callId}` : callId
 }
 
-function readTimelineProducedByRunId(message: ModelTranscriptMessage) {
+function readTimelineProducedByRunId(message: ModelTimelineMessage) {
   if ("producedByRunId" in message && typeof message.producedByRunId === "string") {
     return message.producedByRunId
   }
@@ -331,7 +331,7 @@ function readTimelineProducedByRunId(message: ModelTranscriptMessage) {
   return null
 }
 
-function isTextPart(kind: ModelTranscriptPart["kind"]) {
+function isTextPart(kind: ModelTimelinePart["kind"]) {
   return (
     kind === "text" ||
     kind === "step_start" ||
@@ -340,7 +340,7 @@ function isTextPart(kind: ModelTranscriptPart["kind"]) {
   )
 }
 
-function renderReasoningPart(part: ModelTranscriptPart): ModelReasoningPart | null {
+function renderReasoningPart(part: ModelTimelinePart): ModelReasoningPart | null {
   if (part.kind !== "reasoning" || !part.text) {
     return null
   }
@@ -351,11 +351,11 @@ function renderReasoningPart(part: ModelTranscriptPart): ModelReasoningPart | nu
   }
 }
 
-function renderUserTextPart(part: ModelTranscriptPart): ModelTextPart | null {
+function renderUserTextPart(part: ModelTimelinePart): ModelTextPart | null {
   return renderTextPart(part)
 }
 
-function renderTextPart(part: ModelTranscriptPart): ModelTextPart | null {
+function renderTextPart(part: ModelTimelinePart): ModelTextPart | null {
   switch (part.kind) {
     case "text":
     case "step_start":
@@ -372,7 +372,7 @@ function renderTextPart(part: ModelTranscriptPart): ModelTextPart | null {
   }
 }
 
-function renderToolCallPart(part: ModelTranscriptPart) {
+function renderToolCallPart(part: ModelTimelinePart) {
   const data = readObject(part.data)
   return {
     type: "tool_call" as const,
@@ -383,9 +383,9 @@ function renderToolCallPart(part: ModelTranscriptPart) {
 }
 
 function renderToolResultPart(
-  part: ModelTranscriptPart,
+  part: ModelTimelinePart,
   options: {
-    clearedToolResults?: ReadonlySet<ModelTranscriptPart>
+    clearedToolResults?: ReadonlySet<ModelTimelinePart>
   } = {},
 ) {
   const data = readObject(part.data)
@@ -401,7 +401,7 @@ function renderToolResultPart(
   }
 }
 
-function renderToolErrorPart(part: ModelTranscriptPart) {
+function renderToolErrorPart(part: ModelTimelinePart) {
   if (part.kind !== "error") {
     return null
   }
@@ -550,7 +550,7 @@ function resolveReadableBaseDir(baseDir: string | undefined) {
 }
 
 function buildMicrocompactSummary(input: {
-  transcript: ModelTranscriptMessage[]
+  timeline: ModelTimelineMessage[]
   contextWindow: number | undefined
   system: string
   tools: ModelTool[]
@@ -570,7 +570,7 @@ function buildMicrocompactSummary(input: {
     return null
   }
 
-  const compressibleToolResults = collectCompressibleToolResults(input.transcript, input.compressibleToolNames)
+  const compressibleToolResults = collectCompressibleToolResults(input.timeline, input.compressibleToolNames)
   if (compressibleToolResults.length <= MICROCOMPACT_RETAINED_TOOL_RESULTS) {
     return null
   }
@@ -582,7 +582,7 @@ function buildMicrocompactSummary(input: {
   const compactedRequest = {
     system: input.system,
     messages: [
-      ...buildTranscriptMessages(input.transcript, {
+      ...buildTimelineMessages(input.timeline, {
         clearedToolResults,
       }),
       ...input.reminderMessages,
@@ -603,12 +603,12 @@ function buildMicrocompactSummary(input: {
 }
 
 function collectCompressibleToolResults(
-  transcript: ModelTranscriptMessage[],
+  timeline: ModelTimelineMessage[],
   compressibleToolNames: ReadonlySet<string>,
 ) {
-  const compressibleToolResults: ModelTranscriptPart[] = []
+  const compressibleToolResults: ModelTimelinePart[] = []
 
-  for (const message of transcript) {
+  for (const message of timeline) {
     for (const part of message.parts) {
       if (!isCompressibleToolResult(part, compressibleToolNames)) {
         continue
@@ -621,7 +621,7 @@ function collectCompressibleToolResults(
   return compressibleToolResults
 }
 
-function isCompressibleToolResult(part: ModelTranscriptPart, compressibleToolNames: ReadonlySet<string>) {
+function isCompressibleToolResult(part: ModelTimelinePart, compressibleToolNames: ReadonlySet<string>) {
   if (part.kind !== "tool_result") {
     return false
   }

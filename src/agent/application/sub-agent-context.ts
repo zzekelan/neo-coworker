@@ -759,7 +759,7 @@ function getFinalAssistantText(input: {
   runId: string
 }) {
   const messages = input.session
-    .listTranscript(input.sessionId)
+    .listTimeline(input.sessionId)
     .filter((message) => message.runId === input.runId && message.role === "assistant")
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {

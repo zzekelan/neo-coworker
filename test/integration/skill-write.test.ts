@@ -226,8 +226,8 @@ describe("integration: skill write bootstrap tools", () => {
       ]),
     )
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const toolResults = transcript
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const toolResults = timeline
       .flatMap((message) => message.parts)
       .filter((part) => part.kind === "tool_result")
       .map((part) => ({
@@ -252,9 +252,9 @@ describe("integration: skill write bootstrap tools", () => {
       ]),
     )
 
-    const errorParts = transcript
+    const errorParts = timeline
       .flatMap((message) => message.parts)
-      .filter((part) => part.kind === "error")
+      .filter((part) => part.kind === "tool_result" && (part.data as { isError?: boolean })?.isError)
     expect(errorParts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

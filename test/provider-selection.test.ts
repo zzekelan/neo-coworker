@@ -72,7 +72,7 @@ describe("provider selection", () => {
       skillCatalog: [],
       activeSkills: [],
       tools: [],
-      transcript: [],
+      timeline: [],
       signal: new AbortController().signal,
     })) {
       events.push(event)
@@ -147,7 +147,7 @@ describe("provider selection", () => {
       skillCatalog: [],
       activeSkills: [],
       tools: [],
-      transcript: [],
+      timeline: [],
       signal: new AbortController().signal,
     })) {
       events.push(event)
@@ -214,7 +214,7 @@ describe("provider selection", () => {
               skillCatalog: [],
               activeSkills: [],
               tools: [],
-              transcript: [],
+              timeline: [],
               signal: new AbortController().signal,
               sessionId: "session_local_provider",
               runId: "run_local_provider",

@@ -11,7 +11,7 @@ import {
   loadSessionRuns,
   loadSession,
   loadWorkspaceSessions,
-  loadTranscript,
+  loadTimeline,
   openWorkspace,
   pickDirectory,
   persistDesktopSelection,
@@ -23,10 +23,10 @@ import {
   updateSessionAgent,
 } from "./api"
 import {
-  upsertTranscriptMessage,
-  upsertTranscriptMessagePart,
+  upsertTimelineMessage,
+  upsertTimelineMessagePart,
   updateToolProgress,
-} from "./transcript-state"
+} from "./timeline-state"
 import { loadDesktopRefreshCore, mergeWorkspaces } from "./refresh-data"
 import type {
   ConnectionStatus,
@@ -49,7 +49,7 @@ type AppState = {
   activeSessionId: string | null
   sessionSnapshot: DesktopSessionSnapshot | null
   sessionRuns: DesktopRun[]
-  transcript: DesktopMessage[]
+  timeline: DesktopMessage[]
   permissionRequests: DesktopPermissionRequest[]
   connection: ConnectionStatus
   contextUsage: ContextUsageState | null
@@ -71,7 +71,7 @@ type ContextUsageState = {
 type RefreshOptions = {
   workspaceRoot?: string | null
   sessionId?: string | null
-  preserveTranscript?: boolean
+  preserveTimeline?: boolean
 }
 
 export function useDesktopApp() {
@@ -127,7 +127,7 @@ export function useDesktopApp() {
     const currentToken = refreshTokenRef.current + 1
     refreshTokenRef.current = currentToken
 
-    if (!options.preserveTranscript) {
+    if (!options.preserveTimeline) {
       setState((previous) => ({
         ...previous,
         isLoading: true,
@@ -152,7 +152,7 @@ export function useDesktopApp() {
           loadWorkspaceSkills,
           loadSession,
           loadSessionRuns,
-          loadTranscript,
+          loadTimeline,
           loadRun,
         },
         knownWorkspaces: knownWorkspacesRef.current,
@@ -182,7 +182,7 @@ export function useDesktopApp() {
         activeSessionId: refreshData.activeSessionId,
         sessionSnapshot: refreshData.snapshot,
         sessionRuns: refreshData.sessionRuns,
-        transcript: refreshData.transcript,
+        timeline: refreshData.timeline,
         permissionRequests: refreshData.permissionRequests,
         contextUsage: normalizeContextUsageState(refreshData.snapshot?.contextUsage),
         connection: {
@@ -337,7 +337,7 @@ export function useDesktopApp() {
           activeSessionId: nextActiveSessionId,
           sessionSnapshot: deletingActiveSession ? null : previous.sessionSnapshot,
           sessionRuns: deletingActiveSession ? [] : previous.sessionRuns,
-          transcript: deletingActiveSession ? [] : previous.transcript,
+          timeline: deletingActiveSession ? [] : previous.timeline,
           permissionRequests: deletingActiveSession ? [] : previous.permissionRequests,
           isSending: deletingActiveSession ? false : previous.isSending,
         }
@@ -347,7 +347,7 @@ export function useDesktopApp() {
       void refresh({
         workspaceRoot: activeWorkspaceRoot,
         sessionId: activeSessionId === event.sessionId ? null : activeSessionId,
-        preserveTranscript: activeSessionId !== event.sessionId,
+        preserveTimeline: activeSessionId !== event.sessionId,
       })
       return
     }
@@ -355,7 +355,7 @@ export function useDesktopApp() {
     if (event.type === "message.created" && event.message.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
-        transcript: upsertTranscriptMessage(previous.transcript, {
+        timeline: upsertTimelineMessage(previous.timeline, {
           ...event.message,
           parts: [],
         }),
@@ -366,7 +366,7 @@ export function useDesktopApp() {
     if (event.type === "message.part.updated" && event.part.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
-        transcript: upsertTranscriptMessagePart(previous.transcript, event.part),
+        timeline: upsertTimelineMessagePart(previous.timeline, event.part),
       }))
       return
     }
@@ -374,7 +374,7 @@ export function useDesktopApp() {
     if (event.type === "tool.progress") {
       setState((previous) => ({
         ...previous,
-        transcript: updateToolProgress(previous.transcript, event.toolCallId, event.message),
+        timeline: updateToolProgress(previous.timeline, event.toolCallId, event.message),
       }))
       return
     }
@@ -402,7 +402,7 @@ export function useDesktopApp() {
         void refresh({
           workspaceRoot: activeWorkspaceRoot,
           sessionId: activeSessionId,
-          preserveTranscript: true,
+          preserveTimeline: true,
         })
       }
       return
@@ -489,7 +489,7 @@ export function useDesktopApp() {
         activeSessionId: null,
         sessions: [],
         sessionRuns: [],
-        transcript: [],
+        timeline: [],
         permissionRequests: [],
         sessionSnapshot: null,
         contextUsage: null,
@@ -555,7 +555,7 @@ export function useDesktopApp() {
             contextUsage: null,
           },
           sessionRuns: [],
-          transcript: [],
+          timeline: [],
           permissionRequests: [],
           actionError: null,
         }))
@@ -673,7 +673,7 @@ export function useDesktopApp() {
         await refresh({
           workspaceRoot,
           sessionId,
-          preserveTranscript: true,
+          preserveTimeline: true,
         })
         return true
       } catch (error) {
@@ -708,7 +708,7 @@ export function useDesktopApp() {
         await refresh({
           workspaceRoot: selectionRef.current.activeWorkspaceRoot,
           sessionId,
-          preserveTranscript: true,
+          preserveTimeline: true,
         })
         return true
       } catch (error) {
@@ -732,7 +732,7 @@ export function useDesktopApp() {
         await refresh({
           workspaceRoot: selectionRef.current.activeWorkspaceRoot,
           sessionId: selectionRef.current.activeSessionId,
-          preserveTranscript: true,
+          preserveTimeline: true,
         })
       } catch (error) {
         setState((previous) => ({
@@ -752,7 +752,7 @@ export function useDesktopApp() {
         await refresh({
           workspaceRoot: selectionRef.current.activeWorkspaceRoot,
           sessionId: selectionRef.current.activeSessionId,
-          preserveTranscript: true,
+          preserveTimeline: true,
         })
         return true
       } catch (error) {
@@ -790,7 +790,7 @@ export function useDesktopApp() {
         await refresh({
           workspaceRoot: selectionRef.current.activeWorkspaceRoot,
           sessionId: selectionRef.current.activeSessionId,
-          preserveTranscript: true,
+          preserveTimeline: true,
         })
       } catch (error) {
         setState((previous) => ({
@@ -852,7 +852,7 @@ export function useDesktopApp() {
             activeSessionId: deletingActiveSession ? nextActiveSessionId : previous.activeSessionId,
             sessionSnapshot: deletingActiveSession ? null : previous.sessionSnapshot,
             sessionRuns: deletingActiveSession ? [] : previous.sessionRuns,
-            transcript: deletingActiveSession ? [] : previous.transcript,
+            timeline: deletingActiveSession ? [] : previous.timeline,
             permissionRequests: deletingActiveSession ? [] : previous.permissionRequests,
             isSending: deletingActiveSession ? false : previous.isSending,
             actionError: null,
@@ -924,7 +924,7 @@ function createInitialState(input: {
       activeSessionId,
       sessionSnapshot: null,
       sessionRuns: [],
-      transcript: [],
+      timeline: [],
       permissionRequests: [],
       connection: {
         state: "error",
@@ -950,7 +950,7 @@ function createInitialState(input: {
     activeSessionId,
     sessionSnapshot: null,
     sessionRuns: [],
-    transcript: [],
+    timeline: [],
     permissionRequests: [],
     connection: {
       state: "connecting",

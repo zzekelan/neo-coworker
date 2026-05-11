@@ -219,11 +219,11 @@ describe("direct eval runner", () => {
         outcomeExpectation: {
           runStatus: "completed",
         },
-        transcriptExpectation: {
+        timelineExpectation: {
           checkpoints: [
             {
               messageIndex: 3,
-              role: "synthetic",
+              role: "compaction",
               partKinds: ["compaction_boundary", "text"],
             },
           ],
@@ -566,7 +566,7 @@ describe("direct eval runner", () => {
     expect(suite.pass).toBe(true)
     expect(suite.results).toHaveLength(1)
     expect(suite.results[0]?.result.artifact.metrics.toolCallCount).toBe(2)
-    expect(suite.results[0]?.result.grades.transcript.pass).toBe(true)
+    expect(suite.results[0]?.result.grades.timeline.pass).toBe(true)
     expect(searchRequests.map((request) => request.authorization)).toEqual([
       "Bearer search-token",
       "Bearer search-token",

@@ -8,7 +8,7 @@ import {
   createSessionRuntimeApi,
   openSessionDatabase as openStorageDatabase,
   resolvePermissionPendingRunStatus,
-  timelineEntriesToTranscriptMessages,
+  timelineEntriesToTimelineMessages,
   type SessionDatabase,
   type SessionProvider,
   type SessionRepository as StorageRepository,
@@ -178,7 +178,7 @@ export function createOrchestrationModelPort(provider: ModelProvider): Orchestra
         systemReminderMetadata: request.systemReminderMetadata,
         contextWindow: request.contextWindow,
         tools: request.tools,
-        transcript: request.transcript,
+        timeline: request.timeline,
         compressibleToolNames: request.compressibleToolNames,
         temperature: request.temperature,
       })
@@ -195,7 +195,7 @@ export function createOrchestrationModelPort(provider: ModelProvider): Orchestra
         temperature: request.temperature,
         thinking: request.thinking,
         tools: request.tools,
-        transcript: request.transcript,
+        timeline: request.timeline,
         compressibleToolNames: request.compressibleToolNames,
         sessionId: request.sessionId,
         runId: request.runId,
@@ -548,8 +548,8 @@ function createSessionPort(input: {
     getRun(runId) {
       return input.repository.runs.get(runId)
     },
-    listTranscript(sessionId) {
-      return timelineEntriesToTranscriptMessages(input.repository.timeline.listEntries(sessionId))
+    listTimeline(sessionId) {
+      return timelineEntriesToTimelineMessages(input.repository.timeline.listEntries(sessionId))
     },
     createRun(run) {
       return input.repository.runs.create({
@@ -578,13 +578,13 @@ function createSessionPort(input: {
         createdAt: message.createdAt,
       })
     },
-    createSyntheticMessage(message) {
+    createCompactionMessage(message) {
       const session = input.repository.sessions.get(message.sessionId)
       return input.repository.timeline.appendEntry({
         sessionId: message.sessionId,
         producedByRunId: message.runId,
         agent: session.currentAgent,
-        role: "synthetic",
+        role: "compaction",
         runSequence: message.sequence,
         createdAt: message.createdAt,
       })

@@ -2,8 +2,8 @@ import {
   assertRunStatusTransition,
   createSessionRuntimeApi,
   SessionBusyError,
-  timelineEntryToTranscriptMessage,
-  timelinePartToTranscriptPart,
+  timelineEntryToTimelineMessage,
+  timelinePartToTimelinePart,
   type RunTrigger,
   type SessionRepository as StorageRepository,
   type StoredMessage,
@@ -418,7 +418,7 @@ export function createObservedRepository(input: {
         const created = repository.timeline.appendEntry(entry)
         events.publish({
           type: "message.created",
-          message: timelineEntryToTranscriptMessage(created),
+          message: timelineEntryToTimelineMessage(created),
         })
         return created
       },
@@ -426,7 +426,7 @@ export function createObservedRepository(input: {
         const created = repository.timeline.appendPart(part)
         events.publish({
           type: "message.part.updated",
-          part: timelinePartToTranscriptPart(created),
+          part: timelinePartToTimelinePart(created),
         })
         return created
       },
@@ -780,8 +780,8 @@ async function startRun(runInput: {
           latestRunStatus: getLatestVisibleRunBySession(repository, updated.id)?.status ?? null,
         }
       },
-      transcript(sessionId: string) {
-        return sessionProvider.transcript.listSessionTranscript(sessionId)
+      timeline(sessionId: string) {
+        return repository.timeline.listEntries(sessionId)
       },
       delete(sessionId: string) {
         if (!input.deleteSessionImpl) {

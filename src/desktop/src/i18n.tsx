@@ -228,7 +228,7 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       offline: "Offline",
       settings: "Settings",
       deleteSession: "Delete session",
-      deleteHint: "Deletes this session together with its transcript, runs, and trace history.",
+      deleteHint: "Deletes this session together with its timeline, runs, and trace history.",
       deleteBlocked: "Stop the active run before deleting this session.",
       running: "Running",
       waiting: "Waiting",

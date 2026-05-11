@@ -7,7 +7,7 @@ import {
   type OrchestrationRunRecord,
   type OrchestrationSessionPort,
   type OrchestrationSkillPort,
-  type OrchestrationTranscriptMessage,
+  type OrchestrationTimelineMessage,
   type OrchestrationToolPort,
 } from "../../src/orchestration"
 
@@ -49,7 +49,7 @@ describe("orchestration step service reasoning persistence", () => {
     })
 
     expect(result).toEqual({ status: "complete" })
-    expect(session.listTranscript(session.sessionId)).toEqual([
+    expect(session.listTimeline(session.sessionId)).toEqual([
       {
         runId: session.runId,
         role: "user",
@@ -76,7 +76,7 @@ describe("orchestration step service reasoning persistence", () => {
         ],
       },
     ])
-    const reasoningPart = session.listTranscript(session.sessionId)[1]?.parts[0]
+    const reasoningPart = session.listTimeline(session.sessionId)[1]?.parts[0]
     expect(reasoningPart?.data).toEqual({ durationMs: expect.any(Number) })
     expect((reasoningPart?.data as { durationMs: number }).durationMs).toBeGreaterThan(0)
   })
@@ -87,7 +87,7 @@ function createMemorySession() {
   const runId = "run_reasoning"
   let nextMessageId = 0
   let nextPartId = 0
-  const transcript: OrchestrationTranscriptMessage[] = [
+  const timeline: OrchestrationTimelineMessage[] = [
     {
       runId,
       role: "user",
@@ -95,7 +95,7 @@ function createMemorySession() {
       parts: [{ kind: "text", text: "Inspect README", data: undefined }],
     },
   ]
-  const messageIds = new Map<string, OrchestrationTranscriptMessage>()
+  const messageIds = new Map<string, OrchestrationTimelineMessage>()
   const partIds = new Map<string, OrchestrationPartRecord>()
   const run: OrchestrationRunRecord = {
     id: runId,
@@ -130,12 +130,12 @@ function createMemorySession() {
 
       return run
     },
-    listTranscript(requestedSessionId) {
+    listTimeline(requestedSessionId) {
       if (requestedSessionId !== sessionId) {
         throw new Error(`Unknown session ${requestedSessionId}`)
       }
 
-      return transcript
+      return timeline
     },
     createRun(input) {
       return {
@@ -151,25 +151,25 @@ function createMemorySession() {
     },
     createAssistantMessage(input) {
       const id = `assistant_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+      const message: OrchestrationTimelineMessage = {
         runId: input.runId,
         role: "assistant",
         sequence: input.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },
-    createSyntheticMessage(input) {
-      const id = `synthetic_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+    createCompactionMessage(input) {
+      const id = `compaction_message_${nextMessageId++}`
+      const message: OrchestrationTimelineMessage = {
         runId: input.runId,
-        role: "synthetic",
+        role: "compaction",
         sequence: input.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },

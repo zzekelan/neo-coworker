@@ -72,9 +72,9 @@ export type MessagePart =
       trigger: string
     }
 
-export interface DesktopTranscriptMessage {
+export interface DesktopTimelineMessage {
   id: string
-  role: "user" | "assistant" | "synthetic"
+  role: "user" | "assistant" | "compaction"
   content: string
   parts?: MessagePart[]
   createdAt: string

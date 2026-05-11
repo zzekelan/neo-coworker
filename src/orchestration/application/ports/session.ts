@@ -1,4 +1,4 @@
-export type OrchestrationMessageRole = "user" | "assistant" | "system" | "synthetic"
+export type OrchestrationMessageRole = "user" | "assistant" | "system" | "compaction"
 
 export type OrchestrationRunStatus =
   | "queued"
@@ -8,7 +8,7 @@ export type OrchestrationRunStatus =
   | "failed"
   | "cancelled"
 
-export type OrchestrationTranscriptPart = {
+export type OrchestrationTimelinePart = {
   id?: string
   entryId?: string
   messageId?: string
@@ -19,7 +19,7 @@ export type OrchestrationTranscriptPart = {
   data?: unknown
 }
 
-export type OrchestrationTranscriptMessage = {
+export type OrchestrationTimelineMessage = {
   id?: string
   sessionId?: string
   producedByRunId?: string
@@ -28,7 +28,7 @@ export type OrchestrationTranscriptMessage = {
   runSequence?: number
   sequence: number
   timelineSequence?: number
-  parts: OrchestrationTranscriptPart[]
+  parts: OrchestrationTimelinePart[]
 }
 
 export type OrchestrationSessionRecord = {
@@ -64,7 +64,7 @@ export type OrchestrationSessionPort = {
   storageIdentity: string
   getSession(sessionId: string): OrchestrationSessionRecord
   getRun(runId: string): OrchestrationRunRecord
-  listTranscript(sessionId: string): OrchestrationTranscriptMessage[]
+  listTimeline(sessionId: string): OrchestrationTimelineMessage[]
   createRun(input: {
     id: string
     sessionId: string
@@ -85,7 +85,7 @@ export type OrchestrationSessionPort = {
     sequence: number
     createdAt: number
   }): OrchestrationMessageRecord
-  createSyntheticMessage(input: {
+  createCompactionMessage(input: {
     sessionId: string
     runId: string
     sequence: number

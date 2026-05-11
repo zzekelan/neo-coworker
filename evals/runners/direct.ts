@@ -97,7 +97,7 @@ export function formatEvalTaskSummary(input: EvalSuiteTaskResult) {
     `grader.protocol ${formatPass(input.result.grades.protocol.pass)}`,
     `grader.tool_policy ${formatPass(input.result.grades.toolPolicy.pass)}`,
     `grader.trace ${formatPass(input.result.grades.trace.pass)}`,
-    `grader.transcript ${formatPass(input.result.grades.transcript.pass)}`,
+    `grader.timeline ${formatPass(input.result.grades.timeline.pass)}`,
     `grader.trace_sequence ${formatPass(input.result.grades.traceSequence.pass)}`,
     `grader.tool_consumption ${formatPass(input.result.grades.toolConsumption.pass)}`,
     `grader.skill_disclosure ${formatPass(input.result.grades.skillDisclosure.pass)}`,
@@ -123,7 +123,6 @@ async function persistEvalArtifacts(input: {
     writeJsonFile(join(artifactDir, "trace.json"), input.result.artifact.trace),
     writeJsonFile(join(artifactDir, "runs.json"), input.result.artifact.runs),
     writeJsonFile(join(artifactDir, "timeline.json"), input.result.artifact.timeline),
-    writeJsonFile(join(artifactDir, "transcript.json"), input.result.artifact.transcript),
     writeJsonFile(join(artifactDir, "outcome.json"), input.result.artifact.outcome),
     writeJsonFile(join(artifactDir, "metrics.json"), input.result.artifact.metrics),
     writeJsonFile(join(artifactDir, "grader-results.json"), {
@@ -249,13 +248,13 @@ function summarizeFailures(result: EvalRunResult) {
     failures.push(`trace missing ${result.grades.trace.missingEventTypes.join(", ")}`)
   }
 
-  if (!result.grades.transcript.pass) {
-    if (result.grades.transcript.missingOrderedTexts.length > 0) {
-      failures.push(`transcript missing ordered text ${result.grades.transcript.missingOrderedTexts.join(", ")}`)
+  if (!result.grades.timeline.pass) {
+    if (result.grades.timeline.missingOrderedTexts.length > 0) {
+      failures.push(`timeline missing ordered text ${result.grades.timeline.missingOrderedTexts.join(", ")}`)
     }
 
-    if (result.grades.transcript.checkpointFailures.length > 0) {
-      failures.push(...result.grades.transcript.checkpointFailures)
+    if (result.grades.timeline.checkpointFailures.length > 0) {
+      failures.push(...result.grades.timeline.checkpointFailures)
     }
   }
 

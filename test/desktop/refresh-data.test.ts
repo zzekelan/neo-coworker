@@ -45,8 +45,8 @@ function createMinimalLoaders(overrides: Record<string, unknown> = {}) {
         ...overrides,
       }
     },
-    async loadTranscript() {
-      return { transcript: [] }
+    async loadTimeline() {
+      return { timeline: [] }
     },
     async loadSessionRuns() {
       return { runs: [] }
@@ -117,9 +117,9 @@ describe("desktop refresh data", () => {
             status: "idle",
           }
         },
-        async loadTranscript() {
+        async loadTimeline() {
           return {
-            transcript: [
+            timeline: [
               {
                 id: "message-1",
                 sessionId: "session-1",
@@ -161,7 +161,7 @@ describe("desktop refresh data", () => {
     expect(refreshData.resolvedWorkspaceRoot).toBe("/workspace/alpha")
     expect(refreshData.activeSessionId).toBe("session-1")
     expect(refreshData.sessionRuns).toEqual([])
-    expect(refreshData.transcript).toHaveLength(1)
+    expect(refreshData.timeline).toHaveLength(1)
     expect(refreshData.sessionRestoreError).toBeNull()
     expect(loadSkillsCalls).toBe(0)
 
@@ -259,8 +259,8 @@ describe("desktop refresh data", () => {
             status: "busy" as const,
           }
         },
-        async loadTranscript() {
-          return { transcript: [] }
+        async loadTimeline() {
+          return { timeline: [] }
         },
         async loadSessionRuns() {
           return { runs: [activeRun] }

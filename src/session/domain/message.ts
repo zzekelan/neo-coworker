@@ -1,6 +1,6 @@
 import type { StoredPart } from "./part"
 
-export const MESSAGE_ROLES = ["user", "assistant", "synthetic"] as const
+export const MESSAGE_ROLES = ["user", "assistant", "compaction"] as const
 
 export type MessageRole = (typeof MESSAGE_ROLES)[number]
 
@@ -14,6 +14,6 @@ export type StoredMessage = {
   createdAt: number
 }
 
-export type TranscriptMessage = StoredMessage & {
+export type TimelineMessage = StoredMessage & {
   parts: StoredPart[]
 }

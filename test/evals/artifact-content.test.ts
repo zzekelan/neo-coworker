@@ -5,12 +5,12 @@ import {
   gradeTraceDataExpectation,
   gradeTraceExpectation,
   gradeToolConsumptionExpectation,
-  gradeTranscriptExpectation,
+  gradeTimelineExpectation,
   type EvalRunArtifact,
 } from "../../evals"
 
 describe("eval content artifacts", () => {
-  test("content graders read Session Timeline content before transcript compatibility content", () => {
+  test("content graders read Session Timeline content directly", () => {
     const artifact = buildArtifact({
       timeline: [
         buildTimelineEntry({
@@ -52,17 +52,10 @@ describe("eval content artifacts", () => {
           ],
         }),
       ],
-      transcript: [
-        {
-          id: "legacy_entry",
-          role: "assistant",
-          parts: [{ kind: "text", text: "stale transcript answer", data: null }],
-        },
-      ],
     })
 
     expect(
-      gradeTranscriptExpectation({
+      gradeTimelineExpectation({
         artifact,
         expectation: {
           orderedTextIncludes: ["timeline answer"],
@@ -187,7 +180,6 @@ function buildArtifact(overrides: Partial<EvalRunArtifact> = {}) {
     runStatus: "completed",
     runtimeEvents: [],
     timeline: [],
-    transcript: [],
     trace: null,
     runs: [
       {

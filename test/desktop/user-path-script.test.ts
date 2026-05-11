@@ -38,7 +38,7 @@ describe("desktop user-path verify script", () => {
     expect(scriptSource).toContain("matchesExpectedAssistantText")
     expect(scriptSource).toContain("normalizeAssistantText")
     expect(scriptSource).toContain("part.kind === \"text\"")
-    expect(scriptSource).toContain("Assistant transcript text is empty.")
+    expect(scriptSource).toContain("Assistant timeline text is empty.")
     expect(mainSource).toContain("process.env.DESKTOP_SELECTION_STATE_PATH?.trim() ||")
     expect(mainSource).toContain("process.env.DESKTOP_SETTINGS_STATE_PATH?.trim() ||")
     expect(mainSource).toContain("getDesktopStatePath()")

@@ -108,11 +108,11 @@ describe("run command", () => {
     })
 
     const runs = harness.repository.runs.listBySession(sessionId)
-    const transcript = harness.repository.messages.listSessionTranscript(sessionId)
+    const timeline = harness.repository.messages.listSessionTimeline(sessionId)
 
     expect(runs).toHaveLength(2)
     expect(runs.map((run) => run.status)).toEqual(["completed", "completed"])
-    expect(transcript.filter((message) => message.role === "user").map((message) => message.parts[0]?.text))
+    expect(timeline.filter((message) => message.role === "user").map((message) => message.parts[0]?.text))
       .toEqual(["First prompt", "Second prompt"])
     expect(output.join("")).toContain(`session.selected ${sessionId}`)
     expect(output.join("")).toContain(`run.started ${runs[1]!.id}`)
@@ -774,7 +774,7 @@ describe("chat command", () => {
     expect(runs).toHaveLength(2)
     expect(runs.map((run) => run.status)).toEqual(["completed", "completed"])
     expect(
-      harness.repository.messages.listSessionTranscript(sessions[0]!.id)
+      harness.repository.messages.listSessionTimeline(sessions[0]!.id)
         .filter((message) => message.role === "user")
         .map((message) => message.parts[0]?.text),
     ).toEqual(["First prompt", "Second prompt"])
@@ -860,7 +860,7 @@ describe("chat command", () => {
     expect(rendered).toContain("--- session compacted")
     expect(
       harness.repository.messages
-        .listSessionTranscript(session.id)
+        .listSessionTimeline(session.id)
         .filter((message) => message.role === "user")
         .map((message) => message.parts[0]?.text),
     ).toEqual(["Previous shell-heavy work"])
@@ -1490,10 +1490,10 @@ describe("chat command", () => {
         await firstDeltaEmitted
         return subscription
       },
-      async listSessionTranscript(sessionId: string) {
+      async listSessionTimeline(sessionId: string) {
         releaseSecondDelta()
         await secondDeltaEmitted
-        return harness.client.listSessionTranscript(sessionId)
+        return harness.client.listSessionTimeline(sessionId)
       },
     }
 

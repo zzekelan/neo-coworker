@@ -1,16 +1,16 @@
 import type { DesktopMessage, DesktopPart } from "./types"
 
-export function normalizeTranscript(messages: DesktopMessage[]) {
+export function normalizeTimeline(messages: DesktopMessage[]) {
   return messages.map((message) => ({
     ...message,
     parts: sortParts(message.parts),
   }))
 }
 
-export function upsertTranscriptMessage(messages: DesktopMessage[], message: DesktopMessage) {
+export function upsertTimelineMessage(messages: DesktopMessage[], message: DesktopMessage) {
   const index = messages.findIndex((candidate) => candidate.id === message.id)
   if (index === -1) {
-    return normalizeTranscript([...messages, message])
+    return normalizeTimeline([...messages, message])
   }
 
   const next = messages.slice()
@@ -20,10 +20,10 @@ export function upsertTranscriptMessage(messages: DesktopMessage[], message: Des
     parts: sortParts(message.parts.length > 0 ? message.parts : next[index].parts),
   }
 
-  return normalizeTranscript(next)
+  return normalizeTimeline(next)
 }
 
-export function upsertTranscriptMessagePart(
+export function upsertTimelineMessagePart(
   messages: DesktopMessage[],
   part: DesktopPart,
 ) {
@@ -48,7 +48,7 @@ export function upsertTranscriptMessagePart(
     parts: sortParts(parts),
   }
 
-  return normalizeTranscript(next)
+  return normalizeTimeline(next)
 }
 
 function sortParts(parts: DesktopPart[]) {

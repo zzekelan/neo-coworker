@@ -45,8 +45,8 @@ afterEach(async () => {
   }
 })
 
-describe("subsession transcript isolation", () => {
-  test("keeps subagent runtime messages isolated from the parent transcript", async () => {
+describe("subsession timeline isolation", () => {
+  test("keeps subagent runtime messages isolated from the parent timeline", async () => {
     const harness = await createHarness("subsession-isolation-runtime", true)
     const subagentInternalMarker = "SUBAGENT_TOKEN_BLOB ".repeat(600)
     const subagentInternalNote = `Subagent internal note. ${subagentInternalMarker}`
@@ -136,10 +136,10 @@ describe("subsession transcript isolation", () => {
     expect(subRuns).toHaveLength(1)
 
     const subRun = subRuns[0]!
-    const parentTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const subTranscript = harness.repository.messages.listSessionTranscript(subSession.id)
-    const parentText = readTranscriptText(parentTranscript).join("\n")
-    const subText = readTranscriptText(subTranscript).join("\n")
+    const parentTimeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const subTimeline = harness.repository.messages.listSessionTimeline(subSession.id)
+    const parentText = readTimelineText(parentTimeline).join("\n")
+    const subText = readTimelineText(subTimeline).join("\n")
     const parentRun = harness.repository.runs.get(started.run.id)
     const initialParentRequest = requests[0]!
     const parentFollowupRequest = requests[3]!
@@ -155,11 +155,11 @@ describe("subsession transcript isolation", () => {
     const leakedParentAggregateInputTokens =
       initialParentRequestInputTokens + leakedParentRequestInputTokens
 
-    expect(parentTranscript).toHaveLength(3)
-    expect([...new Set(parentTranscript.map((message) => message.runId))]).toEqual([started.run.id])
-    expect(parentTranscript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
-    expect(parentTranscript[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
-    expect(parentTranscript[1]?.parts[1]).toMatchObject({
+    expect(parentTimeline).toHaveLength(3)
+    expect([...new Set(parentTimeline.map((message) => message.runId))]).toEqual([started.run.id])
+    expect(parentTimeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(parentTimeline[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(parentTimeline[1]?.parts[1]).toMatchObject({
       kind: "tool_result",
       text: "Delegated summary for parent.",
       data: {
@@ -168,7 +168,7 @@ describe("subsession transcript isolation", () => {
         output: "Delegated summary for parent.",
       },
     })
-    expect(parentTranscript[2]?.parts).toMatchObject([
+    expect(parentTimeline[2]?.parts).toMatchObject([
       { kind: "text", text: "Parent finished after delegated work." },
     ])
     expect(parentText).toContain("Delegate README inspection through the agent tool")
@@ -181,14 +181,14 @@ describe("subsession transcript isolation", () => {
     expect(parentText).not.toContain("This fixture exists for the read-only tool tests.")
 
     expect(subRun.parentRunId).toBe(started.run.id)
-    expect(subTranscript).toHaveLength(3)
-    expect([...new Set(subTranscript.map((message) => message.runId))]).toEqual([subRun.id])
-    expect(subTranscript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
-    expect(subTranscript[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "tool_result"])
-    expect(subTranscript[1]?.parts[0]?.kind).toBe("text")
-    expect(subTranscript[1]?.parts[0]?.text).toContain("Subagent internal note.")
-    expect(subTranscript[1]?.parts[0]?.text).toContain(subagentInternalMarker)
-    expect(subTranscript[1]?.parts[2]).toMatchObject({
+    expect(subTimeline).toHaveLength(3)
+    expect([...new Set(subTimeline.map((message) => message.runId))]).toEqual([subRun.id])
+    expect(subTimeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(subTimeline[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "tool_result"])
+    expect(subTimeline[1]?.parts[0]?.kind).toBe("text")
+    expect(subTimeline[1]?.parts[0]?.text).toContain("Subagent internal note.")
+    expect(subTimeline[1]?.parts[0]?.text).toContain(subagentInternalMarker)
+    expect(subTimeline[1]?.parts[2]).toMatchObject({
       kind: "tool_result",
       text: README_READ_OUTPUT,
       data: {
@@ -197,7 +197,7 @@ describe("subsession transcript isolation", () => {
         output: README_READ_OUTPUT,
       },
     })
-    expect(subTranscript[2]?.parts).toMatchObject([{ kind: "text", text: "Delegated summary for parent." }])
+    expect(subTimeline[2]?.parts).toMatchObject([{ kind: "text", text: "Delegated summary for parent." }])
     expect(subText).toContain("Inspect README.md and return only the final delegated summary.")
     expect(subText).toContain(subagentInternalMarker)
     expect(subText).toContain("This fixture exists for the read-only tool tests.")
@@ -421,8 +421,8 @@ describe("subsession transcript isolation", () => {
 
                 return {
                   output:
-                    readTranscriptText(
-                      harness.repository.messages.listSessionTranscript(created.session.id),
+                    readTimelineText(
+                      harness.repository.messages.listSessionTimeline(created.session.id),
                     ).at(-1) ?? "",
                 }
               },
@@ -467,17 +467,17 @@ describe("subsession transcript isolation", () => {
 
     const childRun = childRuns[0]!
     const grandchildRun = grandchildRuns[0]!
-    const parentTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const childTranscript = harness.repository.messages.listSessionTranscript(childSession.id)
-    const grandchildTranscript = harness.repository.messages.listSessionTranscript(grandchildSession.id)
-    const parentText = readTranscriptText(parentTranscript).join("\n")
-    const childText = readTranscriptText(childTranscript).join("\n")
-    const grandchildText = readTranscriptText(grandchildTranscript).join("\n")
+    const parentTimeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const childTimeline = harness.repository.messages.listSessionTimeline(childSession.id)
+    const grandchildTimeline = harness.repository.messages.listSessionTimeline(grandchildSession.id)
+    const parentText = readTimelineText(parentTimeline).join("\n")
+    const childText = readTimelineText(childTimeline).join("\n")
+    const grandchildText = readTimelineText(grandchildTimeline).join("\n")
 
-    expect(parentTranscript).toHaveLength(3)
-    expect(parentTranscript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
-    expect(parentTranscript[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
-    expect(parentTranscript[1]?.parts[1]).toMatchObject({
+    expect(parentTimeline).toHaveLength(3)
+    expect(parentTimeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(parentTimeline[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
+    expect(parentTimeline[1]?.parts[1]).toMatchObject({
       kind: "tool_result",
       text: "Delegated summary from A.",
       data: {
@@ -499,18 +499,18 @@ describe("subsession transcript isolation", () => {
     expect(parentText).not.toContain("This fixture exists for the read-only tool tests.")
 
     expect(childRun.parentRunId).toBe(started.run.id)
-    expect(childTranscript).toHaveLength(3)
-    expect(childTranscript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
-    expect(childTranscript[1]?.parts.map((part) => part.kind)).toEqual([
+    expect(childTimeline).toHaveLength(3)
+    expect(childTimeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(childTimeline[1]?.parts.map((part) => part.kind)).toEqual([
       "text",
       "tool_call",
       "tool_result",
     ])
-    expect(childTranscript[1]?.parts[0]).toMatchObject({
+    expect(childTimeline[1]?.parts[0]).toMatchObject({
       kind: "text",
       text: "A internal note.",
     })
-    expect(childTranscript[1]?.parts[2]).toMatchObject({
+    expect(childTimeline[1]?.parts[2]).toMatchObject({
       kind: "tool_result",
       text: "Nested summary from B.",
       data: {
@@ -531,22 +531,22 @@ describe("subsession transcript isolation", () => {
     expect(childText).not.toContain("This fixture exists for the read-only tool tests.")
 
     expect(grandchildRun.parentRunId).toBe(childRun.id)
-    expect(grandchildTranscript).toHaveLength(3)
-    expect(grandchildTranscript.map((message) => message.role)).toEqual([
+    expect(grandchildTimeline).toHaveLength(3)
+    expect(grandchildTimeline.map((message) => message.role)).toEqual([
       "user",
       "assistant",
       "assistant",
     ])
-    expect(grandchildTranscript[1]?.parts.map((part) => part.kind)).toEqual([
+    expect(grandchildTimeline[1]?.parts.map((part) => part.kind)).toEqual([
       "text",
       "tool_call",
       "tool_result",
     ])
-    expect(grandchildTranscript[1]?.parts[0]).toMatchObject({
+    expect(grandchildTimeline[1]?.parts[0]).toMatchObject({
       kind: "text",
       text: "B internal note.",
     })
-    expect(grandchildTranscript[1]?.parts[2]).toMatchObject({
+    expect(grandchildTimeline[1]?.parts[2]).toMatchObject({
       kind: "tool_result",
       text: README_READ_OUTPUT,
       data: {
@@ -859,15 +859,15 @@ describe("subsession transcript isolation", () => {
     expect(childSessions).toHaveLength(2)
 
     const childSessionDetails = childSessions.map((session) => {
-      const transcript = harness.repository.messages.listSessionTranscript(session.id)
-      const text = readTranscriptText(transcript).join("\n")
+      const timeline = harness.repository.messages.listSessionTimeline(session.id)
+      const text = readTimelineText(timeline).join("\n")
       const runs = harness.repository.runs.listBySession(session.id)
 
       expect(runs).toHaveLength(1)
 
       return {
         session,
-        transcript,
+        timeline,
         text,
         run: runs[0]!,
       }
@@ -882,18 +882,18 @@ describe("subsession transcript isolation", () => {
     expect(childA?.run.parentRunId).toBe(started.run.id)
     expect(childB?.run.parentRunId).toBe(started.run.id)
 
-    const parentTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const parentText = readTranscriptText(parentTranscript).join("\n")
+    const parentTimeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const parentText = readTimelineText(parentTimeline).join("\n")
 
-    expect(parentTranscript).toHaveLength(3)
-    expect(parentTranscript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
-    expect(parentTranscript[1]?.parts.map((part) => part.kind)).toEqual([
+    expect(parentTimeline).toHaveLength(3)
+    expect(parentTimeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(parentTimeline[1]?.parts.map((part) => part.kind)).toEqual([
       "tool_call",
       "tool_call",
       "tool_result",
       "tool_result",
     ])
-    expect(parentTranscript[1]?.parts[2]).toMatchObject({
+    expect(parentTimeline[1]?.parts[2]).toMatchObject({
       kind: "tool_result",
       text: branches.a.summary,
       data: {
@@ -902,7 +902,7 @@ describe("subsession transcript isolation", () => {
         output: branches.a.summary,
       },
     })
-    expect(parentTranscript[1]?.parts[3]).toMatchObject({
+    expect(parentTimeline[1]?.parts[3]).toMatchObject({
       kind: "tool_result",
       text: branches.b.summary,
       data: {
@@ -919,9 +919,9 @@ describe("subsession transcript isolation", () => {
     expect(parentText).not.toContain(branches.b.note)
     expect(parentText).not.toContain(fileSnippet)
 
-    expect(childA?.transcript).toHaveLength(3)
-    expect(childA?.transcript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
-    expect(childA?.transcript[1]?.parts.map((part) => part.kind)).toEqual([
+    expect(childA?.timeline).toHaveLength(3)
+    expect(childA?.timeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(childA?.timeline[1]?.parts.map((part) => part.kind)).toEqual([
       "text",
       "tool_call",
       "tool_result",
@@ -935,9 +935,9 @@ describe("subsession transcript isolation", () => {
     expect(childA?.text).not.toContain(branches.b.summary)
     expect(childA?.text).not.toContain(parentPrompt)
 
-    expect(childB?.transcript).toHaveLength(3)
-    expect(childB?.transcript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
-    expect(childB?.transcript[1]?.parts.map((part) => part.kind)).toEqual([
+    expect(childB?.timeline).toHaveLength(3)
+    expect(childB?.timeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(childB?.timeline[1]?.parts.map((part) => part.kind)).toEqual([
       "text",
       "tool_call",
       "tool_result",
@@ -1362,11 +1362,11 @@ describe("subsession transcript isolation", () => {
     const subSession = harness.repository.sessions.listSubSessions(harness.session.id)[0]
     const subRuns = subSession ? harness.repository.runs.listBySession(subSession.id) : []
     const subRun = subRuns[0]
-    const childTranscript = subSession
-      ? harness.repository.messages.listSessionTranscript(subSession.id)
+    const childTimeline = subSession
+      ? harness.repository.messages.listSessionTimeline(subSession.id)
       : []
-    const parentTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const childUnknownResult = childTranscript
+    const parentTimeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const childUnknownResult = childTimeline
       .flatMap((message) => message.parts)
       .find(
         (part) =>
@@ -1382,7 +1382,7 @@ describe("subsession transcript isolation", () => {
 
     expect(requests).toHaveLength(5)
     expect(subRun).toMatchObject({ parentRunId: started.run.id, status: "completed" })
-    expect(parentTranscript[1]?.parts[1]).toMatchObject({
+    expect(parentTimeline[1]?.parts[1]).toMatchObject({
       kind: "tool_result",
       data: {
         callId: "call_source_researcher",
@@ -1500,20 +1500,20 @@ describe("subsession transcript isolation", () => {
       runId: started.run.id,
     })
     const parentEvents = await collectEvents(parentHandle.events)
-    const parentTranscriptAfterFailure = harness.repository.messages.listSessionTranscript(
+    const parentTimelineAfterFailure = harness.repository.messages.listSessionTimeline(
       harness.session.id,
     )
-    const childTranscriptAfterParentFailure = harness.repository.messages.listSessionTranscript(
+    const childTimelineAfterParentFailure = harness.repository.messages.listSessionTimeline(
       child.session.id,
     )
-    const childTimelineAfterParentFailure = harness.repository.timeline.listEntries(child.session.id)
+    const childEntriesAfterParentFailure = harness.repository.timeline.listEntries(child.session.id)
 
-    expect(parentTranscriptAfterFailure[1]?.parts.map((part) => part.kind)).toEqual([
+    expect(parentTimelineAfterFailure[1]?.parts.map((part) => part.kind)).toEqual([
       "tool_call",
       "error",
       "tool_result",
     ])
-    expect(parentTranscriptAfterFailure[1]?.parts[2]).toMatchObject({
+    expect(parentTimelineAfterFailure[1]?.parts[2]).toMatchObject({
       kind: "tool_result",
       data: {
         callId: "call_parent_unresolved",
@@ -1522,19 +1522,19 @@ describe("subsession transcript isolation", () => {
         errorCode: "RUN_FAILED_TOOL_CALL",
       },
     })
-    expect(childTranscriptAfterParentFailure.map((message) => message.runId)).toEqual([
+    expect(childTimelineAfterParentFailure.map((message) => message.runId)).toEqual([
       child.run.id,
       child.run.id,
-    ])
-    expect(childTranscriptAfterParentFailure[1]?.parts.map((part) => part.kind)).toEqual([
-      "tool_call",
     ])
     expect(childTimelineAfterParentFailure[1]?.parts.map((part) => part.kind)).toEqual([
       "tool_call",
     ])
-    expect(childTimelineAfterParentFailure[1]?.producedByRunId).toBe(child.run.id)
+    expect(childEntriesAfterParentFailure[1]?.parts.map((part) => part.kind)).toEqual([
+      "tool_call",
+    ])
+    expect(childEntriesAfterParentFailure[1]?.producedByRunId).toBe(child.run.id)
     expect(
-      parentTranscriptAfterFailure
+      parentTimelineAfterFailure
         .flatMap((message) => message.parts)
         .map((part) => readPartDataString(part, "callId")),
     ).not.toContain("call_child_unresolved")
@@ -1561,18 +1561,18 @@ describe("subsession transcript isolation", () => {
       runId: child.run.id,
     })
     const childEvents = await collectEvents(childHandle.events)
-    const parentTranscriptAfterChildFailure = harness.repository.messages.listSessionTranscript(
+    const parentTimelineAfterChildFailure = harness.repository.messages.listSessionTimeline(
       harness.session.id,
     )
-    const childTranscriptAfterChildFailure = harness.repository.messages.listSessionTranscript(
+    const childTimelineAfterChildFailure = harness.repository.messages.listSessionTimeline(
       child.session.id,
     )
 
-    expect(childTranscriptAfterChildFailure[1]?.parts.map((part) => part.kind)).toEqual([
+    expect(childTimelineAfterChildFailure[1]?.parts.map((part) => part.kind)).toEqual([
       "tool_call",
       "tool_result",
     ])
-    expect(childTranscriptAfterChildFailure[1]?.parts[1]).toMatchObject({
+    expect(childTimelineAfterChildFailure[1]?.parts[1]).toMatchObject({
       kind: "tool_result",
       data: {
         callId: "call_child_unresolved",
@@ -1582,11 +1582,11 @@ describe("subsession transcript isolation", () => {
       },
     })
     expect(
-      childTranscriptAfterChildFailure
+      childTimelineAfterChildFailure
         .flatMap((message) => message.parts)
         .map((part) => readPartDataString(part, "callId")),
     ).not.toContain("call_parent_unresolved")
-    expect(parentTranscriptAfterChildFailure).toEqual(parentTranscriptAfterFailure)
+    expect(parentTimelineAfterChildFailure).toEqual(parentTimelineAfterFailure)
     expect(childEvents).toContainEqual(
       expect.objectContaining({
         type: "tool.call.completed",
@@ -1720,10 +1720,10 @@ function readRequestText(request: ProviderTurnRequest) {
   )
 }
 
-function readTranscriptText(
-  transcript: Array<{ parts: Array<{ kind: string; text: string | null }> }>,
+function readTimelineText(
+  timeline: Array<{ parts: Array<{ kind: string; text: string | null }> }>,
 ) {
-  return transcript.flatMap((message) =>
+  return timeline.flatMap((message) =>
     message.parts.flatMap((part) =>
       (part.kind === "text" || part.kind === "tool_result") && typeof part.text === "string"
         ? [part.text]

@@ -175,7 +175,7 @@ describe("session insights adapter", () => {
       id: "message_synthetic",
       sessionId: "session_1",
       runId: "run_prompt",
-      role: "synthetic",
+      role: "compaction",
       sequence: 2,
       createdAt: 191,
     })

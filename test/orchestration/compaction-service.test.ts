@@ -4,7 +4,7 @@ import type {
   OrchestrationPartRecord,
   OrchestrationRunRecord,
   OrchestrationSessionPort,
-  OrchestrationTranscriptMessage,
+  OrchestrationTimelineMessage,
 } from "../../src/orchestration"
 import {
   COMPACTION_HANDOFF_FRAMING,
@@ -19,7 +19,7 @@ describe("orchestration compaction service", () => {
   test("first compaction uses the standard summary prompt and prepends handoff framing", async () => {
     const harness = createHarness({
       summaryTexts: [buildStructuredSummary("alpha")],
-      transcript: [
+      timeline: [
         makeTextMessage("run_history", "user", 0, "Initial request"),
         makeTextMessage("run_history", "assistant", 1, "Reviewed architecture details."),
         makeTextMessage("run_history", "user", 2, "Keep the extraction focused."),
@@ -33,7 +33,7 @@ describe("orchestration compaction service", () => {
       "Previous compaction summary:",
     )
 
-    const summaryText = readLatestSummaryText(harness.session.transcript)
+    const summaryText = readLatestSummaryText(harness.session.timeline)
     expect(summaryText).toStartWith(COMPACTION_HANDOFF_FRAMING)
     expect(summaryText).toContain("Solve alpha")
     expect(summaryText).toContain(COMPACTION_TAIL_HEADING)
@@ -42,7 +42,7 @@ describe("orchestration compaction service", () => {
   test("second compaction includes the previous summary in the iterative prompt", async () => {
     const harness = createHarness({
       summaryTexts: [buildStructuredSummary("alpha"), buildStructuredSummary("beta")],
-      transcript: [
+      timeline: [
         makeTextMessage("run_history", "user", 0, "Initial request"),
         makeTextMessage("run_history", "assistant", 1, "Reviewed architecture details."),
         makeTextMessage("run_history", "user", 2, "Keep the extraction focused."),
@@ -64,7 +64,7 @@ describe("orchestration compaction service", () => {
   })
 
   test("tail protection is token-budget based instead of fixed-message based", () => {
-    const transcript = [
+    const timeline = [
       makeTextMessage("run_history", "user", 0, "short one"),
       makeTextMessage("run_history", "assistant", 1, "short two"),
       makeTextMessage("run_history", "user", 2, "x".repeat(500)),
@@ -72,11 +72,11 @@ describe("orchestration compaction service", () => {
     ]
 
     const narrowTail = selectTailMessagesByTokenBudget({
-      transcript,
+      timeline,
       tailTokenBudget: 40,
     })
     const wideTail = selectTailMessagesByTokenBudget({
-      transcript,
+      timeline,
       tailTokenBudget: 200,
     })
 
@@ -87,7 +87,7 @@ describe("orchestration compaction service", () => {
   test("compaction emits trigger, summary, and handoff telemetry", async () => {
     const harness = createHarness({
       summaryTexts: [buildStructuredSummary("alpha")],
-      transcript: [
+      timeline: [
         makeTextMessage("run_history", "user", 0, "Initial request"),
         makeTextMessage("run_history", "assistant", 1, "Reviewed architecture details."),
         makeTextMessage("run_history", "user", 2, "Keep the extraction focused."),
@@ -123,7 +123,7 @@ describe("orchestration compaction service", () => {
   test("iterative compaction emits merge telemetry", async () => {
     const harness = createHarness({
       summaryTexts: [buildStructuredSummary("alpha"), buildStructuredSummary("beta")],
-      transcript: [
+      timeline: [
         makeTextMessage("run_history", "user", 0, "Initial request"),
         makeTextMessage("run_history", "assistant", 1, "Reviewed architecture details."),
         makeTextMessage("run_history", "user", 2, "Keep the extraction focused."),
@@ -153,7 +153,7 @@ describe("orchestration compaction service", () => {
   test("iterative prompt strips prior handoff framing and preserved tail text before reuse", async () => {
     const harness = createHarness({
       summaryTexts: [buildStructuredSummary("alpha"), buildStructuredSummary("beta")],
-      transcript: [
+      timeline: [
         makeTextMessage("run_history", "user", 0, "Initial request"),
         makeTextMessage("run_history", "assistant", 1, "Reviewed architecture details."),
         makeToolCallMessage("run_history", 2, "read", '{"path":"README.md"}'),
@@ -182,7 +182,7 @@ describe("orchestration compaction service", () => {
   test("compaction ignores reasoning deltas emitted during summarization", async () => {
     const harness = createHarness({
       summaryTexts: [buildStructuredSummary("gamma")],
-      transcript: [
+      timeline: [
         makeTextMessage("run_history", "user", 0, "Initial request"),
         makeTextMessage("run_history", "assistant", 1, "Thinking through the compact summary."),
       ],
@@ -201,13 +201,13 @@ describe("orchestration compaction service", () => {
     const result = await harness.service.compactSession(createManualCompactionInput(harness.session, "run_manual_1"))
 
     expect(result).toEqual({ status: "completed" })
-    expect(readLatestSummaryText(harness.session.transcript)).toContain("Solve gamma")
+    expect(readLatestSummaryText(harness.session.timeline)).toContain("Solve gamma")
   })
 
   test("auto compaction reads Produced By Run provenance on timeline entries", async () => {
     const harness = createHarness({
       summaryTexts: [buildStructuredSummary("timeline")],
-      transcript: [
+      timeline: [
         makeTimelineTextEntry("run_active", "assistant", 0, 0, "Current run content only."),
       ],
     })
@@ -222,7 +222,7 @@ describe("orchestration compaction service", () => {
       workspaceRoot: "/workspace",
       skillCatalog: [],
       tools: [],
-      transcript: harness.session.transcript,
+      timeline: harness.session.timeline,
       signal: new AbortController().signal,
       emit() {},
     })
@@ -234,11 +234,11 @@ describe("orchestration compaction service", () => {
 
 function createHarness(input: {
   summaryTexts: string[]
-  transcript: OrchestrationTranscriptMessage[]
+  timeline: OrchestrationTimelineMessage[]
 }) {
   const skillReminders = createSkillReminderTracker()
   const recentFiles = createRecentFileTracker()
-  const session = createMemorySession({ transcript: input.transcript })
+  const session = createMemorySession({ timeline: input.timeline })
   const modelCapture = createCompactionModelCapture(input.summaryTexts)
   const observedEvents: Array<{
     sessionId: string
@@ -351,15 +351,15 @@ function createManualCompactionInput(
 }
 
 function readSummaryPrompt(request: Parameters<OrchestrationModelPort["streamTurn"]>[0] | undefined) {
-  const promptMessage = request?.transcript.at(-1)
+  const promptMessage = request?.timeline.at(-1)
   const promptPart = promptMessage?.parts.find((part) => part.kind === "text")
   return promptPart?.text ?? ""
 }
 
-function readLatestSummaryText(transcript: OrchestrationTranscriptMessage[]) {
-  for (let index = transcript.length - 1; index >= 0; index -= 1) {
-    const message = transcript[index]
-    if (message?.role !== "synthetic") {
+function readLatestSummaryText(timeline: OrchestrationTimelineMessage[]) {
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const message = timeline[index]
+    if (message?.role !== "compaction") {
       continue
     }
 
@@ -369,7 +369,7 @@ function readLatestSummaryText(transcript: OrchestrationTranscriptMessage[]) {
     }
   }
 
-  throw new Error("Expected a synthetic summary message")
+  throw new Error("Expected a compaction summary message")
 }
 
 function buildStructuredSummary(label: string) {
@@ -405,10 +405,10 @@ function buildStructuredSummary(label: string) {
 
 function makeTextMessage(
   runId: string,
-  role: OrchestrationTranscriptMessage["role"],
+  role: OrchestrationTimelineMessage["role"],
   sequence: number,
   text: string,
-): OrchestrationTranscriptMessage {
+): OrchestrationTimelineMessage {
   return {
     runId,
     role,
@@ -419,18 +419,18 @@ function makeTextMessage(
 
 function makeTimelineTextEntry(
   producedByRunId: string,
-  role: OrchestrationTranscriptMessage["role"],
+  role: OrchestrationTimelineMessage["role"],
   runSequence: number,
   timelineSequence: number,
   text: string,
-): OrchestrationTranscriptMessage {
+): OrchestrationTimelineMessage {
   return {
     producedByRunId,
     role,
     runSequence,
     timelineSequence,
     parts: [{ kind: "text", text }],
-  } as unknown as OrchestrationTranscriptMessage
+  } as unknown as OrchestrationTimelineMessage
 }
 
 function makeToolCallMessage(
@@ -438,7 +438,7 @@ function makeToolCallMessage(
   sequence: number,
   toolName: string,
   inputText: string,
-): OrchestrationTranscriptMessage {
+): OrchestrationTimelineMessage {
   return {
     runId,
     role: "assistant",
@@ -461,7 +461,7 @@ function makeToolResultMessage(
   sequence: number,
   toolName: string,
   output: string,
-): OrchestrationTranscriptMessage {
+): OrchestrationTimelineMessage {
   return {
     runId,
     role: "assistant",
@@ -479,12 +479,12 @@ function makeToolResultMessage(
   }
 }
 
-function createMemorySession(input: { transcript: OrchestrationTranscriptMessage[] }) {
+function createMemorySession(input: { timeline: OrchestrationTimelineMessage[] }) {
   const sessionId = "session_compaction"
   let nextMessageId = 0
   let nextPartId = 0
-  const transcript = [...input.transcript]
-  const messageIds = new Map<string, OrchestrationTranscriptMessage>()
+  const timeline = [...input.timeline]
+  const messageIds = new Map<string, OrchestrationTimelineMessage>()
   const partIds = new Map<string, OrchestrationPartRecord>()
   const runs = new Map<string, OrchestrationRunRecord>()
 
@@ -504,12 +504,12 @@ function createMemorySession(input: { transcript: OrchestrationTranscriptMessage
 
   const session: OrchestrationSessionPort & {
     sessionId: string
-    transcript: OrchestrationTranscriptMessage[]
+    timeline: OrchestrationTimelineMessage[]
     addRun(runId: string): void
-    appendMessage(message: OrchestrationTranscriptMessage): void
+    appendMessage(message: OrchestrationTimelineMessage): void
   } = {
     sessionId,
-    transcript,
+    timeline,
     storageIdentity: "memory",
     getSession(requestedSessionId) {
       if (requestedSessionId !== sessionId) {
@@ -530,12 +530,12 @@ function createMemorySession(input: { transcript: OrchestrationTranscriptMessage
 
       return run
     },
-    listTranscript(requestedSessionId) {
+    listTimeline(requestedSessionId) {
       if (requestedSessionId !== sessionId) {
         throw new Error(`Unknown session ${requestedSessionId}`)
       }
 
-      return transcript
+      return timeline
     },
     createRun(inputValue) {
       const run: OrchestrationRunRecord = {
@@ -553,25 +553,25 @@ function createMemorySession(input: { transcript: OrchestrationTranscriptMessage
     },
     createAssistantMessage(inputValue) {
       const id = `assistant_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+      const message: OrchestrationTimelineMessage = {
         runId: inputValue.runId,
         role: "assistant",
         sequence: inputValue.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },
-    createSyntheticMessage(inputValue) {
-      const id = `synthetic_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+    createCompactionMessage(inputValue) {
+      const id = `compaction_message_${nextMessageId++}`
+      const message: OrchestrationTimelineMessage = {
         runId: inputValue.runId,
-        role: "synthetic",
+        role: "compaction",
         sequence: inputValue.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },
@@ -656,7 +656,7 @@ function createMemorySession(input: { transcript: OrchestrationTranscriptMessage
       runs.set(runId, {
         id: runId,
         sessionId,
-        createdAt: transcript.length + 1,
+        createdAt: timeline.length + 1,
         status: "running",
         activeSkills: [],
         inputTokens: 0,
@@ -664,8 +664,8 @@ function createMemorySession(input: { transcript: OrchestrationTranscriptMessage
         tokenUsageSource: null,
       })
     },
-    appendMessage(message: OrchestrationTranscriptMessage) {
-      transcript.push(message)
+    appendMessage(message: OrchestrationTimelineMessage) {
+      timeline.push(message)
     },
   }
 

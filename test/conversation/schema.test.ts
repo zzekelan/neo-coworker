@@ -136,7 +136,7 @@ describe("storage schema", () => {
     expect(countRows(database, "permission_request")).toBe(0)
   })
 
-  test("cascade delete: deleting a parent session removes child sessions and their transcript rows", () => {
+  test("cascade delete: deleting a parent session removes child sessions and their timeline rows", () => {
     const database = trackDatabase(openStorageDatabase(createDatabasePath("parent-session-cascade")))
 
     database.exec(`
@@ -444,7 +444,7 @@ describe("storage schema", () => {
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL,
         run_id TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'synthetic')),
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'compaction')),
         sequence INTEGER NOT NULL CHECK (sequence >= 0),
         created_at INTEGER NOT NULL,
         FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
@@ -669,7 +669,7 @@ describe("storage schema", () => {
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL,
         run_id TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'synthetic')),
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'compaction')),
         sequence INTEGER NOT NULL CHECK (sequence >= 0),
         created_at INTEGER NOT NULL,
         FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
@@ -799,7 +799,7 @@ describe("storage schema", () => {
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL,
         run_id TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'synthetic')),
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'compaction')),
         sequence INTEGER NOT NULL CHECK (sequence >= 0),
         created_at INTEGER NOT NULL,
         FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,

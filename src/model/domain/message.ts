@@ -35,20 +35,17 @@ export type ModelMessage = {
   parts: ModelMessagePart[]
 }
 
-export type ModelTranscriptPart = {
+export type ModelTimelinePart = {
   kind: string
   text: string | null
   data?: unknown
-}
-
-export type ModelTimelinePart = ModelTranscriptPart & {
   entryId?: string
   producedByRunId?: string
   sequence?: number
 }
 
 export type ModelTimelineEntry = {
-  role: "user" | "assistant" | "system" | "synthetic"
+  role: "user" | "assistant" | "system" | "compaction"
   producedByRunId?: string
   runId?: string
   runSequence?: number
@@ -57,4 +54,4 @@ export type ModelTimelineEntry = {
   parts: ModelTimelinePart[]
 }
 
-export type ModelTranscriptMessage = ModelTimelineEntry
+export type ModelTimelineMessage = ModelTimelineEntry

@@ -296,8 +296,8 @@ describe("runtime observability", () => {
       childRun,
       parentTraceEvents: parentTrace?.events ?? [],
       childTraceEvents: childTrace?.events ?? [],
-      parentTranscript: harness.repository.messages.listSessionTranscript(harness.session.id),
-      childTranscript: harness.repository.messages.listSessionTranscript(childSession.id),
+      parentTimeline: harness.repository.messages.listSessionTimeline(harness.session.id),
+      childTimeline: harness.repository.messages.listSessionTimeline(childSession.id),
       parentAgentCallId: "call_source_researcher",
       childPrompt,
       childReasoning,
@@ -412,14 +412,14 @@ describe("runtime observability", () => {
     expect(subSessions).toHaveLength(1)
     const childSession = subSessions[0]!
     const childRun = harness.repository.runs.listBySession(childSession.id)[0]!
-    const parentTranscript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const childTranscript = harness.repository.messages.listSessionTranscript(childSession.id)
-    const childReasoningPart = childTranscript
+    const parentTimeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const childTimeline = harness.repository.messages.listSessionTimeline(childSession.id)
+    const childReasoningPart = childTimeline
       .flatMap((message) => message.parts)
       .find((part) => part.kind === "reasoning")
-    const parentVisibleText = readVisibleTranscriptText(parentTranscript)
-    const childVisibleText = readVisibleTranscriptText(childTranscript)
-    const parentAgentResult = parentTranscript
+    const parentVisibleText = readVisibleTimelineText(parentTimeline)
+    const childVisibleText = readVisibleTimelineText(childTimeline)
+    const parentAgentResult = parentTimeline
       .flatMap((message) => message.parts)
       .find(
         (part) =>
@@ -887,7 +887,7 @@ describe("runtime observability", () => {
                 "Continue after compaction.",
                 "",
                 "Key Concepts",
-                "Summaries replace earlier transcript chunks.",
+                "Summaries replace earlier timeline chunks.",
                 "",
                 "Files & Code",
                 "README.md",
@@ -2660,8 +2660,8 @@ function assertSubagentProtocolTelemetryBaseline(input: {
   childRun: ReturnType<SessionRepository["runs"]["listBySession"]>[number]
   parentTraceEvents: StoredRunEvent[]
   childTraceEvents: StoredRunEvent[]
-  parentTranscript: ReturnType<SessionRepository["messages"]["listSessionTranscript"]>
-  childTranscript: ReturnType<SessionRepository["messages"]["listSessionTranscript"]>
+  parentTimeline: ReturnType<SessionRepository["messages"]["listSessionTimeline"]>
+  childTimeline: ReturnType<SessionRepository["messages"]["listSessionTimeline"]>
   parentAgentCallId: string
   childPrompt: string
   childReasoning: string
@@ -2757,7 +2757,7 @@ function assertSubagentProtocolTelemetryBaseline(input: {
   expect(input.childAllowedToolNames).not.toContain("shell")
   expect(input.childAllowedToolNames).not.toContain("write")
 
-  const parentAgentResult = input.parentTranscript
+  const parentAgentResult = input.parentTimeline
     .flatMap((message) => message.parts)
     .find(
       (part) =>
@@ -2774,15 +2774,15 @@ function assertSubagentProtocolTelemetryBaseline(input: {
     }),
   })
 
-  const childText = input.childTranscript
+  const childText = input.childTimeline
     .flatMap((message) => message.parts)
     .map((part) => part.text ?? "")
     .join("\n")
-  const parentText = input.parentTranscript
+  const parentText = input.parentTimeline
     .flatMap((message) => message.parts)
     .map((part) => part.text ?? "")
     .join("\n")
-  const childReasoningPart = input.childTranscript
+  const childReasoningPart = input.childTimeline
     .flatMap((message) => message.parts)
     .find((part) => part.kind === "reasoning")
   expect(childText).toContain(input.childPrompt)
@@ -2793,8 +2793,8 @@ function assertSubagentProtocolTelemetryBaseline(input: {
   })
   expect(parentText).toContain(input.childOutput)
   expect(parentText).not.toContain(input.childReasoning)
-  expect(readVisibleTranscriptText(input.parentTranscript)).not.toContain(input.childReasoning)
-  expect(readVisibleTranscriptText(input.childTranscript)).not.toContain(input.childReasoning)
+  expect(readVisibleTimelineText(input.parentTimeline)).not.toContain(input.childReasoning)
+  expect(readVisibleTimelineText(input.childTimeline)).not.toContain(input.childReasoning)
 }
 
 type OpenAICompatibleRequest = OpenAI.Chat.ChatCompletionCreateParamsStreaming
@@ -2862,10 +2862,10 @@ function readAssistantReplayWithToolCalls(body: unknown): Record<string, unknown
   )
 }
 
-function readVisibleTranscriptText(
-  transcript: ReturnType<SessionRepository["messages"]["listSessionTranscript"]>,
+function readVisibleTimelineText(
+  timeline: ReturnType<SessionRepository["messages"]["listSessionTimeline"]>,
 ) {
-  return transcript
+  return timeline
     .flatMap((message) => message.parts)
     .filter((part) => part.kind !== "reasoning")
     .map((part) => part.text ?? "")

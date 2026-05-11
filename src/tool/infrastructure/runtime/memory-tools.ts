@@ -50,7 +50,7 @@ const MemoryMetadataSchema = z.record(z.string()).optional().describe(
 const MemoryAddArgsSchema = z.object({
   target: MemoryTargetSchema,
   content: z.string().trim().min(1, "Content must not be empty").describe(
-    "Stable information to save for future sessions. Good examples: a user preference, an environment fact, or a project convention. Do not store temporary task progress, TODOs, or transcript summaries.",
+    "Stable information to save for future sessions. Good examples: a user preference, an environment fact, or a project convention. Do not store temporary task progress, TODOs, or timeline summaries.",
   ),
   metadata: MemoryMetadataSchema,
 }).describe(

@@ -12,7 +12,7 @@ const workspaceRoot = join(isolatedDesktopStateRoot, "workspace")
 const evidenceRoot = join(cwd, ".sisyphus", "evidence")
 const serverDatabasePath = join(isolatedDesktopStateRoot, "server.sqlite")
 const evidenceJsonPath = join(evidenceRoot, "task-12-sidebar-sessions.json")
-const transcriptEvidencePath = join(evidenceRoot, "task-12-desktop-transcript.json")
+const timelineEvidencePath = join(evidenceRoot, "task-12-desktop-timeline.json")
 const screenshotPath = join(evidenceRoot, "task-12-buttons-test.png")
 const readmeFixtureText = "Task 12 README fixture: subagent-only marker."
 const parentPrompt =
@@ -181,50 +181,50 @@ try {
   })
   assert(childSession, "Real runtime path did not create a child SubSession.")
 
-  const parentTranscriptResponse = await requestJson(
-    `/sessions/${encodeURIComponent(parentSessionId)}/transcript`,
+  const parentTimelineResponse = await requestJson(
+    `/sessions/${encodeURIComponent(parentSessionId)}/timeline`,
   )
-  const parentTranscript = unwrapTranscript(parentTranscriptResponse, "fetch parent transcript")
-  const childTranscriptResponse = await requestJson(
-    `/sessions/${encodeURIComponent(childSession.id)}/transcript`,
+  const parentTimeline = unwrapTimeline(parentTimelineResponse, "fetch parent timeline")
+  const childTimelineResponse = await requestJson(
+    `/sessions/${encodeURIComponent(childSession.id)}/timeline`,
   )
-  const childTranscript = unwrapTranscript(childTranscriptResponse, "fetch child transcript")
+  const childTimeline = unwrapTimeline(childTimelineResponse, "fetch child timeline")
 
-  const parentTranscriptJson = JSON.stringify(parentTranscript)
-  const childTranscriptJson = JSON.stringify(childTranscript)
-  const parentVisibleText = readTranscriptVisibleText(parentTranscript)
-  const childVisibleText = readTranscriptVisibleText(childTranscript)
+  const parentTimelineJson = JSON.stringify(parentTimeline)
+  const childTimelineJson = JSON.stringify(childTimeline)
+  const parentVisibleText = readTimelineVisibleText(parentTimeline)
+  const childVisibleText = readTimelineVisibleText(childTimeline)
   assert(
-    hasTranscriptPart(parentTranscript, "tool_call", "agent"),
-    "Parent transcript did not contain an agent tool_call part.",
+    hasTimelinePart(parentTimeline, "tool_call", "agent"),
+    "Parent timeline did not contain an agent tool_call part.",
   )
   assert(
-    hasTranscriptPart(parentTranscript, "tool_result", "agent"),
-    "Parent transcript did not contain an agent tool_result part.",
+    hasTimelinePart(parentTimeline, "tool_result", "agent"),
+    "Parent timeline did not contain an agent tool_result part.",
   )
   assert(
     parentVisibleText.includes(delegatedSummary),
-    "Parent transcript did not include the delegated summary.",
+    "Parent timeline did not include the delegated summary.",
   )
   assert(
     parentVisibleText.includes(parentFinalText),
-    "Parent transcript did not include the parent completion text.",
+    "Parent timeline did not include the parent completion text.",
   )
   assert(
     parentVisibleText.includes(subagentInternalMarker) === false,
-    "Parent transcript leaked the subagent internal marker.",
+    "Parent timeline leaked the subagent internal marker.",
   )
   assert(
     parentVisibleText.includes(readmeFixtureText) === false,
-    "Parent transcript leaked the child README tool result.",
+    "Parent timeline leaked the child README tool result.",
   )
   assert(
     childVisibleText.includes(subagentInternalMarker),
-    "Child transcript did not include the subagent internal marker.",
+    "Child timeline did not include the subagent internal marker.",
   )
   assert(
     childVisibleText.includes(readmeFixtureText),
-    "Child transcript did not include the README tool result.",
+    "Child timeline did not include the README tool result.",
   )
 
   const sessionsResponse = await requestJson("/sessions")
@@ -263,7 +263,7 @@ try {
   )
 
   writeFileSync(
-    transcriptEvidencePath,
+    timelineEvidencePath,
     `${JSON.stringify(
       {
         workspaceRoot,
@@ -275,11 +275,11 @@ try {
           lastMessageRole: request.messages.at(-1)?.role ?? null,
           lastMessageContent: extractMessageContent(request.messages.at(-1)),
         })),
-        parentTranscriptResponse,
-        childTranscriptResponse,
+        parentTimelineResponse,
+        childTimelineResponse,
         checks: {
-          parentHasAgentToolCall: hasTranscriptPart(parentTranscript, "tool_call", "agent"),
-          parentHasAgentToolResult: hasTranscriptPart(parentTranscript, "tool_result", "agent"),
+          parentHasAgentToolCall: hasTimelinePart(parentTimeline, "tool_call", "agent"),
+          parentHasAgentToolResult: hasTimelinePart(parentTimeline, "tool_result", "agent"),
           parentVisibleTextHasChildInternalMarker: parentVisibleText.includes(subagentInternalMarker),
           parentVisibleTextHasChildReadmeMarker: parentVisibleText.includes(readmeFixtureText),
           childVisibleTextHasInternalMarker: childVisibleText.includes(subagentInternalMarker),
@@ -322,7 +322,7 @@ try {
         childSessionId: childSession.id,
         latestRunStatus,
         evidenceJsonPath,
-        transcriptEvidencePath,
+        timelineEvidencePath,
         screenshotPath,
         buttonCoverage: {
           clicked: buttonCoverage.clicked.length,
@@ -925,23 +925,23 @@ function unwrapSessions(response, label) {
   return sessions
 }
 
-function unwrapTranscript(response, label) {
+function unwrapTimeline(response, label) {
   assert(response?.ok, `${label} failed with status ${response?.status ?? "unknown"}.`)
-  const transcript = response.body?.data?.transcript
-  assert(Array.isArray(transcript), `${label} did not return a transcript array.`)
-  return transcript
+  const timeline = response.body?.data?.timeline
+  assert(Array.isArray(timeline), `${label} did not return a timeline array.`)
+  return timeline
 }
 
-function hasTranscriptPart(transcript, kind, toolName) {
-  return transcript.some((message) =>
+function hasTimelinePart(timeline, kind, toolName) {
+  return timeline.some((message) =>
     (message.parts ?? []).some(
       (part) => part.kind === kind && (part.data?.toolName ?? null) === toolName,
     ),
   )
 }
 
-function readTranscriptVisibleText(transcript) {
-  return transcript
+function readTimelineVisibleText(timeline) {
+  return timeline
     .flatMap((message) =>
       (message.parts ?? []).flatMap((part) => {
         if ((part.kind === "text" || part.kind === "tool_result") && typeof part.text === "string") {
