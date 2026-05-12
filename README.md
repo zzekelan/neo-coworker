@@ -13,20 +13,6 @@
 
 - On first launch, you can fill in the LLM settings directly from the in-app settings UI. If a `.env` exists in the project root, its values are used as the initial defaults for that UI.
 
-## Why Neo Coworker?
-
-- **Because I love building it, dude.**
-
-- **Why not the web apps from the big AI vendors?**
-  - They usually can't reach your local file system — you end up shuffling files and edits around by hand
-  - Tool calls are stuck inside the vendor's sandbox; no local commands, scripts, or local services
-  - Your code, notes, and private data have to leave your machine
-
-- **Why not the agents from the big vendors?**
-  - Most of them are coding agents — their prompts are tuned for coding, and tuned specifically for the vendor's own models
-  - Model, pricing, and rate limits are all on the vendor's leash
-  - **I can shape it around the way I actually work, instead of living with whoever's dumb design decisions**
-
 ## Requirements
 
 - [Bun](https://bun.sh/)
