@@ -227,9 +227,9 @@ export async function loadSession(sessionId: string) {
   return requestApi<DesktopSessionSnapshot>(`/sessions/${encodeURIComponent(sessionId)}`)
 }
 
-export async function loadTranscript(sessionId: string) {
-  return requestApi<{ transcript: DesktopMessage[] }>(
-    `/sessions/${encodeURIComponent(sessionId)}/transcript`,
+export async function loadTimeline(sessionId: string) {
+  return requestApi<{ timeline: DesktopMessage[] }>(
+    `/sessions/${encodeURIComponent(sessionId)}/timeline`,
   )
 }
 

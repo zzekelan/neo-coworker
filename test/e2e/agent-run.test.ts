@@ -125,13 +125,13 @@ describe("agent run e2e", () => {
     const repository = createStorageRepository({ database })
     const sessionRow = database.query("SELECT id FROM session LIMIT 1").get() as { id: string } | null
     const runRow = database.query("SELECT id FROM run LIMIT 1").get() as { id: string } | null
-    const transcript = repository.messages.listSessionTranscript(sessionRow!.id)
+    const timeline = repository.messages.listSessionTimeline(sessionRow!.id)
 
     expect(runRow).not.toBeNull()
     expect(repository.runs.get(runRow!.id).status).toBe("completed")
-    expect(transcript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
-    expect(transcript[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "tool_result"])
-    expect(transcript[2]?.parts).toMatchObject([
+    expect(timeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(timeline[1]?.parts.map((part) => part.kind)).toEqual(["text", "tool_call", "tool_result"])
+    expect(timeline[2]?.parts).toMatchObject([
       { kind: "text", text: "Summary: concise fixture summary.\n" },
     ])
   })
@@ -232,11 +232,11 @@ describe("agent run e2e", () => {
 
     const sessionRow = database.query("SELECT id FROM session LIMIT 1").get() as { id: string } | null
     const runRow = database.query("SELECT id FROM run LIMIT 1").get() as { id: string } | null
-    const transcript = repository.messages.listSessionTranscript(sessionRow!.id)
+    const timeline = repository.messages.listSessionTimeline(sessionRow!.id)
 
     expect(runRow).not.toBeNull()
     expect(repository.runs.get(runRow!.id).status).toBe("completed")
-    expect(transcript.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
+    expect(timeline.map((message) => message.role)).toEqual(["user", "assistant", "assistant"])
   })
 })
 

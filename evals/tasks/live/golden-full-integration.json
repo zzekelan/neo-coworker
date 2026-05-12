@@ -66,7 +66,7 @@
       "run.completed"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "checkpoints": [
       {
         "messageIndex": 1,

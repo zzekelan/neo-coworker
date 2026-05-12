@@ -33,9 +33,9 @@ import {
   type EvalTraceSequenceGrade,
 } from "./graders/trace-sequence"
 import {
-  gradeTranscriptExpectation,
-  type EvalTranscriptGrade,
-} from "./graders/transcript"
+  gradeTimelineExpectation,
+  type EvalTimelineGrade,
+} from "./graders/timeline"
 import {
   gradeSkillDisclosureExpectation,
   type EvalSkillDisclosureGrade,
@@ -59,7 +59,7 @@ export type EvalRunGrades = {
   protocol: EvalProtocolGrade
   toolPolicy: EvalToolPolicyGrade
   trace: EvalTraceGrade
-  transcript: EvalTranscriptGrade
+  timeline: EvalTimelineGrade
   traceSequence: EvalTraceSequenceGrade
   toolConsumption: EvalToolConsumptionGrade
   skillDisclosure: EvalSkillDisclosureGrade
@@ -240,7 +240,7 @@ export async function runEvalTask(input: {
       provider: input.providerInfo,
       runStatus: finalRun.status,
       runtimeEvents: finalRun.runtimeEvents,
-      transcript: storage.repository.messages.listSessionTranscript(session.id),
+      timeline: storage.repository.timeline.listEntries(session.id),
       trace: finalRun.trace,
       runs: executedRuns,
       outcome,
@@ -263,9 +263,9 @@ export async function runEvalTask(input: {
         artifact,
         expectation: task.traceExpectation,
       }),
-      transcript: gradeTranscriptExpectation({
+      timeline: gradeTimelineExpectation({
         artifact,
-        expectation: task.transcriptExpectation,
+        expectation: task.timelineExpectation,
       }),
       traceSequence: gradeTraceSequenceExpectation({
         artifact,

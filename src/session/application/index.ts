@@ -4,6 +4,8 @@ export {
   SessionNotFoundError,
   SessionOwnershipError,
   SessionRepositoryError,
+  type AppendTimelineEntryInput,
+  type AppendTimelinePartInput,
   type CreateAssistantMessageWithFirstPartInput,
   type CreateMessageInput,
   type CreatePartInput,
@@ -18,7 +20,9 @@ export {
   type StoredPart,
   type StoredRun,
   type StoredSession,
-  type TranscriptMessage,
+  type TimelineEntry,
+  type TimelinePart,
+  type TimelineMessage,
   type UpdatePartContentInput,
   type UpdateRunActiveSkillsInput,
   type UpdateRunTokenUsageInput,
@@ -57,9 +61,12 @@ export {
 } from "./run-state-machine"
 export {
   RunInitiatingMessageNotFoundError,
-  createSessionTranscriptService,
-  type SessionTranscriptService,
-} from "./transcript-service"
+  createSessionTimelineService,
+  timelineEntryToTimelineMessage,
+  timelineEntriesToTimelineMessages,
+  timelinePartToTimelinePart,
+  type SessionTimelineService,
+} from "./timeline-service"
 export {
   createSessionRuntimeApi,
   type SessionProvider,

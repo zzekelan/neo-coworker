@@ -1,11 +1,11 @@
 import { relative, resolve } from "node:path"
 
-import type { ServerEvent, StoredMessage, StoredRun, TranscriptMessage } from "../bootstrap"
+import type { ServerEvent, StoredMessage, StoredRun, TimelineEntry } from "../bootstrap"
 import type { CliIO } from "./cli-io"
 import { formatCompactionBoundaryLine, isCompactionBoundaryPart } from "./compaction-render"
 
 type StoredMessageRole = StoredMessage["role"]
-type TranscriptPart = TranscriptMessage["parts"][number]
+type TimelinePart = TimelineEntry["parts"][number]
 const READ_ACTIVITY_IDLE_MS = 150
 
 type ReadActivity = {
@@ -279,12 +279,12 @@ export function createCliChatRenderer(input: {
     return trigger === "command" ? "compacting session" : "thinking"
   }
 
-  function seedTranscriptState(transcript: TranscriptMessage[]) {
-    for (const message of transcript) {
+  function seedTimelineState(timeline: TimelineEntry[]) {
+    for (const message of timeline) {
       state.messageRoles.set(message.id, message.role)
 
       if (message.role !== "assistant") {
-        if (message.role !== "synthetic") {
+        if (message.role !== "compaction") {
           continue
         }
       }
@@ -294,7 +294,7 @@ export function createCliChatRenderer(input: {
           continue
         }
 
-        if (message.role === "synthetic") {
+        if (message.role === "compaction") {
           continue
         }
 
@@ -308,8 +308,8 @@ export function createCliChatRenderer(input: {
     }
   }
 
-  function replayTranscriptHistory(inputValue: {
-    transcript: TranscriptMessage[]
+  function replayTimelineHistory(inputValue: {
+    timeline: TimelineEntry[]
     omittedAssistantMessageIds: Set<string>
   }) {
     let replayedActivity: Activity | null = null
@@ -330,13 +330,15 @@ export function createCliChatRenderer(input: {
         return
       }
 
-      finishStatus(
-        describeToolActivity(replayedActivity.toolName, replayedActivity.detail, resultText, "final"),
-      )
+      if (replayedActivity.kind === "tool") {
+        finishStatus(
+          describeToolActivity(replayedActivity.toolName, replayedActivity.detail, resultText, "final"),
+        )
+      }
       replayedActivity = null
     }
 
-    for (const message of inputValue.transcript) {
+    for (const message of inputValue.timeline) {
       if (message.role === "user") {
         flushReplayedActivity()
         const text = message.parts
@@ -353,7 +355,7 @@ export function createCliChatRenderer(input: {
       }
 
       if (
-        (message.role !== "assistant" && message.role !== "synthetic") ||
+        (message.role !== "assistant" && message.role !== "compaction") ||
         inputValue.omittedAssistantMessageIds.has(message.id)
       ) {
         continue
@@ -376,7 +378,7 @@ export function createCliChatRenderer(input: {
           continue
         }
 
-        if (message.role === "synthetic") {
+        if (message.role === "compaction") {
           if (part.kind === "error") {
             flushReplayedActivity()
             closeAssistantLine()
@@ -454,7 +456,7 @@ export function createCliChatRenderer(input: {
   }
 
   function buildHydratedToolActivity(
-    part: TranscriptPart,
+    part: TimelinePart,
     currentActivity: Activity | null,
   ): Activity {
     const toolName = getObjectStringValue(part.data, "toolName") ?? "unknown"
@@ -488,7 +490,7 @@ export function createCliChatRenderer(input: {
   }
 
   function replayActiveRunSnapshot(inputValue: {
-    transcript: TranscriptMessage[]
+    timeline: TimelineEntry[]
     runId: string
     runTrigger: StoredRun["trigger"]
     renderLiveActivity: boolean
@@ -496,10 +498,10 @@ export function createCliChatRenderer(input: {
     let resumedText: string | null = null
     let resumedActivity: Activity | null = null
 
-    for (const message of inputValue.transcript) {
+    for (const message of inputValue.timeline) {
       if (
-        message.runId !== inputValue.runId ||
-        (message.role !== "assistant" && message.role !== "synthetic")
+        message.producedByRunId !== inputValue.runId ||
+        (message.role !== "assistant" && message.role !== "compaction")
       ) {
         continue
       }
@@ -511,7 +513,7 @@ export function createCliChatRenderer(input: {
           continue
         }
 
-        if (message.role === "synthetic") {
+        if (message.role === "compaction") {
           continue
         }
 
@@ -579,25 +581,27 @@ export function createCliChatRenderer(input: {
       return
     }
 
-    startStatus(describeToolActivity(resumedActivity.toolName, resumedActivity.detail, null, "live"))
+    if (resumedActivity.kind === "tool") {
+      startStatus(describeToolActivity(resumedActivity.toolName, resumedActivity.detail, null, "live"))
+    }
   }
 
   return {
-    hydrateTranscript(inputValue: {
-      transcript: TranscriptMessage[]
+    hydrateTimeline(inputValue: {
+      timeline: TimelineEntry[]
       activeRunId?: string
       activeRunTrigger?: StoredRun["trigger"]
       renderLiveActivity?: boolean
     }) {
-      seedTranscriptState(inputValue.transcript)
+      seedTimelineState(inputValue.timeline)
       const omittedAssistantMessageIds = new Set<string>()
 
       if (inputValue.activeRunId) {
-        const lastActiveAssistantMessage = [...inputValue.transcript]
+        const lastActiveAssistantMessage = [...inputValue.timeline]
           .reverse()
           .find(
             (message) =>
-              message.runId === inputValue.activeRunId && message.role === "assistant",
+              message.producedByRunId === inputValue.activeRunId && message.role === "assistant",
           )
 
         if (lastActiveAssistantMessage) {
@@ -605,8 +609,8 @@ export function createCliChatRenderer(input: {
         }
       }
 
-      replayTranscriptHistory({
-        transcript: inputValue.transcript,
+      replayTimelineHistory({
+        timeline: inputValue.timeline,
         omittedAssistantMessageIds,
       })
 
@@ -615,7 +619,7 @@ export function createCliChatRenderer(input: {
       }
 
       replayActiveRunSnapshot({
-        transcript: inputValue.transcript,
+        timeline: inputValue.timeline,
         runId: inputValue.activeRunId,
         runTrigger: inputValue.activeRunTrigger ?? "prompt",
         renderLiveActivity: inputValue.renderLiveActivity ?? false,
@@ -643,7 +647,7 @@ export function createCliChatRenderer(input: {
           return
         case "message.part.updated": {
           const role = state.messageRoles.get(event.part.messageId)
-          if (role !== "assistant" && role !== "synthetic") {
+          if (role !== "assistant" && role !== "compaction") {
             return
           }
 
@@ -654,7 +658,7 @@ export function createCliChatRenderer(input: {
             return
           }
 
-          if (role === "synthetic") {
+          if (role === "compaction") {
             if (event.part.kind === "error") {
               finalizeActivity()
               closeAssistantLine()

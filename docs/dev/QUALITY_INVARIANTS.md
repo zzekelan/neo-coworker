@@ -111,11 +111,11 @@ The blocking structure suite now enforces the final architecture directly, with 
 - Title: App Clients Preserve App Server Semantics
 - Class: `boundary`
 - Scope: `src/cli/**`, `src/desktop/**`, `src/app-server/**`, and App Server client adapters
-- Rule: CLI and Desktop are App Clients. They must drive Session, Run, Transcript, Permission Request, Permission Decision, and event behavior through the App Server boundary. A local CLI path may use an in-process App Server adapter, but it must preserve the same request, event, permission, transcript, and run lifecycle semantics as the HTTP/SSE App Server path. Client surface belongs in Client Source, not Run Trigger.
-- Why this repo requires it: the project is moving toward a headless-server design. If CLI grows a parallel runtime model, then stored runs, transcript replay, permission handling, and Desktop behavior will diverge around the hardest product concepts.
+- Rule: CLI and Desktop are App Clients. They must drive Session, Run, Timeline, Permission Request, Permission Decision, and event behavior through the App Server boundary. A local CLI path may use an in-process App Server adapter, but it must preserve the same request, event, permission, timeline, and run lifecycle semantics as the HTTP/SSE App Server path. Client surface belongs in Client Source, not Run Trigger.
+- Why this repo requires it: the project is moving toward a headless-server design. If CLI grows a parallel runtime model, then stored runs, timeline replay, permission handling, and Desktop behavior will diverge around the hardest product concepts.
 - Enforcement: `test` plus `review-required`
 - Severity: `error`
-- Bad example: adding a CLI-only run lifecycle that writes transcript parts, permission state, or run status without going through the App Server semantic contract
+- Bad example: adding a CLI-only run lifecycle that writes timeline parts, permission state, or run status without going through the App Server semantic contract
 - Good example: a CLI command using the same App Server client contract as the HTTP/SSE client, with any in-process adapter delegated to `bootstrap`
 - Remediation: route the behavior through the App Server client contract, or move the shared semantic operation into the App Server application contract assembled by `bootstrap`.
 - Source: `docs/CONTEXT.md`, `docs/ARCHITECTURE.md#shell-modules`

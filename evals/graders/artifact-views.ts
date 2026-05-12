@@ -1,13 +1,14 @@
 import type { EvalRunArtifact } from "../schemas/artifact"
 
-export type TranscriptPartView = {
+export type TimelinePartView = {
   kind: string
   text: string
   toolName: string | null
   output: string | null
+  isError: boolean
 }
 
-export type TranscriptMessageView = {
+export type TimelineEntryView = {
   index: number
   role: string | null
   partKinds: string[]
@@ -34,14 +35,10 @@ export type PromptAssemblyEventView = {
   systemReminderLength: number | null
 }
 
-export function readTranscriptViews(artifact: EvalRunArtifact): TranscriptMessageView[] {
-  if (!Array.isArray(artifact.transcript)) {
-    return []
-  }
-
-  return artifact.transcript.map((message, index) => {
+export function readTimelineContentViews(artifact: EvalRunArtifact): TimelineEntryView[] {
+  return artifact.timeline.map((message, index) => {
     const role = readStringField(message, "role")
-    const parts = readTranscriptParts(message)
+    const parts = readTimelineParts(message)
     const texts = parts.map((part) => part.text).filter((text) => text.length > 0)
     const toolNames = [...new Set(parts.map((part) => part.toolName).filter(isNonEmptyString))]
     const toolResults = parts
@@ -54,7 +51,7 @@ export function readTranscriptViews(artifact: EvalRunArtifact): TranscriptMessag
     return {
       index,
       role,
-      partKinds: parts.map((part) => part.kind),
+      partKinds: parts.flatMap((part) => (part.isError ? [part.kind, "error"] : [part.kind])),
       texts,
       combinedText: texts.join("\n"),
       toolNames,
@@ -126,7 +123,7 @@ export function findOrderedMatches(
   }
 }
 
-function readTranscriptParts(message: unknown): TranscriptPartView[] {
+function readTimelineParts(message: unknown): TimelinePartView[] {
   if (!isRecord(message) || !Array.isArray(message.parts)) {
     return []
   }
@@ -139,12 +136,14 @@ function readTranscriptParts(message: unknown): TranscriptPartView[] {
       const data = isRecord(part.data) ? part.data : null
       const toolName = readStringField(data, "toolName") ?? readStringField(data, "name")
       const output = readStringField(data, "output") ?? (kind === "tool_result" ? text : null)
+      const isError = readBooleanField(data, "isError") ?? (kind === "error")
 
       return {
         kind,
         text,
         toolName,
         output,
+        isError,
       }
     })
 }
@@ -167,6 +166,14 @@ function readStringField(value: unknown, field: string) {
 
 function readNumberField(value: unknown, field: string) {
   if (!isRecord(value) || typeof value[field] !== "number" || Number.isNaN(value[field])) {
+    return null
+  }
+
+  return value[field]
+}
+
+function readBooleanField(value: unknown, field: string) {
+  if (!isRecord(value) || typeof value[field] !== "boolean") {
     return null
   }
 

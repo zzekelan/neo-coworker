@@ -12,7 +12,7 @@ import type {
   DesktopSession,
   DesktopSessionSnapshot,
   DesktopSkillCatalogEntry,
-  DesktopTranscriptMessage,
+  DesktopTimelineMessage,
   MessagePart,
 } from "./view-types"
 
@@ -118,7 +118,7 @@ export function DesktopRunningStatesHarness() {
     <ThemeProvider theme="light" onThemeChange={() => {}}>
       <KeyboardShortcutProvider
         onNewSession={() => {}}
-        onClearTranscript={() => {}}
+        onClearTimeline={() => {}}
         onCycleAgent={() => {}}
       >
         <DesktopTextProvider language={language}>
@@ -187,7 +187,7 @@ export function DesktopRunningStatesHarness() {
                 activeWorkspaceName="nc-test"
                 session={fixture.session}
                 skills={SKILLS}
-                transcript={fixture.transcript}
+                timeline={fixture.timeline}
                 permissionRequests={fixture.permissionRequests}
                 contextUsage={CONTEXT_USAGE}
                 onSendMessage={() => undefined}
@@ -267,7 +267,7 @@ export function DesktopActivityDetailsHarness() {
     <ThemeProvider theme="light" onThemeChange={() => {}}>
       <KeyboardShortcutProvider
         onNewSession={() => {}}
-        onClearTranscript={() => {}}
+        onClearTimeline={() => {}}
         onCycleAgent={() => {}}
       >
         <DesktopTextProvider language={language}>
@@ -335,7 +335,7 @@ export function DesktopActivityDetailsHarness() {
                 activeWorkspaceName="nc-test"
                 session={fixture.session}
                 skills={SKILLS}
-                transcript={fixture.transcript}
+                timeline={fixture.timeline}
                 permissionRequests={[]}
                 contextUsage={CONTEXT_USAGE}
                 onSendMessage={() => undefined}
@@ -397,7 +397,7 @@ function createActivityDetailsFixture(language: DesktopLanguage, reasoningText: 
   return {
     sessionSummary,
     session,
-    transcript: createActivityDetailsTranscript(language, reasoningText, phase),
+    timeline: createActivityDetailsTimeline(language, reasoningText, phase),
   }
 }
 
@@ -440,13 +440,13 @@ function createRunningFixture(kind: RunningFixtureKind, language: DesktopLanguag
   return {
     sessionSummary,
     session,
-    transcript: createTranscript(kind, language),
+    timeline: createTimeline(kind, language),
     permissionRequests: kind === "permission" ? [createPermissionRequest()] : [],
   }
 }
 
-function createTranscript(kind: RunningFixtureKind, language: DesktopLanguage): DesktopTranscriptMessage[] {
-  const transcript: DesktopTranscriptMessage[] = [
+function createTimeline(kind: RunningFixtureKind, language: DesktopLanguage): DesktopTimelineMessage[] {
+  const timeline: DesktopTimelineMessage[] = [
     createMessage("fixture-user-1", "user", language === "zh"
       ? "请检查长对话中，运行状态下输入栏、状态栏、reasoning 与工具调用的视觉覆盖是否稳定。"
       : "Check whether the composer, status bar, reasoning state, and tool activity stay visually stable in a long conversation."),
@@ -456,11 +456,11 @@ function createTranscript(kind: RunningFixtureKind, language: DesktopLanguage): 
       language === "zh"
         ? [
             { type: "reasoning", text: "先确认输入栏底部遮罩、聊天记录宽度、状态栏间距，以及运行态控件是否保持实底。" },
-            { type: "text", text: "我会保持在当前运行状态，方便观察 composer 和 transcript 的重叠边界。" },
+            { type: "text", text: "我会保持在当前运行状态，方便观察 composer 和 timeline 的重叠边界。" },
           ]
         : [
-            { type: "reasoning", text: "First check the composer mask, transcript width, status-bar spacing, and whether running controls keep an opaque base." },
-            { type: "text", text: "I will stay in the current running state so the composer and transcript boundary can be inspected." },
+            { type: "reasoning", text: "First check the composer mask, timeline width, status-bar spacing, and whether running controls keep an opaque base." },
+            { type: "text", text: "I will stay in the current running state so the composer and timeline boundary can be inspected." },
           ],
     ),
     ...Array.from({ length: 18 }, (_, index) =>
@@ -477,13 +477,13 @@ function createTranscript(kind: RunningFixtureKind, language: DesktopLanguage): 
 
   const activeAssistant = createActiveAssistantMessage(kind, language)
   if (activeAssistant) {
-    transcript.push(activeAssistant)
+    timeline.push(activeAssistant)
   }
 
-  return transcript
+  return timeline
 }
 
-function createActivityDetailsTranscript(language: DesktopLanguage, reasoningText: string, phase: ActivityDetailsPhase): DesktopTranscriptMessage[] {
+function createActivityDetailsTimeline(language: DesktopLanguage, reasoningText: string, phase: ActivityDetailsPhase): DesktopTimelineMessage[] {
   const longOutput = language === "zh" ? LONG_TOOL_OUTPUT_ZH : LONG_TOOL_OUTPUT_EN
   const isStreaming = phase === "streaming"
   const activityParts: MessagePart[] = [
@@ -583,7 +583,7 @@ function createActivityDetailsTranscript(language: DesktopLanguage, reasoningTex
   ]
 }
 
-function createActiveAssistantMessage(kind: RunningFixtureKind, language: DesktopLanguage): DesktopTranscriptMessage | null {
+function createActiveAssistantMessage(kind: RunningFixtureKind, language: DesktopLanguage): DesktopTimelineMessage | null {
   if (kind === "queued") {
     return null
   }
@@ -597,7 +597,7 @@ function createActiveAssistantMessage(kind: RunningFixtureKind, language: Deskto
           type: "reasoning",
           text: language === "zh"
             ? "正在分析布局：输入栏应保持不透明，状态栏底部应由 paper 背景封住，聊天记录不应从输入栏两侧露出。"
-            : "Analyzing layout: the composer should stay opaque, the status bar should have a paper base, and transcript text should not leak around the composer sides.",
+            : "Analyzing layout: the composer should stay opaque, the status bar should have a paper base, and timeline text should not leak around the composer sides.",
         },
       ],
       RUN_ID,
@@ -622,7 +622,7 @@ function createActiveAssistantMessage(kind: RunningFixtureKind, language: Deskto
           type: "tool_result",
           callId: "fixture-completed-browser-call",
           result: {
-            output: "Verified composer and transcript bounds before the live tool step.",
+            output: "Verified composer and timeline bounds before the live tool step.",
           },
         },
         {
@@ -843,10 +843,10 @@ function createPermissionRequest(): DesktopPermissionRequest {
 
 function createMessage(
   id: string,
-  role: DesktopTranscriptMessage["role"],
+  role: DesktopTimelineMessage["role"],
   contentOrParts: string | MessagePart[],
   runId = `fixture-history-run-${id}`,
-): DesktopTranscriptMessage {
+): DesktopTimelineMessage {
   const parts = typeof contentOrParts === "string"
     ? undefined
     : contentOrParts

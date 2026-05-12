@@ -1,8 +1,8 @@
-import { findOrderedMatches, readTranscriptViews } from "./artifact-views"
+import { findOrderedMatches, readTimelineContentViews } from "./artifact-views"
 import type { EvalRunArtifact } from "../schemas/artifact"
-import type { EvalTranscriptExpectation } from "../schemas/task"
+import type { EvalTimelineExpectation } from "../schemas/task"
 
-export type EvalTranscriptGrade = {
+export type EvalTimelineGrade = {
   pass: boolean
   orderedTextIncludes: string[]
   observedTexts: string[]
@@ -10,11 +10,11 @@ export type EvalTranscriptGrade = {
   checkpointFailures: string[]
 }
 
-export function gradeTranscriptExpectation(input: {
+export function gradeTimelineExpectation(input: {
   artifact: EvalRunArtifact
-  expectation: EvalTranscriptExpectation
-}): EvalTranscriptGrade {
-  const messages = readTranscriptViews(input.artifact)
+  expectation: EvalTimelineExpectation
+}): EvalTimelineGrade {
+  const messages = readTimelineContentViews(input.artifact)
   const observedTexts = messages.flatMap((message) => message.texts)
   const ordered = findOrderedMatches(observedTexts, input.expectation.orderedTextIncludes)
   const checkpointFailures: string[] = []
@@ -23,7 +23,7 @@ export function gradeTranscriptExpectation(input: {
     const message = messages[checkpoint.messageIndex]
 
     if (!message) {
-      checkpointFailures.push(`missing transcript message ${checkpoint.messageIndex}`)
+      checkpointFailures.push(`missing timeline entry ${checkpoint.messageIndex}`)
       continue
     }
 

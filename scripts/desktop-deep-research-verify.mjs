@@ -24,7 +24,7 @@ const tracePath = join(evidenceRoot, "trace.zip")
 const screenshotPath = join(evidenceRoot, "screenshot.png")
 const sessionSummaryPath = join(evidenceRoot, "session-summary.json")
 const lifecycleSummaryPath = join(evidenceRoot, "lifecycle-summary.json")
-const transcriptSummaryPath = join(evidenceRoot, "transcript-summary.json")
+const timelineSummaryPath = join(evidenceRoot, "timeline-summary.json")
 const sqliteTelemetrySummaryPath = join(evidenceRoot, "sqlite-telemetry-summary.json")
 const bootstrapLogPath = join(evidenceRoot, "desktop-bootstrap.log")
 
@@ -154,9 +154,9 @@ try {
   )
   assert(runResult.latestRunId, "Completed Deep Research run did not expose a run id.")
 
-  const parentTranscript = unwrapTranscript(
-    await requestJson(`/sessions/${encodeURIComponent(parentSessionId)}/transcript`),
-    "fetch parent transcript",
+  const parentTimeline = unwrapTimeline(
+    await requestJson(`/sessions/${encodeURIComponent(parentSessionId)}/timeline`),
+    "fetch parent timeline",
   )
   const parentSessionSnapshot = unwrapData(
     await requestJson(`/sessions/${encodeURIComponent(parentSessionId)}`),
@@ -175,13 +175,13 @@ try {
   })
   assert(sqliteTelemetry.childSessions.length > 0, "Real Deep Research path did not create a child SubSession.")
 
-  const childTranscripts = []
+  const childTimelines = []
   for (const child of sqliteTelemetry.childSessions) {
-    childTranscripts.push({
+    childTimelines.push({
       session: child,
-      transcript: unwrapTranscript(
-        await requestJson(`/sessions/${encodeURIComponent(child.id)}/transcript`),
-        `fetch child transcript ${child.id}`,
+      timeline: unwrapTimeline(
+        await requestJson(`/sessions/${encodeURIComponent(child.id)}/timeline`),
+        `fetch child timeline ${child.id}`,
       ),
     })
   }
@@ -190,9 +190,9 @@ try {
     trace: parentRunTrace,
     sqliteTelemetry,
   })
-  const transcriptSummary = buildTranscriptSummary({
-    parentTranscript,
-    childTranscripts,
+  const timelineSummary = buildTimelineSummary({
+    parentTimeline,
+    childTimelines,
   })
   const sessionSummary = {
     workspaceRoot,
@@ -216,24 +216,24 @@ try {
   writeEvidenceSummaries({
     sessionSummary,
     lifecycleSummary,
-    transcriptSummary,
+    timelineSummary,
     sqliteTelemetry,
   })
 
-  assertSubagentUsage({ lifecycleSummary, transcriptSummary, sqliteTelemetry })
+  assertSubagentUsage({ lifecycleSummary, timelineSummary, sqliteTelemetry })
   assertAgentSelectionTelemetry({ parentSessionId, parentRunId: runResult.latestRunId, sqliteTelemetry })
   assertSourceNoteSkillLoadSucceeded({ lifecycleSummary, sqliteTelemetry })
-  assertNoWorkspaceSkillFallback({ workspaceRoot, lifecycleSummary, transcriptSummary, sqliteTelemetry })
-  assertNoResearchSourceNoteEnoent({ lifecycleSummary, transcriptSummary, sqliteTelemetry })
-  assertNoUnknownWebsearchError({ lifecycleSummary, transcriptSummary, sqliteTelemetry })
-  assertSourceResearcherWebsearchAvailable({ transcriptSummary, sqliteTelemetry })
+  assertNoWorkspaceSkillFallback({ workspaceRoot, lifecycleSummary, timelineSummary, sqliteTelemetry })
+  assertNoResearchSourceNoteEnoent({ lifecycleSummary, timelineSummary, sqliteTelemetry })
+  assertNoUnknownWebsearchError({ lifecycleSummary, timelineSummary, sqliteTelemetry })
+  assertSourceResearcherWebsearchAvailable({ timelineSummary, sqliteTelemetry })
   assertBuiltinReferenceReadPaths({ sqliteTelemetry })
   assertToolResultStorageAndTelemetry({ workspaceRoot, sqliteTelemetry })
   assertPromptAndToolTelemetry({ sqliteTelemetry })
-  assertReasoningReplayTelemetry({ sqliteTelemetry, transcriptSummary })
-  assertNoLiteralThinkTagLeak(transcriptSummary)
-  await assertNoHiddenReasoningInFinalUiText({ page, transcriptSummary })
-  assertReasonableFinalOutput(transcriptSummary.parent.finalAssistantLength)
+  assertReasoningReplayTelemetry({ sqliteTelemetry, timelineSummary })
+  assertNoLiteralThinkTagLeak(timelineSummary)
+  await assertNoHiddenReasoningInFinalUiText({ page, timelineSummary })
+  assertReasonableFinalOutput(timelineSummary.parent.finalAssistantLength)
 
   await page.screenshot({ path: screenshotPath, fullPage: true })
   if (traceStarted) {
@@ -254,7 +254,7 @@ try {
           screenshotPath,
           sessionSummaryPath,
           lifecycleSummaryPath,
-          transcriptSummaryPath,
+          timelineSummaryPath,
           sqliteTelemetrySummaryPath,
         },
       },
@@ -280,7 +280,7 @@ try {
 function writeEvidenceSummaries(input) {
   writeFileSync(sessionSummaryPath, `${JSON.stringify(input.sessionSummary, null, 2)}\n`)
   writeFileSync(lifecycleSummaryPath, `${JSON.stringify(input.lifecycleSummary, null, 2)}\n`)
-  writeFileSync(transcriptSummaryPath, `${JSON.stringify(input.transcriptSummary, null, 2)}\n`)
+  writeFileSync(timelineSummaryPath, `${JSON.stringify(input.timelineSummary, null, 2)}\n`)
   writeFileSync(sqliteTelemetrySummaryPath, `${JSON.stringify(input.sqliteTelemetry, null, 2)}\n`)
 }
 
@@ -505,12 +505,12 @@ function buildLifecycleSummary(input) {
   }
 }
 
-function buildTranscriptSummary(input) {
+function buildTimelineSummary(input) {
   return {
-    parent: summarizeTranscript(input.parentTranscript),
-    children: input.childTranscripts.map((child) => ({
+    parent: summarizeTimeline(input.parentTimeline),
+    children: input.childTimelines.map((child) => ({
       session: summarizeSessionRecord(child.session),
-      ...summarizeTranscript(child.transcript),
+      ...summarizeTimeline(child.timeline),
     })),
   }
 }
@@ -526,19 +526,19 @@ function summarizeSessionRecord(session) {
   }
 }
 
-function summarizeTranscript(transcript) {
-  const parts = transcript.flatMap((message) => message.parts ?? [])
-  const visibleText = readTranscriptVisibleText(transcript)
+function summarizeTimeline(timeline) {
+  const parts = timeline.flatMap((message) => message.parts ?? [])
+  const visibleText = readTimelineVisibleText(timeline)
   const reasoningTexts = parts
     .filter((part) => part.kind === "reasoning" && typeof part.text === "string" && part.text.trim().length > 0)
     .map((part) => part.text)
-  const assistantTexts = transcript
+  const assistantTexts = timeline
     .filter((message) => message.role === "assistant")
     .map((message) => readMessageText(message, { includeToolResults: false }))
     .filter(Boolean)
   const finalText = assistantTexts.at(-1) ?? ""
   return {
-    messageCount: transcript.length,
+    messageCount: timeline.length,
     partKinds: countBy(parts.map((part) => part.kind)),
     toolNames: parts
       .filter((part) => part.kind === "tool_call" || part.kind === "tool_result")
@@ -741,9 +741,9 @@ function assertSubagentUsage(input) {
   assert(hasSourceResearcherCompleted, "Deep Research lifecycle did not record source-researcher subagent.completed.")
 
   assert(
-    input.transcriptSummary.parent.toolNames.includes("agent") ||
+    input.timelineSummary.parent.toolNames.includes("agent") ||
       input.sqliteTelemetry.toolCalls.some((part) => readToolName(part) === "agent"),
-    "Parent transcript/SQLite telemetry did not record an agent tool call.",
+    "Parent timeline/SQLite telemetry did not record an agent tool call.",
   )
   const optionalToolEventTypes = ["tool.call.requested", "tool.call.completed"]
   const hasToolRunEvent = optionalToolEventTypes.some((eventType) => input.sqliteTelemetry.eventTypes.includes(eventType))
@@ -846,9 +846,9 @@ function assertSourceResearcherWebsearchAvailable(input) {
   const hasChildWebsearchToolCall = input.sqliteTelemetry.toolCalls.some(
     (part) => childSessionIds.has(part.sessionId) && part.toolName === "websearch",
   )
-  const hasTranscriptWebsearch = input.transcriptSummary.children.some((child) => child.toolNames.includes("websearch"))
+  const hasTimelineWebsearch = input.timelineSummary.children.some((child) => child.toolNames.includes("websearch"))
   assert(
-    hasChildWebsearchToolCall || hasTranscriptWebsearch,
+    hasChildWebsearchToolCall || hasTimelineWebsearch,
     "Source Researcher did not exercise websearch through the real Deep Research path.",
   )
 }
@@ -983,18 +983,18 @@ function assertReasoningReplayTelemetry(input) {
     return
   }
 
-  const childHasReasoning = input.transcriptSummary.children.some((child) => child.reasoningPartCount > 0)
+  const childHasReasoning = input.timelineSummary.children.some((child) => child.reasoningPartCount > 0)
   assert(childHasReasoning, "Reasoning-enabled provider did not persist child reasoning replay telemetry.")
 }
 
-function assertNoLiteralThinkTagLeak(transcriptSummary) {
-  const leaked = [transcriptSummary.parent, ...transcriptSummary.children]
+function assertNoLiteralThinkTagLeak(timelineSummary) {
+  const leaked = [timelineSummary.parent, ...timelineSummary.children]
     .some((summary) => summary.literalThinkTagCount > 0 || summary.finalAssistantLiteralThinkTagCount > 0)
-  assert(leaked === false, "Literal think-tag hidden reasoning remained in visible/final transcript text.")
+  assert(leaked === false, "Literal think-tag hidden reasoning remained in visible/final timeline text.")
 }
 
 async function assertNoHiddenReasoningInFinalUiText(input) {
-  const hiddenReasoningPreviews = input.transcriptSummary.children.flatMap((child) => child.reasoningPreviews)
+  const hiddenReasoningPreviews = input.timelineSummary.children.flatMap((child) => child.reasoningPreviews)
   if (hiddenReasoningPreviews.length === 0) {
     return
   }
@@ -1038,14 +1038,14 @@ function unwrapData(response, label) {
   return response.body.data
 }
 
-function unwrapTranscript(response, label) {
+function unwrapTimeline(response, label) {
   const data = unwrapData(response, label)
-  assert(Array.isArray(data.transcript), `${label} did not return a transcript array.`)
-  return data.transcript
+  assert(Array.isArray(data.timeline), `${label} did not return a timeline array.`)
+  return data.timeline
 }
 
-function readTranscriptVisibleText(transcript) {
-  return transcript.map(readMessageText).filter(Boolean).join("\n")
+function readTimelineVisibleText(timeline) {
+  return timeline.map(readMessageText).filter(Boolean).join("\n")
 }
 
 function readMessageText(message, options = { includeToolResults: true }) {

@@ -31,7 +31,7 @@ export default function App() {
     isManagingWorkspace,
     skills,
     session,
-    transcript,
+    timeline,
     permissionRequests,
     isOnline,
     hasAuthoritativeBusyState,
@@ -51,32 +51,32 @@ export default function App() {
   } = useAgent()
   const desktopSettings = useDesktopSettings()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
-  const [clearedTranscriptState, setClearedTranscriptState] = useState<{
+  const [clearedTimelineState, setClearedTimelineState] = useState<{
     sessionId: string
     hiddenCount: number
   } | null>(null)
 
   useEffect(() => {
-    setClearedTranscriptState(null)
+    setClearedTimelineState(null)
   }, [activeSessionId])
 
-  const visibleTranscript =
-    activeSessionId && clearedTranscriptState?.sessionId === activeSessionId
-      ? transcript.slice(Math.min(clearedTranscriptState.hiddenCount, transcript.length))
-      : transcript
+  const visibleTimeline =
+    activeSessionId && clearedTimelineState?.sessionId === activeSessionId
+      ? timeline.slice(Math.min(clearedTimelineState.hiddenCount, timeline.length))
+      : timeline
   const activeWorkspaceName =
     workspaces.find((workspace) => workspace.workspaceRoot === activeWorkspaceRoot)?.name ??
     workspaces[0]?.name ??
     null
 
-  const handleClearTranscriptDisplay = () => {
+  const handleClearTimelineDisplay = () => {
     if (!activeSessionId) {
       return
     }
 
-    setClearedTranscriptState({
+    setClearedTimelineState({
       sessionId: activeSessionId,
-      hiddenCount: transcript.length,
+      hiddenCount: timeline.length,
     })
   }
 
@@ -87,7 +87,7 @@ export default function App() {
     >
     <KeyboardShortcutProvider
       onNewSession={() => void createSession()}
-      onClearTranscript={handleClearTranscriptDisplay}
+      onClearTimeline={handleClearTimelineDisplay}
       onCycleAgent={cycleAgent}
     >
       <DesktopTextProvider language={desktopSettings.appliedSettings.language}>
@@ -141,7 +141,7 @@ export default function App() {
             activeWorkspaceName={activeWorkspaceName}
             session={session}
             skills={skills}
-            transcript={visibleTranscript}
+            timeline={visibleTimeline}
             permissionRequests={permissionRequests}
             contextUsage={contextUsage}
             onSendMessage={sendMessage}

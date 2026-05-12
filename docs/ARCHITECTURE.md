@@ -16,9 +16,9 @@ Approved top-level modules under `src/` fall into four groups:
   - `agent`: agent profile definitions, schema validation, and multi-agent configuration contracts
   - `memory`: Persistent user-level memory (Markdown-backed, cross-session)
   - `observability`: runtime telemetry, trace export policy, and durable run-event records
-  - `session`: durable session, run, message, and transcript state
+  - `session`: durable session, run, timeline entry, and timeline part state
   - `permission`: durable permission-request state and decision flow
-  - `model`: model-provider integration and transcript projection
+  - `model`: model-provider integration and timeline projection
   - `skill`: skill catalog, skill loading, and skill activation semantics
   - `tool`: tool catalog, execution, and tool-side runtime helpers
 - Coordinator module:

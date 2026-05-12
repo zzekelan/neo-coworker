@@ -1,4 +1,4 @@
-import type { OrchestrationTranscriptMessage } from "./session"
+import type { OrchestrationTimelineMessage } from "./session"
 import type {
   OrchestrationActiveSkill,
   OrchestrationSkillCatalogEntry,
@@ -23,7 +23,7 @@ export type OrchestrationModelTurnRequest = {
   contextWindow?: number
   temperature?: number
   tools: OrchestrationTool[]
-  transcript: OrchestrationTranscriptMessage[]
+  timeline: OrchestrationTimelineMessage[]
   compressibleToolNames?: ReadonlySet<string>
   sessionId?: string
   runId?: string

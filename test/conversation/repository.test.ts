@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { buildTranscriptMessages } from "../../src/model"
+import { buildTimelineMessages } from "../../src/model"
 import {
   CURRENT_SESSION_SCHEMA_VERSION,
   SessionConflictError,
@@ -28,17 +28,18 @@ afterEach(() => {
 })
 
 describe("storage repository", () => {
-  test("uses schema version 11 for agent tracking columns", () => {
-    expect(CURRENT_SESSION_SCHEMA_VERSION).toBe(11)
+  test("uses schema version 13 for compaction timeline entries", () => {
+    expect(CURRENT_SESSION_SCHEMA_VERSION).toBe(13)
   })
 
-  test("creates fresh databases with general top-level current agent and persists message agents", () => {
-    const databasePath = createDatabasePath("schema-v11-fresh")
+  test("creates fresh databases with general top-level current agent and timeline entry ordering", () => {
+    const databasePath = createDatabasePath("schema-v12-fresh")
     const database = openStorageDatabase(databasePath)
     trackDatabase(database)
 
     expect(listTableColumns(database, "session")).toContain("current_agent")
     expect(listTableColumns(database, "message")).toContain("agent")
+    expect(listTableColumns(database, "message")).toContain("timeline_sequence")
 
     const repository = createStorageRepository({ database })
     const session = repository.sessions.create({
@@ -83,7 +84,7 @@ describe("storage repository", () => {
       sessionId: session.id,
       runId: run.id,
       agent: repository.sessions.getCurrentAgent(session.id),
-      role: "assistant",
+      role: "compaction",
       sequence: 1,
       createdAt: 4,
     })
@@ -93,13 +94,22 @@ describe("storage repository", () => {
     expect(repository.sessions.getCurrentAgent(session.id)).toBe("plan")
     expect(repository.messages.get(message.id).agent).toBe("general")
     expect(repository.messages.get(secondMessage.id).agent).toBe("plan")
-    expect(repository.messages.listSessionTranscript(session.id)).toEqual([
+    expect(repository.messages.get(secondMessage.id).role).toBe("compaction")
+    expect(repository.messages.listSessionTimeline(session.id)).toEqual([
       expect.objectContaining({ id: message.id, agent: "general" }),
-      expect.objectContaining({ id: secondMessage.id, agent: "plan" }),
+      expect.objectContaining({ id: secondMessage.id, agent: "plan", role: "compaction" }),
     ])
+
+    expect(() =>
+      database
+        .query(
+          "INSERT INTO message (id, session_id, run_id, agent, role, sequence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run("message_synthetic", session.id, run.id, null, "synthetic", 2, 5),
+    ).toThrow()
   })
 
-  test("migrates existing v10 databases to v11 without data loss", () => {
+  test("migrates existing v10 databases to v13 without data loss", () => {
     const databasePath = createDatabasePath("schema-v10-migration")
     createVersion10Database(databasePath)
 
@@ -109,7 +119,8 @@ describe("storage repository", () => {
 
     expect(listTableColumns(database, "session")).toContain("current_agent")
     expect(listTableColumns(database, "message")).toContain("agent")
-    expect(getUserVersion(database)).toBe(11)
+    expect(listTableColumns(database, "message")).toContain("timeline_sequence")
+    expect(getUserVersion(database)).toBe(13)
 
     const rawSession = database.query("SELECT * FROM session WHERE id = ?").get("session_1") as {
       directory: string
@@ -127,6 +138,7 @@ describe("storage repository", () => {
       run_id: string
       role: string
       sequence: number
+      timeline_sequence: number
       created_at: number
       agent: string | null
     }
@@ -147,6 +159,7 @@ describe("storage repository", () => {
       run_id: "run_1",
       role: "user",
       sequence: 0,
+      timeline_sequence: 0,
       created_at: 4,
       agent: null,
     })
@@ -163,9 +176,48 @@ describe("storage repository", () => {
       runId: "run_1",
       role: "user",
     })
+    expect(repository.timeline.listEntries("session_1")).toEqual([
+      expect.objectContaining({
+        id: "message_1",
+        agent: undefined,
+        role: "user",
+        timelineSequence: 0,
+        producedByRunId: "run_1",
+      }),
+    ])
   })
 
-  test("surfaces undefined transcript agents for legacy null message rows", () => {
+  test("migrates legacy synthetic messages to compaction timeline entries", () => {
+    const databasePath = createDatabasePath("schema-v12-compaction-role-migration")
+    createVersion12SyntheticDatabase(databasePath)
+
+    const database = openStorageDatabase(databasePath)
+    trackDatabase(database)
+    const repository = createStorageRepository({ database })
+
+    expect(getUserVersion(database)).toBe(13)
+    expect(repository.timeline.listEntries("session_1")).toEqual([
+      expect.objectContaining({
+        id: "message_compaction",
+        role: "compaction",
+        timelineSequence: 0,
+        parts: [
+          expect.objectContaining({
+            id: "part_compaction",
+            entryId: "message_compaction",
+            kind: "compaction_boundary",
+          }),
+        ],
+      }),
+    ])
+    expect(
+      database.query("SELECT role FROM message WHERE id = ?").get("message_compaction"),
+    ).toEqual({
+      role: "compaction",
+    })
+  })
+
+  test("surfaces undefined timeline agents for legacy null message rows", () => {
     const { database, repository } = createTestRepository("legacy-null-message-agent")
 
     repository.sessions.create({
@@ -192,7 +244,7 @@ describe("storage repository", () => {
       id: "message_legacy",
       agent: undefined,
     })
-    expect(repository.messages.listSessionTranscript("session_1")).toEqual([
+    expect(repository.messages.listSessionTimeline("session_1")).toEqual([
       expect.objectContaining({
         id: "message_legacy",
         agent: undefined,
@@ -537,7 +589,7 @@ describe("storage repository", () => {
     expect(repository.sessions.listSubSessions(sessionA.id)).toEqual([])
   })
 
-  test("creates a sub-session with its queued run and initiating transcript atomically", () => {
+  test("creates a sub-session with its queued run and initiating timeline atomically", () => {
     const { database, repository } = createTestRepository("sub-session-atomic-create")
 
     const parent = repository.sessions.create({
@@ -571,7 +623,7 @@ describe("storage repository", () => {
         id: "part_child",
         kind: "text",
         sequence: 0,
-        text: "Investigate why the child transcript leaked into the parent.",
+        text: "Investigate why the child timeline leaked into the parent.",
         createdAt: 5,
       },
     })
@@ -599,7 +651,7 @@ describe("storage repository", () => {
       status: "queued",
       parentRunId: "run_parent",
     })
-    expect(repository.messages.listSessionTranscript("session_child")).toEqual([
+    expect(repository.messages.listSessionTimeline("session_child")).toEqual([
       {
         id: "message_child",
         sessionId: "session_child",
@@ -615,7 +667,7 @@ describe("storage repository", () => {
             messageId: "message_child",
             kind: "text",
             sequence: 0,
-            text: "Investigate why the child transcript leaked into the parent.",
+            text: "Investigate why the child timeline leaked into the parent.",
             data: null,
             createdAt: 5,
           },
@@ -678,7 +730,7 @@ describe("storage repository", () => {
     expect(countRows(database, "part")).toBe(0)
   })
 
-  test("deleting a parent session cascades to sub-sessions and their transcript rows", () => {
+  test("deleting a parent session cascades to sub-sessions and their timeline rows", () => {
     const { database, repository } = createTestRepository("sub-session-cascade")
 
     const parent = repository.sessions.create({
@@ -725,8 +777,8 @@ describe("storage repository", () => {
     expect(countRows(database, "part")).toBe(0)
   })
 
-  test("keeps transcripts isolated between parent sessions and sub-sessions", () => {
-    const { repository } = createTestRepository("sub-session-transcript-isolation")
+  test("keeps timelines isolated between parent sessions and sub-sessions", () => {
+    const { repository } = createTestRepository("sub-session-timeline-isolation")
 
     const parent = repository.sessions.create({
       id: "session_parent",
@@ -783,31 +835,132 @@ describe("storage repository", () => {
       },
     })
 
-    expect(repository.messages.listSessionTranscript(parent.id).map((message) => message.id)).toEqual([
+    expect(repository.messages.listSessionTimeline(parent.id).map((message) => message.id)).toEqual([
       "message_parent",
     ])
-    expect(repository.messages.listSessionTranscript(parent.id).map((message) => message.parts[0]?.id)).toEqual([
+    expect(repository.messages.listSessionTimeline(parent.id).map((message) => message.parts[0]?.id)).toEqual([
       "part_parent",
     ])
-    expect(repository.messages.listSessionTranscript("session_child").map((message) => message.id)).toEqual([
+    expect(repository.messages.listSessionTimeline("session_child").map((message) => message.id)).toEqual([
       "message_child",
     ])
     expect(
       repository
         .messages
-        .listSessionTranscript(parent.id)
+        .listSessionTimeline(parent.id)
         .flatMap((message) => [message.id, ...message.parts.map((part) => part.id)]),
     ).not.toContain("message_child")
     expect(
       repository
         .messages
-        .listSessionTranscript(parent.id)
+        .listSessionTimeline(parent.id)
         .flatMap((message) => [message.id, ...message.parts.map((part) => part.id)]),
     ).not.toContain("part_child")
   })
 
-  test("returns session transcript with stable message and part ordering", () => {
-    const { repository } = createTestRepository("transcript-ordering")
+  test("keeps Session Timelines isolated across parent, child, and nested Sub-sessions", () => {
+    const { repository } = createTestRepository("sub-session-timeline-isolation")
+
+    const parent = repository.sessions.create({
+      id: "session_parent",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.createQueuedRunWithInitiatingMessageAndPart({
+      run: {
+        id: "run_parent",
+        sessionId: parent.id,
+        trigger: "prompt",
+        createdAt: 2,
+      },
+      message: {
+        id: "entry_parent",
+        sequence: 0,
+        createdAt: 3,
+      },
+      part: {
+        id: "part_parent",
+        kind: "text",
+        sequence: 0,
+        text: "parent prompt",
+        createdAt: 4,
+      },
+    })
+    const child = repository.createSubSessionWithRun({
+      session: {
+        id: "session_child",
+        directory: "/workspace/sub-agent",
+        workspaceRoot: "/workspace",
+        createdAt: 5,
+        parentSessionId: parent.id,
+      },
+      run: {
+        id: "run_child",
+        trigger: "prompt",
+        parentRunId: "run_parent",
+        createdAt: 6,
+      },
+      message: {
+        id: "entry_child",
+        sequence: 0,
+        createdAt: 7,
+      },
+      part: {
+        id: "part_child",
+        kind: "text",
+        sequence: 0,
+        text: "child prompt",
+        createdAt: 8,
+      },
+    })
+    const grandchild = repository.createSubSessionWithRun({
+      session: {
+        id: "session_grandchild",
+        directory: "/workspace/sub-agent/nested",
+        workspaceRoot: "/workspace",
+        createdAt: 9,
+        parentSessionId: child.session.id,
+      },
+      run: {
+        id: "run_grandchild",
+        trigger: "prompt",
+        parentRunId: child.run.id,
+        createdAt: 10,
+      },
+      message: {
+        id: "entry_grandchild",
+        sequence: 0,
+        createdAt: 11,
+      },
+      part: {
+        id: "part_grandchild",
+        kind: "text",
+        sequence: 0,
+        text: "grandchild prompt",
+        createdAt: 12,
+      },
+    })
+
+    expect(repository.timeline.listEntries(parent.id).map((entry) => entry.id)).toEqual([
+      "entry_parent",
+    ])
+    expect(repository.timeline.listEntries(child.session.id).map((entry) => entry.id)).toEqual([
+      "entry_child",
+    ])
+    expect(repository.timeline.listEntries(grandchild.session.id).map((entry) => entry.id)).toEqual([
+      "entry_grandchild",
+    ])
+    expect(repository.timeline.listEntries(child.session.id)[0]).toMatchObject({
+      producedByRunId: "run_child",
+      parts: [expect.objectContaining({ producedByRunId: "run_child" })],
+    })
+    expect(repository.runs.get(child.run.id).parentRunId).toBe("run_parent")
+    expect(repository.runs.get(grandchild.run.id).parentRunId).toBe(child.run.id)
+  })
+
+  test("returns session timeline with stable message and part ordering", () => {
+    const { repository } = createTestRepository("timeline-ordering")
 
     repository.sessions.create({
       id: "session_1",
@@ -890,15 +1043,15 @@ describe("storage repository", () => {
       createdAt: 15,
     })
 
-    const transcript = repository.messages.listSessionTranscript("session_1")
+    const timeline = repository.messages.listSessionTimeline("session_1")
 
-    expect(transcript.map((message) => message.id)).toEqual(["message_0", "message_2", "message_3"])
-    expect(transcript.map((message) => message.agent)).toEqual(["default", "plan", "review"])
-    expect(transcript[1]?.parts.map((part) => part.id)).toEqual(["part_0", "part_1", "part_2"])
+    expect(timeline.map((message) => message.id)).toEqual(["message_0", "message_2", "message_3"])
+    expect(timeline.map((message) => message.agent)).toEqual(["default", "plan", "review"])
+    expect(timeline[1]?.parts.map((part) => part.id)).toEqual(["part_0", "part_1", "part_2"])
   })
 
   test("replays persisted reasoning parts after reopening storage", () => {
-    const databasePath = createDatabasePath("reasoning-transcript-fixture")
+    const databasePath = createDatabasePath("reasoning-timeline-fixture")
     const initialDatabase = openStorageDatabase(databasePath)
     trackDatabase(initialDatabase)
 
@@ -942,9 +1095,9 @@ describe("storage repository", () => {
     const reopenedDatabase = openStorageDatabase(databasePath)
     trackDatabase(reopenedDatabase)
     const reopenedRepository = createStorageRepository({ database: reopenedDatabase })
-    const transcript = reopenedRepository.messages.listSessionTranscript("session_1")
+    const timeline = reopenedRepository.messages.listSessionTimeline("session_1")
 
-    expect(transcript).toEqual([
+    expect(timeline).toEqual([
       {
         id: "message_1",
         sessionId: "session_1",
@@ -967,7 +1120,7 @@ describe("storage repository", () => {
         ],
       },
     ])
-    expect(buildTranscriptMessages(transcript)).toEqual([
+    expect(buildTimelineMessages(timeline)).toEqual([
       {
         role: "assistant",
         parts: [
@@ -1050,9 +1203,131 @@ describe("storage repository", () => {
     expect(
       repository
         .messages
-        .listSessionTranscript("session_1")
+        .listSessionTimeline("session_1")
         .map((message) => `${message.runId}:${message.parts[0]?.text}`),
     ).toEqual(["run_b:first inserted", "run_a:second inserted"])
+  })
+
+  test("reads session timeline entries in durable session order instead of run order", () => {
+    const { repository } = createTestRepository("timeline-session-order")
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+
+    repository.runs.create({
+      id: "run_older",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "completed",
+      createdAt: 10,
+    })
+    repository.runs.create({
+      id: "run_newer",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "completed",
+      createdAt: 20,
+    })
+
+    repository.messages.create({
+      id: "message_first",
+      sessionId: "session_1",
+      runId: "run_newer",
+      role: "assistant",
+      sequence: 0,
+      createdAt: 30,
+    })
+    repository.messages.create({
+      id: "message_second",
+      sessionId: "session_1",
+      runId: "run_older",
+      role: "assistant",
+      sequence: 0,
+      createdAt: 31,
+    })
+
+    const timeline = repository.timeline.listEntries("session_1")
+
+    expect(timeline.map((entry) => entry.id)).toEqual(["message_first", "message_second"])
+    expect(timeline.map((entry) => entry.timelineSequence)).toEqual([0, 1])
+    expect(timeline.map((entry) => entry.producedByRunId)).toEqual(["run_newer", "run_older"])
+  })
+
+  test("appends timeline entries and entry-local parts with Produced By Run provenance", () => {
+    const { repository } = createTestRepository("timeline-append")
+
+    repository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    repository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "running",
+      createdAt: 2,
+    })
+
+    const entry = repository.timeline.appendEntry({
+      id: "entry_1",
+      sessionId: "session_1",
+      producedByRunId: "run_1",
+      agent: "plan",
+      role: "assistant",
+      runSequence: 0,
+      createdAt: 3,
+    })
+    const toolCall = repository.timeline.appendPart({
+      id: "part_call",
+      sessionId: "session_1",
+      producedByRunId: "run_1",
+      entryId: entry.id,
+      kind: "tool_call",
+      sequence: 0,
+      text: "{\"cmd\":\"date\"}",
+      data: { callId: "call_1", toolName: "shell" },
+      createdAt: 4,
+    })
+    repository.timeline.appendPart({
+      id: "part_result",
+      sessionId: "session_1",
+      producedByRunId: "run_1",
+      entryId: entry.id,
+      kind: "tool_result",
+      sequence: 1,
+      text: "Mon May 4",
+      data: { callId: "call_1", toolName: "shell", output: "Mon May 4" },
+      createdAt: 5,
+    })
+
+    expect(entry).toMatchObject({
+      id: "entry_1",
+      producedByRunId: "run_1",
+      runSequence: 0,
+      timelineSequence: 0,
+    })
+    expect(toolCall).toMatchObject({
+      id: "part_call",
+      entryId: "entry_1",
+      producedByRunId: "run_1",
+      sequence: 0,
+    })
+    expect(repository.timeline.listEntries("session_1")).toEqual([
+      expect.objectContaining({
+        id: "entry_1",
+        producedByRunId: "run_1",
+        parts: [
+          expect.objectContaining({ id: "part_call", entryId: "entry_1" }),
+          expect.objectContaining({ id: "part_result", entryId: "entry_1" }),
+        ],
+      }),
+    ])
   })
 
   test("rejects mismatched parent ownership", () => {
@@ -1427,7 +1702,7 @@ describe("storage repository", () => {
     expect(countRows(database, "part")).toBe(1)
   })
 
-  test("updates part content incrementally without rewriting other transcript rows", () => {
+  test("updates part content incrementally without rewriting other timeline rows", () => {
     const { repository } = createTestRepository("part-incremental")
 
     repository.sessions.create({
@@ -1468,7 +1743,7 @@ describe("storage repository", () => {
       text: "Hello",
       data: { complete: true },
     })
-    const transcript = repository.messages.listSessionTranscript("session_1")
+    const timeline = repository.messages.listSessionTimeline("session_1")
 
     expect(message.role).toBe("assistant")
     expect(message.agent).toBe("plan")
@@ -1477,7 +1752,7 @@ describe("storage repository", () => {
       text: "Hello",
       data: { complete: true },
     })
-    expect(transcript).toEqual([
+    expect(timeline).toEqual([
       {
         ...message,
         parts: [
@@ -1593,6 +1868,24 @@ function createVersion10Database(filePath: string) {
       )
     `)
     database.exec(`
+      CREATE TABLE part (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        text_value TEXT,
+        data_json TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, message_id, run_id, session_id),
+        UNIQUE (message_id, sequence)
+      )
+    `)
+    database.exec(`
       CREATE TABLE permission_allowlist (
         workspace_root TEXT NOT NULL,
         tool_name TEXT NOT NULL,
@@ -1682,6 +1975,154 @@ function createVersion10Database(filePath: string) {
       )
       .run("message_1", "session_1", "run_1", "user", 0, 4)
     database.exec("PRAGMA user_version = 10")
+  } finally {
+    database.close(false)
+  }
+}
+
+function createVersion12SyntheticDatabase(filePath: string) {
+  const database = new Database(filePath, { create: true, strict: true })
+
+  try {
+    database.exec("PRAGMA foreign_keys = ON")
+    database.exec("PRAGMA journal_mode = WAL")
+    database.exec(`
+      CREATE TABLE session (
+        id TEXT PRIMARY KEY,
+        directory TEXT NOT NULL,
+        workspace_root TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        current_agent TEXT,
+        title TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        latest_user_message_preview TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]',
+        parent_session_id TEXT REFERENCES session(id) ON DELETE CASCADE
+      )
+    `)
+    database.exec(`
+      CREATE TABLE run (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        trigger TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        session_sequence INTEGER NOT NULL,
+        started_at INTEGER,
+        finished_at INTEGER,
+        error_text TEXT,
+        active_skills_json TEXT NOT NULL DEFAULT '[]',
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        token_usage_source TEXT,
+        parent_run_id TEXT,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        UNIQUE (id, session_id),
+        UNIQUE (session_id, session_sequence)
+      )
+    `)
+    database.exec(`
+      CREATE TABLE message (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        agent TEXT,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'synthetic')),
+        sequence INTEGER NOT NULL CHECK (sequence >= 0),
+        timeline_sequence INTEGER NOT NULL DEFAULT -1,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, run_id, session_id),
+        UNIQUE (run_id, sequence)
+      )
+    `)
+    database.exec(`
+      CREATE TABLE part (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        text_value TEXT,
+        data_json TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id, session_id) REFERENCES run(id, session_id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id, run_id, session_id) REFERENCES message(id, run_id, session_id) ON DELETE CASCADE,
+        UNIQUE (id, message_id, run_id, session_id),
+        UNIQUE (message_id, sequence)
+      )
+    `)
+    database.exec(`
+      CREATE TABLE permission_allowlist (
+        workspace_root TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        reason TEXT,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (workspace_root, tool_name, pattern)
+      )
+    `)
+    database.exec(`
+      INSERT INTO session (
+        id,
+        directory,
+        workspace_root,
+        created_at,
+        current_agent,
+        title,
+        updated_at,
+        latest_user_message_preview,
+        active_skills_json,
+        parent_session_id
+      ) VALUES ('session_1', '/workspace', '/workspace', 1, 'general', 'Session', 1, NULL, '[]', NULL)
+    `)
+    database.exec(`
+      INSERT INTO run (
+        id,
+        session_id,
+        trigger,
+        status,
+        created_at,
+        session_sequence,
+        started_at,
+        finished_at,
+        error_text,
+        active_skills_json,
+        input_tokens,
+        output_tokens,
+        token_usage_source,
+        parent_run_id
+      ) VALUES ('run_1', 'session_1', 'summarize', 'completed', 2, 0, NULL, NULL, NULL, '[]', 0, 0, NULL, NULL)
+    `)
+    database.exec(`
+      INSERT INTO message (
+        id,
+        session_id,
+        run_id,
+        agent,
+        role,
+        sequence,
+        timeline_sequence,
+        created_at
+      ) VALUES ('message_compaction', 'session_1', 'run_1', 'general', 'synthetic', 0, 0, 3)
+    `)
+    database.exec(`
+      INSERT INTO part (
+        id,
+        session_id,
+        run_id,
+        message_id,
+        kind,
+        sequence,
+        text_value,
+        data_json,
+        created_at
+      ) VALUES ('part_compaction', 'session_1', 'run_1', 'message_compaction', 'compaction_boundary', 0, NULL, '{}', 4)
+    `)
+    database.exec("PRAGMA user_version = 12")
   } finally {
     database.close(false)
   }

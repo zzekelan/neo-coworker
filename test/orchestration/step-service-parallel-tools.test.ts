@@ -8,7 +8,7 @@ import {
   type OrchestrationRunRecord,
   type OrchestrationSessionPort,
   type OrchestrationSkillPort,
-  type OrchestrationTranscriptMessage,
+  type OrchestrationTimelineMessage,
   type OrchestrationToolPort,
   type RuntimeEvent,
 } from "../../src/orchestration"
@@ -105,8 +105,8 @@ describe("orchestration step service parallel tool execution", () => {
       },
     })
     const elapsed = Date.now() - startedAt
-    const transcript = session.listTranscript(session.sessionId)
-    const assistantMessage = transcript.find((message) => message.role === "assistant")
+    const timeline = session.listTimeline(session.sessionId)
+    const assistantMessage = timeline.find((message) => message.role === "assistant")
     const resultParts = assistantMessage?.parts.filter((part) => part.kind === "tool_result") ?? []
 
     expect(result).toEqual({ status: "repeat" })
@@ -136,11 +136,11 @@ describe("orchestration step service parallel tool execution", () => {
 
   test("persists thrown tool execution failures as Tool Result Errors before the next model turn", async () => {
     const session = createMemorySession()
-    const modelTranscripts: OrchestrationTranscriptMessage[][] = []
+    const modelTimelines: OrchestrationTimelineMessage[][] = []
     let turn = 0
     const model: OrchestrationModelPort = {
       async *streamTurn(request) {
-        modelTranscripts.push(request.transcript)
+        modelTimelines.push(request.timeline)
         turn += 1
 
         if (turn === 1) {
@@ -194,10 +194,10 @@ describe("orchestration step service parallel tool execution", () => {
     await expect(executeStep({ stepService, session, tools })).resolves.toEqual({ status: "complete" })
 
     const assistantMessage = session
-      .listTranscript(session.sessionId)
+      .listTimeline(session.sessionId)
       .find((message) => message.role === "assistant" && message.sequence === 1)
     const failurePart = assistantMessage?.parts[1]
-    const replayedFailurePart = modelTranscripts[1]?.flatMap((message) => message.parts).find(
+    const replayedFailurePart = modelTimelines[1]?.flatMap((message) => message.parts).find(
       (part) =>
         part.kind === "tool_result" &&
         (part.data as { callId?: string } | undefined)?.callId === "call_boom",
@@ -267,7 +267,7 @@ describe("orchestration step service terminalization", () => {
     })
 
     const persistedAssistantMessage = session
-      .listTranscript(session.sessionId)
+      .listTimeline(session.sessionId)
       .find((message) => message.role === "assistant")
 
     expect(session.getRun(session.runId).status).toBe("failed")
@@ -336,7 +336,7 @@ describe("orchestration step service terminalization", () => {
     })
 
     const persistedAssistantMessage = session
-      .listTranscript(session.sessionId)
+      .listTimeline(session.sessionId)
       .find((message) => message.role === "assistant")
 
     expect(result).toBe(true)
@@ -397,7 +397,7 @@ function createMemorySession() {
   const runId = "run_parallel"
   let nextMessageId = 0
   let nextPartId = 0
-  const transcript: OrchestrationTranscriptMessage[] = [
+  const timeline: OrchestrationTimelineMessage[] = [
     {
       runId,
       role: "user",
@@ -405,7 +405,7 @@ function createMemorySession() {
       parts: [{ kind: "text", text: "Run both tools", data: undefined }],
     },
   ]
-  const messageIds = new Map<string, OrchestrationTranscriptMessage>()
+  const messageIds = new Map<string, OrchestrationTimelineMessage>()
   const partIds = new Map<string, OrchestrationPartRecord>()
   const run: OrchestrationRunRecord = {
     id: runId,
@@ -440,12 +440,12 @@ function createMemorySession() {
 
       return run
     },
-    listTranscript(requestedSessionId) {
+    listTimeline(requestedSessionId) {
       if (requestedSessionId !== sessionId) {
         throw new Error(`Unknown session ${requestedSessionId}`)
       }
 
-      return transcript
+      return timeline
     },
     createRun(input) {
       return {
@@ -461,7 +461,7 @@ function createMemorySession() {
     },
     createAssistantMessage(input) {
       const id = `assistant_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+      const message: OrchestrationTimelineMessage = {
         id,
         sessionId: input.sessionId,
         runId: input.runId,
@@ -469,21 +469,21 @@ function createMemorySession() {
         sequence: input.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },
-    createSyntheticMessage(input) {
-      const id = `synthetic_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+    createCompactionMessage(input) {
+      const id = `compaction_message_${nextMessageId++}`
+      const message: OrchestrationTimelineMessage = {
         id,
         sessionId: input.sessionId,
         runId: input.runId,
-        role: "synthetic",
+        role: "compaction",
         sequence: input.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },

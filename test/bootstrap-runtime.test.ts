@@ -154,7 +154,7 @@ describe("bootstrap runtime", () => {
       skillCatalog: [],
       activeSkills: [],
       tools: [],
-      transcript: [],
+      timeline: [],
       signal: new AbortController().signal,
     })) {
       events.push(event)

@@ -1,5 +1,5 @@
 import type { ZodTypeAny } from "zod"
-import type { ModelMessage, ModelTranscriptMessage } from "./message"
+import type { ModelMessage, ModelTimelineMessage } from "./message"
 
 export type ModelTool = {
   name: string
@@ -56,7 +56,7 @@ export type ModelProjectionInput = {
   systemReminderMetadata?: ModelSystemReminderMetadata
   contextWindow?: number
   tools: ModelTool[]
-  transcript: ModelTranscriptMessage[]
+  timeline: ModelTimelineMessage[]
   compressibleToolNames?: ReadonlySet<string>
 }
 

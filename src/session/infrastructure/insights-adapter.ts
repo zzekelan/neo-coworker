@@ -34,7 +34,7 @@ type PartAggregateRow = {
 
 type MessagePartTextRow = {
   run_id: string
-  role: "user" | "assistant" | "synthetic"
+  role: "user" | "assistant" | "compaction"
   text_value: string | null
 }
 

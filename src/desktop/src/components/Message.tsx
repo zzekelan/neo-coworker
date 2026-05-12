@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "../lib/utils"
-import type { DesktopTranscriptMessage, MessagePart } from "../view-types"
+import type { DesktopTimelineMessage, MessagePart } from "../view-types"
 import { useDesktopText } from "../i18n"
 import { ErrorBoundary } from "./ErrorBoundary"
 import { CompactionDivider } from "./CompactionDivider"
@@ -135,7 +135,7 @@ function shouldShowTimestamp(previousTimestamp: string | undefined, currentTimes
 }
 
 const MessageComponent: React.FC<{
-  message: DesktopTranscriptMessage
+  message: DesktopTimelineMessage
   previousTimestamp?: string
   isActiveRunMessage?: boolean
   foldActivityAfterNextReasoning?: boolean
@@ -181,7 +181,7 @@ const MessageComponent: React.FC<{
     [message.parts, message.role, message.content, message.runId],
   )
   const renderableParts = useMemo(
-    () => (renderSourceParts ?? []).filter(isRenderableTranscriptPart),
+    () => (renderSourceParts ?? []).filter(isRenderableTimelinePart),
     [renderSourceParts],
   )
   const latestRenderablePartIndex = renderableParts.length - 1
@@ -493,7 +493,7 @@ function buildRenderItems(parts: MessagePart[], toolResultLookup: ReadonlyMap<st
 
 const RenderMessageItem: React.FC<{
   item: RenderItem
-  message: DesktopTranscriptMessage
+  message: DesktopTimelineMessage
   toolResultLookup: ReadonlyMap<string, ToolResultPart>
   latestRenderablePartIndex: number
   finalVisibleTextPartIndex: number
@@ -546,7 +546,7 @@ function renderItemKey(messageId: string, item: RenderItem, prefix = "") {
 
 const MessagePartRenderer: React.FC<{
   part: MessagePart
-  role?: DesktopTranscriptMessage["role"]
+  role?: DesktopTimelineMessage["role"]
   relatedResult?: Extract<MessagePart, { type: "tool_result" }> | null
   partIndex?: number
   latestRenderablePartIndex?: number
@@ -667,7 +667,7 @@ const MessagePartRenderer: React.FC<{
 const CompletedActivityGroup: React.FC<{
   label: string
   renderItems: RenderItem[]
-  message: DesktopTranscriptMessage
+  message: DesktopTimelineMessage
   toolResultLookup: ReadonlyMap<string, ToolResultPart>
   waitingPermissionToolName?: string | null
 }> = React.memo(({ label, renderItems, message, toolResultLookup, waitingPermissionToolName = null }) => {
@@ -747,11 +747,11 @@ const CompletedActivityGroup: React.FC<{
   )
 })
 
-function isRenderableTranscriptPart(part: MessagePart) {
+function isRenderableTimelinePart(part: MessagePart) {
   return part.type !== "tool_result" && (part.type !== "text" || part.text.trim().length > 0)
 }
 
-function createAssistantTextParts(message: DesktopTranscriptMessage): MessagePart[] | null {
+function createAssistantTextParts(message: DesktopTimelineMessage): MessagePart[] | null {
   if (message.role !== "assistant" || !message.runId || message.content.trim().length === 0) {
     return null
   }

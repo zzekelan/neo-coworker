@@ -55,7 +55,7 @@ afterEach(async () => {
 })
 
 describe("server HTTP API and SSE", () => {
-  test("creates session, starts run, and exposes session and transcript state over HTTP", async () => {
+  test("creates session, starts run, and exposes session and timeline state over HTTP", async () => {
     const harness = await createHarness("server-http-happy", createTurnProvider([
       async function* () {
         yield { type: "text.delta", text: "Server says hi." }
@@ -158,16 +158,16 @@ describe("server HTTP API and SSE", () => {
       }),
     ])
 
-    const transcript = await requestJson(harness.server, "GET", `/sessions/${sessionId}/transcript`)
-    expect(transcript.status).toBe(200)
-    expect(transcript.body.data.transcript).toMatchObject([
+    const timeline = await requestJson(harness.server, "GET", `/sessions/${sessionId}/timeline`)
+    expect(timeline.status).toBe(200)
+    expect(timeline.body.data.timeline).toMatchObject([
       {
-        runId,
+        producedByRunId: runId,
         role: "user",
         parts: [{ kind: "text", text: "Say hi from the server" }],
       },
       {
-        runId,
+        producedByRunId: runId,
         role: "assistant",
         parts: [{ kind: "text", text: "Server says hi." }],
       },
@@ -413,6 +413,94 @@ describe("server HTTP API and SSE", () => {
     ])
   })
 
+  test("timeline endpoint exposes Session Timeline order and removes the old history route", async () => {
+    const harness = await createHarness("server-timeline-timeline", createTurnProvider([]))
+    const session = harness.repository.sessions.create({
+      directory: harness.workspaceRoot,
+      workspaceRoot: harness.workspaceRoot,
+      createdAt: harness.now(),
+    })
+    harness.repository.runs.create({
+      id: "run_older",
+      sessionId: session.id,
+      trigger: "prompt",
+      status: "completed",
+      createdAt: 10,
+    })
+    harness.repository.runs.create({
+      id: "run_newer",
+      sessionId: session.id,
+      trigger: "prompt",
+      status: "completed",
+      createdAt: 20,
+    })
+
+    const firstEntry = harness.repository.timeline.appendEntry({
+      id: "entry_first",
+      sessionId: session.id,
+      producedByRunId: "run_newer",
+      role: "assistant",
+      runSequence: 0,
+      createdAt: 30,
+    })
+    harness.repository.timeline.appendPart({
+      id: "part_first",
+      sessionId: session.id,
+      producedByRunId: "run_newer",
+      entryId: firstEntry.id,
+      kind: "text",
+      sequence: 0,
+      text: "timeline first",
+      createdAt: 31,
+    })
+    const secondEntry = harness.repository.timeline.appendEntry({
+      id: "entry_second",
+      sessionId: session.id,
+      producedByRunId: "run_older",
+      role: "assistant",
+      runSequence: 0,
+      createdAt: 32,
+    })
+    harness.repository.timeline.appendPart({
+      id: "part_second",
+      sessionId: session.id,
+      producedByRunId: "run_older",
+      entryId: secondEntry.id,
+      kind: "text",
+      sequence: 0,
+      text: "timeline second",
+      createdAt: 33,
+    })
+
+    const timeline = await requestJson(harness.server, "GET", `/sessions/${session.id}/timeline`)
+
+    expect(timeline.status).toBe(200)
+    expect(timeline.body.data.timeline.map((entry: { id: string }) => entry.id)).toEqual([
+      "entry_first",
+      "entry_second",
+    ])
+    expect(timeline.body.data.timeline).toMatchObject([
+      {
+        id: "entry_first",
+        producedByRunId: "run_newer",
+        runSequence: 0,
+        timelineSequence: 0,
+        parts: [{ id: "part_first", entryId: "entry_first", producedByRunId: "run_newer" }],
+      },
+      {
+        id: "entry_second",
+        producedByRunId: "run_older",
+        runSequence: 0,
+        timelineSequence: 1,
+        parts: [{ id: "part_second", entryId: "entry_second", producedByRunId: "run_older" }],
+      },
+    ])
+
+    const removedPath = ["trans", "cript"].join("")
+    const oldTimeline = await requestJson(harness.server, "GET", `/sessions/${session.id}/${removedPath}`)
+    expect(oldTimeline.status).toBe(404)
+  })
+
   test("excludes sub-sessions from the session list API", async () => {
     const harness = await createHarness("server-list-top-level-only", createTurnProvider([]))
     const session = harness.repository.sessions.create({
@@ -612,7 +700,7 @@ describe("server HTTP API and SSE", () => {
       )
       const completed = await waitForRunStatus(harness.server, runId, "completed")
       const sessionState = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
-      const transcript = await requestJson(harness.server, "GET", `/sessions/${sessionId}/transcript`)
+      const timeline = await requestJson(harness.server, "GET", `/sessions/${sessionId}/timeline`)
 
       expect(completed.run).toMatchObject({
         id: runId,
@@ -626,19 +714,19 @@ describe("server HTTP API and SSE", () => {
         source: "estimated",
       })
       expect(
-        transcript.body.data.transcript.filter((message: { role: string }) => message.role === "user"),
+        timeline.body.data.timeline.filter((message: { role: string }) => message.role === "user"),
       ).toMatchObject([
         {
-          runId: "run_server_manual_compact_history",
+          producedByRunId: "run_server_manual_compact_history",
           role: "user",
           parts: [{ kind: "text", text: "Previous shell-heavy work" }],
         },
       ])
-      expect(transcript.body.data.transcript).toEqual(
+      expect(timeline.body.data.timeline).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            runId,
-            role: "synthetic",
+            producedByRunId: runId,
+            role: "compaction",
             parts: expect.arrayContaining([
               expect.objectContaining({
                 kind: "compaction_boundary",
@@ -2122,16 +2210,16 @@ describe("server HTTP API and SSE", () => {
       status: "completed",
     })
 
-    const transcript = await requestJson(harness.server, "GET", `/sessions/${sessionId}/transcript`)
-    expect(transcript.status).toBe(200)
-    expect(transcript.body.data.transcript).toMatchObject([
+    const timeline = await requestJson(harness.server, "GET", `/sessions/${sessionId}/timeline`)
+    expect(timeline.status).toBe(200)
+    expect(timeline.body.data.timeline).toMatchObject([
       {
-        runId,
+        producedByRunId: runId,
         role: "user",
         parts: [{ kind: "text", text: "Reconnect me" }],
       },
       {
-        runId,
+        producedByRunId: runId,
         role: "assistant",
         parts: [{ kind: "text", text: "first second" }],
       },

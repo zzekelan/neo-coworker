@@ -28,11 +28,11 @@ export function useKeyboardShortcuts() {
 interface KeyboardShortcutProviderProps {
   children: React.ReactNode
   onNewSession?: () => void
-  onClearTranscript?: () => void
+  onClearTimeline?: () => void
   onCycleAgent?: () => void
 }
 
-export function KeyboardShortcutProvider({ children, onNewSession, onClearTranscript, onCycleAgent }: KeyboardShortcutProviderProps) {
+export function KeyboardShortcutProvider({ children, onNewSession, onClearTimeline, onCycleAgent }: KeyboardShortcutProviderProps) {
   const { toggleTheme } = useTheme()
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const registryRef = useRef<Map<string, ShortcutHandler>>(new Map())
@@ -84,9 +84,9 @@ export function KeyboardShortcutProvider({ children, onNewSession, onClearTransc
 
     unregisters.push(
       registerShortcut("meta+l", {
-        label: "Clear Transcript Display",
+        label: "Clear Timeline Display",
         handler: () => {
-          if (onClearTranscript) onClearTranscript()
+          if (onClearTimeline) onClearTimeline()
         },
       })
     )
@@ -103,7 +103,7 @@ export function KeyboardShortcutProvider({ children, onNewSession, onClearTransc
     return () => {
       unregisters.forEach((unreg) => unreg())
     }
-  }, [registerShortcut, onNewSession, toggleTheme, onClearTranscript, onCycleAgent])
+  }, [registerShortcut, onNewSession, toggleTheme, onClearTimeline, onCycleAgent])
 
   // Global keydown listener
   useEffect(() => {

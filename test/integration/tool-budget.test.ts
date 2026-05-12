@@ -76,8 +76,8 @@ describe("integration: tool budget wiring", () => {
     const handle = await runtime.run({ sessionId: harness.session.id, runId: started.run.id })
     await collectEvents(handle.events)
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const toolResult = transcript
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const toolResult = timeline
       .flatMap((message) => message.parts)
       .find((part) => part.kind === "tool_result")
 
@@ -214,8 +214,8 @@ describe("integration: tool budget wiring", () => {
     const handle = await runtime.run({ sessionId: harness.session.id, runId: started.run.id })
     await collectEvents(handle.events)
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const toolResult = transcript
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const toolResult = timeline
       .flatMap((message) => message.parts)
       .find((part) => part.kind === "tool_result")
 

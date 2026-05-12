@@ -10,7 +10,7 @@ import {
   type StoredPermissionRequest,
   type StoredRun,
   type StoredSession,
-  type TranscriptMessage,
+  type TimelineEntry,
 } from "../bootstrap"
 
 type SendRequest = (request: Request) => Promise<Response> | Response
@@ -34,7 +34,7 @@ export type AgentServerClient = {
     workspaceRoot: string
   }): Promise<StoredSession>
   getSession(sessionId: string): Promise<SessionSnapshot>
-  listSessionTranscript(sessionId: string): Promise<TranscriptMessage[]>
+  listSessionTimeline(sessionId: string): Promise<TimelineEntry[]>
   startRun(input: {
     sessionId: string
     prompt: string
@@ -142,10 +142,10 @@ export function createAgentServerClient(input: {
     getSession(sessionId) {
       return requestJson<SessionSnapshot>(`/sessions/${encodeURIComponent(sessionId)}`)
     },
-    listSessionTranscript(sessionId) {
-      return requestJson<{ transcript: TranscriptMessage[] }>(
-        `/sessions/${encodeURIComponent(sessionId)}/transcript`,
-      ).then((data) => data.transcript)
+    listSessionTimeline(sessionId) {
+      return requestJson<{ timeline: TimelineEntry[] }>(
+        `/sessions/${encodeURIComponent(sessionId)}/timeline`,
+      ).then((data) => data.timeline)
     },
     startRun(inputValue) {
       return requestJson<{
@@ -329,8 +329,8 @@ export async function createLocalCliServerClient(input: {
       async getSession(sessionId) {
         return app.sessions.get(sessionId)
       },
-      async listSessionTranscript(sessionId) {
-        return app.sessions.transcript(sessionId)
+      async listSessionTimeline(sessionId) {
+        return app.sessions.timeline(sessionId)
       },
       async startRun(runInput) {
         return app.runs.start({

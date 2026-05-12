@@ -10,8 +10,8 @@ export type {
   ModelTextPart,
   ModelToolCallPart,
   ModelToolResultPart,
-  ModelTranscriptMessage,
-  ModelTranscriptPart,
+  ModelTimelineMessage,
+  ModelTimelinePart,
 } from "./message"
 export type {
   ModelActiveSkill,

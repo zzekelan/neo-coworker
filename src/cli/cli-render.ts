@@ -77,11 +77,11 @@ function renderAssistantPart(
   event: Extract<ServerEvent, { type: "message.part.updated" }>,
 ) {
   const role = state.messageRoles.get(event.part.messageId)
-  if (role !== "assistant" && role !== "synthetic") {
+  if (role !== "assistant" && role !== "compaction") {
     return ""
   }
 
-  if (role === "synthetic" && event.part.kind === "text") {
+  if (role === "compaction" && event.part.kind === "text") {
     return ""
   }
 

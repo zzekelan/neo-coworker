@@ -9,13 +9,13 @@ import type {
 import type {
   OrchestrationRunRecord,
   OrchestrationSessionPort,
-  OrchestrationTranscriptMessage,
-  OrchestrationTranscriptPart,
+  OrchestrationTimelineMessage,
+  OrchestrationTimelinePart,
 } from "./ports/session"
 import type { OrchestrationSkillPort } from "./ports/skill"
 import type { OrchestrationToolPort } from "./ports/tool"
 import {
-  buildRecentFileRecoveryReminderFromTranscript,
+  buildRecentFileRecoveryReminderFromTimeline,
   createRecentFileTracker,
 } from "./recent-file-tracker"
 import {
@@ -54,7 +54,7 @@ const COMPACTION_SUMMARY_PROMPT = [
 ].join("\n")
 
 const ITERATIVE_COMPACTION_SUMMARY_PROMPT_PREFIX = [
-  "Update the existing compaction summary with the new conversation turns in this transcript.",
+  "Update the existing compaction summary with the new conversation turns in this timeline.",
   "Preserve still-relevant details from the previous summary, add new progress, and remove information only when it is clearly obsolete.",
   "Move completed work out of pending sections when appropriate.",
 ].join("\n")
@@ -79,12 +79,12 @@ type ExecuteCompactionInput = {
 
 type AutoCompactionInput = ExecuteCompactionInput & {
   run: OrchestrationRunRecord
-  transcript: OrchestrationTranscriptMessage[]
+  timeline: OrchestrationTimelineMessage[]
 }
 
 type CompactionRunInput = ExecuteCompactionInput & {
   run: OrchestrationRunRecord
-  transcript: OrchestrationTranscriptMessage[]
+  timeline: OrchestrationTimelineMessage[]
   trigger: CompactionMode
   tokensBefore: number
 }
@@ -100,9 +100,9 @@ type CompletedCompactionResult = CompactionRunResult & {
 }
 
 type CompactionPromptPlan = {
-  sourceMessages: OrchestrationTranscriptMessage[]
-  messagesToSummarize: OrchestrationTranscriptMessage[]
-  protectedTailMessages: OrchestrationTranscriptMessage[]
+  sourceMessages: OrchestrationTimelineMessage[]
+  messagesToSummarize: OrchestrationTimelineMessage[]
+  protectedTailMessages: OrchestrationTimelineMessage[]
   previousSummary: string | null
 }
 
@@ -119,7 +119,7 @@ type CompactionProjectionInput = {
   activeSkillNames: readonly string[]
   contextWindow: number
   tools: ReturnType<OrchestrationToolPort["list"]>
-  transcript: OrchestrationTranscriptMessage[]
+  timeline: OrchestrationTimelineMessage[]
   compressibleToolNames?: ReadonlySet<string>
   sessionId: string
   runId: string
@@ -171,8 +171,8 @@ export function createOrchestrationCompactionService(input: {
 
     const recentFileReminder =
       input.recentFiles.buildRecoveryReminder(inputValue.sessionId)
-      ?? buildRecentFileRecoveryReminderFromTranscript(
-        input.session.listTranscript(inputValue.sessionId),
+      ?? buildRecentFileRecoveryReminderFromTimeline(
+        input.session.listTimeline(inputValue.sessionId),
       )
     if (recentFileReminder) {
       input.skillReminders.appendRecoveryReminder({
@@ -185,16 +185,16 @@ export function createOrchestrationCompactionService(input: {
 
   return {
     shouldDeferAutoCompactionUntilAfterManualRecovery(inputValue: {
-      transcript: OrchestrationTranscriptMessage[]
+      timeline: OrchestrationTimelineMessage[]
       reminderBatch: SkillReminderBatch | undefined
     }) {
-      if (readLatestCompactionBoundaryTrigger(inputValue.transcript) !== "manual") {
+      if (readLatestCompactionBoundaryTrigger(inputValue.timeline) !== "manual") {
         return false
       }
 
       return (
         hasPendingRecoveryContext(inputValue.reminderBatch)
-        || isAwaitingFirstPostManualCompactionReply(inputValue.transcript)
+        || isAwaitingFirstPostManualCompactionReply(inputValue.timeline)
       )
     },
     async maybeAutoCompact(inputValue: AutoCompactionInput) {
@@ -202,7 +202,7 @@ export function createOrchestrationCompactionService(input: {
         return { compacted: false as const }
       }
 
-      if (!hasAutoCompactionSourceContext(inputValue.transcript, inputValue.run.id)) {
+      if (!hasAutoCompactionSourceContext(inputValue.timeline, inputValue.run.id)) {
         return { compacted: false as const }
       }
 
@@ -216,7 +216,7 @@ export function createOrchestrationCompactionService(input: {
         skillCatalog: inputValue.skillCatalog,
         activeSkillNames: inputValue.run.activeSkills,
         tools: inputValue.tools,
-        transcript: inputValue.transcript,
+        timeline: inputValue.timeline,
         compressibleToolNames: inputValue.compressibleToolNames,
         skillReminders: input.skillReminders,
         buildLateContextMessage: input.buildLateContextMessage,
@@ -226,7 +226,7 @@ export function createOrchestrationCompactionService(input: {
         return { compacted: false as const }
       }
 
-      const breakerState = readAutoCompactionState(inputValue.transcript)
+      const breakerState = readAutoCompactionState(inputValue.timeline)
       if (breakerState.open) {
         return { compacted: false as const }
       }
@@ -271,7 +271,7 @@ export function createOrchestrationCompactionService(input: {
         if (attemptCount >= AUTO_COMPACTION_FAILURE_LIMIT) {
           const breakerText =
             "⚠️ Automatic compaction has been paused. Run /compact successfully to re-enable it."
-          appendSyntheticMessageParts({
+          appendCompactionEntryParts({
             session: input.session,
             sessionId: inputValue.sessionId,
             runId: inputValue.run.id,
@@ -303,7 +303,7 @@ export function createOrchestrationCompactionService(input: {
     },
     async compactSession(inputValue: ExecuteCompactionInput): Promise<ManualCompactionResult> {
       const run = input.session.getRun(inputValue.runId)
-      const transcript = input.session.listTranscript(inputValue.sessionId)
+      const timeline = input.session.listTimeline(inputValue.sessionId)
 
       if (!input.model.projectTurn) {
         const error = "Manual compaction is unavailable because token projection is not configured."
@@ -324,8 +324,8 @@ export function createOrchestrationCompactionService(input: {
         }
       }
 
-      if (transcript.length === 0) {
-        const error = "Session has no transcript to compact."
+      if (timeline.length === 0) {
+        const error = "Session has no timeline to compact."
         appendCompactionFailureArtifacts({
           session: input.session,
           sessionId: inputValue.sessionId,
@@ -353,7 +353,7 @@ export function createOrchestrationCompactionService(input: {
         skillCatalog: inputValue.skillCatalog,
         activeSkillNames: run.activeSkills,
         tools: inputValue.tools,
-        transcript,
+        timeline,
         compressibleToolNames: inputValue.compressibleToolNames,
         skillReminders: input.skillReminders,
         buildLateContextMessage: input.buildLateContextMessage,
@@ -370,7 +370,7 @@ export function createOrchestrationCompactionService(input: {
           now,
           ...inputValue,
           run,
-          transcript,
+          timeline,
           trigger: "manual",
           tokensBefore: projectedBefore.inputTokens,
         })
@@ -455,7 +455,7 @@ async function completeCompaction(input: CompactionRunInput & {
     skillCatalog: input.skillCatalog,
     activeSkillNames: input.session.getSession(input.sessionId).activeSkills,
     tools: input.tools,
-    transcript: input.session.listTranscript(input.sessionId),
+    timeline: input.session.listTimeline(input.sessionId),
     compressibleToolNames: input.compressibleToolNames,
     skillReminders: input.skillReminders,
     buildLateContextMessage: input.buildLateContextMessage,
@@ -496,7 +496,7 @@ async function performCompactionRun(input: CompactionRunInput & {
   const summarizeRunId = `run_${crypto.randomUUID()}`
   const summarizeStartedAt = input.now()
   const promptPlan = buildCompactionPromptPlan({
-    transcript: input.transcript,
+    timeline: input.timeline,
     tailTokenBudget: resolveCompactionTailTokenBudget(input.contextWindow),
   })
 
@@ -524,12 +524,12 @@ async function performCompactionRun(input: CompactionRunInput & {
   })
 
   try {
-    const summary = await summarizeTranscript({
+    const summary = await summarizeTimeline({
       model: input.model,
       contextWindow: input.contextWindow,
       sessionId: input.sessionId,
       summarizeRunId,
-      transcript: promptPlan.messagesToSummarize,
+      timeline: promptPlan.messagesToSummarize,
       previousSummary: promptPlan.previousSummary,
       compressibleToolNames: input.compressibleToolNames,
       signal: input.signal,
@@ -602,7 +602,7 @@ async function performCompactionRun(input: CompactionRunInput & {
       },
     })
 
-    const syntheticMessage = appendSyntheticMessageParts({
+    const compactionEntry = appendCompactionEntryParts({
       session: input.session,
       sessionId: input.sessionId,
       runId: input.run.id,
@@ -626,7 +626,7 @@ async function performCompactionRun(input: CompactionRunInput & {
     })
 
     return {
-      boundaryPartId: syntheticMessage.parts[0]!.id,
+      boundaryPartId: compactionEntry.parts[0]!.id,
       summarizeRunId,
       tokensBefore: input.tokensBefore,
     } satisfies CompactionRunResult
@@ -706,11 +706,11 @@ function projectCompactionInputTokens(input: CompactionProjectionInput & {
       systemReminders: projectionContext.systemReminders,
       contextWindow: input.contextWindow,
       tools: input.tools,
-      transcript: input.transcript,
+      timeline: input.timeline,
       compressibleToolNames: input.compressibleToolNames,
       sessionId: input.sessionId,
       runId: input.runId,
-      turnKey: createTurnKey(input.runId, getNextMessageSequence(input.transcript, input.runId)),
+      turnKey: createTurnKey(input.runId, getNextMessageSequence(input.timeline, input.runId)),
     }) ?? { inputTokens: 0 }
   )
 }
@@ -744,12 +744,12 @@ function buildCompactionProjectionContext(input: {
   }
 }
 
-async function summarizeTranscript(input: {
+async function summarizeTimeline(input: {
   model: OrchestrationModelPort
   contextWindow: number
   sessionId: string
   summarizeRunId: string
-  transcript: OrchestrationTranscriptMessage[]
+  timeline: OrchestrationTimelineMessage[]
   previousSummary: string | null
   compressibleToolNames?: ReadonlySet<string>
   signal: AbortSignal
@@ -761,8 +761,8 @@ async function summarizeTranscript(input: {
     tokenUsageSource: null as "provider" | "estimated" | null,
   }
 
-  const summaryTranscript = [
-    ...input.transcript,
+  const summaryTimeline = [
+    ...input.timeline,
     {
       runId: input.summarizeRunId,
       role: "user" as const,
@@ -784,7 +784,7 @@ async function summarizeTranscript(input: {
     systemReminders: [],
     contextWindow: input.contextWindow,
     tools: [],
-    transcript: summaryTranscript,
+    timeline: summaryTimeline,
     compressibleToolNames: input.compressibleToolNames,
     sessionId: input.sessionId,
     runId: input.summarizeRunId,
@@ -839,18 +839,18 @@ function buildCompactionPromptText(previousSummary: string | null) {
 }
 
 function buildCompactionPromptPlan(input: {
-  transcript: OrchestrationTranscriptMessage[]
+  timeline: OrchestrationTimelineMessage[]
   tailTokenBudget: number
 }): CompactionPromptPlan {
-  const latestBoundaryIndex = findLatestCompactionBoundaryIndex(input.transcript)
+  const latestBoundaryIndex = findLatestCompactionBoundaryIndex(input.timeline)
   const previousSummary =
     latestBoundaryIndex >= 0
-      ? extractPreviousCompactionSummary(input.transcript[latestBoundaryIndex] ?? null)
+      ? extractPreviousCompactionSummary(input.timeline[latestBoundaryIndex] ?? null)
       : null
   const sourceMessages =
-    latestBoundaryIndex >= 0 ? input.transcript.slice(latestBoundaryIndex + 1) : input.transcript
+    latestBoundaryIndex >= 0 ? input.timeline.slice(latestBoundaryIndex + 1) : input.timeline
   const protectedTailMessages = selectTailMessagesByTokenBudget({
-    transcript: sourceMessages,
+    timeline: sourceMessages,
     tailTokenBudget: input.tailTokenBudget,
   })
   const protectedTailSet = new Set(protectedTailMessages)
@@ -864,23 +864,23 @@ function buildCompactionPromptPlan(input: {
 }
 
 export function selectTailMessagesByTokenBudget(input: {
-  transcript: OrchestrationTranscriptMessage[]
+  timeline: OrchestrationTimelineMessage[]
   tailTokenBudget: number
 }) {
-  if (input.transcript.length <= 1) {
+  if (input.timeline.length <= 1) {
     return []
   }
 
-  const selected: OrchestrationTranscriptMessage[] = []
+  const selected: OrchestrationTimelineMessage[] = []
   let accumulatedTokens = 0
 
-  for (let index = input.transcript.length - 1; index >= 0; index -= 1) {
-    const message = input.transcript[index]
+  for (let index = input.timeline.length - 1; index >= 0; index -= 1) {
+    const message = input.timeline[index]
     if (!isProtectedTailCandidate(message)) {
       continue
     }
 
-    const nextTokens = estimateTranscriptMessageTokens(message)
+    const nextTokens = estimateTimelineMessageTokens(message)
     if (accumulatedTokens + nextTokens > input.tailTokenBudget && selected.length > 0) {
       break
     }
@@ -889,22 +889,22 @@ export function selectTailMessagesByTokenBudget(input: {
     selected.unshift(message)
   }
 
-  return selected.length === input.transcript.length ? selected.slice(1) : selected
+  return selected.length === input.timeline.length ? selected.slice(1) : selected
 }
 
-function estimateTranscriptMessageTokens(message: OrchestrationTranscriptMessage | undefined) {
+function estimateTimelineMessageTokens(message: OrchestrationTimelineMessage | undefined) {
   if (!message) {
     return 0
   }
 
   let tokens = 8
   for (const part of message.parts) {
-    tokens += estimateTranscriptPartTokens(part)
+    tokens += estimateTimelinePartTokens(part)
   }
   return tokens
 }
 
-function estimateTranscriptPartTokens(part: OrchestrationTranscriptPart) {
+function estimateTimelinePartTokens(part: OrchestrationTimelinePart) {
   let tokens = 0
   if (part.text) {
     tokens += countTokens(part.text)
@@ -926,7 +926,7 @@ function resolveCompactionTailTokenBudget(contextWindow: number) {
 
 function buildCompactionSummaryText(input: {
   summaryText: string
-  protectedTailMessages: OrchestrationTranscriptMessage[]
+  protectedTailMessages: OrchestrationTimelineMessage[]
 }) {
   const summaryBody = [COMPACTION_HANDOFF_FRAMING, "", input.summaryText].join("\n")
   const protectedTailText = renderProtectedTailMessages(input.protectedTailMessages)
@@ -938,7 +938,7 @@ function buildCompactionSummaryText(input: {
   return [summaryBody, "", COMPACTION_TAIL_HEADING, "", protectedTailText].join("\n")
 }
 
-function renderProtectedTailMessages(messages: OrchestrationTranscriptMessage[]) {
+function renderProtectedTailMessages(messages: OrchestrationTimelineMessage[]) {
   const rendered = messages
     .map((message) => {
       const text = renderProtectedTailMessage(message)
@@ -949,7 +949,7 @@ function renderProtectedTailMessages(messages: OrchestrationTranscriptMessage[])
   return rendered.length > 0 ? rendered.join("\n\n") : null
 }
 
-function renderProtectedTailMessage(message: OrchestrationTranscriptMessage) {
+function renderProtectedTailMessage(message: OrchestrationTimelineMessage) {
   const renderedParts = message.parts
     .map((part) => renderProtectedTailPart(part))
     .filter((value): value is string => value !== null)
@@ -957,7 +957,7 @@ function renderProtectedTailMessage(message: OrchestrationTranscriptMessage) {
   return renderedParts.length > 0 ? renderedParts.join("\n") : null
 }
 
-function renderProtectedTailPart(part: OrchestrationTranscriptPart) {
+function renderProtectedTailPart(part: OrchestrationTimelinePart) {
   if (part.kind === "tool_call") {
     const data = readObject(part.data)
     const toolName = readString(data, "toolName") ?? "unknown"
@@ -979,7 +979,7 @@ function renderProtectedTailPart(part: OrchestrationTranscriptPart) {
   return part.text?.trim() ? part.text : null
 }
 
-function extractPreviousCompactionSummary(message: OrchestrationTranscriptMessage | null) {
+function extractPreviousCompactionSummary(message: OrchestrationTimelineMessage | null) {
   const summaryText =
     message?.parts.find((part) => part.kind === "text" && part.text?.trim())?.text ?? null
   if (!summaryText) {
@@ -999,9 +999,9 @@ function extractPreviousCompactionSummary(message: OrchestrationTranscriptMessag
   return normalized
 }
 
-function findLatestCompactionBoundaryIndex(transcript: OrchestrationTranscriptMessage[]) {
-  for (let index = transcript.length - 1; index >= 0; index -= 1) {
-    if (transcript[index]?.parts.some((part) => part.kind === "compaction_boundary")) {
+function findLatestCompactionBoundaryIndex(timeline: OrchestrationTimelineMessage[]) {
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    if (timeline[index]?.parts.some((part) => part.kind === "compaction_boundary")) {
       return index
     }
   }
@@ -1037,24 +1037,24 @@ function hasPendingRecoveryContext(reminderBatch: SkillReminderBatch | undefined
 }
 
 function hasAutoCompactionSourceContext(
-  transcript: OrchestrationTranscriptMessage[],
+  timeline: OrchestrationTimelineMessage[],
   currentRunId: string,
 ) {
-  return transcript.some((message) => message.runId !== currentRunId)
+  return timeline.some((message) => readProducedByRunId(message) !== currentRunId)
 }
 
-function isAwaitingFirstPostManualCompactionReply(transcript: OrchestrationTranscriptMessage[]) {
-  const latestBoundaryIndex = findLatestCompactionBoundaryIndex(transcript)
+function isAwaitingFirstPostManualCompactionReply(timeline: OrchestrationTimelineMessage[]) {
+  const latestBoundaryIndex = findLatestCompactionBoundaryIndex(timeline)
   if (latestBoundaryIndex < 0) {
     return false
   }
 
-  return !transcript
+  return !timeline
     .slice(latestBoundaryIndex + 1)
-    .some((message) => message.role === "assistant" || message.role === "synthetic")
+    .some((message) => message.role === "assistant" || message.role === "compaction")
 }
 
-function isProtectedTailCandidate(message: OrchestrationTranscriptMessage | undefined) {
+function isProtectedTailCandidate(message: OrchestrationTimelineMessage | undefined) {
   if (!message) {
     return false
   }
@@ -1085,7 +1085,7 @@ function appendCompactionFailureArtifacts(input: {
 }) {
   const label =
     input.trigger === "auto" ? "Automatic compaction failed" : "Manual compaction failed"
-  appendSyntheticMessageParts({
+  appendCompactionEntryParts({
     session: input.session,
     sessionId: input.sessionId,
     runId: input.runId,
@@ -1118,7 +1118,7 @@ function readCompactionSummarizeRunId(error: unknown) {
   return error instanceof CompactionRunError ? error.summarizeRunId : null
 }
 
-function appendSyntheticMessageParts(input: {
+function appendCompactionEntryParts(input: {
   session: OrchestrationSessionPort
   sessionId: string
   runId: string
@@ -1129,8 +1129,8 @@ function appendSyntheticMessageParts(input: {
     data?: unknown
   }>
 }) {
-  const sequence = getNextMessageSequence(input.session.listTranscript(input.sessionId), input.runId)
-  const message = input.session.createSyntheticMessage({
+  const sequence = getNextMessageSequence(input.session.listTimeline(input.sessionId), input.runId)
+  const message = input.session.createCompactionMessage({
     sessionId: input.sessionId,
     runId: input.runId,
     sequence,
@@ -1155,12 +1155,12 @@ function appendSyntheticMessageParts(input: {
   }
 }
 
-function readAutoCompactionState(transcript: OrchestrationTranscriptMessage[]) {
+function readAutoCompactionState(timeline: OrchestrationTimelineMessage[]) {
   let consecutiveFailures = 0
   let lastError: string | null = null
 
-  for (let messageIndex = transcript.length - 1; messageIndex >= 0; messageIndex -= 1) {
-    const message = transcript[messageIndex]
+  for (let messageIndex = timeline.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = timeline[messageIndex]
     if (!message) {
       continue
     }
@@ -1221,9 +1221,9 @@ function readAutoCompactionState(transcript: OrchestrationTranscriptMessage[]) {
   }
 }
 
-function readLatestCompactionBoundaryTrigger(transcript: OrchestrationTranscriptMessage[]) {
-  for (let messageIndex = transcript.length - 1; messageIndex >= 0; messageIndex -= 1) {
-    const message = transcript[messageIndex]
+function readLatestCompactionBoundaryTrigger(timeline: OrchestrationTimelineMessage[]) {
+  for (let messageIndex = timeline.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = timeline[messageIndex]
     if (!message) {
       continue
     }
@@ -1248,12 +1248,20 @@ function createTurnKey(runId: string, messageSequence: number) {
   return `${runId}:turn_${messageSequence}`
 }
 
-function getNextMessageSequence(transcript: OrchestrationTranscriptMessage[], runId: string) {
-  const highestSequence = transcript
-    .filter((message) => message.runId === runId)
-    .reduce((value, message) => Math.max(value, message.sequence), -1)
+function getNextMessageSequence(timeline: OrchestrationTimelineMessage[], runId: string) {
+  const highestSequence = timeline
+    .filter((message) => readProducedByRunId(message) === runId)
+    .reduce((value, message) => Math.max(value, readRunSequence(message)), -1)
 
   return highestSequence + 1
+}
+
+function readProducedByRunId(message: OrchestrationTimelineMessage) {
+  return message.producedByRunId ?? message.runId
+}
+
+function readRunSequence(message: OrchestrationTimelineMessage) {
+  return message.runSequence ?? message.sequence
 }
 
 function recordObservedRuntimeEvent(input: {

@@ -36,7 +36,7 @@ jobs:
           test/runtime/subsession-isolation.test.ts
           test/orchestration/step-service-tool-permission-check.test.ts
           test/orchestration/tool-executor.test.ts
-          test/desktop/transcript-mapper.test.ts
+          test/desktop/timeline-mapper.test.ts
 
       - name: Run structure checks
         run: bun run test:structure

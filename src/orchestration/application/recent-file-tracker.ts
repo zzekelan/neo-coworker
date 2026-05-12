@@ -1,5 +1,5 @@
 import { countTokens } from "gpt-tokenizer/model/gpt-4o"
-import type { OrchestrationTranscriptMessage } from "./ports/session"
+import type { OrchestrationTimelineMessage } from "./ports/session"
 
 const MAX_TRACKED_FILES = 10
 const MAX_RECOVERY_FILES = 5
@@ -55,10 +55,10 @@ export function createRecentFileTracker() {
   }
 }
 
-export function buildRecentFileRecoveryReminderFromTranscript(
-  transcript: OrchestrationTranscriptMessage[],
+export function buildRecentFileRecoveryReminderFromTimeline(
+  timeline: OrchestrationTimelineMessage[],
 ): RecentFileRecoveryReminder | null {
-  return buildRecoveryReminderFromEntries(collectRecentReadEntriesFromTranscript(transcript))
+  return buildRecoveryReminderFromEntries(collectRecentReadEntriesFromTimeline(timeline))
 }
 
 function buildRecoveryReminderFromEntries(
@@ -101,11 +101,11 @@ function buildRecoveryReminderFromEntries(
   }
 }
 
-function collectRecentReadEntriesFromTranscript(transcript: OrchestrationTranscriptMessage[]) {
+function collectRecentReadEntriesFromTimeline(timeline: OrchestrationTimelineMessage[]) {
   const readCallPaths = new Map<string, string>()
   const recentEntries = new Map<string, RecentFileEntry>()
 
-  for (const message of transcript) {
+  for (const message of timeline) {
     for (const part of message.parts) {
       if (part.kind === "tool_call") {
         const data = readObject(part.data)

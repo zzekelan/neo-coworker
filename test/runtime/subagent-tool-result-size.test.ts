@@ -28,7 +28,7 @@ afterEach(async () => {
 })
 
 describe("subagent tool result size management", () => {
-  test("truncates and persists oversized subagent-scoped webfetch results before transcript replay", async () => {
+  test("truncates and persists oversized subagent-scoped webfetch results before timeline replay", async () => {
     const workspaceRoot = await createWorkspaceRoot()
     const observerEvents: ToolObserverEvent[] = []
     const session = createSessionPortStub({ sessionId: "parent_session" })
@@ -67,7 +67,7 @@ describe("subagent tool result size management", () => {
           },
           model: {
             async *streamTurn(request) {
-              if (request.transcript.some((message) => message.parts.some((part) => part.kind === "tool_result"))) {
+              if (request.timeline.some((message) => message.parts.some((part) => part.kind === "tool_result"))) {
                 serializedSecondRequest = JSON.stringify(request)
                 yield { type: "text.delta", text: "done" }
                 return
@@ -96,7 +96,7 @@ describe("subagent tool result size management", () => {
               activeSkills,
             })
             session.setRunParentRunId({ runId: subRunId, parentRunId })
-            session.seedTranscriptMessage({
+            session.seedTimelineMessage({
               sessionId: "ses_abc",
               runId: subRunId,
               role: "user",
@@ -127,9 +127,9 @@ describe("subagent tool result size management", () => {
       )
     })
 
-    const transcriptJson = JSON.stringify(session.listTranscript("ses_abc"))
+    const timelineJson = JSON.stringify(session.listTimeline("ses_abc"))
     const toolResultPart = session
-      .listTranscript("ses_abc")
+      .listTimeline("ses_abc")
       .flatMap((message) => message.parts)
       .find((part) => part.kind === "tool_result")
     const metadata = readMetadata(toolResultPart?.data)
@@ -138,7 +138,7 @@ describe("subagent tool result size management", () => {
     expect(serializedSecondRequest).not.toBe("")
     expect(serializedSecondRequest).not.toContain(TAIL_SENTINEL)
     expect(serializedSecondRequest).toContain("Result truncated")
-    expect(transcriptJson).not.toContain(TAIL_SENTINEL)
+    expect(timelineJson).not.toContain(TAIL_SENTINEL)
     expect(metadata).toMatchObject({
       truncated: true,
       originalSize: Buffer.byteLength(oversizedOutput, "utf8"),
@@ -227,18 +227,18 @@ type SessionPort = CreateSubAgentRunInput["session"]
 type SessionPortStub = SessionPort & {
   setSession(input: { sessionId: string; activeSkills?: string[]; parentSessionId?: string }): void
   setRunParentRunId(input: { runId: string; parentRunId: string | null }): void
-  seedTranscriptMessage(input: {
+  seedTimelineMessage(input: {
     sessionId: string
     runId: string
-    role: TranscriptMessage["role"]
+    role: TimelineMessage["role"]
     sequence: number
-    parts: TranscriptPart[]
+    parts: TimelinePart[]
   }): void
 }
 type SessionRecord = ReturnType<SessionPort["getSession"]>
 type RunRecord = ReturnType<SessionPort["getRun"]>
-type TranscriptMessage = ReturnType<SessionPort["listTranscript"]>[number]
-type TranscriptPart = TranscriptMessage["parts"][number]
+type TimelineMessage = ReturnType<SessionPort["listTimeline"]>[number]
+type TimelinePart = TimelineMessage["parts"][number]
 
 function createSessionPortStub(input: { sessionId: string; activeSkills?: string[] }): SessionPortStub {
   const sessions = new Map<string, SessionRecord>([
@@ -251,11 +251,11 @@ function createSessionPortStub(input: { sessionId: string; activeSkills?: string
       },
     ],
   ])
-  const transcripts = new Map<string, TranscriptMessage[]>([[input.sessionId, []]])
+  const timelines = new Map<string, TimelineMessage[]>([[input.sessionId, []]])
   const runs = new Map<string, RunRecord>()
   const runParentIds = new Map<string, string | null>()
-  const messages = new Map<string, TranscriptMessage>()
-  const parts = new Map<string, TranscriptPart>()
+  const messages = new Map<string, TimelineMessage>()
+  const parts = new Map<string, TimelinePart>()
   let messageCounter = 0
   let partCounter = 0
 
@@ -273,14 +273,14 @@ function createSessionPortStub(input: { sessionId: string; activeSkills?: string
     sessions.set(sessionId, created)
     return created
   }
-  const getTranscript = (sessionId: string) => {
-    const existing = transcripts.get(sessionId)
+  const getTimeline = (sessionId: string) => {
+    const existing = timelines.get(sessionId)
     if (existing) {
       return existing
     }
 
-    const created: TranscriptMessage[] = []
-    transcripts.set(sessionId, created)
+    const created: TimelineMessage[] = []
+    timelines.set(sessionId, created)
     return created
   }
   const ensureRun = (runId: string) => {
@@ -303,24 +303,24 @@ function createSessionPortStub(input: { sessionId: string; activeSkills?: string
     runParentIds.set(runId, null)
     return created
   }
-  const cloneTranscript = (message: TranscriptMessage): TranscriptMessage => ({
+  const cloneTimeline = (message: TimelineMessage): TimelineMessage => ({
     ...message,
     parts: message.parts.map((part) => ({ ...part })),
   })
   const createMessage = (messageInput: {
     sessionId: string
     runId: string
-    role: TranscriptMessage["role"]
+    role: TimelineMessage["role"]
     sequence: number
   }) => {
     const messageId = `message-${++messageCounter}`
-    const message: TranscriptMessage = {
+    const message: TimelineMessage = {
       runId: messageInput.runId,
       role: messageInput.role,
       sequence: messageInput.sequence,
       parts: [],
     }
-    getTranscript(messageInput.sessionId).push(message)
+    getTimeline(messageInput.sessionId).push(message)
     messages.set(messageId, message)
     return { id: messageId }
   }
@@ -335,8 +335,8 @@ function createSessionPortStub(input: { sessionId: string; activeSkills?: string
       const run = ensureRun(runId)
       return { ...run, activeSkills: [...run.activeSkills] }
     },
-    listTranscript(sessionId) {
-      return getTranscript(sessionId).map(cloneTranscript)
+    listTimeline(sessionId) {
+      return getTimeline(sessionId).map(cloneTimeline)
     },
     createRun(run) {
       const record: RunRecord = {
@@ -361,11 +361,11 @@ function createSessionPortStub(input: { sessionId: string; activeSkills?: string
         sequence: message.sequence,
       })
     },
-    createSyntheticMessage(message) {
+    createCompactionMessage(message) {
       return createMessage({
         sessionId: message.sessionId,
         runId: message.runId,
-        role: "synthetic",
+        role: "compaction",
         sequence: message.sequence,
       })
     },
@@ -376,7 +376,7 @@ function createSessionPortStub(input: { sessionId: string; activeSkills?: string
       }
 
       const partId = `part-${++partCounter}`
-      const storedPart: TranscriptPart = {
+      const storedPart: TimelinePart = {
         kind: part.kind,
         text: part.text ?? null,
         data: part.data,
@@ -445,14 +445,14 @@ function createSessionPortStub(input: { sessionId: string; activeSkills?: string
         workspaceRoot: "/workspace",
         activeSkills: [...(activeSkills ?? [])],
       })
-      getTranscript(sessionId)
+      getTimeline(sessionId)
     },
     setRunParentRunId({ runId, parentRunId }) {
       ensureRun(runId)
       runParentIds.set(runId, parentRunId)
     },
-    seedTranscriptMessage({ sessionId, runId, role, sequence, parts: messageParts }) {
-      getTranscript(sessionId).push({
+    seedTimelineMessage({ sessionId, runId, role, sequence, parts: messageParts }) {
+      getTimeline(sessionId).push({
         runId,
         role,
         sequence,

@@ -44,7 +44,7 @@
       "shell"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "checkpoints": [
       {
         "messageIndex": 1,

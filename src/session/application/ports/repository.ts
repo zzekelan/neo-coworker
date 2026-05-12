@@ -1,4 +1,4 @@
-export type MessageRole = "user" | "assistant" | "synthetic"
+export type MessageRole = "user" | "assistant" | "compaction"
 export type PartKind =
   | "text"
   | "reasoning"
@@ -8,6 +8,7 @@ export type PartKind =
   | "step_finish"
   | "error"
   | "patch"
+  | "compaction_boundary"
 export type RunTrigger =
   | "cli"
   | "prompt"
@@ -76,8 +77,20 @@ export type StoredPart = {
   createdAt: number
 }
 
-export type TranscriptMessage = StoredMessage & {
+export type TimelineMessage = StoredMessage & {
   parts: StoredPart[]
+}
+
+export type TimelinePart = Omit<StoredPart, "runId" | "messageId"> & {
+  entryId: string
+  producedByRunId: string
+}
+
+export type TimelineEntry = Omit<StoredMessage, "runId" | "sequence"> & {
+  producedByRunId: string
+  runSequence: number
+  timelineSequence: number
+  parts: TimelinePart[]
 }
 
 type EntityType = "session" | "run" | "message" | "part"
@@ -157,6 +170,28 @@ export type CreatePartInput = {
   sessionId: string
   runId: string
   messageId: string
+  kind: PartKind
+  sequence: number
+  text?: string | null
+  data?: unknown
+  createdAt?: number
+}
+
+export type AppendTimelineEntryInput = {
+  id?: string
+  sessionId: string
+  producedByRunId: string
+  agent?: string
+  role: MessageRole
+  runSequence: number
+  createdAt?: number
+}
+
+export type AppendTimelinePartInput = {
+  id?: string
+  sessionId: string
+  producedByRunId: string
+  entryId: string
   kind: PartKind
   sequence: number
   text?: string | null
@@ -266,7 +301,12 @@ export type SessionRepository = {
   messages: {
     create(message: CreateMessageInput): StoredMessage
     get(messageId: string): StoredMessage
-    listSessionTranscript(sessionId: string): TranscriptMessage[]
+    listSessionTimeline(sessionId: string): TimelineMessage[]
+  }
+  timeline: {
+    appendEntry(input: AppendTimelineEntryInput): TimelineEntry
+    appendPart(input: AppendTimelinePartInput): TimelinePart
+    listEntries(sessionId: string): TimelineEntry[]
   }
   parts: {
     create(part: CreatePartInput): StoredPart

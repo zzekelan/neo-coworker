@@ -6,11 +6,11 @@ import type {
   DesktopSessionSnapshot,
   DesktopSkillCatalogEntry,
   DesktopWorkspace,
-  DesktopTranscriptMessage,
+  DesktopTimelineMessage,
   DesktopContextUsage,
   DesktopPrimaryAgent,
 } from "../view-types"
-import { mapTranscriptMessage } from "../transcript-mapper"
+import { mapTimelineMessage } from "../timeline-mapper"
 import { getNextPrimaryAgent } from "../agent-cycle"
 
 export function useAgent() {
@@ -49,11 +49,11 @@ export function useAgent() {
     isManagingWorkspace: desktop.isManagingWorkspace,
     skills: desktop.skills.map(mapSkillCatalogEntry),
     session: desktop.sessionSnapshot ? mapSessionSnapshot(desktop.sessionSnapshot) : null,
-    transcript: mergeConsecutiveToolMessages(
-      desktop.transcript
+    timeline: mergeConsecutiveToolMessages(
+      desktop.timeline
         .filter((message) => !subagentRunIds.has(message.runId))
         .map((message) =>
-          mapTranscriptMessage(message, {
+          mapTimelineMessage(message, {
             runStatusById,
           }),
         ),
@@ -210,13 +210,13 @@ function mapPrimaryAgent(
   }
 }
 
-function isToolOnlyMessage(msg: DesktopTranscriptMessage): boolean {
+function isToolOnlyMessage(msg: DesktopTimelineMessage): boolean {
   return msg.role === "assistant" && !!msg.parts && msg.parts.length > 0 && msg.parts.every((p) => p.type === "tool_call" || p.type === "tool_result")
 }
 
 /** Merge consecutive assistant messages that contain only tool calls into a single message for grouping. */
-function mergeConsecutiveToolMessages(messages: DesktopTranscriptMessage[]): DesktopTranscriptMessage[] {
-  const result: DesktopTranscriptMessage[] = []
+function mergeConsecutiveToolMessages(messages: DesktopTimelineMessage[]): DesktopTimelineMessage[] {
+  const result: DesktopTimelineMessage[] = []
   for (const msg of messages) {
     const prev = result[result.length - 1]
     if (isToolOnlyMessage(msg) && prev && isToolOnlyMessage(prev)) {

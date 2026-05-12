@@ -70,7 +70,7 @@
       "run.completed"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "orderedTextIncludes": [
       "context recovery fixture",
       "Breaker prep ready",

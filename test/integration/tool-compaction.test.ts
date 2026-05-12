@@ -3,7 +3,7 @@ import {
   MICROCOMPACT_CLEARED_TOOL_RESULT_TEXT,
   buildModelTurnProjection,
   type ModelProjectionInput,
-  type ModelTranscriptMessage,
+  type ModelTimelineMessage,
 } from "../../src/model"
 import {
   createOrchestrationStepService,
@@ -14,7 +14,7 @@ import {
   type OrchestrationRunRecord,
   type OrchestrationSessionPort,
   type OrchestrationSkillPort,
-  type OrchestrationTranscriptMessage,
+  type OrchestrationTimelineMessage,
   type OrchestrationToolPort,
 } from "../../src/orchestration"
 import {
@@ -27,7 +27,7 @@ function deriveCompressibleToolNames(tools: readonly ToolDefinition[]) {
   return new Set(tools.filter((tool) => tool.isCompressible).map((tool) => tool.name))
 }
 
-function makeTranscript(toolName: string, count: number): ModelTranscriptMessage[] {
+function makeTimeline(toolName: string, count: number): ModelTimelineMessage[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `message_${toolName}_${index}`,
     sessionId: "session_1",
@@ -55,7 +55,7 @@ function makeTranscript(toolName: string, count: number): ModelTranscriptMessage
 }
 
 function makeInput(
-  transcript: ModelTranscriptMessage[],
+  timeline: ModelTimelineMessage[],
   compressibleToolNames: ReadonlySet<string>,
 ): ModelProjectionInput {
   return {
@@ -64,7 +64,7 @@ function makeInput(
     activeSkills: [],
     contextWindow: 200,
     tools: [],
-    transcript,
+    timeline,
     compressibleToolNames,
   }
 }
@@ -72,7 +72,7 @@ function makeInput(
 describe("integration: tool metadata drives compaction", () => {
   test("compresses older tool results when ToolDefinition.isCompressible is true", () => {
     const compressibleToolNames = deriveCompressibleToolNames([createReadTool()])
-    const projection = buildModelTurnProjection(makeInput(makeTranscript("read", 7), compressibleToolNames))
+    const projection = buildModelTurnProjection(makeInput(makeTimeline("read", 7), compressibleToolNames))
 
     expect(compressibleToolNames.has("read")).toBe(true)
     expect(projection.microcompact).not.toBeNull()
@@ -94,7 +94,7 @@ describe("integration: tool metadata drives compaction", () => {
   test("retains tool results when ToolDefinition.isCompressible is false", () => {
     const requestPermission = async () => ({ decision: "allow" as const })
     const compressibleToolNames = deriveCompressibleToolNames([createEditTool({ requestPermission })])
-    const projection = buildModelTurnProjection(makeInput(makeTranscript("edit", 7), compressibleToolNames))
+    const projection = buildModelTurnProjection(makeInput(makeTimeline("edit", 7), compressibleToolNames))
 
     expect(compressibleToolNames.size).toBe(0)
     expect(projection.microcompact).toBeNull()
@@ -113,9 +113,9 @@ describe("integration: tool metadata drives compaction", () => {
 describe("integration: step-service metadata-driven microcompaction", () => {
   test("executeStep threads explicit compressible metadata for non-default tools", async () => {
     const session = createMemorySession({
-      transcript: makeOrchestrationToolHistory("get_current_datetime", 7, "run_history"),
+      timeline: makeOrchestrationToolHistory("get_current_datetime", 7, "run_history"),
     })
-    session.transcript.push(makeUserMessage(session.runId, 0, "What time is it?"))
+    session.timeline.push(makeUserMessage(session.runId, 0, "What time is it?"))
     const captured = createExecuteStepModelCapture()
     const stepService = createOrchestrationStepService({
       session,
@@ -157,9 +157,9 @@ describe("integration: step-service metadata-driven microcompaction", () => {
 
   test("executeStep preserves fallback when tools do not expose isCompressible metadata", async () => {
     const session = createMemorySession({
-      transcript: makeOrchestrationToolHistory("read", 7, "run_history"),
+      timeline: makeOrchestrationToolHistory("read", 7, "run_history"),
     })
-    session.transcript.push(makeUserMessage(session.runId, 0, "Read the file again"))
+    session.timeline.push(makeUserMessage(session.runId, 0, "Read the file again"))
     const captured = createExecuteStepModelCapture()
     const stepService = createOrchestrationStepService({
       session,
@@ -195,9 +195,9 @@ describe("integration: step-service metadata-driven microcompaction", () => {
 
   test("executeStep honors explicit false metadata for default fallback tools", async () => {
     const session = createMemorySession({
-      transcript: makeOrchestrationToolHistory("read", 7, "run_history"),
+      timeline: makeOrchestrationToolHistory("read", 7, "run_history"),
     })
-    session.transcript.push(makeUserMessage(session.runId, 0, "Read the file again"))
+    session.timeline.push(makeUserMessage(session.runId, 0, "Read the file again"))
     const captured = createExecuteStepModelCapture()
     const stepService = createOrchestrationStepService({
       session,
@@ -234,7 +234,7 @@ describe("integration: step-service metadata-driven microcompaction", () => {
 
   test("compactSession threads explicit compressible metadata into projection and summary requests", async () => {
     const session = createMemorySession({
-      transcript: makeOrchestrationToolHistory("get_current_datetime", 7, "run_history"),
+      timeline: makeOrchestrationToolHistory("get_current_datetime", 7, "run_history"),
     })
     const captured = createCompactionModelCapture()
     const stepService = createOrchestrationStepService({
@@ -377,7 +377,7 @@ function makeOrchestrationToolHistory(
   toolName: string,
   count: number,
   runId: string,
-): OrchestrationTranscriptMessage[] {
+): OrchestrationTimelineMessage[] {
   return Array.from({ length: count }, (_, index) => ({
     runId,
     role: "assistant" as const,
@@ -395,7 +395,7 @@ function makeOrchestrationToolHistory(
   }))
 }
 
-function makeUserMessage(runId: string, sequence: number, text: string): OrchestrationTranscriptMessage {
+function makeUserMessage(runId: string, sequence: number, text: string): OrchestrationTimelineMessage {
   return {
     runId,
     role: "user",
@@ -404,13 +404,13 @@ function makeUserMessage(runId: string, sequence: number, text: string): Orchest
   }
 }
 
-function createMemorySession(input: { transcript: OrchestrationTranscriptMessage[] }) {
+function createMemorySession(input: { timeline: OrchestrationTimelineMessage[] }) {
   const sessionId = "session_compaction"
   const runId = "run_compaction"
   let nextMessageId = 0
   let nextPartId = 0
-  const transcript = [...input.transcript]
-  const messageIds = new Map<string, OrchestrationTranscriptMessage>()
+  const timeline = [...input.timeline]
+  const messageIds = new Map<string, OrchestrationTimelineMessage>()
   const partIds = new Map<string, OrchestrationPartRecord>()
   const runs = new Map<string, OrchestrationRunRecord>([
     [
@@ -431,11 +431,11 @@ function createMemorySession(input: { transcript: OrchestrationTranscriptMessage
   const session: OrchestrationSessionPort & {
     sessionId: string
     runId: string
-    transcript: OrchestrationTranscriptMessage[]
+    timeline: OrchestrationTimelineMessage[]
   } = {
     sessionId,
     runId,
-    transcript,
+    timeline,
     storageIdentity: "memory",
     getSession(requestedSessionId) {
       if (requestedSessionId !== sessionId) {
@@ -456,12 +456,12 @@ function createMemorySession(input: { transcript: OrchestrationTranscriptMessage
 
       return run
     },
-    listTranscript(requestedSessionId) {
+    listTimeline(requestedSessionId) {
       if (requestedSessionId !== sessionId) {
         throw new Error(`Unknown session ${requestedSessionId}`)
       }
 
-      return transcript
+      return timeline
     },
     createRun(inputValue) {
       const run: OrchestrationRunRecord = {
@@ -479,25 +479,25 @@ function createMemorySession(input: { transcript: OrchestrationTranscriptMessage
     },
     createAssistantMessage(inputValue) {
       const id = `assistant_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+      const message: OrchestrationTimelineMessage = {
         runId: inputValue.runId,
         role: "assistant",
         sequence: inputValue.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },
-    createSyntheticMessage(inputValue) {
-      const id = `synthetic_message_${nextMessageId++}`
-      const message: OrchestrationTranscriptMessage = {
+    createCompactionMessage(inputValue) {
+      const id = `compaction_message_${nextMessageId++}`
+      const message: OrchestrationTimelineMessage = {
         runId: inputValue.runId,
-        role: "synthetic",
+        role: "compaction",
         sequence: inputValue.sequence,
         parts: [],
       }
-      transcript.push(message)
+      timeline.push(message)
       messageIds.set(id, message)
       return { id }
     },

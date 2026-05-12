@@ -8,6 +8,7 @@ import {
   createSessionRuntimeApi,
   openSessionDatabase as openStorageDatabase,
   resolvePermissionPendingRunStatus,
+  timelineEntriesToTimelineMessages,
   type SessionDatabase,
   type SessionProvider,
   type SessionRepository as StorageRepository,
@@ -177,7 +178,7 @@ export function createOrchestrationModelPort(provider: ModelProvider): Orchestra
         systemReminderMetadata: request.systemReminderMetadata,
         contextWindow: request.contextWindow,
         tools: request.tools,
-        transcript: request.transcript,
+        timeline: request.timeline,
         compressibleToolNames: request.compressibleToolNames,
         temperature: request.temperature,
       })
@@ -194,7 +195,7 @@ export function createOrchestrationModelPort(provider: ModelProvider): Orchestra
         temperature: request.temperature,
         thinking: request.thinking,
         tools: request.tools,
-        transcript: request.transcript,
+        timeline: request.timeline,
         compressibleToolNames: request.compressibleToolNames,
         sessionId: request.sessionId,
         runId: request.runId,
@@ -547,8 +548,8 @@ function createSessionPort(input: {
     getRun(runId) {
       return input.repository.runs.get(runId)
     },
-    listTranscript(sessionId) {
-      return input.repository.messages.listSessionTranscript(sessionId)
+    listTimeline(sessionId) {
+      return timelineEntriesToTimelineMessages(input.repository.timeline.listEntries(sessionId))
     },
     createRun(run) {
       return input.repository.runs.create({
@@ -568,31 +569,31 @@ function createSessionPort(input: {
     },
     createAssistantMessage(message) {
       const session = input.repository.sessions.get(message.sessionId)
-      return input.repository.messages.create({
+      return input.repository.timeline.appendEntry({
         sessionId: message.sessionId,
-        runId: message.runId,
+        producedByRunId: message.runId,
         agent: session.currentAgent,
         role: "assistant",
-        sequence: message.sequence,
+        runSequence: message.sequence,
         createdAt: message.createdAt,
       })
     },
-    createSyntheticMessage(message) {
+    createCompactionMessage(message) {
       const session = input.repository.sessions.get(message.sessionId)
-      return input.repository.messages.create({
+      return input.repository.timeline.appendEntry({
         sessionId: message.sessionId,
-        runId: message.runId,
+        producedByRunId: message.runId,
         agent: session.currentAgent,
-        role: "synthetic",
-        sequence: message.sequence,
+        role: "compaction",
+        runSequence: message.sequence,
         createdAt: message.createdAt,
       })
     },
     createMessagePart(part) {
-      return input.repository.parts.create({
+      return input.repository.timeline.appendPart({
         sessionId: part.sessionId,
-        runId: part.runId,
-        messageId: part.messageId,
+        producedByRunId: part.runId,
+        entryId: part.messageId,
         kind: part.kind as never,
         sequence: part.sequence,
         text: part.text,

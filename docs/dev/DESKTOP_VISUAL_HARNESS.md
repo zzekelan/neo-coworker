@@ -39,7 +39,7 @@ The harness currently exposes these fixed scenarios:
 - `Waiting permission`: active run suspended on a pending permission request.
 - `Queued`: queued run before streaming begins.
 
-Each scenario uses a long transcript so content scrolls behind the composer area. This is intentional: it lets visual checks catch leaks around composer opacity, footer background, transcript width, bottom inset, and reasoning placement.
+Each scenario uses a long timeline so content scrolls behind the composer area. This is intentional: it lets visual checks catch leaks around composer opacity, footer background, timeline width, bottom inset, and reasoning placement.
 
 The `activity-details` fixture focuses on details that require controlled local state:
 
@@ -54,11 +54,11 @@ Use this harness before and after desktop UI changes that affect:
 
 - `ChatArea`
 - `Message`
-- `VirtualTranscript`
+- `VirtualTimeline`
 - permission request cards
 - run status indicators
 - composer layout, opacity, or footer spacing
-- transcript bottom inset or sticky-bottom behavior
+- timeline bottom inset or sticky-bottom behavior
 
 For changes that touch the real runtime, still verify the normal app path in addition to the harness.
 
@@ -78,8 +78,8 @@ When verifying through browser-use:
 
 Pay particular attention to:
 
-- transcript text not showing through the composer
-- transcript text not leaking at the composer sides
+- timeline text not showing through the composer
+- timeline text not leaking at the composer sides
 - footer/status text sitting on an opaque background
 - reasoning/tool UI not being hidden by the input area
 - scroll-to-bottom affordance staying clear of the composer
@@ -112,7 +112,7 @@ When adding a new maintained visual state:
 
 1. Add a new `RunningFixtureKind`.
 2. Add the scenario label and description to `FIXTURE_KINDS`.
-3. Extend `createRunningFixture`, `createTranscript`, or `createActiveAssistantMessage` as needed.
+3. Extend `createRunningFixture`, `createTimeline`, or `createActiveAssistantMessage` as needed.
 4. Update `test/desktop/running-states-harness.test.tsx` so the scenario remains discoverable.
 5. Verify in browser-use on `?fixture=running-states` or `?fixture=activity-details`, depending on the scenario.
 

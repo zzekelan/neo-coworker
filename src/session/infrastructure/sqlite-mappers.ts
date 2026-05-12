@@ -8,6 +8,7 @@ import type {
   StoredPart,
   StoredRun,
   StoredSession,
+  TimelineEntry,
 } from "../application/ports/repository"
 
 export type SessionRow = {
@@ -62,7 +63,7 @@ export type PartRow = {
   created_at: number
 }
 
-export type TranscriptRow = {
+export type TimelineJoinedRow = {
   message_id: string
   message_session_id: string
   message_run_id: string
@@ -79,6 +80,10 @@ export type TranscriptRow = {
   part_text_value: string | null
   part_data_json: string | null
   part_created_at: number | null
+}
+
+export type TimelineRow = TimelineJoinedRow & {
+  message_timeline_sequence: number
 }
 
 export function mapSessionRow(row: SessionRow): StoredSession {
@@ -137,6 +142,20 @@ export function mapPartRow(row: PartRow): StoredPart {
     text: row.text_value,
     data: parseJson(row.data_json),
     createdAt: row.created_at,
+  }
+}
+
+export function mapTimelineRow(row: TimelineRow): TimelineEntry {
+  return {
+    id: row.message_id,
+    sessionId: row.message_session_id,
+    producedByRunId: row.message_run_id,
+    agent: row.message_agent ?? undefined,
+    role: row.message_role,
+    runSequence: row.message_sequence,
+    timelineSequence: row.message_timeline_sequence,
+    createdAt: row.message_created_at,
+    parts: [],
   }
 }
 

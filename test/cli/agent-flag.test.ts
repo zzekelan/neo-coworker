@@ -129,7 +129,7 @@ describe("CLI --agent flag", () => {
     try {
       const sessionId = storage.repository.sessions.list()[0]!.id
       expect(storage.repository.sessions.getCurrentAgent(sessionId)).toBe("plan")
-      expect(storage.repository.messages.listSessionTranscript(sessionId)[0]?.agent).toBe("plan")
+      expect(storage.repository.messages.listSessionTimeline(sessionId)[0]?.agent).toBe("plan")
     } finally {
       storage.close()
     }
@@ -168,7 +168,7 @@ describe("CLI --agent flag", () => {
     try {
       const sessionId = storage.repository.sessions.list()[0]!.id
       expect(storage.repository.sessions.getCurrentAgent(sessionId)).toBe("general")
-      expect(storage.repository.messages.listSessionTranscript(sessionId)[0]?.agent).toBe("general")
+      expect(storage.repository.messages.listSessionTimeline(sessionId)[0]?.agent).toBe("general")
     } finally {
       storage.close()
     }

@@ -44,7 +44,7 @@ describe("desktop running states harness", () => {
     expect(harnessSource).toContain("fixture-running-agent-call")
     expect(harnessSource).toContain("Activated skill browser")
     expect(harnessSource).toContain("Spawned reviewer subagent")
-    expect(harnessSource).toContain("Verified composer and transcript bounds before the live tool step.")
+    expect(harnessSource).toContain("Verified composer and timeline bounds before the live tool step.")
     expect(harnessSource).toContain("Permission composer while the run is suspended.")
     expect(harnessSource).toContain("permissionRequests: kind === \"permission\" ? [createPermissionRequest()] : []")
     expect(harnessSource).toContain("This path is dev-only and does not call the app-server.")

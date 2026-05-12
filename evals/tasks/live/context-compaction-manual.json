@@ -43,7 +43,7 @@
       "shell"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "orderedTextIncludes": [
       "context recovery fixture",
       "Prepared manual compaction",

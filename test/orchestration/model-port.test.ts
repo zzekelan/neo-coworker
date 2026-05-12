@@ -10,7 +10,7 @@ import type { OrchestrationModelPort } from "../../src/orchestration"
 describe("orchestration model port", () => {
   const basePrompt = "You are Neo Coworker, a versatile day-to-day work assistant."
 
-  test("projects transcript and tools through the orchestration-facing port", async () => {
+  test("projects timeline and tools through the orchestration-facing port", async () => {
     const requests: Array<{
       system: string
       messages: unknown[]
@@ -40,7 +40,7 @@ describe("orchestration model port", () => {
       ],
       activeSkills: [{ name: "reviewer", instructions: "Always explain the diff." }],
       tools: [{ name: "read", description: "Read a file" }],
-      transcript: [
+      timeline: [
         {
           runId: "run_1",
           role: "user",
@@ -114,7 +114,7 @@ describe("orchestration model port", () => {
       activeSkills: [],
       temperature: 0,
       tools: [],
-      transcript: [
+      timeline: [
         {
           runId: "run_1",
           role: "user",
@@ -158,7 +158,7 @@ describe("orchestration model port", () => {
       }),
     })
 
-    const transcript = Array.from({ length: 7 }, (_, index) => ({
+    const timeline = Array.from({ length: 7 }, (_, index) => ({
       id: `message_${index}`,
       sessionId: "session_1",
       runId: "run_prior",
@@ -191,7 +191,7 @@ describe("orchestration model port", () => {
       contextWindow: 200,
       temperature: 0,
       tools: [],
-      transcript,
+      timeline,
       sessionId: "session_1",
       runId: "run_microcompact",
       turnKey: "run_microcompact:turn_1",
@@ -229,6 +229,6 @@ describe("orchestration model port", () => {
       Array.from({ length: 5 }, (_, index) => expect.stringContaining(`grep result ${index + 2}`)),
     )
     expect(requests[0]?.temperature).toBe(0)
-    expect(transcript[0]?.parts[0]?.text).toContain("grep result 0")
+    expect(timeline[0]?.parts[0]?.text).toContain("grep result 0")
   })
 })

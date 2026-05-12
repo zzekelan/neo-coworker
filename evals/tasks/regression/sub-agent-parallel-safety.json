@@ -35,7 +35,7 @@
       "shell"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "orderedTextIncludes": [
       "Parallel sub-agent branch",
       "Parallel sub-agent branch",

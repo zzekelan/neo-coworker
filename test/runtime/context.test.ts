@@ -3,15 +3,24 @@ import {
   SYSTEM_REMINDER_NOTICE,
   buildModelPromptSections,
   buildModelTurnInput,
-  buildTranscriptMessages,
-  type ModelTranscriptMessage,
+  buildTimelineMessages,
+  type ModelTimelineMessage,
 } from "../../src/model"
 
-type PersistedTranscriptMessage = ModelTranscriptMessage & {
+type PersistedTimelineMessage = ModelTimelineMessage & {
   id: string
   sessionId: string
   runId: string
   sequence: number
+  createdAt: number
+}
+
+type PersistedTimelineEntry = ModelTimelineMessage & {
+  id: string
+  sessionId: string
+  producedByRunId: string
+  runSequence: number
+  timelineSequence: number
   createdAt: number
 }
 
@@ -30,7 +39,7 @@ describe("context builder", () => {
       ],
       activeSkills: [{ name: "reviewer", instructions: "Always explain the diff." }],
       tools: [{ name: "read", description: "Read a file" }],
-      transcript: [
+      timeline: [
         {
           role: "user",
           parts: [{ kind: "text", text: "inspect README" }],
@@ -76,7 +85,7 @@ describe("context builder", () => {
     expect(sections.systemReminderMessages).toEqual([])
   })
 
-  test("appends the system reminder after replayed transcript messages", () => {
+  test("appends the system reminder after replayed timeline messages", () => {
     const input = buildModelTurnInput({
       systemPrompt: basePrompt,
       skillCatalog: [
@@ -88,7 +97,7 @@ describe("context builder", () => {
       ],
       activeSkills: [{ name: "reviewer", instructions: "Focus on bugs first." }],
       tools: [{ name: "read", description: "Read a file" }],
-      transcript: [],
+      timeline: [],
     })
 
     expect(input.messages).toEqual([
@@ -115,7 +124,7 @@ describe("context builder", () => {
   })
 
   test("renders persisted tool calls, tool results, and errors back into model messages", () => {
-    const transcript = [
+    const timeline = [
       {
         id: "message_1",
         sessionId: "session_1",
@@ -158,9 +167,9 @@ describe("context builder", () => {
           },
         ],
       },
-    ] satisfies PersistedTranscriptMessage[]
+    ] satisfies PersistedTimelineMessage[]
 
-    const messages = buildTranscriptMessages(transcript)
+    const messages = buildTimelineMessages(timeline)
 
     expect(messages).toEqual([
       {
@@ -193,7 +202,7 @@ describe("context builder", () => {
   })
 
   test("projects canonical Tool Result Errors as tool messages", () => {
-    const transcript = [
+    const timeline = [
       {
         id: "message_1",
         sessionId: "session_1",
@@ -224,9 +233,9 @@ describe("context builder", () => {
           },
         ],
       },
-    ] satisfies PersistedTranscriptMessage[]
+    ] satisfies PersistedTimelineMessage[]
 
-    const messages = buildTranscriptMessages(transcript)
+    const messages = buildTimelineMessages(timeline)
 
     expect(messages).toEqual([
       {
@@ -256,7 +265,7 @@ describe("context builder", () => {
   })
 
   test("preserves reasoning parts when replaying assistant tool-call messages", () => {
-    const transcript = [
+    const timeline = [
       {
         id: "message_1",
         sessionId: "session_1",
@@ -290,9 +299,9 @@ describe("context builder", () => {
           },
         ],
       },
-    ] satisfies PersistedTranscriptMessage[]
+    ] satisfies PersistedTimelineMessage[]
 
-    const messages = buildTranscriptMessages(transcript)
+    const messages = buildTimelineMessages(timeline)
 
     expect(messages).toEqual([
       {
@@ -324,8 +333,8 @@ describe("context builder", () => {
     ])
   })
 
-  test("omits unresolved tool calls from replayed transcript messages", () => {
-    const transcript = [
+  test("omits unresolved tool calls from replayed timeline messages", () => {
+    const timeline = [
       {
         id: "message_1",
         sessionId: "session_1",
@@ -360,9 +369,9 @@ describe("context builder", () => {
           },
         ],
       },
-    ] satisfies PersistedTranscriptMessage[]
+    ] satisfies PersistedTimelineMessage[]
 
-    const messages = buildTranscriptMessages(transcript)
+    const messages = buildTimelineMessages(timeline)
 
     expect(messages).toEqual([
       {
@@ -372,8 +381,131 @@ describe("context builder", () => {
     ])
   })
 
+  test("resolves tool calls by Produced By Run provenance for timeline entries", () => {
+    const timeline = [
+      {
+        id: "entry_1",
+        sessionId: "session_1",
+        producedByRunId: "run_1",
+        role: "assistant",
+        runSequence: 0,
+        timelineSequence: 0,
+        createdAt: 1,
+        parts: [
+          {
+            kind: "tool_call",
+            text: null,
+            data: {
+              callId: "call_reused",
+              toolName: "read",
+              inputText: '{"path":"README.md"}',
+            },
+          },
+        ],
+      },
+      {
+        id: "entry_2",
+        sessionId: "session_1",
+        producedByRunId: "run_2",
+        role: "assistant",
+        runSequence: 0,
+        timelineSequence: 1,
+        createdAt: 2,
+        parts: [
+          {
+            kind: "tool_result",
+            text: "run 2 result",
+            data: {
+              callId: "call_reused",
+              toolName: "read",
+              output: "run 2 result",
+            },
+          },
+        ],
+      },
+    ] satisfies PersistedTimelineEntry[]
+
+    const messages = buildTimelineMessages(timeline)
+
+    expect(messages).toEqual([
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_reused",
+            toolName: "read",
+            output: "run 2 result",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("projects legacy tool error parts from timeline entries during migration", () => {
+    const timeline = [
+      {
+        id: "entry_1",
+        sessionId: "session_1",
+        producedByRunId: "run_1",
+        role: "assistant",
+        runSequence: 0,
+        timelineSequence: 0,
+        createdAt: 1,
+        parts: [
+          {
+            kind: "tool_call",
+            text: "{}",
+            data: {
+              callId: "call_legacy",
+              toolName: "read",
+              inputText: "{}",
+            },
+          },
+          {
+            kind: "error",
+            text: "legacy tool failure",
+            data: {
+              source: "tool",
+              callId: "call_legacy",
+              toolName: "read",
+            },
+          },
+        ],
+      },
+    ] satisfies PersistedTimelineEntry[]
+
+    const messages = buildTimelineMessages(timeline)
+
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool_call",
+            callId: "call_legacy",
+            toolName: "read",
+            inputText: "{}",
+          },
+        ],
+      },
+      {
+        role: "tool",
+        parts: [
+          {
+            type: "tool_result",
+            callId: "call_legacy",
+            toolName: "read",
+            output: "Error: legacy tool failure",
+            isError: true,
+          },
+        ],
+      },
+    ])
+  })
+
   test("replays only from the latest compaction boundary message", () => {
-    const transcript = [
+    const timeline = [
       {
         id: "message_old",
         sessionId: "session_1",
@@ -393,7 +525,7 @@ describe("context builder", () => {
         id: "message_boundary",
         sessionId: "session_1",
         runId: "run_active",
-        role: "synthetic",
+        role: "compaction",
         sequence: 1,
         createdAt: 3,
         parts: [
@@ -426,9 +558,9 @@ describe("context builder", () => {
           },
         ],
       },
-    ] satisfies PersistedTranscriptMessage[]
+    ] satisfies PersistedTimelineMessage[]
 
-    const messages = buildTranscriptMessages(transcript)
+    const messages = buildTimelineMessages(timeline)
 
     expect(messages).toEqual([
       {
@@ -443,7 +575,7 @@ describe("context builder", () => {
   })
 
   test("preserves reasoning replay after slicing from the latest compaction boundary", () => {
-    const transcript = [
+    const timeline = [
       {
         id: "message_old",
         sessionId: "session_1",
@@ -463,7 +595,7 @@ describe("context builder", () => {
         id: "message_boundary",
         sessionId: "session_1",
         runId: "run_active",
-        role: "synthetic",
+        role: "compaction",
         sequence: 1,
         createdAt: 2,
         parts: [
@@ -514,9 +646,9 @@ describe("context builder", () => {
           },
         ],
       },
-    ] satisfies PersistedTranscriptMessage[]
+    ] satisfies PersistedTimelineMessage[]
 
-    const messages = buildTranscriptMessages(transcript)
+    const messages = buildTimelineMessages(timeline)
 
     expect(messages).toEqual([
       {

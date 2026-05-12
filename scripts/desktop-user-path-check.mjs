@@ -125,7 +125,7 @@ const evidence = {
   appliedSettings: false,
   sessionId: null,
   latestRunStatus: null,
-  transcriptCount: 0,
+  timelineCount: 0,
   assistantPreview: null,
   fixtureProviderRequests: 0,
   projectRootAppStateFiles,
@@ -375,11 +375,11 @@ try {
     )
   }
 
-  const transcriptResponse = await requestJson(`/sessions/${encodeURIComponent(sessionId)}/transcript`)
-  const transcript = transcriptResponse.body?.data?.transcript ?? []
-  evidence.transcriptCount = transcript.length
+  const timelineResponse = await requestJson(`/sessions/${encodeURIComponent(sessionId)}/timeline`)
+  const timeline = timelineResponse.body?.data?.timeline ?? []
+  evidence.timelineCount = timeline.length
   const assistantMessage =
-    [...transcript].reverse().find((message) => message.role === "assistant") ?? null
+    [...timeline].reverse().find((message) => message.role === "assistant") ?? null
   const assistantPreview =
     assistantMessage?.parts
       ?.map((part) => (part.kind === "text" ? part.text : null))
@@ -391,7 +391,7 @@ try {
   evidence.assistantPreview = assistantPreview
 
   if (!assistantPreview) {
-    throw new Error("Assistant transcript text is empty.")
+    throw new Error("Assistant timeline text is empty.")
   }
 
   if (
@@ -399,7 +399,7 @@ try {
     matchesExpectedAssistantText(assistantPreview, expectedAssistantText) === false
   ) {
     throw new Error(
-      `Assistant transcript did not include the expected text: ${expectedAssistantText}`,
+      `Assistant timeline did not include the expected text: ${expectedAssistantText}`,
     )
   }
 
@@ -443,9 +443,9 @@ try {
   })
   evidence.task21 = {
     traceEventTypes: task21Evidence.traceEventTypes,
-    reasoningPartCount: task21Evidence.sqliteTranscript.reasoningPartCount,
-    toolCallPartCount: task21Evidence.sqliteTranscript.toolCallPartCount,
-    toolResultPartCount: task21Evidence.sqliteTranscript.toolResultPartCount,
+    reasoningPartCount: task21Evidence.sqliteTimeline.reasoningPartCount,
+    toolCallPartCount: task21Evidence.sqliteTimeline.toolCallPartCount,
+    toolResultPartCount: task21Evidence.sqliteTimeline.toolResultPartCount,
     failureSignaturePresent: task21Evidence.failureSignature.present,
     kimiReplayValidated: task21Evidence.kimiReplayValidation?.validated ?? false,
   }
@@ -479,7 +479,7 @@ try {
       baseUrlRequested: desiredLlmConfig?.baseURL ?? null,
       sessionId,
       latestRunStatus,
-      transcriptCount: transcript.length,
+      timelineCount: timeline.length,
       assistantPreview,
       reasoningInteraction: evidence.reasoningInteraction,
       fixtureProviderRequests: evidence.fixtureProviderRequests,
@@ -506,7 +506,7 @@ try {
         reasoningInteraction: evidence.reasoningInteraction,
         sessionId,
         latestRunStatus,
-        transcriptCount: transcript.length,
+        timelineCount: timeline.length,
         assistantPreview,
         fixtureProviderRequests: evidence.fixtureProviderRequests,
         evidenceJsonPath,
@@ -1169,7 +1169,7 @@ result = {
     },
     "runEvents": events,
     "traceEventTypes": [event["eventType"] for event in events],
-    "transcriptSummary": {
+    "timelineSummary": {
         "messageCount": len(message_rows),
         "reasoningPartCount": reasoning_count,
         "toolCallPartCount": tool_call_count,
@@ -1229,15 +1229,15 @@ function buildTask21Evidence(input) {
       throw new Error("Kimi fixture evidence unexpectedly recorded replay.fail_fast.blocked on a successful run.")
     }
     if (input.desiredThinkingEnabled === true) {
-      if ((input.sqliteEvidence?.transcriptSummary?.assistantReasoningReplayMessageCount ?? 0) < 1) {
-        throw new Error("Kimi transcript did not persist an assistant reasoning+tool_call message for sqlite-backed replay evidence.")
+      if ((input.sqliteEvidence?.timelineSummary?.assistantReasoningReplayMessageCount ?? 0) < 1) {
+        throw new Error("Kimi timeline did not persist an assistant reasoning+tool_call message for sqlite-backed replay evidence.")
       }
     } else {
-      if ((input.sqliteEvidence?.transcriptSummary?.assistantReasoningReplayMessageCount ?? 0) !== 0) {
-        throw new Error("Kimi no-thinking transcript unexpectedly persisted assistant reasoning+tool_call replay evidence.")
+      if ((input.sqliteEvidence?.timelineSummary?.assistantReasoningReplayMessageCount ?? 0) !== 0) {
+        throw new Error("Kimi no-thinking timeline unexpectedly persisted assistant reasoning+tool_call replay evidence.")
       }
-      if ((input.sqliteEvidence?.transcriptSummary?.reasoningPartCount ?? 0) !== 0) {
-        throw new Error("Kimi no-thinking transcript unexpectedly persisted reasoning parts.")
+      if ((input.sqliteEvidence?.timelineSummary?.reasoningPartCount ?? 0) !== 0) {
+        throw new Error("Kimi no-thinking timeline unexpectedly persisted reasoning parts.")
       }
     }
     assertExactCapabilityTelemetry(capabilityEvent, {
@@ -1282,7 +1282,7 @@ function buildTask21Evidence(input) {
     capabilityResolution: capabilityEvent,
     contextWindow: contextWindowEvent,
     kimiRunClassification: kimiClassification,
-    sqliteTranscript: input.sqliteEvidence?.transcriptSummary ?? null,
+    sqliteTimeline: input.sqliteEvidence?.timelineSummary ?? null,
     kimiReplayValidation,
   }
 }
@@ -1363,10 +1363,10 @@ function renderTask21TelemetrySuccess(task21Evidence) {
     `traceEventTypes=${task21Evidence.traceEventTypes.join(",")}`,
     `failureSignature=${task21Evidence.failureSignature.value}`,
     `failureSignaturePresent=${String(task21Evidence.failureSignature.present)}`,
-    `assistantReasoningReplayMessageCount=${task21Evidence.sqliteTranscript.assistantReasoningReplayMessageCount}`,
-    `reasoningPartCount=${task21Evidence.sqliteTranscript.reasoningPartCount}`,
-    `toolCallPartCount=${task21Evidence.sqliteTranscript.toolCallPartCount}`,
-    `toolResultPartCount=${task21Evidence.sqliteTranscript.toolResultPartCount}`,
+    `assistantReasoningReplayMessageCount=${task21Evidence.sqliteTimeline.assistantReasoningReplayMessageCount}`,
+    `reasoningPartCount=${task21Evidence.sqliteTimeline.reasoningPartCount}`,
+    `toolCallPartCount=${task21Evidence.sqliteTimeline.toolCallPartCount}`,
+    `toolResultPartCount=${task21Evidence.sqliteTimeline.toolResultPartCount}`,
     `chatCompletionRequestCount=${String(task21Evidence.kimiReplayValidation?.chatCompletionRequestCount ?? 0)}`,
     `secondRequestHasReasoningContentReplay=${String(task21Evidence.kimiReplayValidation?.secondRequestHasReasoningContentReplay ?? false)}`,
   ].join("\n")

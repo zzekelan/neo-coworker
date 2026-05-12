@@ -2,13 +2,13 @@ import {
   createSessionRunService,
   type CreateSessionRunServiceInput,
 } from "./run-service"
-import { createSessionTranscriptService } from "./transcript-service"
+import { createSessionTimelineService } from "./timeline-service"
 
 export type SessionRuntimeApiInput = CreateSessionRunServiceInput
 
 export function createSessionRuntimeApi(input: SessionRuntimeApiInput) {
   const runService = createSessionRunService(input)
-  const transcriptService = createSessionTranscriptService(input)
+  const timelineService = createSessionTimelineService(input)
 
   return {
     sessions: {
@@ -28,9 +28,9 @@ export function createSessionRuntimeApi(input: SessionRuntimeApiInput) {
       addActiveSkills: runService.addRunActiveSkills,
       recordTokenUsage: runService.recordRunTokenUsage,
     },
-    transcript: {
-      listSessionTranscript: transcriptService.listSessionTranscript,
-      getInitiatingMessage: transcriptService.getInitiatingMessage,
+    timeline: {
+      listSessionTimeline: timelineService.listSessionTimeline,
+      getInitiatingMessage: timelineService.getInitiatingMessage,
     },
   }
 }

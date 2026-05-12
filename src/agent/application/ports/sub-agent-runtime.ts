@@ -146,17 +146,17 @@ export type AgentRunRecord = {
   tokenUsageSource: "provider" | "estimated" | null
 }
 
-export type AgentTranscriptPart = {
+export type AgentTimelinePart = {
   kind: string
   text: string | null
   data?: unknown
 }
 
-export type AgentTranscriptMessage = {
+export type AgentTimelineMessage = {
   runId: string
-  role: "user" | "assistant" | "system" | "synthetic"
+  role: "user" | "assistant" | "system" | "compaction"
   sequence: number
-  parts: AgentTranscriptPart[]
+  parts: AgentTimelinePart[]
 }
 
 export type AgentMessageRecord = {
@@ -174,7 +174,7 @@ export type AgentSessionPort = {
   storageIdentity: string
   getSession(sessionId: string): AgentSessionRecord
   getRun(runId: string): AgentRunRecord
-  listTranscript(sessionId: string): AgentTranscriptMessage[]
+  listTimeline(sessionId: string): AgentTimelineMessage[]
   createRun(input: {
     id: string
     sessionId: string
@@ -195,7 +195,7 @@ export type AgentSessionPort = {
     sequence: number
     createdAt: number
   }): AgentMessageRecord
-  createSyntheticMessage(input: {
+  createCompactionMessage(input: {
     sessionId: string
     runId: string
     sequence: number
@@ -255,7 +255,7 @@ export type AgentModelTurnRequest = {
   }
   contextWindow?: number
   tools: Array<Pick<AgentToolDefinition, "name" | "description" | "inputSchema" | "concurrency" | "isConcurrencySafe">>
-  transcript: AgentTranscriptMessage[]
+  timeline: AgentTimelineMessage[]
   compressibleToolNames?: ReadonlySet<string>
   sessionId?: string
   runId?: string

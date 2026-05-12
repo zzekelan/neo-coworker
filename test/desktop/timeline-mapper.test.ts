@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { mapTranscriptMessage } from "../../src/desktop/src/transcript-mapper"
+import { mapTimelineMessage } from "../../src/desktop/src/timeline-mapper"
 import type { DesktopMessage, RunStatus } from "../../src/desktop/src/types"
 
-describe("desktop transcript mapper", () => {
+describe("desktop timeline mapper", () => {
   test("renders text-only prompt messages through the plain content path", () => {
     const message: DesktopMessage = {
       id: "message-user-1",
@@ -26,7 +26,7 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    expect(mapTranscriptMessage(message)).toEqual({
+    expect(mapTimelineMessage(message)).toEqual({
       id: "message-user-1",
       role: "user",
       content: "Reply exactly once.",
@@ -71,7 +71,7 @@ describe("desktop transcript mapper", () => {
     }
 
     expect(
-      mapTranscriptMessage(message, {
+      mapTimelineMessage(message, {
         runStatusById: new Map<string, RunStatus>([["run-1", "completed"]]),
       }),
     ).toEqual({
@@ -137,7 +137,7 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    expect(mapTranscriptMessage(message)).toEqual({
+    expect(mapTimelineMessage(message)).toEqual({
       id: "message-assistant-error",
       role: "assistant",
       content: "",
@@ -191,7 +191,7 @@ describe("desktop transcript mapper", () => {
     }
 
     expect(
-      mapTranscriptMessage(message, {
+      mapTimelineMessage(message, {
         runStatusById: new Map<string, RunStatus>([["run-2", "cancelled"]]),
       }),
     ).toEqual({
@@ -246,7 +246,7 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    expect(mapTranscriptMessage(message)).toEqual({
+    expect(mapTimelineMessage(message)).toEqual({
       id: "message-assistant-3",
       role: "assistant",
       content: "",
@@ -277,10 +277,10 @@ describe("desktop transcript mapper", () => {
 
   test("maps a compaction_boundary part into a structured compaction divider", () => {
     const message: DesktopMessage = {
-      id: "message-synthetic-1",
+      id: "message-compaction-1",
       sessionId: "session-1",
       runId: "run-1",
-      role: "synthetic",
+      role: "compaction",
       sequence: 2,
       createdAt: 1_710_000_002_000,
       parts: [
@@ -288,7 +288,7 @@ describe("desktop transcript mapper", () => {
           id: "part-boundary-1",
           sessionId: "session-1",
           runId: "run-1",
-          messageId: "message-synthetic-1",
+          messageId: "message-compaction-1",
           kind: "compaction_boundary",
           sequence: 0,
           text: null,
@@ -305,7 +305,7 @@ describe("desktop transcript mapper", () => {
           id: "part-summary-text-1",
           sessionId: "session-1",
           runId: "run-1",
-          messageId: "message-synthetic-1",
+          messageId: "message-compaction-1",
           kind: "text",
           sequence: 1,
           text: "## Section 1: Summary\nThis is the internal model-recovery summary that should NOT be shown to users.",
@@ -315,7 +315,7 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    const result = mapTranscriptMessage(message)
+    const result = mapTimelineMessage(message)
 
     // The compaction boundary part should be present
     expect(result.parts).toBeDefined()
@@ -336,12 +336,12 @@ describe("desktop transcript mapper", () => {
     expect(result.content).toBe("")
   })
 
-  test("keeps compaction failure error parts visible in the transcript", () => {
+  test("keeps compaction failure error parts visible in the timeline", () => {
     const message: DesktopMessage = {
-      id: "message-synthetic-2",
+      id: "message-compaction-2",
       sessionId: "session-1",
       runId: "run-1",
-      role: "synthetic",
+      role: "compaction",
       sequence: 3,
       createdAt: 1_710_000_003_000,
       parts: [
@@ -349,7 +349,7 @@ describe("desktop transcript mapper", () => {
           id: "part-error-compact",
           sessionId: "session-1",
           runId: "run-1",
-          messageId: "message-synthetic-2",
+          messageId: "message-compaction-2",
           kind: "error",
           sequence: 0,
           text: "Automatic compaction failed: model timeout",
@@ -366,16 +366,16 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    const result = mapTranscriptMessage(message)
+    const result = mapTimelineMessage(message)
     expect(result.content).toContain("Error: Automatic compaction failed: model timeout")
   })
 
-  test("keeps compaction circuit-breaker error visible in the transcript", () => {
+  test("keeps compaction circuit-breaker error visible in the timeline", () => {
     const message: DesktopMessage = {
-      id: "message-synthetic-3",
+      id: "message-compaction-3",
       sessionId: "session-1",
       runId: "run-1",
-      role: "synthetic",
+      role: "compaction",
       sequence: 4,
       createdAt: 1_710_000_004_000,
       parts: [
@@ -383,7 +383,7 @@ describe("desktop transcript mapper", () => {
           id: "part-breaker",
           sessionId: "session-1",
           runId: "run-1",
-          messageId: "message-synthetic-3",
+          messageId: "message-compaction-3",
           kind: "error",
           sequence: 0,
           text: "⚠️ Automatic compaction has been paused. Run /compact successfully to re-enable it.",
@@ -399,7 +399,7 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    const result = mapTranscriptMessage(message)
+    const result = mapTimelineMessage(message)
     expect(result.content).toContain("⚠️ Automatic compaction has been paused")
   })
 
@@ -437,7 +437,7 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    const result = mapTranscriptMessage(message)
+    const result = mapTimelineMessage(message)
     expect(result.parts).toEqual([
       {
         type: "reasoning",
@@ -483,7 +483,7 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    const result = mapTranscriptMessage(message)
+    const result = mapTimelineMessage(message)
     expect(result.parts?.[0]).toEqual({
       type: "reasoning",
       text: "Need to fetch the page.",
@@ -514,7 +514,7 @@ describe("desktop transcript mapper", () => {
       ],
     }
 
-    const result = mapTranscriptMessage(message)
+    const result = mapTimelineMessage(message)
     expect(result.parts).toEqual([
       {
         type: "reasoning",

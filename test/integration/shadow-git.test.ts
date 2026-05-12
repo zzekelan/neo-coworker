@@ -184,8 +184,8 @@ describe("integration: shadow git wiring", () => {
       expect(names).not.toContain("shadow_git")
     }
 
-    const transcript = harness.repository.messages.listSessionTranscript(harness.session.id)
-    const texts = transcript.flatMap((message) => message.parts.map((part) => part.text))
+    const timeline = harness.repository.messages.listSessionTimeline(harness.session.id)
+    const texts = timeline.flatMap((message) => message.parts.map((part) => part.text))
     expect(
       texts.some((text) => text === `Created checkpoint before write ${join(harness.workspaceRoot, "notes.txt")}.`),
     ).toBe(false)

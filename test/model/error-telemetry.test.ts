@@ -41,7 +41,7 @@ describe("model error telemetry", () => {
         skillCatalog: [],
         activeSkills: [],
         tools: [],
-        transcript: [],
+        timeline: [],
         signal: new AbortController().signal,
         sessionId: "session_1",
         runId: "run_1",
@@ -72,7 +72,7 @@ describe("model error telemetry", () => {
         async *streamTurn() {
           yield {
             type: "reasoning.delta" as const,
-            text: "Need to inspect the persisted transcript before answering.",
+            text: "Need to inspect the persisted timeline before answering.",
           }
         },
       }),
@@ -84,7 +84,7 @@ describe("model error telemetry", () => {
       skillCatalog: [],
       activeSkills: [],
       tools: [],
-      transcript: [],
+      timeline: [],
       signal: new AbortController().signal,
       sessionId: "session_reasoning_usage",
       runId: "run_reasoning_usage",
@@ -96,7 +96,7 @@ describe("model error telemetry", () => {
     expect(events).toEqual(expect.arrayContaining([
       {
         type: "reasoning.delta",
-        text: "Need to inspect the persisted transcript before answering.",
+        text: "Need to inspect the persisted timeline before answering.",
       },
     ]))
     expect(events).toEqual(expect.arrayContaining([

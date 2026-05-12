@@ -580,7 +580,7 @@ function createSessionPortStub(): OrchestrationSessionPort {
       expect(runId).toBe(runRecord.id)
       return runRecord
     },
-    listTranscript() {
+    listTimeline() {
       return []
     },
     createRun() {
@@ -589,8 +589,8 @@ function createSessionPortStub(): OrchestrationSessionPort {
     createAssistantMessage() {
       return { id: "message-1" }
     },
-    createSyntheticMessage() {
-      return { id: "synthetic-message-1" }
+    createCompactionMessage() {
+      return { id: "compaction-message-1" }
     },
     createMessagePart(input) {
       return {

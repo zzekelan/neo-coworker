@@ -119,7 +119,7 @@ describe("openai provider", () => {
     })
   })
 
-  test("serializes structured tool transcript into responses input items", async () => {
+  test("serializes structured tool timeline into responses input items", async () => {
     let receivedBody: unknown
 
     const provider = createOpenAIProvider({

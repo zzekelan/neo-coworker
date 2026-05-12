@@ -99,6 +99,44 @@ describe("eval runner", () => {
     expect(result.artifact.trace?.events.map((event) => event.eventType)).toContain(
       "model.turn.requested",
     )
+    expect(result.artifact.timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          producedByRunId: result.artifact.runId,
+          timelineSequence: 0,
+          parts: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "text",
+              producedByRunId: result.artifact.runId,
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          producedByRunId: result.artifact.runId,
+          timelineSequence: 1,
+        }),
+      ]),
+    )
+    expect(Object.keys(result.artifact).sort()).toEqual([
+      "metrics",
+      "outcome",
+      "provider",
+      "runId",
+      "runStatus",
+      "runs",
+      "runtimeEvents",
+      "sessionId",
+      "taskId",
+      "timeline",
+      "trace",
+      "workspaceRoot",
+    ])
+    expect(
+      result.artifact.timeline.some((entry) => readRecordField(entry, "eventType") !== undefined),
+    ).toBe(false)
+    expect(result.artifact.trace?.events.some((event) => "timelineSequence" in event)).toBe(false)
     expect(result.pass).toBe(true)
     expect(result.pass).toBe(true)
     expect(result.grades.trace).toEqual({
@@ -118,20 +156,20 @@ describe("eval runner", () => {
     expect(result.grades.outcome.pass).toBe(true)
     expect(result.grades.protocol.pass).toBe(true)
     expect(result.grades.toolPolicy.pass).toBe(true)
-    expect(result.grades.transcript.pass).toBe(true)
+    expect(result.grades.timeline.pass).toBe(true)
     expect(result.grades.traceSequence.pass).toBe(true)
     expect(result.grades.toolConsumption.pass).toBe(true)
     expect(result.grades.skillDisclosure.pass).toBe(true)
     expect(result.grades.promptAssembly.pass).toBe(true)
   })
 
-  test("grades transcript ordering, trace sequence, and tool result consumption", async () => {
+  test("grades timeline ordering, trace sequence, and tool result consumption", async () => {
     const result = await runEvalTask({
       task: {
         id: "read-consumption",
         prompt: "Read README.md and summarize the heading",
         workspaceRoot: "test/fixtures/workspaces/read-search",
-        transcriptExpectation: {
+        timelineExpectation: {
           orderedTextIncludes: ["Read README heading.", "The heading is # demo workspace."],
           checkpoints: [
             {
@@ -190,7 +228,7 @@ describe("eval runner", () => {
     console.log(JSON.stringify({ pass: result.pass, grades: result.grades }, null, 2))
 
     expect(result.pass).toBe(true)
-    expect(result.grades.transcript).toEqual({
+    expect(result.grades.timeline).toEqual({
       pass: true,
       orderedTextIncludes: ["Read README heading.", "The heading is # demo workspace."],
       observedTexts: expect.arrayContaining([
@@ -258,7 +296,7 @@ describe("eval runner", () => {
         sessionSeed: {
           activeSkills: ["reviewer"],
         },
-        transcriptExpectation: {
+        timelineExpectation: {
           checkpoints: [
             {
               messageIndex: 1,
@@ -330,10 +368,10 @@ describe("eval runner", () => {
       JSON.stringify(
         {
           pass: result.pass,
-          transcript: result.grades.transcript,
+          timeline: result.grades.timeline,
           traceData: result.grades.traceData,
           runRecords: result.grades.runRecords,
-          transcriptCheckpoints: result.grades.transcript.checkpointFailures,
+          timelineCheckpoints: result.grades.timeline.checkpointFailures,
           traceDataFailures: result.grades.traceData.failures,
         },
         null,
@@ -342,7 +380,7 @@ describe("eval runner", () => {
     )
 
     expect(result.pass).toBe(true)
-    expect(result.artifact.transcript).toHaveLength(3)
+    expect(result.artifact.timeline).toHaveLength(3)
     expect(result.grades.skillDisclosure).toEqual({
       pass: true,
       failures: [],
@@ -484,8 +522,8 @@ describe("eval runner", () => {
       })
 
     expect(result.pass).toBe(true)
-    expect(result.grades.transcript.pass).toBe(true)
-    expect(result.grades.transcript.observedTexts).toEqual(
+    expect(result.grades.timeline.pass).toBe(true)
+    expect(result.grades.timeline.observedTexts).toEqual(
       expect.arrayContaining([
         expect.stringContaining("Automatic compaction failed: Injected summarize failure"),
         expect.stringContaining("Automatic compaction has been paused"),
@@ -637,6 +675,14 @@ describe("eval runner", () => {
     ).rejects.toThrow("must stay inside workspace")
   })
 })
+
+function readRecordField(value: unknown, field: string) {
+  if (typeof value !== "object" || value === null) {
+    return undefined
+  }
+
+  return (value as Record<string, unknown>)[field]
+}
 
 function createProviderFactory(
   turns: Array<(request: ProviderTurnRequest) => AsyncIterable<ProviderEvent>>,

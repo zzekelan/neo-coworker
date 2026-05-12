@@ -50,7 +50,7 @@
       "run.completed"
     ]
   },
-  "transcriptExpectation": {
+  "timelineExpectation": {
     "checkpoints": [
       {
         "messageIndex": 1,
@@ -72,7 +72,7 @@
       },
       {
         "messageIndex": 3,
-        "role": "synthetic",
+        "role": "compaction",
         "partKinds": [
           "compaction_boundary",
           "text"

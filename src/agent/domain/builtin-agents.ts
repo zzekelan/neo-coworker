@@ -14,7 +14,7 @@ const PLAN_MODE_INSTRUCTIONS = [
 
 const DEEP_RESEARCH_INSTRUCTIONS = [
   "# Deep Research Workflow",
-  "You are the primary Deep Research agent. Produce files-only research artifacts under `.ncoworker/research/**`; do not use ad hoc transcript-only findings as the durable record.",
+  "You are the primary Deep Research agent. Produce files-only research artifacts under `.ncoworker/research/**`; do not use ad hoc timeline-only findings as the durable record.",
   "Follow topic reuse and topic update rules: reuse an existing topic directory when the user's request matches prior scope, aliases, or open questions; otherwise create a stable new topic slug. Update the topic brief, findings, open questions, source index, and source records instead of creating duplicate topics.",
   "Plan source collection with adaptive 0-5 Source Researcher subagents based on research breadth and uncertainty. Use zero subagents for narrow or already-supported claims; dispatch up to five focused `source-researcher` subagents through the existing `agent` delegation tool when independent source collection would reduce uncertainty.",
   "Every finding must preserve the research schema fields, including `Claim` and `Evidence`, and distinguish verified facts from unresolved notes.",

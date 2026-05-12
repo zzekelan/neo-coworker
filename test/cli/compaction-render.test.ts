@@ -5,18 +5,18 @@ import type {
   ServerEventPayload,
   StoredMessage,
   StoredPart,
-  TranscriptMessage,
+  TimelineEntry,
 } from "../../src/bootstrap"
 import { createCliChatRenderer } from "../../src/cli/chat-render"
 import { createCliRenderState, renderServerEvent } from "../../src/cli/cli-render"
 import type { CliIO } from "../../src/cli/cli-io"
 
 describe("cli compaction surfaces", () => {
-  test("stream render shows a compaction divider and hides the synthetic summary text", () => {
+  test("stream render shows a compaction divider and hides the compaction summary text", () => {
     const state = createCliRenderState()
     const message = createMessage({
       id: "message_compaction",
-      role: "synthetic",
+      role: "compaction",
     })
 
     const output = [
@@ -55,16 +55,16 @@ describe("cli compaction surfaces", () => {
     expect(output).not.toContain("internal summary that should stay hidden")
   })
 
-  test("chat hydration keeps compaction errors visible but hides the synthetic summary text", () => {
+  test("chat hydration keeps compaction errors visible but hides the compaction summary text", () => {
     const output: string[] = []
     const renderer = createCliChatRenderer({
       io: createIo(output),
       workspaceRoot: "/workspace",
     })
 
-    renderer.hydrateTranscript({
-      transcript: [
-        createTranscriptMessage(
+    renderer.hydrateTimeline({
+      timeline: [
+        createTimelineMessage(
           {
             id: "message_user",
             role: "user",
@@ -79,7 +79,7 @@ describe("cli compaction surfaces", () => {
             }),
           ],
         ),
-        createTranscriptMessage(
+        createTimelineMessage(
           {
             id: "message_before",
             role: "assistant",
@@ -94,10 +94,10 @@ describe("cli compaction surfaces", () => {
             }),
           ],
         ),
-        createTranscriptMessage(
+        createTimelineMessage(
           {
             id: "message_compaction",
-            role: "synthetic",
+            role: "compaction",
             sequence: 2,
           },
           [
@@ -120,10 +120,10 @@ describe("cli compaction surfaces", () => {
             }),
           ],
         ),
-        createTranscriptMessage(
+        createTimelineMessage(
           {
             id: "message_breaker",
-            role: "synthetic",
+            role: "compaction",
             sequence: 3,
           },
           [
@@ -135,7 +135,7 @@ describe("cli compaction surfaces", () => {
             }),
           ],
         ),
-        createTranscriptMessage(
+        createTimelineMessage(
           {
             id: "message_after",
             role: "assistant",
@@ -162,7 +162,7 @@ describe("cli compaction surfaces", () => {
     expect(rendered).not.toContain("hidden internal compaction summary")
   })
 
-  test("chat live events render the compaction divider without exposing the synthetic summary text", () => {
+  test("chat live events render the compaction divider without exposing the compaction summary text", () => {
     const output: string[] = []
     const renderer = createCliChatRenderer({
       io: createIo(output),
@@ -174,7 +174,7 @@ describe("cli compaction surfaces", () => {
         type: "message.created",
         message: createMessage({
           id: "message_compaction",
-          role: "synthetic",
+          role: "compaction",
         }),
       }),
     )
@@ -209,7 +209,7 @@ describe("cli compaction surfaces", () => {
         type: "message.created",
         message: createMessage({
           id: "message_failure",
-          role: "synthetic",
+          role: "compaction",
           sequence: 1,
         }),
       }),
@@ -267,17 +267,35 @@ function createMessage(input: {
   }
 }
 
-function createTranscriptMessage(
+function createTimelineMessage(
   input: {
     id: string
     role: StoredMessage["role"]
     sequence: number
   },
   parts: StoredPart[],
-): TranscriptMessage {
+): TimelineEntry {
+  const message = createMessage(input)
   return {
-    ...createMessage(input),
-    parts,
+    id: message.id,
+    sessionId: message.sessionId,
+    agent: message.agent,
+    role: message.role,
+    producedByRunId: message.runId,
+    runSequence: message.sequence,
+    timelineSequence: message.sequence,
+    createdAt: message.createdAt,
+    parts: parts.map((part) => ({
+      id: part.id,
+      sessionId: part.sessionId,
+      entryId: part.messageId,
+      producedByRunId: part.runId,
+      kind: part.kind,
+      sequence: part.sequence,
+      text: part.text,
+      data: part.data,
+      createdAt: part.createdAt,
+    })),
   }
 }
 
