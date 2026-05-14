@@ -4,6 +4,12 @@
 
 **Neo Coworker** is a file-system–based agent I built for my own day-to-day work. It has tool use, standard agent skills, permission prompts, subagents, context management (auto and manual compaction included), and folder-scoped workspaces.
 
+<p align="center">
+  <a href="docs/assets/neo-coworker.png">
+    <img src="docs/assets/neo-coworker.png" alt="Neo Coworker desktop app" width="720">
+  </a>
+</p>
+
 ## Quick Start (Desktop)
 
 - From the project root, this single command installs dependencies and launches the Electron desktop app:
@@ -29,4 +35,3 @@
 
 - Architecture: `docs/ARCHITECTURE.md`
 - Development: `docs/dev/`
-
