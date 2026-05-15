@@ -514,7 +514,7 @@ describe("orchestration prompt composer", () => {
           description: "Patch mutation tool",
           concurrency: "mutating",
           usageGuidance:
-            "Use `apply_patch` for workspace file mutations. Provide a full patch envelope in `patchText`, and do not use shell heredocs or anchored edit ranges.",
+            "Use `apply_patch` for workspace file mutations. Provide a full patch envelope in `patchText`: `*** Begin Patch`, then operations such as `*** Add File: path` followed by `+line`, `*** Update File: path` with `@@` hunks, or `*** Delete File: path`, then `*** End Patch`. Do not use shell heredocs, unified diff headers (`---`/`+++`), or `create file:`.",
           isCompressible: false,
         },
       ]),
@@ -535,6 +535,11 @@ describe("orchestration prompt composer", () => {
     expect(finalRequest).toBeDefined()
     expect(finalRequest?.systemPrompt).toContain("### Tool: apply_patch")
     expect(finalRequest?.systemPrompt).toContain("patchText")
+    expect(finalRequest?.systemPrompt).toContain("*** Add File: path")
+    expect(finalRequest?.systemPrompt).toContain("+line")
+    expect(finalRequest?.systemPrompt).toContain("*** Update File: path")
+    expect(finalRequest?.systemPrompt).toContain("*** Delete File: path")
+    expect(finalRequest?.systemPrompt).toContain("Do not use shell heredocs")
     expect(finalRequest?.systemPrompt).not.toContain("L{line}#{hash}")
     expect(finalRequest?.systemPrompt).not.toContain("anchor string")
     expect(finalRequest?.systemPrompt).not.toContain("oldText")

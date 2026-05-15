@@ -1571,7 +1571,6 @@ describe("runtime observability", () => {
       repository: harness.repository,
       permissionRepository: harness.permissionRepository,
       observability: harness.observability,
-      permissionPolicy: { apply_patch: "allow" },
       now: harness.now,
     })
 
@@ -1579,7 +1578,42 @@ describe("runtime observability", () => {
       sessionId: harness.session.id,
       runId: started.run.id,
     })
-    await collectEvents(handle.events)
+    let livePermissionRequest: unknown
+    await collectEvents(handle.events, {
+      onEvent(event) {
+        if (
+          typeof event !== "object" ||
+          event === null ||
+          !("type" in event) ||
+          event.type !== "permission.requested" ||
+          !("requestId" in event) ||
+          typeof event.requestId !== "string"
+        ) {
+          return
+        }
+
+        livePermissionRequest = event
+        handle.respondPermission({
+          requestId: event.requestId,
+          decision: "allow",
+        })
+      },
+    })
+
+    expect(livePermissionRequest).toMatchObject({
+      type: "permission.requested",
+      toolName: "apply_patch",
+      approvalDetails: {
+        kind: "patch",
+        fileCount: 1,
+        additions: 1,
+        deletions: 1,
+      },
+      preview: {
+        kind: "patch",
+        text: expect.stringContaining("original-secret"),
+      },
+    })
 
     const trace = harness.observability.exportRunTrace(started.run.id)
     const completionEvent = trace?.events.find(
@@ -1597,6 +1631,7 @@ describe("runtime observability", () => {
     }).join("\n")
     expect(persistedRunEventJson).toContain("private.txt")
     expect(persistedRunEventJson).toContain("+1/-1")
+    expect(persistedRunEventJson).not.toContain("\"preview\"")
     expect(persistedRunEventJson).not.toContain("*** Update File: private.txt")
     expect(persistedRunEventJson).not.toContain("--- a/private.txt")
     expect(persistedRunEventJson).not.toContain("+++ b/private.txt")

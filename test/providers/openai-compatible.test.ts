@@ -1293,7 +1293,7 @@ describe("openai-compatible provider", () => {
         patchText: {
           type: "string",
           description:
-            "Codex/opencode patch text beginning with `*** Begin Patch` and ending with `*** End Patch`. Use this for explicit workspace file mutations.",
+            "Codex/opencode patch text beginning with `*** Begin Patch` and ending with `*** End Patch`. Supports `*** Add File: path` with every content line prefixed by `+`, `*** Update File: path` hunks using `@@` plus context/`-`/`+` lines, `*** Delete File: path`, and `*** Move to: newPath` after an update header. This is not a unified diff; do not use `---`/`+++` headers or `create file:`.",
         },
       },
       required: ["patchText"],

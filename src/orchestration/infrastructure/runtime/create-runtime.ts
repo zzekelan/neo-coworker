@@ -177,7 +177,7 @@ export function createOrchestrationRuntimeApi(input: CreateOrchestrationRuntimeA
         input.runtimeObserver?.recordRuntimeEvent?.({
           sessionId: session.id,
           runId: inputValue.runId,
-          event,
+          event: toRuntimeObserverEvent(event),
           occurredAt: now(),
         })
       } catch {
@@ -445,6 +445,15 @@ function resolvePromptBuildResult(input: BuildSystemPromptResult) {
   }
 
   return input
+}
+
+function toRuntimeObserverEvent(event: RuntimeEvent): RuntimeEvent {
+  if (event.type !== "permission.requested") {
+    return event
+  }
+
+  const { preview: _preview, ...observableEvent } = event
+  return observableEvent
 }
 
 function deriveToolGuidanceEntries(tools: ReturnType<OrchestrationToolPort["list"]>): ToolGuidanceEntry[] {

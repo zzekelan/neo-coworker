@@ -17,10 +17,12 @@ import {
 } from "./mutating-file"
 
 const PATCH_APPROVAL_PREVIEW_LIMIT = 64 * 1024
+const PATCH_TEXT_DESCRIPTION =
+  "Codex/opencode patch text beginning with `*** Begin Patch` and ending with `*** End Patch`. Supports `*** Add File: path` with every content line prefixed by `+`, `*** Update File: path` hunks using `@@` plus context/`-`/`+` lines, `*** Delete File: path`, and `*** Move to: newPath` after an update header. This is not a unified diff; do not use `---`/`+++` headers or `create file:`."
 
 const ApplyPatchArgsSchema = z.object({
   patchText: z.string().trim().min(1, "Patch text must not be empty").describe(
-    "Codex/opencode patch text beginning with `*** Begin Patch` and ending with `*** End Patch`. Use this for explicit workspace file mutations.",
+    PATCH_TEXT_DESCRIPTION,
   ),
 }).describe(
   "Apply a Codex/opencode patch to workspace files. The patch is submitted as JSON through `patchText`, never through shell. Supports explicit file mutation through the permissioned Apply Patch Tool path.",
@@ -38,7 +40,7 @@ export function createApplyPatchTool(input: {
     concurrency: "mutating",
     isCompressible: false,
     usageGuidance:
-      "Use `apply_patch` for workspace file mutations. Provide a full patch envelope in `patchText`, with `*** Begin Patch`, one or more file operations, and `*** End Patch`. Do not use shell heredocs or commands to apply patches.",
+      "Use `apply_patch` for workspace file mutations. Provide a full patch envelope in `patchText`: `*** Begin Patch`, then operations such as `*** Add File: path` followed by `+line`, `*** Update File: path` with `@@` hunks, or `*** Delete File: path`, then `*** End Patch`. Do not use shell heredocs, unified diff headers (`---`/`+++`), or `create file:`.",
     async execute(value) {
       throwIfToolAborted(value.signal)
       const parsedArgs = ApplyPatchArgsSchema.safeParse(value.args)

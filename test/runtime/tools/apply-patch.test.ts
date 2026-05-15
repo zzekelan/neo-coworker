@@ -78,6 +78,11 @@ describe("apply_patch tool", () => {
 
     expect(tool).toBeDefined()
     expect(tool?.description).toContain("patchText")
+    expect(tool?.usageGuidance).toContain("*** Add File: path")
+    expect(tool?.usageGuidance).toContain("+line")
+    expect(tool?.usageGuidance).toContain("*** Update File: path")
+    expect(tool?.usageGuidance).toContain("*** Delete File: path")
+    expect(tool?.usageGuidance).toContain("create file:")
     expect(tool?.concurrency).toBe("mutating")
     expect(tool?.isCompressible).toBe(false)
   })
