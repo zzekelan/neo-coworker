@@ -384,4 +384,244 @@ describe("apply_patch tool", () => {
     await expect(access(sourcePath)).rejects.toThrow()
     expect(await readFile(destinationPath, "utf8")).toBe("source\n")
   })
+
+  test("matches update context with trailing whitespace differences", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "alpha  \nbeta\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          " alpha",
+          "-beta",
+          "+BETA",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("alpha  \nBETA\n")
+  })
+
+  test("matches update context with leading and trailing whitespace differences", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "  alpha  \nbeta\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          " alpha",
+          "-beta",
+          "+BETA",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("  alpha  \nBETA\n")
+  })
+
+  test("matches update context after normalizing common unicode punctuation and spaces", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "say “hello”\nold\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          " say \"hello\"",
+          "-old",
+          "+new",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("say “hello”\nnew\n")
+  })
+
+  test("uses first-match behavior for repeated update context", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "item\nold\nitem\nold\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          " item",
+          "-old",
+          "+new",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("item\nnew\nitem\nold\n")
+  })
+
+  test("end-of-file marked hunks prefer repeated context near the file tail", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "item\nold\nitem\nold\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          " item",
+          "-old",
+          "+new",
+          "*** End of File",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("item\nold\nitem\nnew\n")
+  })
+
+  test("preserves first-line BOM without fake BOM-only diff noise", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "\uFEFFfirst\nsecond\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          " first",
+          "-second",
+          "+SECOND",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("\uFEFFfirst\nSECOND\n")
+    expect(result.output).not.toContain("\uFEFFfirst")
+  })
+
+  test("writes updated files with LF line endings", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "alpha\r\nbeta\r\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          " alpha",
+          "-beta",
+          "+BETA",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("alpha\nBETA\n")
+  })
 })

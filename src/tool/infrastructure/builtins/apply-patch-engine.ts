@@ -52,6 +52,7 @@ type ParsedPatchOperation = {
 
 type ParsedPatchHunk = {
   lines: ParsedPatchLine[]
+  preferEnd?: boolean
 }
 
 type ParsedPatchLine = {
@@ -62,6 +63,7 @@ type ParsedPatchLine = {
 type TextLine = {
   content: string
   hasLineEnding: boolean
+  hasBom?: boolean
 }
 
 export const APPLY_PATCH_RESULT_DIFF_LIMIT = 16 * 1024
@@ -288,10 +290,15 @@ function parseUpdateOperation(lines: string[], startIndex: number, path: string)
 
     index += 1
     const hunkLines: ParsedPatchLine[] = []
+    let preferEnd = false
 
     while (index < lines.length) {
       const hunkLine = lines[index]
       if (hunkLine === "*** End Patch" || hunkLine?.startsWith("*** ") || hunkLine?.startsWith("@@")) {
+        if (hunkLine === "*** End of File") {
+          preferEnd = true
+          index += 1
+        }
         break
       }
 
@@ -312,7 +319,7 @@ function parseUpdateOperation(lines: string[], startIndex: number, path: string)
       throw new Error(`Update File ${path} hunk must add or remove at least one line`)
     }
 
-    hunks.push({ lines: hunkLines })
+    hunks.push({ lines: hunkLines, preferEnd })
   }
 
   if (hunks.length === 0 && !moveTo) {
@@ -572,19 +579,16 @@ function applyUpdateHunks(originalText: string, operation: ParsedPatchOperation)
     const oldLines = hunk.lines
       .filter((line) => line.kind === "context" || line.kind === "remove")
       .map((line) => line.text)
-    const newLines = hunk.lines
-      .filter((line) => line.kind === "context" || line.kind === "add")
-      .map((line) => line.text)
-    const matchIndex = findExactLineMatch(lines, oldLines, searchStart)
+    const matchIndex = findLineMatch(lines, oldLines, searchStart, hunk.preferEnd === true)
 
     if (matchIndex === -1) {
       throw new Error(`Patch context not found in ${operation.path}`)
     }
 
-    const replacementLines = newLines.map((content, index) => ({
-      content,
-      hasLineEnding: index < newLines.length - 1 || lines[matchIndex + oldLines.length - 1]?.hasLineEnding === true,
-    }))
+    const replacementLines = buildReplacementLines({
+      hunk,
+      matchedLines: lines.slice(matchIndex, matchIndex + oldLines.length),
+    })
 
     lines = [
       ...lines.slice(0, matchIndex),
@@ -595,6 +599,46 @@ function applyUpdateHunks(originalText: string, operation: ParsedPatchOperation)
   }
 
   return serializeTextLines(lines)
+}
+
+function buildReplacementLines(input: {
+  hunk: ParsedPatchHunk
+  matchedLines: TextLine[]
+}): TextLine[] {
+  let oldCursor = 0
+  const replacementLines: TextLine[] = []
+
+  for (const line of input.hunk.lines) {
+    if (line.kind === "context") {
+      const matchedLine = input.matchedLines[oldCursor]
+      replacementLines.push({
+        content: matchedLine?.content ?? line.text,
+        hasLineEnding: matchedLine?.hasLineEnding ?? true,
+        hasBom: matchedLine?.hasBom,
+      })
+      oldCursor += 1
+    } else if (line.kind === "remove") {
+      oldCursor += 1
+    } else {
+      replacementLines.push({
+        content: line.text,
+        hasLineEnding: true,
+      })
+    }
+  }
+
+  const oldLastLine = input.matchedLines.at(-1)
+  if (oldLastLine && replacementLines.length > 0) {
+    const lastReplacementLine = replacementLines[replacementLines.length - 1]
+    if (lastReplacementLine) {
+      replacementLines[replacementLines.length - 1] = {
+        ...lastReplacementLine,
+        hasLineEnding: oldLastLine.hasLineEnding,
+      }
+    }
+  }
+
+  return replacementLines
 }
 
 function splitTextLines(text: string): TextLine[] {
@@ -611,9 +655,13 @@ function splitTextLines(text: string): TextLine[] {
       continue
     }
 
+    const rawContent = parts[index] ?? ""
+    const hasBom = index === 0 && rawContent.startsWith("\uFEFF")
+
     lines.push({
-      content: parts[index] ?? "",
+      content: hasBom ? rawContent.slice(1) : rawContent,
       hasLineEnding: index < parts.length - 1,
+      hasBom,
     })
   }
 
@@ -622,22 +670,100 @@ function splitTextLines(text: string): TextLine[] {
 
 function serializeTextLines(lines: TextLine[]) {
   return lines
-    .map((line, index) => `${line.content}${index < lines.length - 1 || line.hasLineEnding ? "\n" : ""}`)
+    .map((line, index) => `${line.hasBom ? "\uFEFF" : ""}${line.content}${index < lines.length - 1 || line.hasLineEnding ? "\n" : ""}`)
     .join("")
 }
 
-function findExactLineMatch(lines: TextLine[], expected: string[], searchStart: number) {
+function findLineMatch(lines: TextLine[], expected: string[], searchStart: number, preferEnd: boolean) {
   if (expected.length === 0) {
     return -1
   }
 
+  for (const normalize of [
+    normalizeExact,
+    normalizeTrailingWhitespace,
+    normalizeTrimmed,
+    normalizeUnicodeAndWhitespace,
+  ]) {
+    const matchIndex = preferEnd
+      ? findLineMatchFromEndWithNormalizer(lines, expected, searchStart, normalize)
+      : findLineMatchWithNormalizer(lines, expected, searchStart, normalize)
+    if (matchIndex !== -1) {
+      return matchIndex
+    }
+  }
+
+  if (preferEnd) {
+    for (const normalize of [
+      normalizeExact,
+      normalizeTrailingWhitespace,
+      normalizeTrimmed,
+      normalizeUnicodeAndWhitespace,
+    ]) {
+      const matchIndex = findLineMatchWithNormalizer(lines, expected, searchStart, normalize)
+      if (matchIndex !== -1) {
+        return matchIndex
+      }
+    }
+  }
+
+  return -1
+}
+
+function findLineMatchWithNormalizer(
+  lines: TextLine[],
+  expected: string[],
+  searchStart: number,
+  normalize: (value: string) => string,
+) {
   for (let index = searchStart; index <= lines.length - expected.length; index += 1) {
-    if (expected.every((line, offset) => lines[index + offset]?.content === line)) {
+    if (expected.every((line, offset) => normalize(lines[index + offset]?.content ?? "") === normalize(line))) {
       return index
     }
   }
 
   return -1
+}
+
+function findLineMatchFromEndWithNormalizer(
+  lines: TextLine[],
+  expected: string[],
+  searchStart: number,
+  normalize: (value: string) => string,
+) {
+  for (let index = lines.length - expected.length; index >= searchStart; index -= 1) {
+    if (expected.every((line, offset) => normalize(lines[index + offset]?.content ?? "") === normalize(line))) {
+      return index
+    }
+  }
+
+  return -1
+}
+
+function normalizeExact(value: string) {
+  return value
+}
+
+function normalizeTrailingWhitespace(value: string) {
+  return value.trimEnd()
+}
+
+function normalizeTrimmed(value: string) {
+  return value.trim()
+}
+
+function normalizeUnicodeAndWhitespace(value: string) {
+  return value
+    .replaceAll("\u00A0", " ")
+    .replaceAll("\u2007", " ")
+    .replaceAll("\u202F", " ")
+    .replaceAll("\u2018", "'")
+    .replaceAll("\u2019", "'")
+    .replaceAll("\u201C", "\"")
+    .replaceAll("\u201D", "\"")
+    .replaceAll("\u2013", "-")
+    .replaceAll("\u2014", "-")
+    .trim()
 }
 
 function createUnifiedDiff(input: {
@@ -647,15 +773,56 @@ function createUnifiedDiff(input: {
 }) {
   const originalLines = splitTextLines(input.originalText)
   const updatedLines = splitTextLines(input.updatedText)
+  const commonPrefixLength = countCommonPrefix(originalLines, updatedLines)
+  const commonSuffixLength = countCommonSuffix(
+    originalLines.slice(commonPrefixLength),
+    updatedLines.slice(commonPrefixLength),
+  )
+  const removedLines = originalLines.slice(
+    commonPrefixLength,
+    originalLines.length - commonSuffixLength,
+  )
+  const addedLines = updatedLines.slice(
+    commonPrefixLength,
+    updatedLines.length - commonSuffixLength,
+  )
   const output = [
     `--- a/${input.path}`,
     `+++ b/${input.path}`,
     "@@",
-    ...originalLines.map((line) => `-${line.content}`),
-    ...updatedLines.map((line) => `+${line.content}`),
+    ...removedLines.map((line) => `-${line.content}`),
+    ...addedLines.map((line) => `+${line.content}`),
   ]
 
   return output.join("\n")
+}
+
+function countCommonPrefix(left: TextLine[], right: TextLine[]) {
+  const limit = Math.min(left.length, right.length)
+  for (let index = 0; index < limit; index += 1) {
+    if (!isSameDiffLine(left[index], right[index])) {
+      return index
+    }
+  }
+
+  return limit
+}
+
+function countCommonSuffix(left: TextLine[], right: TextLine[]) {
+  const limit = Math.min(left.length, right.length)
+  for (let offset = 0; offset < limit; offset += 1) {
+    if (!isSameDiffLine(left[left.length - 1 - offset], right[right.length - 1 - offset])) {
+      return offset
+    }
+  }
+
+  return limit
+}
+
+function isSameDiffLine(left: TextLine | undefined, right: TextLine | undefined) {
+  return left?.content === right?.content &&
+    left?.hasBom === right?.hasBom &&
+    left?.hasLineEnding === right?.hasLineEnding
 }
 
 function createMoveDiff(input: {
