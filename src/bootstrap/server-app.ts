@@ -653,6 +653,7 @@ async function startRun(runInput: {
       promptPartCreatedAt: now(),
       agent: runInput.agent,
     })
+    contextUsageBySession.delete(runInput.sessionId)
     const resolvedSession = repository.sessions.get(runInput.sessionId)
     recordTelemetryRunEvent({
       sessionId: runInput.sessionId,
@@ -708,6 +709,7 @@ async function startRun(runInput: {
       trigger: "command",
       createdAt: now(),
     })
+    contextUsageBySession.delete(sessionId)
     activeCompactions.set(sessionId, started.run.id)
 
     try {

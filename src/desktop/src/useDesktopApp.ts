@@ -391,7 +391,8 @@ export function useDesktopApp() {
             }
           : previous.sessionSnapshot,
         permissionRequests: terminal ? [] : previous.permissionRequests,
-        contextUsage: terminal ? null : previous.contextUsage,
+        contextUsage:
+          event.type === "run.created" ? null : terminal ? null : previous.contextUsage,
         actionError:
           event.run.status === "failed"
             ? event.run.errorText ?? `run ${event.run.id} failed`

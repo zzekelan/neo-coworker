@@ -53,7 +53,8 @@ describe("desktop app state flow", () => {
     expect(source).toContain("contextWindow: event.contextWindow")
     expect(source).toContain("utilizationPercent: event.utilizationPercent")
     expect(source).toContain("source: event.source")
-    expect(source).toContain("contextUsage: terminal ? null : previous.contextUsage")
+    expect(source).toContain("event.type === \"run.created\" ? null")
+    expect(source).toContain("terminal ? null : previous.contextUsage")
     expect(source).toContain("contextUsage: null,\n      })")
   })
 

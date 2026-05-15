@@ -1113,6 +1113,76 @@ describe("server HTTP API and SSE", () => {
     await subscriberB.close()
   })
 
+  test("starting a new run clears stale current context usage until that run reports usage", async () => {
+    let releaseSecondTurn!: () => void
+    let markSecondTurnStarted!: () => void
+    const secondTurnStarted = new Promise<void>((resolve) => {
+      markSecondTurnStarted = resolve
+    })
+    const continueSecondTurn = new Promise<void>((resolve) => {
+      releaseSecondTurn = resolve
+    })
+    const harness = await createHarness("server-context-usage-new-run", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "First run establishes usage." }
+      },
+      async function* () {
+        markSecondTurnStarted()
+        await continueSecondTurn
+        yield { type: "text.delta", text: "Second run establishes new usage." }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+    const firstRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "First context usage",
+      },
+    )
+    await waitForRunStatus(harness.server, firstRun.body.data.run.id as string, "completed")
+
+    const afterFirstRun = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+    expect(afterFirstRun.body.data.contextUsage).toMatchObject({
+      contextTokens: expect.any(Number),
+      contextWindow: 192_000,
+      utilizationPercent: expect.any(Number),
+    })
+
+    let secondRunId: string | null = null
+    try {
+      const secondRun = await requestJson(
+        harness.server,
+        "POST",
+        `/sessions/${sessionId}/runs`,
+        {
+          prompt: "Second context usage",
+        },
+      )
+      secondRunId = secondRun.body.data.run.id as string
+      await secondTurnStarted
+
+      const duringSecondRun = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+      expect(duringSecondRun.body.data).toMatchObject({
+        activeRun: {
+          id: secondRunId,
+        },
+        contextUsage: null,
+      })
+    } finally {
+      releaseSecondTurn()
+    }
+
+    if (secondRunId) {
+      await waitForRunStatus(harness.server, secondRunId, "completed")
+    }
+  })
+
   test("SSE forwards tool.progress events to subscribers", async () => {
     const harness = await createHarness(
       "server-sse-tool-progress",
