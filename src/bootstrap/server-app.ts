@@ -206,18 +206,19 @@ export function buildSessionSnapshot(
   }
 }
 
-function timelineEntryFromStoredMessage(message: StoredMessage): TimelineEntry {
-  return {
-    id: message.id,
-    sessionId: message.sessionId,
-    producedByRunId: message.runId,
-    agent: message.agent,
-    role: message.role,
-    runSequence: message.sequence,
-    timelineSequence: message.sequence,
-    createdAt: message.createdAt,
-    parts: [],
+function readTimelineEntryForStoredMessage(
+  repository: Pick<StorageRepository, "timeline">,
+  message: StoredMessage,
+): TimelineEntry {
+  const entry = repository.timeline
+    .listEntries(message.sessionId)
+    .find((candidate) => candidate.id === message.id)
+
+  if (!entry) {
+    throw new Error(`Timeline entry ${message.id} was not found after message creation`)
   }
+
+  return entry
 }
 
 function timelinePartFromStoredPart(part: StoredPart): TimelinePart {
@@ -420,7 +421,7 @@ export function createObservedRepository(input: {
         const created = repository.messages.create(message)
         notifications.publish({
           type: "timeline.entry.created",
-          entry: timelineEntryFromStoredMessage(created),
+          entry: readTimelineEntryForStoredMessage(repository, created),
         })
         return created
       },
@@ -468,7 +469,7 @@ export function createObservedRepository(input: {
       publishRunCreated(created.run)
       notifications.publish({
         type: "timeline.entry.created",
-        entry: timelineEntryFromStoredMessage(created.message),
+        entry: readTimelineEntryForStoredMessage(repository, created.message),
       })
       return created
     },
@@ -477,7 +478,7 @@ export function createObservedRepository(input: {
       publishRunCreated(created.run)
       notifications.publish({
         type: "timeline.entry.created",
-        entry: timelineEntryFromStoredMessage(created.message),
+        entry: readTimelineEntryForStoredMessage(repository, created.message),
       })
       notifications.publish({
         type: "timeline.part.updated",
@@ -489,7 +490,7 @@ export function createObservedRepository(input: {
       const created = repository.createAssistantMessageWithFirstPart(inputValue)
       notifications.publish({
         type: "timeline.entry.created",
-        entry: timelineEntryFromStoredMessage(created.message),
+        entry: readTimelineEntryForStoredMessage(repository, created.message),
       })
       notifications.publish({
         type: "timeline.part.updated",
@@ -653,7 +654,6 @@ async function startRun(runInput: {
       promptPartCreatedAt: now(),
       agent: runInput.agent,
     })
-    contextUsageBySession.delete(runInput.sessionId)
     const resolvedSession = repository.sessions.get(runInput.sessionId)
     recordTelemetryRunEvent({
       sessionId: runInput.sessionId,
@@ -709,7 +709,6 @@ async function startRun(runInput: {
       trigger: "command",
       createdAt: now(),
     })
-    contextUsageBySession.delete(sessionId)
     activeCompactions.set(sessionId, started.run.id)
 
     try {

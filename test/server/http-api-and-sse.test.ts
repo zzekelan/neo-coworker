@@ -1113,7 +1113,7 @@ describe("server HTTP API and SSE", () => {
     await subscriberB.close()
   })
 
-  test("starting a new run clears stale current context usage until that run reports usage", async () => {
+  test("starting a new run preserves the last context usage until that run reports usage", async () => {
     let releaseSecondTurn!: () => void
     let markSecondTurnStarted!: () => void
     const secondTurnStarted = new Promise<void>((resolve) => {
@@ -1172,7 +1172,7 @@ describe("server HTTP API and SSE", () => {
         activeRun: {
           id: secondRunId,
         },
-        contextUsage: null,
+        contextUsage: afterFirstRun.body.data.contextUsage,
       })
     } finally {
       releaseSecondTurn()
@@ -1260,6 +1260,79 @@ describe("server HTTP API and SSE", () => {
       id: runId,
       status: "completed",
     })
+
+    await subscriber.close()
+  })
+
+  test("live timeline entry notifications use the session timeline order across runs", async () => {
+    const harness = await createHarness("server-sse-timeline-sequence", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "First answer." }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Second answer." }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const subscriber = await connectSse(harness.server)
+    await subscriber.next((event) => event.event === "heartbeat")
+
+    const firstRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "First timeline notification",
+      },
+    )
+    const firstRunId = firstRun.body.data.run.id as string
+    const firstEvents = await collectEventsUntil(
+      subscriber,
+      (event) =>
+        event.event === "run.updated" &&
+        event.data.run.id === firstRunId &&
+        event.data.run.status === "completed",
+    )
+
+    const secondRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Second timeline notification",
+      },
+    )
+    const secondRunId = secondRun.body.data.run.id as string
+    const secondEvents = await collectEventsUntil(
+      subscriber,
+      (event) =>
+        event.event === "run.updated" &&
+        event.data.run.id === secondRunId &&
+        event.data.run.status === "completed",
+    )
+
+    const liveEntries = [...firstEvents, ...secondEvents]
+      .filter((event) => event.event === "timeline.entry.created")
+      .map((event) => event.data.entry)
+    const timeline = await requestJson(harness.server, "GET", `/sessions/${sessionId}/timeline`)
+
+    expect(liveEntries.map((entry) => ({
+      id: entry.id,
+      producedByRunId: entry.producedByRunId,
+      runSequence: entry.runSequence,
+      timelineSequence: entry.timelineSequence,
+    }))).toEqual(timeline.body.data.timeline.map((entry: Record<string, unknown>) => ({
+      id: entry.id,
+      producedByRunId: entry.producedByRunId,
+      runSequence: entry.runSequence,
+      timelineSequence: entry.timelineSequence,
+    })))
+    expect(liveEntries.map((entry) => entry.timelineSequence)).toEqual([0, 1, 2, 3])
 
     await subscriber.close()
   })

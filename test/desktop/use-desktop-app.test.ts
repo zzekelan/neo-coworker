@@ -43,7 +43,7 @@ describe("desktop app state flow", () => {
     expect(source).toContain("return sessions.filter((candidate) => candidate.id !== session.id)")
   })
 
-  test("stores context usage from events and clears it on terminal run or session switch", () => {
+  test("stores context usage from events and keeps it through run transitions until session switch", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 
     expect(source).toContain("contextUsage: ContextUsageState | null")
@@ -53,8 +53,9 @@ describe("desktop app state flow", () => {
     expect(source).toContain("contextWindow: event.contextWindow")
     expect(source).toContain("utilizationPercent: event.utilizationPercent")
     expect(source).toContain("source: event.source")
-    expect(source).toContain("event.type === \"run.created\" ? null")
-    expect(source).toContain("terminal ? null : previous.contextUsage")
+    expect(source).toContain("contextUsage: previous.contextUsage")
+    expect(source).not.toContain("event.type === \"run.created\" ? null")
+    expect(source).not.toContain("terminal ? null : previous.contextUsage")
     expect(source).toContain("contextUsage: null,\n      })")
   })
 
