@@ -40,6 +40,7 @@ export {
   createBuiltinToolRuntime,
   type CreateBuiltinToolRuntimeInput,
 } from "../infrastructure/runtime/create-builtin-runtime"
+export { createApplyPatchTool } from "../infrastructure/builtins/apply-patch"
 export { createCodesearchTool } from "../infrastructure/builtins/codesearch"
 export { createEditTool } from "../infrastructure/builtins/edit"
 export { createGlobTool } from "../infrastructure/builtins/glob"
