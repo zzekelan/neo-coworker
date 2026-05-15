@@ -12,6 +12,7 @@ export type CreatePermissionRequestServiceInput = {
 export function createPermissionRequestService(input: CreatePermissionRequestServiceInput) {
   const repository = input.repository
   const session = input.session
+  let lastCreatedAt = Number.NEGATIVE_INFINITY
 
   return {
     requestPermission(inputValue: {
@@ -30,7 +31,7 @@ export function createPermissionRequestService(input: CreatePermissionRequestSer
         runId: run.id,
         toolName: inputValue.permissionRequest.toolName,
         reason: inputValue.permissionRequest.reason,
-        createdAt: inputValue.permissionRequest.createdAt,
+        createdAt: nextCreatedAt(inputValue.permissionRequest.createdAt),
         status: "pending",
         resolvedAt: null,
       })
@@ -49,5 +50,19 @@ export function createPermissionRequestService(input: CreatePermissionRequestSer
         permissionRequest,
       }
     },
+  }
+
+  function nextCreatedAt(candidate: number | undefined) {
+    if (candidate === undefined) {
+      return undefined
+    }
+
+    if (candidate <= lastCreatedAt) {
+      lastCreatedAt += 1
+      return lastCreatedAt
+    }
+
+    lastCreatedAt = candidate
+    return candidate
   }
 }

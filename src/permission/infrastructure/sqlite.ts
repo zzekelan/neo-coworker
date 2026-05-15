@@ -32,6 +32,7 @@ export function createPermissionRepository(input: {
   const now = input.now ?? Date.now
   const createId =
     input.createId ?? ((prefix: IdPrefix) => `${prefix}_${crypto.randomUUID()}`)
+  let lastAutoCreatedAt = Number.NEGATIVE_INFINITY
 
   function buildId(prefix: IdPrefix, value?: string) {
     return value ?? createId(prefix)
@@ -63,7 +64,7 @@ export function createPermissionRepository(input: {
         toolName: value.toolName,
         reason: value.reason,
         status: value.status ?? "pending",
-        createdAt: value.createdAt ?? now(),
+        createdAt: value.createdAt ?? nextAutoCreatedAt(),
         resolvedAt: value.resolvedAt ?? null,
       }
 
@@ -130,6 +131,17 @@ export function createPermissionRepository(input: {
 
   return {
     requests,
+  }
+
+  function nextAutoCreatedAt() {
+    const candidate = now()
+    if (candidate <= lastAutoCreatedAt) {
+      lastAutoCreatedAt += 1
+      return lastAutoCreatedAt
+    }
+
+    lastAutoCreatedAt = candidate
+    return candidate
   }
 }
 

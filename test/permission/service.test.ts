@@ -107,6 +107,38 @@ describe("permission service", () => {
     ])
   })
 
+  test("requestPermission preserves creation order for requests from the same runtime tick", () => {
+    const harness = createHarness("request-same-tick-order", [20, 30, 40])
+
+    harness.request.requestPermission({
+      runId: harness.run.id,
+      permissionRequest: {
+        id: "permission_b",
+        toolName: "webfetch",
+        reason: "webfetch data:text/plain,second",
+        createdAt: 11,
+      },
+    })
+    harness.request.requestPermission({
+      runId: harness.run.id,
+      permissionRequest: {
+        id: "permission_a",
+        toolName: "webfetch",
+        reason: "webfetch data:text/plain,first",
+        createdAt: 11,
+      },
+    })
+
+    expect(
+      harness.permissionRepository.requests
+        .listByRun(harness.run.id)
+        .map((request) => request.reason),
+    ).toEqual([
+      "webfetch data:text/plain,second",
+      "webfetch data:text/plain,first",
+    ])
+  })
+
   test("requestPermission keeps the run blocked if a new request fails while an older pending request exists", () => {
     const harness = createHarness("request-rollback", [20, 30, 40])
     const requestWithFailingCreate = createPermissionRequestService({

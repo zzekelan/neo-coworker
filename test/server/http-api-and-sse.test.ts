@@ -1443,6 +1443,99 @@ describe("server HTTP API and SSE", () => {
     )
   })
 
+  test("permission request and update notifications are live hints over the notifications route", async () => {
+    const harness = await createHarness("server-permission-notifications", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_write",
+          name: "write",
+          inputText: JSON.stringify({
+            path: join(harness.workspaceRoot, "notified.txt"),
+            content: "hello from notifications",
+          }),
+        }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Write finished after permission notification." }
+      },
+    ]), {
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+    const subscriber = await connectSse(harness.server)
+
+    try {
+      const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+        directory: harness.workspaceRoot,
+      })
+      const sessionId = createdSession.body.data.session.id as string
+      const startedRun = await requestJson(
+        harness.server,
+        "POST",
+        `/sessions/${sessionId}/runs`,
+        {
+          prompt: "Write notified.txt",
+        },
+      )
+      const runId = startedRun.body.data.run.id as string
+
+      const requested = await subscriber.next(
+        (event) =>
+          event.event === "permission.requested" &&
+          event.data.permissionRequest.runId === runId,
+      )
+      expect(requested.data).toMatchObject({
+        type: "permission.requested",
+        permissionRequest: {
+          sessionId,
+          runId,
+          toolName: "write",
+          status: "pending",
+        },
+      })
+
+      const permissionId = requested.data.permissionRequest.id as string
+      const waitingRun = await waitForRunStatus(harness.server, runId, "waiting_permission")
+      expect(waitingRun.permissionRequests).toMatchObject([
+        {
+          id: permissionId,
+          status: "pending",
+        },
+      ])
+
+      const reply = await requestJson(
+        harness.server,
+        "POST",
+        `/permissions/${permissionId}/reply`,
+        {
+          decision: "allow",
+        },
+      )
+      expect(reply.status).toBe(200)
+      expect(reply.body.data.permissionRequest).toMatchObject({
+        id: permissionId,
+        status: "approved",
+      })
+
+      const updated = await subscriber.next(
+        (event) =>
+          event.event === "permission.updated" &&
+          event.data.permissionRequest.id === permissionId,
+      )
+      expect(updated.data).toMatchObject({
+        type: "permission.updated",
+        permissionRequest: {
+          id: permissionId,
+          status: "approved",
+        },
+      })
+    } finally {
+      await subscriber.close()
+    }
+  })
+
   test("run payloads expose multiple pending permission requests and stay waiting until the last reply", async () => {
     const firstUrl = "data:text/plain,Hello%20from%20the%20first%20server%20fetch."
     const secondUrl = "data:text/plain,Hello%20from%20the%20second%20server%20fetch."
