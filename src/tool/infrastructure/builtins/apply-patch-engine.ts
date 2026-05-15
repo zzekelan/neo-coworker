@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises"
-import { isAbsolute, relative, resolve, sep } from "node:path"
+import { mkdir, readFile, realpath, rename, stat, unlink } from "node:fs/promises"
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
 import {
   assertWorkspacePathNotReserved,
 } from "../../domain"
@@ -8,7 +8,7 @@ import {
   writeUtf8FileAtomically,
 } from "./mutating-file"
 
-export type PatchFileOperation = "update"
+export type PatchFileOperation = "add" | "delete" | "move" | "update"
 
 export type PatchFileSummary = {
   path: string
@@ -29,6 +29,8 @@ export type PatchFileChange = {
   path: string
   absolutePath: string
   operation: PatchFileOperation
+  previousPath?: string
+  previousAbsolutePath?: string
   originalText: string
   updatedText: string
   additions: number
@@ -43,7 +45,9 @@ type ParsedPatch = {
 type ParsedPatchOperation = {
   operation: PatchFileOperation
   path: string
-  hunks: ParsedPatchHunk[]
+  moveTo?: string
+  hunks?: ParsedPatchHunk[]
+  addedLines?: string[]
 }
 
 type ParsedPatchHunk = {
@@ -70,7 +74,22 @@ export async function planApplyPatch(input: {
   const changes: PatchFileChange[] = []
 
   for (const operation of parsed.operations) {
-    if (operation.operation === "update") {
+    if (operation.operation === "add") {
+      changes.push(await planAddFile({
+        workspaceRoot: input.workspaceRoot,
+        operation,
+      }))
+    } else if (operation.operation === "delete") {
+      changes.push(await planDeleteFile({
+        workspaceRoot: input.workspaceRoot,
+        operation,
+      }))
+    } else if (operation.operation === "move") {
+      changes.push(await planMoveFile({
+        workspaceRoot: input.workspaceRoot,
+        operation,
+      }))
+    } else if (operation.operation === "update") {
       changes.push(await planUpdateFile({
         workspaceRoot: input.workspaceRoot,
         operation,
@@ -108,7 +127,18 @@ export async function applyPatchPlan(
   const atomicWrite = input.atomicWrite ?? writeUtf8FileAtomically
 
   for (const change of plan.changes) {
-    if (change.operation === "update" && change.updatedText !== change.originalText) {
+    if (change.operation === "delete") {
+      await unlink(change.absolutePath)
+    } else if (change.operation === "move" && change.previousAbsolutePath) {
+      await mkdir(dirname(change.absolutePath), { recursive: true })
+      if (change.updatedText === change.originalText) {
+        await rename(change.previousAbsolutePath, change.absolutePath)
+      } else {
+        await atomicWrite(change.absolutePath, change.updatedText)
+        await unlink(change.previousAbsolutePath)
+      }
+    } else if (change.updatedText !== change.originalText) {
+      await mkdir(dirname(change.absolutePath), { recursive: true })
       await atomicWrite(change.absolutePath, change.updatedText)
     }
   }
@@ -154,6 +184,21 @@ function parsePatchText(patchText: string): ParsedPatch {
       continue
     }
 
+    if (line?.startsWith("*** Add File: ")) {
+      const path = line.slice("*** Add File: ".length).trim()
+      const { operation, nextIndex } = parseAddOperation(lines, index + 1, path)
+      operations.push(operation)
+      index = nextIndex
+      continue
+    }
+
+    if (line?.startsWith("*** Delete File: ")) {
+      const path = line.slice("*** Delete File: ".length).trim()
+      operations.push(parseDeleteOperation(path))
+      index += 1
+      continue
+    }
+
     if (line?.trim() === "") {
       index += 1
       continue
@@ -177,6 +222,42 @@ function parsePatchText(patchText: string): ParsedPatch {
   return { operations }
 }
 
+function parseAddOperation(lines: string[], startIndex: number, path: string) {
+  if (!path) {
+    throw new Error("Add File path must not be empty")
+  }
+
+  let index = startIndex
+  const addedLines: string[] = []
+
+  while (index < lines.length) {
+    const line = lines[index]
+    if (line === "*** End Patch" || line?.startsWith("*** ")) {
+      break
+    }
+
+    if (!line?.startsWith("+")) {
+      throw new Error(`Add File ${path} lines must start with +`)
+    }
+
+    addedLines.push(line.slice(1))
+    index += 1
+  }
+
+  if (addedLines.length === 0) {
+    throw new Error(`Add File ${path} must contain at least one line`)
+  }
+
+  return {
+    operation: {
+      operation: "add" as const,
+      path,
+      addedLines,
+    },
+    nextIndex: index,
+  }
+}
+
 function parseUpdateOperation(lines: string[], startIndex: number, path: string) {
   if (!path) {
     throw new Error("Update File path must not be empty")
@@ -184,10 +265,20 @@ function parseUpdateOperation(lines: string[], startIndex: number, path: string)
 
   let index = startIndex
   const hunks: ParsedPatchHunk[] = []
+  let moveTo: string | undefined
 
   while (index < lines.length) {
     const line = lines[index]
     if (line === "*** End Patch" || line?.startsWith("*** ")) {
+      if (line?.startsWith("*** Move to: ")) {
+        moveTo = line.slice("*** Move to: ".length).trim()
+        if (!moveTo) {
+          throw new Error("Move to path must not be empty")
+        }
+        index += 1
+        continue
+      }
+
       break
     }
 
@@ -224,17 +315,29 @@ function parseUpdateOperation(lines: string[], startIndex: number, path: string)
     hunks.push({ lines: hunkLines })
   }
 
-  if (hunks.length === 0) {
+  if (hunks.length === 0 && !moveTo) {
     throw new Error(`Update File ${path} must contain at least one hunk`)
   }
 
   return {
     operation: {
-      operation: "update" as const,
+      operation: moveTo ? "move" as const : "update" as const,
       path,
+      moveTo,
       hunks,
     },
     nextIndex: index,
+  }
+}
+
+function parseDeleteOperation(path: string): ParsedPatchOperation {
+  if (!path) {
+    throw new Error("Delete File path must not be empty")
+  }
+
+  return {
+    operation: "delete",
+    path,
   }
 }
 
@@ -249,11 +352,12 @@ async function planUpdateFile(input: {
   })
   const originalText = await readFile(absolutePath, "utf8")
   const updatedText = applyUpdateHunks(originalText, input.operation)
-  const additions = input.operation.hunks.reduce(
+  const hunks = input.operation.hunks ?? []
+  const additions = hunks.reduce(
     (total, hunk) => total + hunk.lines.filter((line) => line.kind === "add").length,
     0,
   )
-  const deletions = input.operation.hunks.reduce(
+  const deletions = hunks.reduce(
     (total, hunk) => total + hunk.lines.filter((line) => line.kind === "remove").length,
     0,
   )
@@ -280,6 +384,147 @@ async function planUpdateFile(input: {
   }
 }
 
+async function planMoveFile(input: {
+  workspaceRoot: string
+  operation: ParsedPatchOperation
+}): Promise<PatchFileChange> {
+  const moveTo = input.operation.moveTo
+  if (!moveTo) {
+    throw new Error(`Move operation for ${input.operation.path} is missing destination`)
+  }
+
+  const source = await resolvePatchWorkspacePath({
+    workspaceRoot: input.workspaceRoot,
+    patchPath: input.operation.path,
+    mustExist: true,
+  })
+  const destination = await resolvePatchWorkspacePath({
+    workspaceRoot: input.workspaceRoot,
+    patchPath: moveTo,
+    mustExist: false,
+  })
+  const sourceStat = await stat(source.absolutePath)
+  if (!sourceStat.isFile()) {
+    throw new Error(`Move source must be a file, not a directory: ${source.relativePath}`)
+  }
+
+  await stat(destination.absolutePath).then((destinationStat) => {
+    if (destinationStat.isDirectory()) {
+      throw new Error(`Move destination must not be a directory: ${destination.relativePath}`)
+    }
+  }).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error
+    }
+  })
+
+  const originalText = await readFile(source.absolutePath, "utf8")
+  const updatedText = input.operation.hunks && input.operation.hunks.length > 0
+    ? applyUpdateHunks(originalText, input.operation)
+    : originalText
+  const hunks = input.operation.hunks ?? []
+  const additions = hunks.reduce(
+    (total, hunk) => total + hunk.lines.filter((line) => line.kind === "add").length,
+    0,
+  )
+  const deletions = hunks.reduce(
+    (total, hunk) => total + hunk.lines.filter((line) => line.kind === "remove").length,
+    0,
+  )
+  const diff = updatedText === originalText
+    ? createMoveDiff({
+      from: source.relativePath,
+      to: destination.relativePath,
+    })
+    : createUnifiedDiff({
+      path: destination.relativePath,
+      originalText,
+      updatedText,
+    })
+
+  return {
+    path: destination.relativePath,
+    absolutePath: destination.absolutePath,
+    operation: "move",
+    previousPath: source.relativePath,
+    previousAbsolutePath: source.absolutePath,
+    originalText,
+    updatedText,
+    additions,
+    deletions,
+    diff,
+  }
+}
+
+async function planDeleteFile(input: {
+  workspaceRoot: string
+  operation: ParsedPatchOperation
+}): Promise<PatchFileChange> {
+  const { relativePath, absolutePath } = await resolvePatchWorkspacePath({
+    workspaceRoot: input.workspaceRoot,
+    patchPath: input.operation.path,
+    mustExist: true,
+  })
+  const fileStat = await stat(absolutePath)
+  if (!fileStat.isFile()) {
+    throw new Error(`Delete File target must be a file, not a directory: ${relativePath}`)
+  }
+
+  const originalText = await readFile(absolutePath, "utf8")
+  const diff = createUnifiedDiff({
+    path: relativePath,
+    originalText,
+    updatedText: "",
+  })
+
+  return {
+    path: relativePath,
+    absolutePath,
+    operation: "delete",
+    originalText,
+    updatedText: "",
+    additions: 0,
+    deletions: splitTextLines(originalText).length,
+    diff,
+  }
+}
+
+async function planAddFile(input: {
+  workspaceRoot: string
+  operation: ParsedPatchOperation
+}): Promise<PatchFileChange> {
+  const { relativePath, absolutePath } = await resolvePatchWorkspacePath({
+    workspaceRoot: input.workspaceRoot,
+    patchPath: input.operation.path,
+    mustExist: false,
+  })
+  const addedLines = input.operation.addedLines ?? []
+  const updatedText = `${addedLines.join("\n")}\n`
+  const originalText = await readFile(absolutePath, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return ""
+    }
+
+    throw error
+  })
+  const diff = createUnifiedDiff({
+    path: relativePath,
+    originalText,
+    updatedText,
+  })
+
+  return {
+    path: relativePath,
+    absolutePath,
+    operation: "add",
+    originalText,
+    updatedText,
+    additions: addedLines.length,
+    deletions: 0,
+    diff,
+  }
+}
+
 async function resolvePatchWorkspacePath(input: {
   workspaceRoot: string
   patchPath: string
@@ -301,7 +546,6 @@ async function resolvePatchWorkspacePath(input: {
   assertWorkspacePathNotReserved(relativePath)
 
   if (input.mustExist) {
-    const { realpath } = await import("node:fs/promises")
     const [realRoot, realCandidate] = await Promise.all([
       realpath(root),
       realpath(candidate),
@@ -324,7 +568,7 @@ function applyUpdateHunks(originalText: string, operation: ParsedPatchOperation)
   let lines = splitTextLines(originalText)
   let searchStart = 0
 
-  for (const hunk of operation.hunks) {
+  for (const hunk of operation.hunks ?? []) {
     const oldLines = hunk.lines
       .filter((line) => line.kind === "context" || line.kind === "remove")
       .map((line) => line.text)
@@ -412,6 +656,16 @@ function createUnifiedDiff(input: {
   ]
 
   return output.join("\n")
+}
+
+function createMoveDiff(input: {
+  from: string
+  to: string
+}) {
+  return [
+    `rename from ${input.from}`,
+    `rename to ${input.to}`,
+  ].join("\n")
 }
 
 function truncateDiffPreview(diff: string, limit: number) {

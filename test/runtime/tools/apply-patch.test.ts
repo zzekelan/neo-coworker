@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -175,5 +175,213 @@ describe("apply_patch tool", () => {
     expect(result.output).toContain("Patch context not found")
     expect(permissionState.getLastRequest()).toBeNull()
     expect(await readFile(filePath, "utf8")).toBe("alpha\nbeta\n")
+  })
+
+  test("adds a new file through the apply_patch path", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Add File: notes.txt",
+          "+alpha",
+          "+beta",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    const request = await waitForPermissionRequest(permissionState)
+    expect(request).toEqual({
+      toolName: "apply_patch",
+      reason: "apply_patch notes.txt",
+    })
+
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("notes.txt (add, +2/-0)")
+    expect(await readFile(join(workspaceRoot, "notes.txt"), "utf8")).toBe("alpha\nbeta\n")
+  })
+
+  test("add file patches may overwrite existing files", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    await writeFile(join(workspaceRoot, "notes.txt"), "old\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Add File: notes.txt",
+          "+new",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("notes.txt (add, +1/-0)")
+    expect(result.output).toContain("-old")
+    expect(result.output).toContain("+new")
+    expect(await readFile(join(workspaceRoot, "notes.txt"), "utf8")).toBe("new\n")
+  })
+
+  test("deletes files through the apply_patch path", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "old\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Delete File: notes.txt",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    const request = await waitForPermissionRequest(permissionState)
+    expect(request).toEqual({
+      toolName: "apply_patch",
+      reason: "apply_patch notes.txt",
+    })
+
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("notes.txt (delete, +0/-1)")
+    await expect(access(filePath)).rejects.toThrow()
+  })
+
+  test("rejects directory deletion before permission", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const directoryPath = join(workspaceRoot, "notes")
+    await mkdir(directoryPath)
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const result = await registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Delete File: notes",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("must be a file")
+    expect(permissionState.getLastRequest()).toBeNull()
+    await access(directoryPath)
+  })
+
+  test("moves files through the apply_patch path", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const sourcePath = join(workspaceRoot, "old.txt")
+    const destinationPath = join(workspaceRoot, "renamed.txt")
+    await writeFile(sourcePath, "same\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: old.txt",
+          "*** Move to: renamed.txt",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    const request = await waitForPermissionRequest(permissionState)
+    expect(request).toEqual({
+      toolName: "apply_patch",
+      reason: "apply_patch renamed.txt",
+    })
+
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("renamed.txt (move, +0/-0)")
+    await expect(access(sourcePath)).rejects.toThrow()
+    expect(await readFile(destinationPath, "utf8")).toBe("same\n")
+  })
+
+  test("move patches may overwrite existing destination files", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const sourcePath = join(workspaceRoot, "old.txt")
+    const destinationPath = join(workspaceRoot, "renamed.txt")
+    await writeFile(sourcePath, "source\n", "utf8")
+    await writeFile(destinationPath, "destination\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: old.txt",
+          "*** Move to: renamed.txt",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("rename from old.txt")
+    expect(result.output).toContain("rename to renamed.txt")
+    await expect(access(sourcePath)).rejects.toThrow()
+    expect(await readFile(destinationPath, "utf8")).toBe("source\n")
   })
 })
