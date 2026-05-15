@@ -113,6 +113,30 @@ export type DesktopPermissionRequest = {
   status: "pending" | "approved" | "denied" | "cancelled"
   createdAt: number
   resolvedAt: number | null
+  approvalDetails: DesktopPatchApprovalDetails | null
+  preview?: DesktopPatchPreview
+}
+
+export type DesktopPatchApprovalDetails = {
+  kind: "patch"
+  fileCount: number
+  additions: number
+  deletions: number
+  files: Array<{
+    path: string
+    operation: "add" | "delete" | "move" | "update"
+    additions: number
+    deletions: number
+  }>
+}
+
+export type DesktopPatchPreview = {
+  kind: "patch"
+  text: string
+  truncated: boolean
+  limitBytes: number
+  originalBytes: number
+  displayedBytes: number
 }
 
 export type DesktopContextUsageSnapshot = {

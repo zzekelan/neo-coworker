@@ -53,6 +53,8 @@ export function createPermissionCoordinator(
         requestId,
         toolName: input.toolName,
         reason: input.reason,
+        approvalDetails: input.approvalDetails,
+        preview: input.preview,
       }
 
       const response = new Promise<PermissionResponse>((resolve, reject) => {

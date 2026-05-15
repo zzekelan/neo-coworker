@@ -11,7 +11,12 @@ async function createTempWorkspace() {
 
 function createPermissionState() {
   let lastRequestId: string | null = null
-  let lastRequest: { toolName: string; reason: string } | null = null
+  let lastRequest: {
+    toolName: string
+    reason: string
+    approvalDetails?: unknown
+    preview?: unknown
+  } | null = null
 
   const permissions = createPermissionCoordinator(
     { apply_patch: "ask" },
@@ -21,6 +26,8 @@ function createPermissionState() {
         lastRequest = {
           toolName: request.toolName,
           reason: request.reason,
+          approvalDetails: request.approvalDetails,
+          preview: request.preview,
         }
       },
     },
@@ -109,7 +116,7 @@ describe("apply_patch tool", () => {
     ])
 
     expect(stateBeforePermission).toBe("pending")
-    expect(request).toEqual({
+    expect(request).toMatchObject({
       toolName: "apply_patch",
       reason: "apply_patch notes.txt",
     })
@@ -123,6 +130,59 @@ describe("apply_patch tool", () => {
     expect(result.output).toContain("-beta")
     expect(result.output).toContain("+BETA")
     expect(await readFile(filePath, "utf8")).toBe("alpha\nBETA\ngamma\n")
+  })
+
+  test("requests structured patch approval details and a bounded active preview", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+    const addedLines = Array.from({ length: 9000 }, (_value, index) => `+line-${index}`)
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Add File: huge.txt",
+          ...addedLines,
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    const request = await waitForPermissionRequest(permissionState)
+
+    expect(request.approvalDetails).toEqual({
+      kind: "patch",
+      fileCount: 1,
+      additions: 9000,
+      deletions: 0,
+      files: [
+        {
+          path: "huge.txt",
+          operation: "add",
+          additions: 9000,
+          deletions: 0,
+        },
+      ],
+    })
+    expect(JSON.stringify(request.approvalDetails)).not.toContain("*** Begin Patch")
+    expect(JSON.stringify(request.approvalDetails)).not.toContain("--- a/")
+    expect(request.preview).toMatchObject({
+      kind: "patch",
+      truncated: true,
+      limitBytes: 64 * 1024,
+    })
+    const preview = request.preview as { text: string }
+    expect(Buffer.byteLength(preview.text, "utf8")).toBeLessThanOrEqual(64 * 1024)
+    expect(preview.text).toContain("[Patch Preview truncated")
+
+    permissionState.resolve("deny")
+    await expect(pending).rejects.toThrow("Permission denied")
   })
 
   test("rejects empty patches before permission and leaves the workspace unchanged", async () => {
@@ -200,7 +260,7 @@ describe("apply_patch tool", () => {
     })
 
     const request = await waitForPermissionRequest(permissionState)
-    expect(request).toEqual({
+    expect(request).toMatchObject({
       toolName: "apply_patch",
       reason: "apply_patch notes.txt",
     })
@@ -269,7 +329,7 @@ describe("apply_patch tool", () => {
     })
 
     const request = await waitForPermissionRequest(permissionState)
-    expect(request).toEqual({
+    expect(request).toMatchObject({
       toolName: "apply_patch",
       reason: "apply_patch notes.txt",
     })
@@ -335,7 +395,7 @@ describe("apply_patch tool", () => {
     })
 
     const request = await waitForPermissionRequest(permissionState)
-    expect(request).toEqual({
+    expect(request).toMatchObject({
       toolName: "apply_patch",
       reason: "apply_patch renamed.txt",
     })

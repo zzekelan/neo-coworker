@@ -1,3 +1,5 @@
+import type { PermissionApprovalDetails, PermissionApprovalPreview } from "./approval"
+
 export const PERMISSION_STATUSES = [
   "pending",
   "approved",
@@ -16,4 +18,6 @@ export type StoredPermissionRequest = {
   status: PermissionStatus
   createdAt: number
   resolvedAt: number | null
+  approvalDetails: PermissionApprovalDetails | null
+  preview?: PermissionApprovalPreview
 }

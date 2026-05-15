@@ -1737,6 +1737,120 @@ describe("server HTTP API and SSE", () => {
     }
   })
 
+  test("apply_patch permissions expose active preview notifications and durable summary reloads", async () => {
+    const harness = await createHarness("server-apply-patch-permission-preview", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_patch",
+          name: "apply_patch",
+          inputText: JSON.stringify({
+            patchText: [
+              "*** Begin Patch",
+              "*** Update File: notes.txt",
+              "@@",
+              "-old",
+              "+new",
+              "*** End Patch",
+              "",
+            ].join("\n"),
+          }),
+        }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Patch finished after approval." }
+      },
+    ]), {
+      permissionPolicy: {
+        apply_patch: "ask",
+      },
+    })
+    await Bun.write(join(harness.workspaceRoot, "notes.txt"), "old\n")
+    const subscriber = await connectSse(harness.server)
+
+    try {
+      const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+        directory: harness.workspaceRoot,
+      })
+      const sessionId = createdSession.body.data.session.id as string
+      const startedRun = await requestJson(
+        harness.server,
+        "POST",
+        `/sessions/${sessionId}/runs`,
+        {
+          prompt: "Patch notes.txt",
+        },
+      )
+      const runId = startedRun.body.data.run.id as string
+
+      const requested = await subscriber.next(
+        (event) =>
+          event.event === "permission.requested" &&
+          event.data.permissionRequest.runId === runId,
+        5_000,
+      )
+      expect(requested.data.permissionRequest).toMatchObject({
+        sessionId,
+        runId,
+        toolName: "apply_patch",
+        status: "pending",
+        approvalDetails: {
+          kind: "patch",
+          fileCount: 1,
+          additions: 1,
+          deletions: 1,
+        },
+        preview: {
+          kind: "patch",
+          truncated: false,
+          limitBytes: 64 * 1024,
+        },
+      })
+      expect(requested.data.permissionRequest.preview.text).toContain("-old")
+      expect(requested.data.permissionRequest.preview.text).toContain("+new")
+
+      const permissionId = requested.data.permissionRequest.id as string
+      const waitingRun = await waitForRunStatus(harness.server, runId, "waiting_permission")
+      expect(waitingRun.permissionRequests).toMatchObject([
+        {
+          id: permissionId,
+          toolName: "apply_patch",
+          status: "pending",
+          approvalDetails: {
+            kind: "patch",
+            fileCount: 1,
+            additions: 1,
+            deletions: 1,
+          },
+        },
+      ])
+      expect(waitingRun.permissionRequests[0].preview).toBeUndefined()
+
+      const reply = await requestJson(
+        harness.server,
+        "POST",
+        `/permissions/${permissionId}/reply`,
+        {
+          decision: "allow",
+        },
+      )
+      expect(reply.status).toBe(200)
+      expect(reply.body.data.permissionRequest).toMatchObject({
+        id: permissionId,
+        status: "approved",
+        approvalDetails: {
+          kind: "patch",
+          fileCount: 1,
+        },
+      })
+
+      await waitForRunStatus(harness.server, runId, "completed")
+      expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe("new\n")
+    } finally {
+      await subscriber.close()
+    }
+  })
+
   test("run payloads expose multiple pending permission requests and stay waiting until the last reply", async () => {
     const firstUrl = "data:text/plain,Hello%20from%20the%20first%20server%20fetch."
     const secondUrl = "data:text/plain,Hello%20from%20the%20second%20server%20fetch."
@@ -2586,7 +2700,7 @@ async function createHarness(
   provider: OrchestrationModelPort,
   options: {
     permissionPolicy?: Partial<
-      Record<"write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
+      Record<"apply_patch" | "write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
     >
     repositoryFactory?(repository: SessionRepository): SessionRepository
     thinking?: {
@@ -2678,7 +2792,7 @@ async function restartHarness(
   provider: OrchestrationModelPort,
   options: {
     permissionPolicy?: Partial<
-      Record<"write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
+      Record<"apply_patch" | "write" | "edit" | "shell" | "webfetch", "allow" | "ask" | "deny">
     >
   } = {},
 ) {

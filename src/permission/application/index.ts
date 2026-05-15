@@ -44,6 +44,8 @@ export {
   type PermissionResponse,
   type PermissionDecision,
   type PendingPermissionRequest,
+  type PermissionApprovalDetails,
+  type PermissionApprovalPreview,
   PERMISSION_STATUSES,
   DEFAULT_PERMISSION_POLICY,
 } from "../domain"

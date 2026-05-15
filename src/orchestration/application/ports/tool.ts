@@ -1,5 +1,9 @@
 import type { ZodTypeAny } from "zod"
-import type { OrchestrationPermissionResponse } from "./permission"
+import type {
+  OrchestrationPermissionApprovalDetails,
+  OrchestrationPermissionPreview,
+  OrchestrationPermissionResponse,
+} from "./permission"
 
 export type OrchestrationTool = {
   name: string
@@ -65,6 +69,8 @@ export type OrchestrationToolPort = {
 export type RequestOrchestrationToolPermission = (input: {
   toolName: string
   reason: string
+  approvalDetails?: OrchestrationPermissionApprovalDetails
+  preview?: OrchestrationPermissionPreview
 }) =>
   | Promise<OrchestrationPermissionResponse>
   | OrchestrationPermissionResponse

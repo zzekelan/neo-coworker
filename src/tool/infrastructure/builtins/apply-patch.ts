@@ -16,6 +16,8 @@ import {
   withSerializedFileMutation,
 } from "./mutating-file"
 
+const PATCH_APPROVAL_PREVIEW_LIMIT = 64 * 1024
+
 const ApplyPatchArgsSchema = z.object({
   patchText: z.string().trim().min(1, "Patch text must not be empty").describe(
     "Codex/opencode patch text beginning with `*** Begin Patch` and ending with `*** End Patch`. Use this for explicit workspace file mutations.",
@@ -65,6 +67,8 @@ export function createApplyPatchTool(input: {
       const decision = await input.requestPermission({
         toolName: "apply_patch",
         reason: `apply_patch ${plan.summaries.map((change) => change.path).join(", ")}`,
+        approvalDetails: buildPatchApprovalDetails(plan),
+        preview: buildPatchApprovalPreview(plan),
       })
 
       if (decision.decision !== "allow") {
@@ -104,5 +108,63 @@ export function createApplyPatchTool(input: {
         },
       }
     },
+  }
+}
+
+function buildPatchApprovalDetails(plan: PatchPlan) {
+  return {
+    kind: "patch" as const,
+    fileCount: plan.changes.length,
+    additions: plan.totalAdditions,
+    deletions: plan.totalDeletions,
+    files: plan.summaries.map((change) => ({
+      path: change.path,
+      operation: change.operation,
+      additions: change.additions,
+      deletions: change.deletions,
+    })),
+  }
+}
+
+function buildPatchApprovalPreview(plan: PatchPlan) {
+  const preview = truncateUtf8WithNotice(plan.diff, PATCH_APPROVAL_PREVIEW_LIMIT)
+
+  return {
+    kind: "patch" as const,
+    text: preview.text,
+    truncated: preview.truncated,
+    limitBytes: PATCH_APPROVAL_PREVIEW_LIMIT,
+    originalBytes: preview.originalBytes,
+    displayedBytes: preview.displayedBytes,
+  }
+}
+
+function truncateUtf8WithNotice(text: string, limitBytes: number) {
+  const originalBytes = Buffer.byteLength(text, "utf8")
+  if (originalBytes <= limitBytes) {
+    return {
+      text,
+      truncated: false,
+      originalBytes,
+      displayedBytes: originalBytes,
+    }
+  }
+
+  const notice = `\n[Patch Preview truncated after ${limitBytes} bytes.]`
+  const noticeBytes = Buffer.byteLength(notice, "utf8")
+  const bodyLimit = Math.max(0, limitBytes - noticeBytes)
+  let body = Buffer.from(text, "utf8").subarray(0, bodyLimit).toString("utf8")
+  let truncatedText = `${body}${notice}`
+
+  while (Buffer.byteLength(truncatedText, "utf8") > limitBytes && body.length > 0) {
+    body = body.slice(0, -1)
+    truncatedText = `${body}${notice}`
+  }
+
+  return {
+    text: truncatedText,
+    truncated: true,
+    originalBytes,
+    displayedBytes: Buffer.byteLength(truncatedText, "utf8"),
   }
 }

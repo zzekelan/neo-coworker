@@ -24,6 +24,8 @@ export type OrchestrationRunSuspension = {
   requestPermission(input: {
     toolName: string
     reason: string
+    approvalDetails?: import("../../application/ports/permission").OrchestrationPermissionApprovalDetails
+    preview?: import("../../application/ports/permission").OrchestrationPermissionPreview
   }): Promise<OrchestrationPermissionResponse>
   respond(input: OrchestrationPermissionResponse): void
   cancel(error?: Error): void
@@ -91,6 +93,8 @@ export function createRunSuspension(input: CreateRunSuspensionInput): Orchestrat
           toolName: request.toolName,
           reason: request.reason,
           createdAt: input.now(),
+          approvalDetails: request.approvalDetails ?? null,
+          preview: request.preview,
         },
       })
       pendingPermissionIds.add(request.requestId)
@@ -99,6 +103,8 @@ export function createRunSuspension(input: CreateRunSuspensionInput): Orchestrat
         requestId: request.requestId,
         toolName: request.toolName,
         reason: request.reason,
+        approvalDetails: request.approvalDetails,
+        preview: request.preview,
       })
     },
   })

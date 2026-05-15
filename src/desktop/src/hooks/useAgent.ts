@@ -174,6 +174,8 @@ function mapPermissionRequest(
     reason: request.reason,
     createdAt: toIsoString(request.createdAt),
     resolvedAt: request.resolvedAt === null ? null : toIsoString(request.resolvedAt),
+    approvalDetails: request.approvalDetails,
+    preview: request.preview,
   }
 }
 
