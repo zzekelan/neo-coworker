@@ -4,6 +4,7 @@ import type {
 } from "./permission"
 
 export const DEFAULT_ORCHESTRATION_PERMISSION_POLICY: OrchestrationPermissionPolicy = {
+  apply_patch: "ask",
   write: "ask",
   edit: "ask",
   shell: "ask",

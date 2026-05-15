@@ -4,7 +4,6 @@ import { createToolRuntimeApi } from "../../application/runtime-api"
 import { createApplyPatchTool } from "../builtins/apply-patch"
 import { createCodesearchTool } from "../builtins/codesearch"
 import { createDatetimeTool } from "../builtins/datetime"
-import { createEditTool } from "../builtins/edit"
 import { createGlobTool } from "../builtins/glob"
 import { createGrepTool } from "../builtins/grep"
 import { createReadTool, type CreateReadToolInput } from "../builtins/read"
@@ -81,11 +80,6 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
       ...(input.memory ? createMemoryTools({ memory: input.memory }).map(annotateDefaults) : []),
       annotateDefaults(createApplyPatchTool({ requestPermission })),
       annotateDefaults(createWriteTool({ requestPermission })),
-      annotateDefaults(createEditTool({
-        requestPermission,
-        observer: input.observer,
-        observerContext: input.observerContext,
-      })),
       annotateDefaults(createShellTool({ requestPermission })),
       ...(input.extraTools ?? []),
     ],

@@ -174,9 +174,9 @@ function createStaticSections(): PromptSection[] {
       isStatic: true,
       content: [
         "# Using Your Tools",
-        "- Use dedicated tools instead of shell commands when available: read/write/edit over cat/sed/awk, glob over find, grep over grep command, websearch over curl.",
+        "- Use dedicated tools instead of shell commands when available: read/apply_patch/write over cat/sed/awk, glob over find, grep over grep command, websearch over curl.",
         "- IMPORTANT: Always issue independent tool calls in parallel within a single response. Do NOT call tools one at a time when they have no dependency on each other. For example, to search three topics, emit three websearch calls in one response — never wait for one result before starting the next. The same applies to webfetch: verify multiple URLs by calling webfetch on each one simultaneously.",
-        "- Prefer the edit tool for targeted file changes. Use write only for new files or full rewrites.",
+        "- Prefer apply_patch for targeted workspace file changes. Use write only for full-file writes when a patch is not suitable.",
         "- For research workflows: use websearch to discover relevant pages, then webfetch to retrieve and verify full content from promising URLs. Never present a URL without first confirming it loads and matches the claimed content. Synthesize verified findings rather than dumping raw search results.",
         "- For tasks requiring multiple results (e.g., 'find N articles'): ALWAYS issue multiple websearch calls in parallel in one response, each with a different query angle or keyword set. A single search query is never sufficient for a multi-item request. Follow up with parallel webfetch calls to verify the most promising URLs before presenting results.",
         "- Always use absolute file paths.",

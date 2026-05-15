@@ -49,6 +49,7 @@ export const BUILTIN_AGENTS: Record<string, BuiltinAgentProfile> = {
     temperature: 1,
     disallowedTools: [
       "shell",
+      "apply_patch",
       "edit",
       "write",
       "memory_add",

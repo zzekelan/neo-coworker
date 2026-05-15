@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
-  createEditTool,
+  createApplyPatchTool,
   createGlobTool,
   createGrepTool,
   createReadTool,
@@ -32,8 +32,8 @@ function deriveToolGuidanceEntries(tools: readonly GuidedOrchestrationTool[]): T
 }
 
 describe("integration: tool guidance in system prompt", () => {
-  test("includes anchor-only edit guidance in the composed prompt", () => {
-    const editTool = createEditTool({
+  test("includes apply_patch guidance in the composed prompt", () => {
+    const applyPatchTool = createApplyPatchTool({
       requestPermission: async () => ({
         requestId: "permission_auto",
         decision: "allow",
@@ -43,17 +43,17 @@ describe("integration: tool guidance in system prompt", () => {
       deriveToolGuidanceEntries(
         createToolProvider({
           runtime: createToolRuntimeApi({
-            tools: [editTool],
+            tools: [applyPatchTool],
           }),
         }).list(),
       ),
     )
 
-    expect(prompt).toContain("### Tool: edit")
-    expect(prompt).toContain("Read the file immediately before editing")
-    expect(prompt).toContain("L{line}#{hash}")
-    expect(prompt).toContain("append` should insert after a later line than `start")
-    expect(prompt).toContain("Preserve `content` exactly")
+    expect(prompt).toContain("### Tool: apply_patch")
+    expect(prompt).toContain("patchText")
+    expect(prompt).toContain("Do not use shell heredocs")
+    expect(prompt).not.toContain("L{line}#{hash}")
+    expect(prompt).not.toContain("anchor string")
     expect(prompt).not.toContain("oldText")
     expect(prompt).not.toContain("newText")
     expect(prompt).not.toContain("replaceAll")
@@ -99,7 +99,9 @@ describe("integration: tool guidance in system prompt", () => {
     ])
     expect(prompt).toContain("### Tool: read")
     expect(prompt).toContain("Use `offset` and `limit` to navigate large files.")
-    expect(prompt).toContain("L24#1a2b3c4d|const value = 1")
+    expect(prompt).toContain("ordinary numbered lines")
+    expect(prompt).toContain("apply_patch")
+    expect(prompt).not.toContain("L24#1a2b3c4d|const value = 1")
     expect(prompt).toContain("### Tool: glob")
     expect(prompt).toContain("Use glob when you need to discover files by name pattern or extension.")
     expect(prompt).toContain("### Tool: grep")

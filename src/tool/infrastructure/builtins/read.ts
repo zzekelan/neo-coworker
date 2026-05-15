@@ -6,7 +6,7 @@ import {
   throwIfToolAborted,
   type ToolDefinition,
 } from "../../domain"
-import { formatAnchorLine, splitLinesWithMetadata } from "./hash-anchor"
+import { splitLinesWithMetadata } from "./hash-anchor"
 
 declare const Bun: {
   file(path: string): {
@@ -34,8 +34,12 @@ export type CreateReadToolInput = {
 
 function formatReadOutput(text: string): string {
   return splitLinesWithMetadata(text)
-    .map((line) => formatAnchorLine(line.lineNumber, line.displayContent))
+    .map((line) => formatNumberedLine(line.lineNumber, line.displayContent))
     .join("\n")
+}
+
+function formatNumberedLine(lineNumber: number, content: string) {
+  return `${lineNumber}: ${content}`
 }
 
 const ReadArgsSchema = z.object({
@@ -49,7 +53,7 @@ const ReadArgsSchema = z.object({
     "Optional maximum number of lines to return. Example: `limit: 100` returns at most 100 lines. When used with `offset`, forms a precise line window.",
   ),
 }).describe(
-  "Read a UTF-8 text file from the workspace. Use this tool to inspect source code, configs, or docs before editing. Prefer this over `grep` when you need full file context, and over `glob` when you already know the exact path. Binary files (.png, .zip, .exe, etc.) are detected by extension and rejected with a descriptive message. Files over 2 MB are automatically truncated — use `offset` and `limit` to read specific line windows of large files. Each returned line is formatted as `L{lineNumber}#{hash8}|{content}` so the visible line number and stable hash anchor stay together; blank lines render like `L12#e3b0c442|`.",
+  "Read a UTF-8 text file from the workspace. Use this tool to inspect source code, configs, or docs before editing. Prefer this over `grep` when you need full file context, and over `glob` when you already know the exact path. Binary files (.png, .zip, .exe, etc.) are detected by extension and rejected with a descriptive message. Files over 2 MB are automatically truncated — use `offset` and `limit` to read specific line windows of large files. Each returned line is formatted with ordinary line numbers like `12: const value = 1`; blank lines render like `12: `.",
 )
 
 function isBinaryExtension(filePath: string): boolean {
@@ -121,12 +125,12 @@ export function createReadTool(input: CreateReadToolInput = {}): ToolDefinition 
   return {
     name: "read",
     description:
-      "Read a UTF-8 text file from the workspace. Use this tool to inspect source code, configs, or docs before editing. Prefer this over `grep` when you need full file context, and over `glob` when you already know the exact path. Binary files are detected by extension and rejected with a descriptive message. Files over 2 MB are automatically truncated — use `offset` and `limit` to read specific line windows of large files. Each returned line is formatted as `L{lineNumber}#{hash8}|{content}` so the visible line number and stable hash anchor stay together; blank lines render like `L12#e3b0c442|`.",
+      "Read a UTF-8 text file from the workspace. Use this tool to inspect source code, configs, or docs before editing. Prefer this over `grep` when you need full file context, and over `glob` when you already know the exact path. Binary files are detected by extension and rejected with a descriptive message. Files over 2 MB are automatically truncated — use `offset` and `limit` to read specific line windows of large files. Each returned line is formatted with ordinary line numbers like `12: const value = 1`; blank lines render like `12: `.",
     inputSchema: ReadArgsSchema,
     concurrency: "read-only",
     isCompressible: true,
     resultSizeLimit: 100000,
-    usageGuidance: "Use `offset` and `limit` to navigate large files. Read results return anchored lines like `L24#1a2b3c4d|const value = 1`; reuse the `L...#hash` prefix before `|` when you need to cite or edit exact lines. Use `grep` to search within files. Use `glob` to discover file paths.",
+    usageGuidance: "Use `offset` and `limit` to navigate large files. Read results return ordinary numbered lines for orientation; use `apply_patch` with surrounding context for file mutations. Use `grep` to search within files. Use `glob` to discover file paths.",
     async execute(input) {
       throwIfToolAborted(input.signal)
       const { path, offset, limit } = ReadArgsSchema.parse(input.args)
@@ -192,7 +196,7 @@ export function createReadTool(input: CreateReadToolInput = {}): ToolDefinition 
       const start = (offset ?? 1) - 1
       const selectedLines = limit === undefined ? lines.slice(start) : lines.slice(start, start + limit)
       const output = selectedLines
-        .map((line) => formatAnchorLine(line.lineNumber, line.displayContent))
+        .map((line) => formatNumberedLine(line.lineNumber, line.displayContent))
         .join("\n")
 
       return { output }

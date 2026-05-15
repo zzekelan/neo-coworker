@@ -113,7 +113,7 @@ type RuntimeInput = {
   searchBackend?: SearchToolBackend
   permissionPolicy?: Partial<
     Record<
-      "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch" | "plan_exit",
+      "apply_patch" | "write" | "edit" | "shell" | "webfetch" | "websearch" | "codesearch" | "plan_exit",
       PermissionMode
     >
   >
@@ -1229,7 +1229,7 @@ function buildParallelExecutorConfig(
       }
     }
 
-    if (tool.name === "write" || tool.name === "edit") {
+    if (tool.name === "write" || tool.name === "edit" || tool.name === "apply_patch") {
       return ParallelizationClass.PATH_SCOPED
     }
 
@@ -1276,6 +1276,8 @@ function buildCheckpointDescription(toolName: string, args: unknown) {
         : "file"
       return `before edit ${path}`
     }
+    case "apply_patch":
+      return "before apply_patch"
     case "patch":
       return "before patch"
     case "shell": {
