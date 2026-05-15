@@ -43,7 +43,7 @@ describe("desktop app state flow", () => {
     expect(source).toContain("return sessions.filter((candidate) => candidate.id !== session.id)")
   })
 
-  test("stores context usage from events and clears it on terminal run or session switch", () => {
+  test("stores context usage from events and keeps it through run transitions until session switch", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 
     expect(source).toContain("contextUsage: ContextUsageState | null")
@@ -53,7 +53,9 @@ describe("desktop app state flow", () => {
     expect(source).toContain("contextWindow: event.contextWindow")
     expect(source).toContain("utilizationPercent: event.utilizationPercent")
     expect(source).toContain("source: event.source")
-    expect(source).toContain("contextUsage: terminal ? null : previous.contextUsage")
+    expect(source).toContain("contextUsage: previous.contextUsage")
+    expect(source).not.toContain("event.type === \"run.created\" ? null")
+    expect(source).not.toContain("terminal ? null : previous.contextUsage")
     expect(source).toContain("contextUsage: null,\n      })")
   })
 
@@ -87,6 +89,19 @@ describe("desktop app state flow", () => {
     expect(source).not.toContain("isLifecycleEvent(event)")
     expect(source).not.toContain("appendLifecycleDiagnostic")
     expect(source).not.toContain('kind: "lifecycle"')
+  })
+
+  test("derives failed run action errors from run update notifications", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+    const runBlock = source.slice(
+      source.indexOf("if ((event.type === \"run.created\""),
+      source.indexOf("if ((event.type === \"permission.requested\""),
+    )
+
+    expect(runBlock).toContain("actionError:")
+    expect(runBlock).toContain("event.run.status === \"failed\"")
+    expect(runBlock).toContain("event.run.errorText ?? `run ${event.run.id} failed`")
+    expect(source).not.toContain("event.type === \"runtime.error\"")
   })
 
   test("intercepts /compact as a command instead of sending it as a prompt", () => {
@@ -145,7 +160,7 @@ describe("desktop app state flow", () => {
 })
 
 describe("desktop api client", () => {
-  test("does not subscribe to structured lifecycle server events", () => {
+  test("does not subscribe to structured lifecycle notifications", () => {
     const apiSource = readFileSync("src/desktop/src/api.ts", "utf8")
     const typesSource = readFileSync("src/desktop/src/types.ts", "utf8")
 

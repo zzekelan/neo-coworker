@@ -6,11 +6,9 @@
 node_modules/
 
 #docs
-docs/plans
 docs/project-rules
 docs/ref
 docs/draft
-docs/dr
 docs/agents
 
 #dev

@@ -27,7 +27,7 @@ import {
   createObservabilityRepository,
   createObservabilityRuntimeApi,
   createRuntime,
-  createServerEventBus,
+  createAppServerNotificationBus,
 } from "../../src/bootstrap"
 import { createWorkspaceSkillRuntime } from "../../src/skill"
 import {
@@ -532,8 +532,8 @@ describe("server HTTP API and SSE", () => {
     )
   })
 
-  test("does not emit session.updated events for sub-sessions over the observed event bus", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "server-subsession-events-"))
+  test("does not emit session.updated notifications for sub-sessions over the notification bus", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "server-subsession-notifications-"))
     tempDirectories.push(directory)
 
     const workspaceRoot = join(directory, "workspace")
@@ -552,11 +552,11 @@ describe("server HTTP API and SSE", () => {
       database,
       now,
     })
-    const events = createServerEventBus({ now })
+    const notifications = createAppServerNotificationBus({ now })
     const observed = createObservedRepository({
       repository,
       permissionRepository,
-      events,
+      notifications,
     })
 
     const parentSession = repository.sessions.create({
@@ -596,8 +596,8 @@ describe("server HTTP API and SSE", () => {
       },
     })
 
-    const subscription = events.subscribe()
-    const iterator = subscription.events[Symbol.asyncIterator]()
+    const subscription = notifications.subscribe()
+    const iterator = subscription.notifications[Symbol.asyncIterator]()
 
     observed.repository.runs.updateStatus({
       runId: created.run.id,
@@ -752,7 +752,7 @@ describe("server HTTP API and SSE", () => {
             status: "completed",
           },
           {
-            event: "message.part.updated",
+            event: "timeline.part.updated",
             id: expect.any(String),
             kind: "compaction_boundary",
           },
@@ -1098,7 +1098,7 @@ describe("server HTTP API and SSE", () => {
     expect(filteredA).toEqual(
       expect.arrayContaining([
         { event: "run.updated", id: runId, status: "running" },
-        { event: "message.part.updated", id: expect.any(String), kind: "text" },
+        { event: "timeline.part.updated", id: expect.any(String), kind: "text" },
         {
           event: "context.usage.updated",
           id: runId,
@@ -1111,6 +1111,76 @@ describe("server HTTP API and SSE", () => {
 
     await subscriberA.close()
     await subscriberB.close()
+  })
+
+  test("starting a new run preserves the last context usage until that run reports usage", async () => {
+    let releaseSecondTurn!: () => void
+    let markSecondTurnStarted!: () => void
+    const secondTurnStarted = new Promise<void>((resolve) => {
+      markSecondTurnStarted = resolve
+    })
+    const continueSecondTurn = new Promise<void>((resolve) => {
+      releaseSecondTurn = resolve
+    })
+    const harness = await createHarness("server-context-usage-new-run", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "First run establishes usage." }
+      },
+      async function* () {
+        markSecondTurnStarted()
+        await continueSecondTurn
+        yield { type: "text.delta", text: "Second run establishes new usage." }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+    const firstRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "First context usage",
+      },
+    )
+    await waitForRunStatus(harness.server, firstRun.body.data.run.id as string, "completed")
+
+    const afterFirstRun = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+    expect(afterFirstRun.body.data.contextUsage).toMatchObject({
+      contextTokens: expect.any(Number),
+      contextWindow: 192_000,
+      utilizationPercent: expect.any(Number),
+    })
+
+    let secondRunId: string | null = null
+    try {
+      const secondRun = await requestJson(
+        harness.server,
+        "POST",
+        `/sessions/${sessionId}/runs`,
+        {
+          prompt: "Second context usage",
+        },
+      )
+      secondRunId = secondRun.body.data.run.id as string
+      await secondTurnStarted
+
+      const duringSecondRun = await requestJson(harness.server, "GET", `/sessions/${sessionId}`)
+      expect(duringSecondRun.body.data).toMatchObject({
+        activeRun: {
+          id: secondRunId,
+        },
+        contextUsage: afterFirstRun.body.data.contextUsage,
+      })
+    } finally {
+      releaseSecondTurn()
+    }
+
+    if (secondRunId) {
+      await waitForRunStatus(harness.server, secondRunId, "completed")
+    }
   })
 
   test("SSE forwards tool.progress events to subscribers", async () => {
@@ -1192,6 +1262,137 @@ describe("server HTTP API and SSE", () => {
     })
 
     await subscriber.close()
+  })
+
+  test("live timeline entry notifications use the session timeline order across runs", async () => {
+    const harness = await createHarness("server-sse-timeline-sequence", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "First answer." }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Second answer." }
+      },
+    ]))
+
+    const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+      directory: harness.workspaceRoot,
+    })
+    const sessionId = createdSession.body.data.session.id as string
+
+    const subscriber = await connectSse(harness.server)
+    await subscriber.next((event) => event.event === "heartbeat")
+
+    const firstRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "First timeline notification",
+      },
+    )
+    const firstRunId = firstRun.body.data.run.id as string
+    const firstEvents = await collectEventsUntil(
+      subscriber,
+      (event) =>
+        event.event === "run.updated" &&
+        event.data.run.id === firstRunId &&
+        event.data.run.status === "completed",
+    )
+
+    const secondRun = await requestJson(
+      harness.server,
+      "POST",
+      `/sessions/${sessionId}/runs`,
+      {
+        prompt: "Second timeline notification",
+      },
+    )
+    const secondRunId = secondRun.body.data.run.id as string
+    const secondEvents = await collectEventsUntil(
+      subscriber,
+      (event) =>
+        event.event === "run.updated" &&
+        event.data.run.id === secondRunId &&
+        event.data.run.status === "completed",
+    )
+
+    const liveEntries = [...firstEvents, ...secondEvents]
+      .filter((event) => event.event === "timeline.entry.created")
+      .map((event) => event.data.entry)
+    const timeline = await requestJson(harness.server, "GET", `/sessions/${sessionId}/timeline`)
+
+    expect(liveEntries.map((entry) => ({
+      id: entry.id,
+      producedByRunId: entry.producedByRunId,
+      runSequence: entry.runSequence,
+      timelineSequence: entry.timelineSequence,
+    }))).toEqual(timeline.body.data.timeline.map((entry: Record<string, unknown>) => ({
+      id: entry.id,
+      producedByRunId: entry.producedByRunId,
+      runSequence: entry.runSequence,
+      timelineSequence: entry.timelineSequence,
+    })))
+    expect(liveEntries.map((entry) => entry.timelineSequence)).toEqual([0, 1, 2, 3])
+
+    await subscriber.close()
+  })
+
+  test("failed runs recover from run state and do not emit standalone runtime error notifications", async () => {
+    const harness = await createHarness("server-failed-run-notifications", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "Partial output before failure." }
+        throw new Error("provider failed through notification boundary")
+      },
+    ]))
+    const subscriber = await connectSse(harness.server)
+
+    try {
+      const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+        directory: harness.workspaceRoot,
+      })
+      const sessionId = createdSession.body.data.session.id as string
+
+      const startedRun = await requestJson(
+        harness.server,
+        "POST",
+        `/sessions/${sessionId}/runs`,
+        {
+          prompt: "Fail through notifications",
+        },
+      )
+      const runId = startedRun.body.data.run.id as string
+
+      const failedUpdate = await subscriber.next(
+        (event) =>
+          event.event === "run.updated" &&
+          event.data.run.id === runId &&
+          event.data.run.status === "failed",
+      )
+      expect(failedUpdate.data.run).toMatchObject({
+        id: runId,
+        status: "failed",
+        errorText: "provider failed through notification boundary",
+      })
+
+      const recoveredRun = await requestJson(harness.server, "GET", `/runs/${runId}`)
+      expect(recoveredRun.status).toBe(200)
+      expect(recoveredRun.body.data.run).toMatchObject({
+        id: runId,
+        status: "failed",
+        errorText: "provider failed through notification boundary",
+      })
+
+      await expect(
+        subscriber.next(
+          (event) =>
+            event.event === "runtime.error" &&
+            event.data.runId === runId,
+          100,
+        ),
+      ).rejects.toThrow("Timed out waiting for SSE event")
+    } finally {
+      await subscriber.close()
+    }
   })
 
   test("SSE forwards structured skill and subagent lifecycle events", async () => {
@@ -1320,9 +1521,9 @@ describe("server HTTP API and SSE", () => {
     await subscriber.close()
   })
 
-  test("disables Bun idle timeout for SSE subscriptions", async () => {
+  test("disables Bun idle timeout for notification subscriptions", async () => {
     const harness = await createHarness("server-sse-timeout", createTurnProvider([]))
-    const request = new Request("http://server.test/events", {
+    const request = new Request("http://server.test/notifications", {
       headers: {
         accept: "text/event-stream",
       },
@@ -1441,6 +1642,99 @@ describe("server HTTP API and SSE", () => {
     expect(await readFile(join(harness.workspaceRoot, "notes.txt"), "utf8")).toBe(
       "hello from server",
     )
+  })
+
+  test("permission request and update notifications are live hints over the notifications route", async () => {
+    const harness = await createHarness("server-permission-notifications", createTurnProvider([
+      async function* () {
+        yield {
+          type: "tool.call",
+          callId: "call_write",
+          name: "write",
+          inputText: JSON.stringify({
+            path: join(harness.workspaceRoot, "notified.txt"),
+            content: "hello from notifications",
+          }),
+        }
+      },
+      async function* () {
+        yield { type: "text.delta", text: "Write finished after permission notification." }
+      },
+    ]), {
+      permissionPolicy: {
+        write: "ask",
+      },
+    })
+    const subscriber = await connectSse(harness.server)
+
+    try {
+      const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+        directory: harness.workspaceRoot,
+      })
+      const sessionId = createdSession.body.data.session.id as string
+      const startedRun = await requestJson(
+        harness.server,
+        "POST",
+        `/sessions/${sessionId}/runs`,
+        {
+          prompt: "Write notified.txt",
+        },
+      )
+      const runId = startedRun.body.data.run.id as string
+
+      const requested = await subscriber.next(
+        (event) =>
+          event.event === "permission.requested" &&
+          event.data.permissionRequest.runId === runId,
+      )
+      expect(requested.data).toMatchObject({
+        type: "permission.requested",
+        permissionRequest: {
+          sessionId,
+          runId,
+          toolName: "write",
+          status: "pending",
+        },
+      })
+
+      const permissionId = requested.data.permissionRequest.id as string
+      const waitingRun = await waitForRunStatus(harness.server, runId, "waiting_permission")
+      expect(waitingRun.permissionRequests).toMatchObject([
+        {
+          id: permissionId,
+          status: "pending",
+        },
+      ])
+
+      const reply = await requestJson(
+        harness.server,
+        "POST",
+        `/permissions/${permissionId}/reply`,
+        {
+          decision: "allow",
+        },
+      )
+      expect(reply.status).toBe(200)
+      expect(reply.body.data.permissionRequest).toMatchObject({
+        id: permissionId,
+        status: "approved",
+      })
+
+      const updated = await subscriber.next(
+        (event) =>
+          event.event === "permission.updated" &&
+          event.data.permissionRequest.id === permissionId,
+      )
+      expect(updated.data).toMatchObject({
+        type: "permission.updated",
+        permissionRequest: {
+          id: permissionId,
+          status: "approved",
+        },
+      })
+    } finally {
+      await subscriber.close()
+    }
   })
 
   test("run payloads expose multiple pending permission requests and stay waiting until the last reply", async () => {
@@ -1571,6 +1865,24 @@ describe("server HTTP API and SSE", () => {
         status: "approved",
       },
     ])
+  })
+
+  test("does not expose the legacy events subscription route", async () => {
+    const harness = await createHarness("server-legacy-events-route", createTurnProvider([]))
+    const response = await harness.server.fetch(
+      new Request("http://server.test/events", {
+        headers: {
+          accept: "text/event-stream",
+        },
+      }),
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "not_found",
+      },
+    })
   })
 
   test("permission reply against a detached run fails after server restart (no detached recovery)", async () => {
@@ -2228,7 +2540,7 @@ describe("server HTTP API and SSE", () => {
     await subscriberB.close()
   })
 
-  test("context.usage.updated event type is accepted by the server event bus contract", async () => {
+  test("context.usage.updated is accepted by the App Server Notification contract", async () => {
     const harness = await createHarness("server-context-usage-contract", createTurnProvider([
       async function* () {
         yield { type: "text.delta", text: "done" }
@@ -2251,7 +2563,7 @@ describe("server HTTP API and SSE", () => {
     const runId = startedRun.body.data.run.id as string
     await waitForRunStatus(harness.server, runId, "completed")
 
-    // Verify that contextUsage event type is part of the server event contract
+    // Verify that contextUsage is part of the App Server Notification contract
     // by checking the types file includes the discriminant.
     const { readFileSync } = await import("node:fs")
     const serverAppSource = readFileSync("src/bootstrap/server-app.ts", "utf8")
@@ -2265,7 +2577,7 @@ describe("server HTTP API and SSE", () => {
 
     const desktopTypesSource = readFileSync("src/desktop/src/types.ts", "utf8")
     expect(desktopTypesSource).toContain("type: \"context.usage.updated\"")
-    expect(desktopTypesSource).toContain("ContextUsageEvent")
+    expect(desktopTypesSource).toContain("ContextUsageNotification")
   })
 })
 
@@ -2478,7 +2790,7 @@ type Waiter = (value?: void | PromiseLike<void>) => void
 
 async function connectSse(server: { fetch(request: Request): Promise<Response> | Response }) {
   const response = await server.fetch(
-    new Request("http://server.test/events", {
+    new Request("http://server.test/notifications", {
       headers: {
         accept: "text/event-stream",
       },
@@ -2621,14 +2933,14 @@ function simplifyRelevantEvents(events: SseEnvelope[], runId: string) {
   return events
     .filter((event) =>
       event.event === "run.updated" ||
-      event.event === "message.part.updated" ||
+      event.event === "timeline.part.updated" ||
       event.event === "context.usage.updated",
     )
     .filter((event) =>
       event.event === "run.updated"
         ? event.data.run.id === runId
-        : event.event === "message.part.updated"
-          ? event.data.part.runId === runId
+        : event.event === "timeline.part.updated"
+          ? event.data.part.producedByRunId === runId
           : event.data.runId === runId,
     )
     .map((event) => {

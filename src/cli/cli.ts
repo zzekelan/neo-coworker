@@ -10,14 +10,14 @@ import {
   SessionAlreadyCompactingError,
   SessionBusyError,
   type SessionDatabase,
-  type ServerEvent,
+  type AppServerNotification,
   type StoredPermissionRequest,
   type StoredSession,
 } from "../bootstrap"
 import type { CliIO } from "./cli-io"
 import { createCliChatRenderer } from "./chat-render"
 import { DEFAULT_CLI_INSIGHTS_LIMIT, formatSessionInsightsReport } from "./insights"
-import { createCliRenderState, renderServerEvent } from "./cli-render"
+import { createCliRenderState, renderAppServerNotification } from "./cli-render"
 import {
   AgentServerClientError,
   createLocalCliServerClient,
@@ -336,13 +336,13 @@ type PendingPermissionReply = {
 
 type PendingPermissionQueue = {
   active: PendingPermissionReply | null
-  queued: PermissionRequestedServerEvent[]
+  queued: PermissionRequestedAppServerNotification[]
 }
 
 type NextCliRunLoopResult =
   | {
-      type: "event"
-      result: IteratorResult<ServerEvent>
+      type: "notification"
+      result: IteratorResult<AppServerNotification>
     }
   | {
       type: "permission"
@@ -360,10 +360,10 @@ function getPermissionDecision(answer: string): PermissionDecision {
   return normalized === "y" || normalized === "yes" ? "allow" : "deny"
 }
 
-type PermissionRequestedServerEvent = Extract<ServerEvent, { type: "permission.requested" }>
+type PermissionRequestedAppServerNotification = Extract<AppServerNotification, { type: "permission.requested" }>
 
-async function handlePermissionEvent(
-  event: PermissionRequestedServerEvent,
+async function handlePermissionNotification(
+  event: PermissionRequestedAppServerNotification,
   client: AgentServerClient,
   io: CliIO,
   signal?: AbortSignal,
@@ -385,7 +385,7 @@ async function handlePermissionEvent(
 }
 
 function startPendingPermissionReply(
-  event: PermissionRequestedServerEvent,
+  event: PermissionRequestedAppServerNotification,
   client: AgentServerClient,
   io: CliIO,
 ): PendingPermissionReply {
@@ -394,7 +394,7 @@ function startPendingPermissionReply(
   return {
     requestId: event.permissionRequest.id,
     controller,
-    completion: handlePermissionEvent(event, client, io, controller.signal)
+    completion: handlePermissionNotification(event, client, io, controller.signal)
       .then((sent) => ({
         requestId: event.permissionRequest.id,
         error: null,
@@ -415,16 +415,16 @@ function comparePermissionRequests(
   return left.createdAt - right.createdAt || left.id.localeCompare(right.id)
 }
 
-function comparePermissionEvents(
-  left: PermissionRequestedServerEvent,
-  right: PermissionRequestedServerEvent,
+function comparePermissionNotifications(
+  left: PermissionRequestedAppServerNotification,
+  right: PermissionRequestedAppServerNotification,
 ) {
   return comparePermissionRequests(left.permissionRequest, right.permissionRequest)
 }
 
-function createResumePermissionRequestedEvent(
+function createResumePermissionRequestedNotification(
   request: StoredPermissionRequest,
-): PermissionRequestedServerEvent {
+): PermissionRequestedAppServerNotification {
   return {
     id: `permission_resume_${request.id}`,
     time: request.createdAt,
@@ -433,9 +433,9 @@ function createResumePermissionRequestedEvent(
   }
 }
 
-function enqueuePendingPermissionEvent(
+function enqueuePendingPermissionNotification(
   queue: PendingPermissionQueue,
-  event: PermissionRequestedServerEvent,
+  event: PermissionRequestedAppServerNotification,
 ) {
   const requestId = event.permissionRequest.id
   if (
@@ -446,7 +446,7 @@ function enqueuePendingPermissionEvent(
   }
 
   queue.queued.push(event)
-  queue.queued.sort(comparePermissionEvents)
+  queue.queued.sort(comparePermissionNotifications)
 }
 
 function startNextPendingPermissionReply(input: {
@@ -755,29 +755,29 @@ async function runSinglePromptCli(input: {
 
       let terminalStatus: ReturnType<typeof extractTerminalRunStatus>["status"] = null
       let terminalError: string | null = null
-      const eventIterator = subscription.events[Symbol.asyncIterator]()
-      let nextEventPromise: Promise<IteratorResult<ServerEvent>> | null = null
+      const notificationIterator = subscription.notifications[Symbol.asyncIterator]()
+      let nextNotificationPromise: Promise<IteratorResult<AppServerNotification>> | null = null
       const pendingPermissionQueue: PendingPermissionQueue = {
         active: null,
         queued: [],
       }
 
-      function readNextEvent() {
-        if (!nextEventPromise) {
-          nextEventPromise = eventIterator.next().finally(() => {
-            nextEventPromise = null
+      function readNextNotification() {
+        if (!nextNotificationPromise) {
+          nextNotificationPromise = notificationIterator.next().finally(() => {
+            nextNotificationPromise = null
           })
         }
 
-        return nextEventPromise
+        return nextNotificationPromise
       }
 
       while (true) {
         const next: NextCliRunLoopResult =
           pendingPermissionQueue.active == null
-            ? ({ type: "event", result: await readNextEvent() } as const)
+            ? ({ type: "notification", result: await readNextNotification() } as const)
             : await Promise.race([
-                readNextEvent().then((result) => ({ type: "event", result } as const)),
+                readNextNotification().then((result) => ({ type: "notification", result } as const)),
                 pendingPermissionQueue.active.completion.then((result) => ({
                   type: "permission",
                   result,
@@ -811,13 +811,13 @@ async function runSinglePromptCli(input: {
           continue
         }
 
-        const rendered = renderServerEvent(renderState, event)
+        const rendered = renderAppServerNotification(renderState, event)
         if (rendered) {
           input.io.write(rendered)
         }
 
         if (event.type === "permission.requested") {
-          enqueuePendingPermissionEvent(pendingPermissionQueue, event)
+          enqueuePendingPermissionNotification(pendingPermissionQueue, event)
           startNextPendingPermissionReply({
             queue: pendingPermissionQueue,
             client: input.clientHandle.client,
@@ -1295,14 +1295,14 @@ async function watchChatRun(input: {
 }): Promise<WatchChatRunResult> {
   let terminalStatus: ReturnType<typeof extractTerminalRunStatus>["status"] = null
   let terminalError: string | null = null
-  const eventIterator = input.subscription.events[Symbol.asyncIterator]()
-  let nextEventPromise: Promise<IteratorResult<ServerEvent>> | null = null
+  const notificationIterator = input.subscription.notifications[Symbol.asyncIterator]()
+  let nextNotificationPromise: Promise<IteratorResult<AppServerNotification>> | null = null
   const pendingPermissionQueue: PendingPermissionQueue = {
     active: null,
     queued: (input.initialPendingPermissionRequests ?? [])
       .slice()
       .sort(comparePermissionRequests)
-      .map(createResumePermissionRequestedEvent),
+      .map(createResumePermissionRequestedNotification),
   }
 
   startNextPendingPermissionReply({
@@ -1312,22 +1312,22 @@ async function watchChatRun(input: {
     onActivePermissionChange: input.setActivePermissionPrompt,
   })
 
-  function readNextEvent() {
-    if (!nextEventPromise) {
-      nextEventPromise = eventIterator.next().finally(() => {
-        nextEventPromise = null
+  function readNextNotification() {
+    if (!nextNotificationPromise) {
+      nextNotificationPromise = notificationIterator.next().finally(() => {
+        nextNotificationPromise = null
       })
     }
 
-    return nextEventPromise
+    return nextNotificationPromise
   }
 
   while (true) {
     const next =
       pendingPermissionQueue.active == null
-        ? ({ type: "event", result: await readNextEvent() } as const)
+        ? ({ type: "notification", result: await readNextNotification() } as const)
         : await Promise.race([
-            readNextEvent().then((result) => ({ type: "event", result } as const)),
+            readNextNotification().then((result) => ({ type: "notification", result } as const)),
             pendingPermissionQueue.active.completion.then((result) => ({
               type: "permission",
               result,
@@ -1371,10 +1371,10 @@ async function watchChatRun(input: {
       continue
     }
 
-    input.renderer.renderEvent(event)
+    input.renderer.renderNotification(event)
 
     if (event.type === "permission.requested") {
-      enqueuePendingPermissionEvent(pendingPermissionQueue, event)
+      enqueuePendingPermissionNotification(pendingPermissionQueue, event)
       startNextPendingPermissionReply({
         queue: pendingPermissionQueue,
         client: input.client,
@@ -1467,7 +1467,7 @@ function isAbortError(error: unknown) {
   return error instanceof Error && error.name === "AbortError"
 }
 
-function isActiveRunEvent(event: ServerEvent, runId: string) {
+function isActiveRunEvent(event: AppServerNotification, runId: string) {
   switch (event.type) {
     case "heartbeat":
     case "session.created":
@@ -1476,19 +1476,17 @@ function isActiveRunEvent(event: ServerEvent, runId: string) {
     case "run.created":
     case "run.updated":
       return event.run.id === runId
-    case "message.created":
-      return event.message.runId === runId
-    case "message.part.updated":
-      return event.part.runId === runId
+    case "timeline.entry.created":
+      return event.entry.producedByRunId === runId
+    case "timeline.part.updated":
+      return event.part.producedByRunId === runId
     case "permission.requested":
     case "permission.updated":
       return event.permissionRequest.runId === runId
-    case "runtime.error":
-      return event.runId === runId
   }
 }
 
-function extractTerminalRunStatus(event: ServerEvent) {
+function extractTerminalRunStatus(event: AppServerNotification) {
   if (event.type !== "run.updated" || !isTerminalRunStatus(event.run.status)) {
     return {
       status: null,

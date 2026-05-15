@@ -1,6 +1,6 @@
 const API_PROXY_PATTERNS = [
   "^/health$",
-  "^/events$",
+  "^/notifications$",
   "^/sessions(?:/.*)?$",
   "^/workspaces(?:/.*)?$",
   "^/workspace(?:/.*)?$",

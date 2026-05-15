@@ -64,6 +64,26 @@ _Avoid_: user-visible message text, model-visible content
 Text in a **Compaction Entry** that replaces older **Session Timeline** content during **Model Projection**.
 _Avoid_: full timeline copy, UI notification
 
+**Model Stream Event**:
+A provider-facing model output item such as text delta, reasoning delta, tool call, or usage, consumed by orchestration before any run-level projection.
+_Avoid_: Run Stream Item, Timeline Part, telemetry record
+
+**Run Stream Item**:
+A transient item produced while a **Run** is executing, used as source material for projection into telemetry, server notifications, runtime notices, or timeline changes.
+_Avoid_: Event, telemetry record, server event, Timeline Entry, Model Stream Event
+
+**Run Telemetry Record**:
+A durable developer-facing record of how a **Run** executed, used for trace export, debugging, and evals rather than session replay.
+_Avoid_: Run Event, Timeline Entry, Runtime Notice, server notification
+
+**App Server Notification**:
+A best-effort live update message sent at the App Server boundary so App Clients can update UI state, permissions, timeline projection, or run status; it is not an authoritative replay log or durable source of truth.
+_Avoid_: Event, Run Stream Item, Run Telemetry Record, Timeline Entry, replay event, event store entry
+
+**Context Usage Snapshot**:
+A UI-facing current measurement of how much model context a **Session** or active **Run** is using, including token count, context window, utilization percentage, and whether the value is provider-reported or estimated.
+_Avoid_: Timeline Entry, Runtime Notice, durable sync event, telemetry-only record, model message
+
 **Runtime Notice**:
 A sanitized, replayable, user-facing runtime fact that **UI Projection** may display alongside the **Session Timeline** without making it timeline content or model context.
 _Avoid_: Timeline Entry, Model Message, raw observability event, assistant output
@@ -85,6 +105,7 @@ _Avoid_: Timeline Entry, chat message
 - A **Session** owns exactly one **Session Timeline**.
 - A **Session Timeline** contains zero or more session-ordered **Timeline Entries**.
 - A **Timeline Entry** contains zero or more ordered **Timeline Parts**.
+- App Server timeline-content notifications must use **Timeline Entry** and **Timeline Part** language, such as `timeline.entry.created` and `timeline.part.updated`, rather than legacy `message.*` naming.
 - **Timeline Entry** ordering is owned by the **Session Timeline**, not by **Runs**.
 - A **Timeline Part** is ordered only within its parent **Timeline Entry**.
 - `callId` is a required tool-call protocol correlation id that pairs tool-call and tool-result **Timeline Parts**; it is not timeline ordering or ownership.
@@ -99,11 +120,22 @@ _Avoid_: Timeline Entry, chat message
 - A parent **Run** may spawn zero or more **Spawned Runs** in **Sub-sessions**.
 - **Model Projection** reads a **Session Timeline** and produces zero or more **Model Messages**.
 - A **Model Message** is not part of the **Session Timeline**.
-- **UI Projection** may combine the **Session Timeline**, **Run** lifecycle state, **Permission Request** state, **Runtime Notices**, and context usage into user-facing views.
+- A **Model Stream Event** is provider-facing model output and is consumed by orchestration before any **Run Stream Item** is produced.
+- App Clients such as Desktop and CLI consume **App Server Notifications** directly as the server-boundary update contract.
+- Authoritative state comes from read APIs and storage-backed state such as the **Session Timeline**, **Run** state, and **Permission Request** state; **App Server Notifications** are live update hints, not the source of truth.
+- An **App Server Notification** may carry snapshot-like convenience payloads so clients can update live UI without an immediate read request, but those payloads remain subordinate to authoritative read API snapshots.
+- A **Run** failure is durable **Run** lifecycle state, including its failure status and sanitized error summary; it must be recoverable through read APIs/snapshots rather than notification replay.
+- After startup, reconnect, workspace switch, or suspected missed notifications, an App Client must recover state by reading authoritative snapshots rather than replaying **App Server Notifications**.
+- **UI Projection** may combine the **Session Timeline**, **Run** lifecycle state, **Permission Request** state, **Runtime Notices**, **App Server Notifications**, and **Context Usage Snapshots** into user-facing views.
+- **Context Usage Snapshots** may appear in read API snapshots and **App Server Notifications** for live UI display, while historical/debug context usage belongs in **Run Telemetry Records** or explicit **Run** usage fields.
+- A **Context Usage Snapshot** is not a **Timeline Entry**, **Runtime Notice**, **Model Message**, or notification replay fact.
 - Whether a **Timeline Part** appears in **UI Projection** is independent from whether it appears in **Model Projection**.
 - Runtime-only **Timeline Parts** may appear in **UI Projection** but are excluded from **Model Projection** unless required by provider protocol.
 - `waiting_permission` is **Run** lifecycle state, not timeline content.
-- A **Permission Request** is independent permission state, not a **Timeline Entry**.
+- A **Permission Request** is independent authoritative permission state, not a **Timeline Entry**.
+- The source of truth for an approval flow is the persisted **Permission Request** state, including pending, approved, denied, or cancelled status; `permission.requested` and `permission.updated` **App Server Notifications** are live update hints.
+- A client decision changes approval state only through the permission reply API, not by acknowledging or replaying an **App Server Notification**.
+- **Run** `waiting_permission` state is synchronized from pending **Permission Requests** and does not itself identify the requested tool, reason, or decision.
 - **Tool Result Errors** are model-visible only because provider tool-call protocol requires every tool call to be closed.
 - The canonical storage shape for a **Tool Result Error** is a tool-result **Timeline Part** with an error status such as `isError=true`; legacy `kind="error"` tool records are compatibility details to migrate away from.
 - A **Tool Result Error** closes a tool call in the same assistant **Timeline Entry** whenever possible, preserving entry-local tool-call/tool-result grouping.
@@ -134,6 +166,7 @@ _Avoid_: Timeline Entry, chat message
 - A bare generic error is not canonical **Session Timeline** content.
 - **Provider failures** are **Run** lifecycle failures by default, not assistant timeline content.
 - If a provider stream emitted partial assistant output before failing, the emitted content may remain in the **Session Timeline** while the failure is recorded on the **Run**.
+- Immediate UI alerts such as toasts may be derived from live **App Server Notifications** that report a **Run** status transition, but the replayable failure fact remains **Run** state.
 - A **Compaction Entry** is the only currently accepted system-generated **Timeline Entry**.
 - A **Compaction Boundary** controls **Model Projection** but is not itself model-visible content.
 - A **Compaction Summary** is model-visible as replacement context for older timeline content.
@@ -141,7 +174,8 @@ _Avoid_: Timeline Entry, chat message
 - Error-like timeline content is canonical only as a **Tool Result Error** that closes a tool call; current generic `kind="error"` records are legacy implementation details to migrate away from.
 - Tool-call closure readers may treat legacy `kind="error"` records with tool source/call id as closing a tool call for compatibility, but new writes must use canonical tool-result **Timeline Parts** and the legacy shape should be fully migrated away.
 - Runtime terminalization does not migrate legacy tool error closures in place; legacy migration/repair is a separate operation from enforcing the current Run closure invariant.
-- Raw observability/runtime events are developer-facing traces; only sanitized, replayable **Runtime Notices** should become ordinary session replay material.
+- Raw observability/runtime records are developer-facing traces; only sanitized, replayable **Runtime Notices** should become ordinary session replay material.
+- **Run Telemetry Records** may be stored in legacy `run_event` infrastructure, but the domain concept is telemetry, not a generic **Run Event**.
 - Auto compaction may happen inside a **Run** only at model-request boundaries, never during an active provider stream.
 - **Compaction** prepares future model context; it does not mutate the context of an in-flight provider request.
 - Manual compaction should be represented by one **Compaction Run**.
@@ -155,18 +189,29 @@ _Avoid_: Timeline Entry, chat message
 
 ## Flagged ambiguities
 
-- "message" can mean persisted history, provider input, or streamed UI output — resolved: use **Timeline Entry** for persisted session history and avoid naked "Message" in domain language.
+- "message" can mean persisted history, provider input, or streamed UI output — resolved: use **Timeline Entry** for persisted session history and avoid naked "Message" in domain language; App Server notification names should migrate directly from `message.*` to `timeline.*` names.
 - "run history" suggests a **Run** owns timeline content — resolved: durable history belongs to the **Session Timeline**.
 - A bare `runId` on history records suggests ownership — resolved: use **Produced By Run** as the canonical provenance relationship.
 - Independent run provenance on **Timeline Parts** is unnecessary until cross-run mutation of a single **Timeline Entry** becomes a real use case.
 - Run-based timeline ordering suggests **Runs** own history — resolved: top-level ordering belongs to the **Session Timeline**, while **Timeline Parts** use entry-local ordering.
 - Run lifecycle state can be user-visible without being timeline content — resolved: **UI Projection** may display **Run** state, but **Runs** are not **Timeline Entries**.
 - One **Run** can look like one user entry plus one assistant entry in simple prompts, but tool loops can produce multiple assistant **Timeline Entries** in the same **Run** — resolved: closure logic must locate the entry that contains the tool call rather than assuming one assistant entry per Run.
-- Permission approval flow can be user-visible without being timeline content — resolved: **Permission Requests** are separate state shown by **UI Projection**, while the **Session Timeline** records durable content such as tool calls/results.
+- Permission approval flow can be user-visible without being timeline content — resolved: **Permission Requests** are separate authoritative permission state shown by **UI Projection**, while the **Session Timeline** records durable content such as tool calls/results.
+- Permission push notifications can look like server-to-client approval requests — resolved: current HTTP/SSE architecture uses `permission.requested` / `permission.updated` as **App Server Notifications** only; the approval fact lives in **Permission Request** state and client decisions go through the reply API.
 - "timeline" suggests a text-only chat record — resolved: use **Session Timeline** as the canonical term because the history also contains tool calls, tool results, patches, errors, reasoning, and compaction boundaries.
 - "fork" suggests a user-visible branch from a timeline position — resolved: current parent/child session behavior is **Sub-session** for sub-agent isolation, not fork.
 - "parent run" can suggest ownership — resolved: a **Spawned Run** belongs to its own **Sub-session** and only records which parent **Run** started it.
 - Runtime diagnostics can be user-visible without being model-visible or timeline content — resolved: **UI Projection** can combine **Session Timeline** content with sanitized **Runtime Notices**, while **Model Projection** reads only model-relevant session context.
+- **Run Stream Items** are local projection sources, not public events — resolved: do not persist, broadcast, or expose raw **Run Stream Items** directly; first map them into **Run Telemetry Records**, **App Server Notifications**, runtime notices, or timeline changes.
+- App Server push messages can look like generic events — resolved: use **App Server Notification** for the server-boundary client update contract, not naked Event.
+- App Server push messages can look like a durable sync stream — resolved: **App Server Notifications** are best-effort live update hints; clients recover missed or initial state through authoritative read APIs/snapshots, not notification replay.
+- Snapshot-like notification payloads can look authoritative — resolved: they are convenience payloads for live UI updates and must be replaceable by authoritative read API snapshots.
+- Context usage is needed by both UI and telemetry — resolved: use **Context Usage Snapshot** for current UI-facing display in read snapshots and **App Server Notifications**, and use **Run Telemetry Records** or explicit **Run** usage fields for historical/debug analysis.
+- Run failure can sound like a runtime notice because it must be visible after reload — resolved: ordinary **Run** failure is durable **Run** lifecycle state, not a separate **Runtime Notice**; only user-facing runtime facts not already represented by lifecycle state should become **Runtime Notices**.
+- Desktop subscribed messages can sound like a separate event category — resolved: Desktop consumes **App Server Notifications** directly; UI-local TypeScript shapes are projections, not a separate domain concept.
+- Persisted `run_event` storage suggests a generic Run-owned event stream — resolved: use **Run Telemetry Record** in domain language and treat `run_event` as legacy storage naming unless a later migration renames it.
+- Model output and run-level output can both look like streamed deltas — resolved: keep **Model Stream Events** provider-facing and have orchestration consume them before producing **Run Stream Items**.
+- "event" / "事件" was used to mean model output, run-loop signals, persisted telemetry, server notifications, desktop subscription messages, and runtime notices — resolved: avoid naked **Event** as a domain term; name the channel explicitly and keep **Session Timeline** separate from event-like runtime signals.
 - `kind="error"` suggests any error may be timeline content — resolved: canonical error-like timeline content is limited to **Tool Result Error** for tool-call protocol closure; provider failures belong to **Run** lifecycle state and compaction failures that affect users become **Compaction Notices**.
 - Generated compaction history can sound like an ordinary runtime event — resolved: use **Compaction Entry** as the canonical term and `compaction` as the persisted role for compaction-generated timeline entries.
 - `command` and `summarize` run triggers encode current compaction implementation details — resolved: use **Compaction Run** for user-requested compaction lifecycle, and treat compaction summary model calls as observability/model-call detail rather than canonical Runs.

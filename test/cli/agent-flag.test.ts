@@ -25,6 +25,37 @@ afterEach(async () => {
 })
 
 describe("CLI --agent flag", () => {
+  test("subscribes to App Server Notifications over the notifications route", async () => {
+    const requests: Request[] = []
+    const client = createAgentServerClient({
+      origin: "http://server.test",
+      async send(request) {
+        requests.push(request)
+
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.close()
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+            },
+          },
+        )
+      },
+    })
+
+    const subscription = await client.subscribe()
+    await subscription.close()
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.method).toBe("GET")
+    expect(requests[0]?.url).toBe("http://server.test/notifications")
+  })
+
   test("includes agent in remote startRun requests when provided", async () => {
     const requests: Request[] = []
     const client = createAgentServerClient({

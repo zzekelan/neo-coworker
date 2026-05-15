@@ -5,7 +5,7 @@ import {
   type PermissionRepository,
   type SessionSnapshot,
   type SessionRepository as StorageRepository,
-  type ServerEvent,
+  type AppServerNotification,
   type StoredMessage,
   type StoredPermissionRequest,
   type StoredRun,
@@ -23,7 +23,7 @@ type JsonErrorBody = {
 }
 
 type Subscription = {
-  events: AsyncIterable<ServerEvent>
+  notifications: AsyncIterable<AppServerNotification>
   close(): Promise<void>
 }
 
@@ -200,7 +200,7 @@ export function createAgentServerClient(input: {
     async subscribe() {
       const controller = new AbortController()
       const response = await send(
-        createRequest("/events", {
+        createRequest("/notifications", {
           headers: {
             accept: "text/event-stream",
           },
@@ -213,7 +213,7 @@ export function createAgentServerClient(input: {
         throw new AgentServerClientError({
           status: response.status,
           code: body.error?.code,
-          message: body.error?.message ?? `GET /events failed with status ${response.status}`,
+          message: body.error?.message ?? `GET /notifications failed with status ${response.status}`,
         })
       }
 
@@ -223,7 +223,7 @@ export function createAgentServerClient(input: {
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
-      const queue = createEventQueue<ServerEvent>()
+      const queue = createNotificationQueue<AppServerNotification>()
       let buffer = ""
       let closed = false
       let streamError: unknown = null
@@ -247,12 +247,12 @@ export function createAgentServerClient(input: {
               const block = buffer.slice(0, delimiterIndex)
               buffer = buffer.slice(delimiterIndex + 2)
 
-              const event = parseSseBlock(block)
-              if (!event) {
+              const notification = parseSseNotificationBlock(block)
+              if (!notification) {
                 continue
               }
 
-              queue.push(event)
+              queue.push(notification)
             }
           }
         } catch (error) {
@@ -265,9 +265,9 @@ export function createAgentServerClient(input: {
       })()
 
       return {
-        events: (async function* () {
-          for await (const event of queue.stream()) {
-            yield event
+        notifications: (async function* () {
+          for await (const notification of queue.stream()) {
+            yield notification
           }
 
           if (streamError) {
@@ -355,7 +355,7 @@ export async function createLocalCliServerClient(input: {
       async subscribe() {
         const subscription = app.subscribe()
         return {
-          events: subscription.events,
+          notifications: subscription.notifications,
           async close() {
             subscription.unsubscribe()
           },
@@ -378,7 +378,7 @@ async function readJsonBody(response: Response) {
   return response.json()
 }
 
-function parseSseBlock(block: string): ServerEvent | null {
+function parseSseNotificationBlock(block: string): AppServerNotification | null {
   if (!block.trim()) {
     return null
   }
@@ -399,10 +399,10 @@ function parseSseBlock(block: string): ServerEvent | null {
     return null
   }
 
-  return JSON.parse(dataLines.join("\n")) as ServerEvent
+  return JSON.parse(dataLines.join("\n")) as AppServerNotification
 }
 
-function createEventQueue<T>() {
+function createNotificationQueue<T>() {
   const items: T[] = []
   let done = false
   let pendingSignal: Promise<void> | undefined
@@ -432,7 +432,7 @@ function createEventQueue<T>() {
   return {
     push(item: T) {
       if (done) {
-        throw new Error("Cannot push to a closed event queue")
+        throw new Error("Cannot push to a closed notification queue")
       }
 
       items.push(item)

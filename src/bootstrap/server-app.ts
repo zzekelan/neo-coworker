@@ -2,8 +2,8 @@ import {
   assertRunStatusTransition,
   createSessionRuntimeApi,
   SessionBusyError,
-  timelineEntryToTimelineMessage,
-  timelinePartToTimelinePart,
+  type TimelineEntry,
+  type TimelinePart,
   type RunTrigger,
   type SessionRepository as StorageRepository,
   type StoredMessage,
@@ -33,7 +33,7 @@ export type SessionSnapshot = {
   status: "idle" | "busy"
 }
 
-export type ServerEventPayload =
+export type AppServerNotificationPayload =
   | (SessionSnapshot & {
       type: "session.created" | "session.updated"
       reason?: string
@@ -48,12 +48,12 @@ export type ServerEventPayload =
       run: StoredRun
     }
   | {
-      type: "message.created"
-      message: StoredMessage
+      type: "timeline.entry.created"
+      entry: TimelineEntry
     }
   | {
-      type: "message.part.updated"
-      part: StoredPart
+      type: "timeline.part.updated"
+      part: TimelinePart
     }
   | {
       type: "permission.requested"
@@ -62,12 +62,6 @@ export type ServerEventPayload =
   | {
       type: "permission.updated"
       permissionRequest: StoredPermissionRequest
-    }
-  | {
-      type: "runtime.error"
-      sessionId: string
-      runId: string
-      error: string
     }
   | {
       type: "tool.progress"
@@ -84,13 +78,13 @@ export type ServerEventPayload =
       utilizationPercent: number
       source: "provider" | "estimated" | null
     }
-  | SkillLoadServerEventPayload
-  | SubagentServerEventPayload
+  | SkillLoadAppServerNotificationPayload
+  | SubagentAppServerNotificationPayload
   | {
       type: "heartbeat"
     }
 
-export type SkillLoadServerEventPayload = {
+export type SkillLoadAppServerNotificationPayload = {
   type: "skill.load.requested" | "skill.load.completed" | "skill.load.failed"
   sessionId: string
   runId: string
@@ -107,7 +101,7 @@ export type SkillLoadServerEventPayload = {
   errorMessage?: string
 }
 
-export type SubagentServerEventPayload = {
+export type SubagentAppServerNotificationPayload = {
   type: "subagent.started" | "subagent.completed" | "subagent.failed"
   sessionId?: string
   runId?: string
@@ -120,12 +114,12 @@ export type SubagentServerEventPayload = {
   errorMessage?: string
 }
 
-export type ServerEvent = ServerEventPayload & {
+export type AppServerNotification = AppServerNotificationPayload & {
   id: string
   time: number
 }
 
-function createEventQueue<T>() {
+function createNotificationQueue<T>() {
   const items: T[] = []
   let done = false
   let pendingSignal: Promise<void> | undefined
@@ -155,7 +149,7 @@ function createEventQueue<T>() {
   return {
     push(item: T) {
       if (done) {
-        throw new Error("Cannot push to a closed event queue")
+        throw new Error("Cannot push to a closed notification queue")
       }
 
       items.push(item)
@@ -182,12 +176,12 @@ function createEventQueue<T>() {
   }
 }
 
-type EventSubscription = {
-  filter?: (event: ServerEvent) => boolean
-  queue: ReturnType<typeof createEventQueue<ServerEvent>>
+type NotificationSubscription = {
+  filter?: (notification: AppServerNotification) => boolean
+  queue: ReturnType<typeof createNotificationQueue<AppServerNotification>>
 }
 
-type ServerEventBus = ReturnType<typeof createServerEventBus>
+type AppServerNotificationBus = ReturnType<typeof createAppServerNotificationBus>
 
 export function buildSessionSnapshot(
   repository: Pick<StorageRepository, "sessions" | "runs">,
@@ -209,6 +203,35 @@ export function buildSessionSnapshot(
     activeRun,
     contextUsage: input.contextUsage ?? null,
     status: activeRun ? "busy" : "idle",
+  }
+}
+
+function readTimelineEntryForStoredMessage(
+  repository: Pick<StorageRepository, "timeline">,
+  message: StoredMessage,
+): TimelineEntry {
+  const entry = repository.timeline
+    .listEntries(message.sessionId)
+    .find((candidate) => candidate.id === message.id)
+
+  if (!entry) {
+    throw new Error(`Timeline entry ${message.id} was not found after message creation`)
+  }
+
+  return entry
+}
+
+function timelinePartFromStoredPart(part: StoredPart): TimelinePart {
+  return {
+    id: part.id,
+    sessionId: part.sessionId,
+    producedByRunId: part.runId,
+    entryId: part.messageId,
+    kind: part.kind,
+    sequence: part.sequence,
+    text: part.text,
+    data: part.data,
+    createdAt: part.createdAt,
   }
 }
 
@@ -234,37 +257,37 @@ function listVisibleRunsBySession(
   return repository.runs.listBySession(sessionId).filter((run) => run.trigger !== "summarize")
 }
 
-export function createServerEventBus(input: { now?: () => number } = {}) {
+export function createAppServerNotificationBus(input: { now?: () => number } = {}) {
   const now = input.now ?? Date.now
-  let nextEventId = 0
-  const subscriptions = new Set<EventSubscription>()
+  let nextNotificationId = 0
+  const subscriptions = new Set<NotificationSubscription>()
 
-  function buildEventId() {
-    nextEventId += 1
-    return `event_${nextEventId}`
+  function buildNotificationId() {
+    nextNotificationId += 1
+    return `notification_${nextNotificationId}`
   }
 
   return {
-    publish(payload: ServerEventPayload) {
-      const event: ServerEvent = {
+    publish(payload: AppServerNotificationPayload) {
+      const notification: AppServerNotification = {
         ...payload,
-        id: buildEventId(),
+        id: buildNotificationId(),
         time: now(),
       }
 
       for (const subscription of subscriptions) {
-        if (subscription.filter && !subscription.filter(event)) {
+        if (subscription.filter && !subscription.filter(notification)) {
           continue
         }
 
-        subscription.queue.push(event)
+        subscription.queue.push(notification)
       }
 
-      return event
+      return notification
     },
-    subscribe(filter?: (event: ServerEvent) => boolean) {
-      const queue = createEventQueue<ServerEvent>()
-      const subscription: EventSubscription = {
+    subscribe(filter?: (notification: AppServerNotification) => boolean) {
+      const queue = createNotificationQueue<AppServerNotification>()
+      const subscription: NotificationSubscription = {
         filter,
         queue,
       }
@@ -273,7 +296,7 @@ export function createServerEventBus(input: { now?: () => number } = {}) {
       let closed = false
 
       return {
-        events: queue.stream(),
+        notifications: queue.stream(),
         unsubscribe() {
           if (closed) {
             return
@@ -298,12 +321,12 @@ export function createServerEventBus(input: { now?: () => number } = {}) {
 export function createObservedRepository(input: {
   repository: StorageRepository
   permissionRepository: PermissionRepository
-  events: ServerEventBus
+  notifications: AppServerNotificationBus
   getContextUsage?: (sessionId: string) => ContextUsageSnapshot | null
 }) {
   const repository = input.repository
   const permissionRepository = input.permissionRepository
-  const events = input.events
+  const notifications = input.notifications
 
   function publishSessionUpdated(sessionId: string, reason: string) {
     const snapshot = buildSessionSnapshot(repository, sessionId, {
@@ -314,7 +337,7 @@ export function createObservedRepository(input: {
       return
     }
 
-    events.publish({
+    notifications.publish({
       type: "session.updated",
       ...snapshot,
       reason,
@@ -326,7 +349,7 @@ export function createObservedRepository(input: {
       return
     }
 
-    events.publish({
+    notifications.publish({
       type: "run.created",
       run,
     })
@@ -338,20 +361,11 @@ export function createObservedRepository(input: {
       return
     }
 
-    events.publish({
+    notifications.publish({
       type: "run.updated",
       run,
     })
     publishSessionUpdated(run.sessionId, "run.updated")
-
-    if (run.status === "failed" && run.errorText) {
-      events.publish({
-        type: "runtime.error",
-        sessionId: run.sessionId,
-        runId: run.id,
-        error: run.errorText,
-      })
-    }
   }
 
   const observedRepository: StorageRepository = {
@@ -364,7 +378,7 @@ export function createObservedRepository(input: {
           return created
         }
 
-        events.publish({
+        notifications.publish({
           type: "session.created",
           ...buildSessionSnapshot(repository, created.id, {
             contextUsage: input.getContextUsage?.(created.id) ?? null,
@@ -405,9 +419,9 @@ export function createObservedRepository(input: {
       ...repository.messages,
       create(message) {
         const created = repository.messages.create(message)
-        events.publish({
-          type: "message.created",
-          message: created,
+        notifications.publish({
+          type: "timeline.entry.created",
+          entry: readTimelineEntryForStoredMessage(repository, created),
         })
         return created
       },
@@ -416,17 +430,17 @@ export function createObservedRepository(input: {
       ...repository.timeline,
       appendEntry(entry) {
         const created = repository.timeline.appendEntry(entry)
-        events.publish({
-          type: "message.created",
-          message: timelineEntryToTimelineMessage(created),
+        notifications.publish({
+          type: "timeline.entry.created",
+          entry: created,
         })
         return created
       },
       appendPart(part) {
         const created = repository.timeline.appendPart(part)
-        events.publish({
-          type: "message.part.updated",
-          part: timelinePartToTimelinePart(created),
+        notifications.publish({
+          type: "timeline.part.updated",
+          part: created,
         })
         return created
       },
@@ -435,17 +449,17 @@ export function createObservedRepository(input: {
       ...repository.parts,
       create(part) {
         const created = repository.parts.create(part)
-        events.publish({
-          type: "message.part.updated",
-          part: created,
+        notifications.publish({
+          type: "timeline.part.updated",
+          part: timelinePartFromStoredPart(created),
         })
         return created
       },
       updateContent(update) {
         const updated = repository.parts.updateContent(update)
-        events.publish({
-          type: "message.part.updated",
-          part: updated,
+        notifications.publish({
+          type: "timeline.part.updated",
+          part: timelinePartFromStoredPart(updated),
         })
         return updated
       },
@@ -453,34 +467,34 @@ export function createObservedRepository(input: {
     createQueuedRunWithInitiatingMessage(inputValue) {
       const created = repository.createQueuedRunWithInitiatingMessage(inputValue)
       publishRunCreated(created.run)
-      events.publish({
-        type: "message.created",
-        message: created.message,
+      notifications.publish({
+        type: "timeline.entry.created",
+        entry: readTimelineEntryForStoredMessage(repository, created.message),
       })
       return created
     },
     createQueuedRunWithInitiatingMessageAndPart(inputValue) {
       const created = repository.createQueuedRunWithInitiatingMessageAndPart(inputValue)
       publishRunCreated(created.run)
-      events.publish({
-        type: "message.created",
-        message: created.message,
+      notifications.publish({
+        type: "timeline.entry.created",
+        entry: readTimelineEntryForStoredMessage(repository, created.message),
       })
-      events.publish({
-        type: "message.part.updated",
-        part: created.part,
+      notifications.publish({
+        type: "timeline.part.updated",
+        part: timelinePartFromStoredPart(created.part),
       })
       return created
     },
     createAssistantMessageWithFirstPart(inputValue) {
       const created = repository.createAssistantMessageWithFirstPart(inputValue)
-      events.publish({
-        type: "message.created",
-        message: created.message,
+      notifications.publish({
+        type: "timeline.entry.created",
+        entry: readTimelineEntryForStoredMessage(repository, created.message),
       })
-      events.publish({
-        type: "message.part.updated",
-        part: created.part,
+      notifications.publish({
+        type: "timeline.part.updated",
+        part: timelinePartFromStoredPart(created.part),
       })
       return created
     },
@@ -492,7 +506,7 @@ export function createObservedRepository(input: {
       ...permissionRepository.requests,
       create(request) {
         const created = permissionRepository.requests.create(request)
-        events.publish({
+        notifications.publish({
           type: "permission.requested",
           permissionRequest: created,
         })
@@ -501,7 +515,7 @@ export function createObservedRepository(input: {
       },
       updateStatus(update) {
         const updated = permissionRepository.requests.updateStatus(update)
-        events.publish({
+        notifications.publish({
           type: "permission.updated",
           permissionRequest: updated,
         })
@@ -582,14 +596,14 @@ export function createServerApp(input: {
   now?: () => number
 }) {
   const now = input.now ?? Date.now
-  const eventBus = createServerEventBus({
+  const notificationBus = createAppServerNotificationBus({
     now,
   })
   const contextUsageBySession = new Map<string, ContextUsageSnapshot>()
   const observed = createObservedRepository({
     repository: input.repository,
     permissionRepository: input.permissionRepository,
-    events: eventBus,
+    notifications: notificationBus,
     getContextUsage(sessionId) {
       return contextUsageBySession.get(sessionId) ?? null
     },
@@ -659,7 +673,7 @@ async function startRun(runInput: {
     })
 
     const drained = drainRunHandle(handle, {
-      events: eventBus,
+      notifications: notificationBus,
       contextUsageBySession,
       sessionId: runInput.sessionId,
       runId: started.run.id,
@@ -704,7 +718,7 @@ async function startRun(runInput: {
       })
 
       const drained = drainRunHandle(handle, {
-        events: eventBus,
+        notifications: notificationBus,
         contextUsageBySession,
         sessionId,
         runId: started.run.id,
@@ -732,7 +746,7 @@ async function startRun(runInput: {
   }
 
   return {
-    events: eventBus,
+    notifications: notificationBus,
     sessions: {
       create(sessionInput: {
         directory: string
@@ -791,7 +805,7 @@ async function startRun(runInput: {
         const session = repository.sessions.get(sessionId)
         contextUsageBySession.delete(sessionId)
         input.deleteSessionImpl(sessionId)
-        eventBus.publish({
+        notificationBus.publish({
           type: "session.deleted",
           sessionId,
           workspaceRoot: session.workspaceRoot,
@@ -925,8 +939,8 @@ async function startRun(runInput: {
         }
       },
     },
-    subscribe(filter?: Parameters<typeof eventBus.subscribe>[0]) {
-      return eventBus.subscribe(filter)
+    subscribe(filter?: Parameters<typeof notificationBus.subscribe>[0]) {
+      return notificationBus.subscribe(filter)
     },
     async close() {
       if (!closing) {
@@ -937,7 +951,7 @@ async function startRun(runInput: {
           })
 
           await Promise.allSettled(runsToDrain.map((activeRun) => activeRun.drained))
-          eventBus.close()
+          notificationBus.close()
         })()
       }
 
@@ -966,7 +980,7 @@ async function startRun(runInput: {
 async function drainRunHandle(
   handle: Awaited<ReturnType<ServerAppRuntime["run"]>>,
   input: {
-    events: ServerEventBus
+    notifications: AppServerNotificationBus
     contextUsageBySession: Map<string, ContextUsageSnapshot>
     sessionId: string
     runId: string
@@ -976,7 +990,7 @@ async function drainRunHandle(
     for await (const event of handle.events) {
       switch (event.type) {
         case "tool.progress": {
-          input.events.publish({
+          input.notifications.publish({
             type: "tool.progress",
             toolCallId: event.toolCallId,
             message: event.message,
@@ -991,7 +1005,7 @@ async function drainRunHandle(
             utilizationPercent: event.utilizationPercent,
             source: event.source,
           })
-          input.events.publish({
+          input.notifications.publish({
             type: "context.usage.updated",
             sessionId: event.sessionId,
             runId: event.runId,
@@ -1008,12 +1022,12 @@ async function drainRunHandle(
         case "subagent.started":
         case "subagent.completed":
         case "subagent.failed": {
-          const lifecycleEvent = buildLifecycleServerEvent(event, {
+          const lifecycleEvent = buildLifecycleAppServerNotification(event, {
             sessionId: input.sessionId,
             runId: input.runId,
           })
           if (lifecycleEvent) {
-            input.events.publish(lifecycleEvent)
+            input.notifications.publish(lifecycleEvent)
           }
           break
         }
@@ -1026,10 +1040,10 @@ async function drainRunHandle(
   }
 }
 
-function buildLifecycleServerEvent(
+function buildLifecycleAppServerNotification(
   event: RuntimeEvent | ({ type: string; [key: string]: unknown }),
   fallback: { sessionId: string; runId: string },
-): SkillLoadServerEventPayload | SubagentServerEventPayload | null {
+): SkillLoadAppServerNotificationPayload | SubagentAppServerNotificationPayload | null {
   if (isSkillLoadEventType(event.type)) {
     const skillName = readString(event, "skillName")
     if (!skillName) {
@@ -1041,7 +1055,7 @@ function buildLifecycleServerEvent(
       "skill.load.completed": "completed",
       "skill.load.failed": "failed",
     })
-    const payload: SkillLoadServerEventPayload = {
+    const payload: SkillLoadAppServerNotificationPayload = {
       type: event.type,
       sessionId: readString(event, "sessionId") ?? fallback.sessionId,
       runId: readString(event, "runId") ?? fallback.runId,
@@ -1079,7 +1093,7 @@ function buildLifecycleServerEvent(
       return null
     }
 
-    const payload: SubagentServerEventPayload = {
+    const payload: SubagentAppServerNotificationPayload = {
       type: event.type,
       sessionId: readString(event, "sessionId") ?? fallback.sessionId,
       runId: readString(event, "runId") ?? subRunId,
@@ -1103,11 +1117,11 @@ function buildLifecycleServerEvent(
   return null
 }
 
-function isSkillLoadEventType(type: string): type is SkillLoadServerEventPayload["type"] {
+function isSkillLoadEventType(type: string): type is SkillLoadAppServerNotificationPayload["type"] {
   return type === "skill.load.requested" || type === "skill.load.completed" || type === "skill.load.failed"
 }
 
-function isSubagentEventType(type: string): type is SubagentServerEventPayload["type"] {
+function isSubagentEventType(type: string): type is SubagentAppServerNotificationPayload["type"] {
   return type === "subagent.started" || type === "subagent.completed" || type === "subagent.failed"
 }
 

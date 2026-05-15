@@ -17,7 +17,7 @@ import {
   persistDesktopSelection,
   replyPermission,
   startRun,
-  subscribeToEvents,
+  subscribeToNotifications,
   updateSessionActiveSkills,
   loadPrimaryAgents,
   updateSessionAgent,
@@ -35,7 +35,7 @@ import type {
   DesktopSkillCatalogEntry,
   DesktopSessionSummary,
   DesktopRun,
-  DesktopServerEvent,
+  DesktopAppServerNotification,
   DesktopSessionSnapshot,
   DesktopWorkspaceSummary,
 } from "./types"
@@ -273,7 +273,7 @@ export function useDesktopApp() {
     }
   })
 
-  const handleEvent = useEffectEvent((event: DesktopServerEvent) => {
+  const handleNotification = useEffectEvent((event: DesktopAppServerNotification) => {
     const { activeWorkspaceRoot, activeSessionId } = selectionRef.current
 
     if (event.type === "heartbeat") {
@@ -352,18 +352,15 @@ export function useDesktopApp() {
       return
     }
 
-    if (event.type === "message.created" && event.message.sessionId === activeSessionId) {
+    if (event.type === "timeline.entry.created" && event.entry.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
-        timeline: upsertTimelineMessage(previous.timeline, {
-          ...event.message,
-          parts: [],
-        }),
+        timeline: upsertTimelineMessage(previous.timeline, event.entry),
       }))
       return
     }
 
-    if (event.type === "message.part.updated" && event.part.sessionId === activeSessionId) {
+    if (event.type === "timeline.part.updated" && event.part.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
         timeline: upsertTimelineMessagePart(previous.timeline, event.part),
@@ -394,7 +391,11 @@ export function useDesktopApp() {
             }
           : previous.sessionSnapshot,
         permissionRequests: terminal ? [] : previous.permissionRequests,
-        contextUsage: terminal ? null : previous.contextUsage,
+        contextUsage: previous.contextUsage,
+        actionError:
+          event.run.status === "failed"
+            ? event.run.errorText ?? `run ${event.run.id} failed`
+            : previous.actionError,
         isSending: !terminal && event.run.status !== "waiting_permission",
       }))
 
@@ -417,14 +418,6 @@ export function useDesktopApp() {
       return
     }
 
-    if (event.type === "runtime.error" && event.sessionId === activeSessionId) {
-      setState((previous) => ({
-        ...previous,
-        actionError: event.error,
-        isSending: false,
-      }))
-    }
-
     if (event.type === "context.usage.updated" && event.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
@@ -445,9 +438,9 @@ export function useDesktopApp() {
 
     void refresh()
 
-    const unsubscribe = subscribeToEvents({
-      onEvent(event) {
-        handleEvent(event)
+    const unsubscribe = subscribeToNotifications({
+      onNotification(notification) {
+        handleNotification(notification)
       },
       onOpen() {
         setState((previous) => ({

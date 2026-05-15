@@ -30,12 +30,12 @@ contextBridge.exposeInMainWorld("neoCoworkerDesktop", {
   },
 })
 
-ipcRenderer.on("neo-coworker:event", (_event, payload) => {
-  window.dispatchEvent(new CustomEvent("neo-coworker:event", { detail: payload }))
+ipcRenderer.on("neo-coworker:notification", (_event, payload) => {
+  window.dispatchEvent(new CustomEvent("neo-coworker:notification", { detail: payload }))
 })
 
-ipcRenderer.on("neo-coworker:event-error", (_event, detail) => {
-  window.dispatchEvent(new CustomEvent("neo-coworker:event-error", { detail }))
+ipcRenderer.on("neo-coworker:notification-error", (_event, detail) => {
+  window.dispatchEvent(new CustomEvent("neo-coworker:notification-error", { detail }))
 })
 
 function readArgument(prefix) {

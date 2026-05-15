@@ -94,6 +94,54 @@ describe("permission repository", () => {
     })
   })
 
+  test("preserves creation order for auto-timestamped pending requests created in the same tick", () => {
+    const { conversationRepository, permissionRepository } = createTestSubject(
+      "same-tick-order",
+      {
+        now: () => 100,
+        createId: (() => {
+          const ids = ["permission_b", "permission_a"]
+          return () => ids.shift() ?? "permission_extra"
+        })(),
+      },
+    )
+
+    conversationRepository.sessions.create({
+      id: "session_1",
+      directory: "/workspace",
+      workspaceRoot: "/workspace",
+      createdAt: 1,
+    })
+    conversationRepository.runs.create({
+      id: "run_1",
+      sessionId: "session_1",
+      trigger: "cli",
+      status: "running",
+      createdAt: 2,
+      startedAt: 3,
+    })
+
+    permissionRepository.requests.create({
+      sessionId: "session_1",
+      runId: "run_1",
+      toolName: "webfetch",
+      reason: "webfetch data:text/plain,second",
+    })
+    permissionRepository.requests.create({
+      sessionId: "session_1",
+      runId: "run_1",
+      toolName: "webfetch",
+      reason: "webfetch data:text/plain,first",
+    })
+
+    expect(
+      permissionRepository.requests.listByRun("run_1").map((request) => request.reason),
+    ).toEqual([
+      "webfetch data:text/plain,second",
+      "webfetch data:text/plain,first",
+    ])
+  })
+
   test("surfaces explicit not-found errors for reads and updates", () => {
     const { permissionRepository } = createTestSubject("not-found")
 
@@ -109,13 +157,16 @@ describe("permission repository", () => {
   })
 })
 
-function createTestSubject(prefix: string) {
+function createTestSubject(
+  prefix: string,
+  options: Omit<Parameters<typeof createPermissionRepository>[0], "database"> = {},
+) {
   const database = openSessionDatabase(createDatabasePath(prefix))
   trackDatabase(database)
 
   return {
     conversationRepository: createSessionRepository({ database }),
-    permissionRepository: createPermissionRepository({ database }),
+    permissionRepository: createPermissionRepository({ database, ...options }),
   }
 }
 

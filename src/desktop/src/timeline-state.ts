@@ -1,36 +1,34 @@
-import type { DesktopMessage, DesktopPart } from "./types"
+import type {
+  DesktopMessage,
+  DesktopPart,
+  DesktopTimelineEntry,
+  DesktopTimelinePart,
+} from "./types"
 
-type CanonicalTimelinePart = Omit<DesktopPart, "runId" | "messageId"> & {
-  producedByRunId: string
-  entryId: string
-}
-
-type CanonicalTimelineMessage = Omit<DesktopMessage, "runId" | "sequence" | "parts"> & {
-  producedByRunId: string
-  runSequence: number
-  timelineSequence: number
-  agent?: string
-  parts: CanonicalTimelinePart[]
-}
-
-type TimelineInputMessage = DesktopMessage | CanonicalTimelineMessage
-type TimelineInputPart = DesktopPart | CanonicalTimelinePart
+type TimelineInputMessage = DesktopMessage | DesktopTimelineEntry
+type TimelineInputPart = DesktopPart | DesktopTimelinePart
 
 export function normalizeTimeline(messages: TimelineInputMessage[]) {
   return messages.map(normalizeTimelineMessage)
 }
 
-export function upsertTimelineMessage(messages: DesktopMessage[], message: DesktopMessage) {
-  const index = messages.findIndex((candidate) => candidate.id === message.id)
+export function upsertTimelineMessage(
+  messages: DesktopMessage[],
+  message: TimelineInputMessage,
+) {
+  const normalizedMessage = normalizeTimelineMessage(message)
+  const index = messages.findIndex((candidate) => candidate.id === normalizedMessage.id)
   if (index === -1) {
-    return normalizeTimeline([...messages, message])
+    return normalizeTimeline([...messages, normalizedMessage])
   }
 
   const next = messages.slice()
   next[index] = {
     ...next[index],
-    ...message,
-    parts: sortParts(message.parts.length > 0 ? message.parts : next[index].parts),
+    ...normalizedMessage,
+    parts: sortParts(
+      normalizedMessage.parts.length > 0 ? normalizedMessage.parts : next[index].parts,
+    ),
   }
 
   return normalizeTimeline(next)
@@ -38,22 +36,23 @@ export function upsertTimelineMessage(messages: DesktopMessage[], message: Deskt
 
 export function upsertTimelineMessagePart(
   messages: DesktopMessage[],
-  part: DesktopPart,
+  part: TimelineInputPart,
 ) {
-  const messageIndex = messages.findIndex((message) => message.id === part.messageId)
+  const normalizedPart = normalizeTimelinePart(part)
+  const messageIndex = messages.findIndex((message) => message.id === normalizedPart.messageId)
   if (messageIndex === -1) {
     return messages
   }
 
   const next = messages.slice()
   const target = next[messageIndex]
-  const partIndex = target.parts.findIndex((candidate) => candidate.id === part.id)
+  const partIndex = target.parts.findIndex((candidate) => candidate.id === normalizedPart.id)
   const parts = target.parts.slice()
 
   if (partIndex === -1) {
-    parts.push(part)
+    parts.push(normalizedPart)
   } else {
-    parts[partIndex] = part
+    parts[partIndex] = normalizedPart
   }
 
   next[messageIndex] = {

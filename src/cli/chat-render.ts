@@ -1,6 +1,6 @@
 import { relative, resolve } from "node:path"
 
-import type { ServerEvent, StoredMessage, StoredRun, TimelineEntry } from "../bootstrap"
+import type { AppServerNotification, StoredMessage, StoredRun, TimelineEntry } from "../bootstrap"
 import type { CliIO } from "./cli-io"
 import { formatCompactionBoundaryLine, isCompactionBoundaryPart } from "./compaction-render"
 
@@ -167,7 +167,7 @@ export function createCliChatRenderer(input: {
   }
 
   function handleToolCall(
-    part: Extract<ServerEvent, { type: "message.part.updated" }>["part"],
+    part: Extract<AppServerNotification, { type: "timeline.part.updated" }>["part"],
   ) {
     const toolName = getObjectStringValue(part.data, "toolName") ?? "unknown"
     const inputText = getObjectStringValue(part.data, "inputText") ?? ""
@@ -217,7 +217,7 @@ export function createCliChatRenderer(input: {
   }
 
   function handleToolResult(
-    part: Extract<ServerEvent, { type: "message.part.updated" }>["part"],
+    part: Extract<AppServerNotification, { type: "timeline.part.updated" }>["part"],
   ) {
     const toolName = getObjectStringValue(part.data, "toolName") ?? "unknown"
 
@@ -625,28 +625,27 @@ export function createCliChatRenderer(input: {
         renderLiveActivity: inputValue.renderLiveActivity ?? false,
       })
     },
-    renderEvent(event: ServerEvent) {
+    renderNotification(event: AppServerNotification) {
       switch (event.type) {
         case "heartbeat":
         case "session.created":
         case "session.updated":
         case "context.usage.updated":
         case "permission.updated":
-        case "runtime.error":
         case "run.created":
           return
         case "run.updated":
           renderRunStatus(event.run)
           return
-        case "message.created":
-          state.messageRoles.set(event.message.id, event.message.role)
+        case "timeline.entry.created":
+          state.messageRoles.set(event.entry.id, event.entry.role)
           return
         case "permission.requested":
           finalizeActivity()
           closeAssistantLine()
           return
-        case "message.part.updated": {
-          const role = state.messageRoles.get(event.part.messageId)
+        case "timeline.part.updated": {
+          const role = state.messageRoles.get(event.part.entryId)
           if (role !== "assistant" && role !== "compaction") {
             return
           }
