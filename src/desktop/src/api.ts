@@ -3,14 +3,14 @@ import type {
   DesktopSkillCatalogEntry,
   DesktopWorkspaceSummary,
   DesktopRun,
-  DesktopServerEvent,
+  DesktopAppServerNotification,
   DesktopSessionSnapshot,
   DesktopSessionSummary,
   DesktopMessage,
 } from "./types"
 import { DEFAULT_DESKTOP_SETTINGS, type DesktopServerMode, type DesktopSettings } from "./desktop-settings"
 
-const SERVER_EVENT_TYPES = [
+const APP_SERVER_NOTIFICATION_TYPES = [
   "heartbeat",
   "session.created",
   "session.updated",
@@ -134,23 +134,23 @@ export async function requestApi<T>(path: string, options: RequestOptions = {}):
   return unwrapEnvelope<T>(body)
 }
 
-export function subscribeToEvents(input: {
-  onEvent(event: DesktopServerEvent): void
+export function subscribeToNotifications(input: {
+  onNotification(notification: DesktopAppServerNotification): void
   onOpen?(): void
   onError?(): void
 }) {
   const bridge = getDesktopBridge()
 
   if (bridge.apiOrigin) {
-    const source = new EventSource(new URL("/events", bridge.apiOrigin))
+    const source = new EventSource(new URL("/notifications", bridge.apiOrigin))
 
-    const handleEvent = (rawEvent: Event) => {
-      const event = rawEvent as MessageEvent<string>
-      input.onEvent(JSON.parse(event.data) as DesktopServerEvent)
+    const handleNotification = (rawEvent: Event) => {
+      const transportEvent = rawEvent as MessageEvent<string>
+      input.onNotification(JSON.parse(transportEvent.data) as DesktopAppServerNotification)
     }
 
-    for (const eventType of SERVER_EVENT_TYPES) {
-      source.addEventListener(eventType, handleEvent as EventListener)
+    for (const notificationType of APP_SERVER_NOTIFICATION_TYPES) {
+      source.addEventListener(notificationType, handleNotification as EventListener)
     }
 
     source.onopen = () => {
@@ -162,28 +162,28 @@ export function subscribeToEvents(input: {
     }
 
     return () => {
-      for (const eventType of SERVER_EVENT_TYPES) {
-        source.removeEventListener(eventType, handleEvent as EventListener)
+      for (const notificationType of APP_SERVER_NOTIFICATION_TYPES) {
+        source.removeEventListener(notificationType, handleNotification as EventListener)
       }
       source.close()
     }
   }
 
-  const handleWindowEvent = (event: Event) => {
-    const customEvent = event as CustomEvent<DesktopServerEvent>
-    input.onEvent(customEvent.detail)
+  const handleWindowNotification = (event: Event) => {
+    const customEvent = event as CustomEvent<DesktopAppServerNotification>
+    input.onNotification(customEvent.detail)
   }
 
   const handleWindowError = () => {
     input.onError?.()
   }
 
-  window.addEventListener("neo-coworker:event", handleWindowEvent)
-  window.addEventListener("neo-coworker:event-error", handleWindowError)
+  window.addEventListener("neo-coworker:notification", handleWindowNotification)
+  window.addEventListener("neo-coworker:notification-error", handleWindowError)
 
   return () => {
-    window.removeEventListener("neo-coworker:event", handleWindowEvent)
-    window.removeEventListener("neo-coworker:event-error", handleWindowError)
+    window.removeEventListener("neo-coworker:notification", handleWindowNotification)
+    window.removeEventListener("neo-coworker:notification-error", handleWindowError)
   }
 }
 

@@ -48,7 +48,7 @@ const bootstrapLogPath = process.env.DESKTOP_BOOTSTRAP_LOG?.trim() || null
 
 let appServerHandle = null
 let uiServerHandle = null
-let eventBridgeHandle = null
+let notificationBridgeHandle = null
 let currentServerOrigin = null
 let currentServerMode = "managed-local"
 let runtimeCleanupPromise = null
@@ -164,7 +164,7 @@ async function startDesktop() {
       settings: desktopSettings,
     })
     unavailableServerMessage = null
-    await replaceEventBridge({
+    await replaceNotificationBridge({
       serverOrigin: currentServerOrigin,
       window,
     })
@@ -224,7 +224,7 @@ function closeRuntimeHandles() {
   }
 
   runtimeCleanupPromise = Promise.allSettled([
-    eventBridgeHandle?.close?.(),
+    notificationBridgeHandle?.close?.(),
     appServerHandle?.close?.(),
     uiServerHandle?.close?.(),
   ]).then((results) => {
@@ -288,23 +288,23 @@ async function startManagedLocalServer(settings) {
   return startedOrigin
 }
 
-async function replaceEventBridge(input) {
-  await eventBridgeHandle?.close?.()
-  eventBridgeHandle = createEventBridge({
+async function replaceNotificationBridge(input) {
+  await notificationBridgeHandle?.close?.()
+  notificationBridgeHandle = createNotificationBridge({
     serverOrigin: input.serverOrigin,
     window: input.window,
   })
-  eventBridgeHandle.start()
+  notificationBridgeHandle.start()
 }
 
 async function restartManagedLocalServer(input) {
-  await eventBridgeHandle?.close?.()
-  eventBridgeHandle = null
+  await notificationBridgeHandle?.close?.()
+  notificationBridgeHandle = null
   await appServerHandle?.close?.()
   appServerHandle = null
 
   const nextOrigin = await startManagedLocalServer(input.settings)
-  await replaceEventBridge({
+  await replaceNotificationBridge({
     serverOrigin: nextOrigin,
     window: input.window,
   })
@@ -320,8 +320,8 @@ async function setManagedLocalServerUnavailable(error) {
   currentServerOrigin = null
   recordUnavailableServer(error)
 
-  const handle = eventBridgeHandle
-  eventBridgeHandle = null
+  const handle = notificationBridgeHandle
+  notificationBridgeHandle = null
   await handle?.close?.()
   return true
 }
@@ -422,7 +422,7 @@ async function startUiServer() {
   return origin
 }
 
-function createEventBridge(input) {
+function createNotificationBridge(input) {
   let closed = false
   let activeRequest = null
   let reconnectTimer = null
@@ -459,7 +459,7 @@ function createEventBridge(input) {
       return
     }
 
-    const url = new URL("/events", input.serverOrigin)
+    const url = new URL("/notifications", input.serverOrigin)
     const client = url.protocol === "https:" ? https : http
     const request = client.request(url, { method: "GET" })
     activeRequest = request
@@ -485,12 +485,12 @@ function createEventBridge(input) {
 
           const rawEvent = buffer.slice(0, boundary)
           buffer = buffer.slice(boundary + 2)
-          const parsed = parseSseEvent(rawEvent)
+          const parsed = parseSseNotification(rawEvent)
           if (!parsed) {
             continue
           }
 
-          input.window.webContents.send("neo-coworker:event", parsed)
+          input.window.webContents.send("neo-coworker:notification", parsed)
         }
       })
 
@@ -517,7 +517,7 @@ function createEventBridge(input) {
   }
 
   function handleBridgeError(detail) {
-    input.window.webContents.send("neo-coworker:event-error", detail)
+    input.window.webContents.send("neo-coworker:notification-error", detail)
 
     if (currentServerMode === "managed-local") {
       void setManagedLocalServerUnavailable(
@@ -828,7 +828,7 @@ function resolveXdgBase(envName, fallback) {
   return fallback
 }
 
-function parseSseEvent(rawEvent) {
+function parseSseNotification(rawEvent) {
   const dataLines = []
   for (const line of rawEvent.split(/\r?\n/)) {
     if (line.startsWith("data:")) {

@@ -117,13 +117,13 @@ export type DesktopSessionSnapshot = {
   status: "idle" | "busy"
 }
 
-export type HeartbeatEvent = {
+export type HeartbeatNotification = {
   id: string
   time: number
   type: "heartbeat"
 }
 
-export type SessionEvent = {
+export type SessionNotification = {
   id: string
   time: number
   type: "session.created" | "session.updated"
@@ -134,7 +134,7 @@ export type SessionEvent = {
   reason?: string
 }
 
-export type SessionDeletedEvent = {
+export type SessionDeletedNotification = {
   id: string
   time: number
   type: "session.deleted"
@@ -142,35 +142,35 @@ export type SessionDeletedEvent = {
   workspaceRoot: string
 }
 
-export type RunEvent = {
+export type RunNotification = {
   id: string
   time: number
   type: "run.created" | "run.updated"
   run: DesktopRun
 }
 
-export type MessageEvent = {
+export type MessageNotification = {
   id: string
   time: number
   type: "message.created"
   message: Omit<DesktopMessage, "parts">
 }
 
-export type PartEvent = {
+export type PartNotification = {
   id: string
   time: number
   type: "message.part.updated"
   part: DesktopPart
 }
 
-export type PermissionEvent = {
+export type PermissionNotification = {
   id: string
   time: number
   type: "permission.requested" | "permission.updated"
   permissionRequest: DesktopPermissionRequest
 }
 
-export type RuntimeErrorEvent = {
+export type RuntimeErrorNotification = {
   id: string
   time: number
   type: "runtime.error"
@@ -179,7 +179,7 @@ export type RuntimeErrorEvent = {
   error: string
 }
 
-export type ToolProgressEvent = {
+export type ToolProgressNotification = {
   id: string
   time: number
   type: "tool.progress"
@@ -188,7 +188,7 @@ export type ToolProgressEvent = {
   timestamp: number
 }
 
-export type ContextUsageEvent = {
+export type ContextUsageNotification = {
   id: string
   time: number
   type: "context.usage.updated"
@@ -200,17 +200,17 @@ export type ContextUsageEvent = {
   source: "provider" | "estimated" | null
 }
 
-export type DesktopServerEvent =
-  | HeartbeatEvent
-  | SessionEvent
-  | SessionDeletedEvent
-  | RunEvent
-  | MessageEvent
-  | PartEvent
-  | PermissionEvent
-  | RuntimeErrorEvent
-  | ContextUsageEvent
-  | ToolProgressEvent
+export type DesktopAppServerNotification =
+  | HeartbeatNotification
+  | SessionNotification
+  | SessionDeletedNotification
+  | RunNotification
+  | MessageNotification
+  | PartNotification
+  | PermissionNotification
+  | RuntimeErrorNotification
+  | ContextUsageNotification
+  | ToolProgressNotification
 
 export type ConnectionState = "offline" | "connecting" | "online" | "error"
 

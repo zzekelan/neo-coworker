@@ -1,23 +1,23 @@
 import { describe, expect, test } from "bun:test"
 
 import type {
-  ServerEvent,
-  ServerEventPayload,
+  AppServerNotification,
+  AppServerNotificationPayload,
   StoredMessage,
   StoredPart,
 } from "../../src/bootstrap"
-import { createCliRenderState, renderServerEvent } from "../../src/cli/cli-render"
+import { createCliRenderState, renderAppServerNotification } from "../../src/cli/cli-render"
 
 describe("cli reasoning render", () => {
   test("emits a reasoning> prefix on the first delta and only the new suffix on subsequent deltas", () => {
     const state = createCliRenderState()
     const message = createMessage({ id: "message_assistant", role: "assistant" })
 
-    const first = renderServerEvent(
+    const first = renderAppServerNotification(
       state,
       createEvent({ type: "message.created", message }),
     )
-    const second = renderServerEvent(
+    const second = renderAppServerNotification(
       state,
       createEvent({
         type: "message.part.updated",
@@ -29,7 +29,7 @@ describe("cli reasoning render", () => {
         }),
       }),
     )
-    const third = renderServerEvent(
+    const third = renderAppServerNotification(
       state,
       createEvent({
         type: "message.part.updated",
@@ -51,8 +51,8 @@ describe("cli reasoning render", () => {
     const state = createCliRenderState()
     const message = createMessage({ id: "message_assistant_2", role: "assistant" })
 
-    renderServerEvent(state, createEvent({ type: "message.created", message }))
-    renderServerEvent(
+    renderAppServerNotification(state, createEvent({ type: "message.created", message }))
+    renderAppServerNotification(
       state,
       createEvent({
         type: "message.part.updated",
@@ -64,7 +64,7 @@ describe("cli reasoning render", () => {
         }),
       }),
     )
-    const toolOutput = renderServerEvent(
+    const toolOutput = renderAppServerNotification(
       state,
       createEvent({
         type: "message.part.updated",
@@ -81,7 +81,7 @@ describe("cli reasoning render", () => {
   })
 })
 
-function createEvent(payload: ServerEventPayload): ServerEvent {
+function createEvent(payload: AppServerNotificationPayload): AppServerNotification {
   return {
     ...payload,
     id: `event_${payload.type}_${Math.random().toString(16).slice(2)}`,

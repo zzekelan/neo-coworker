@@ -17,7 +17,7 @@ import {
   persistDesktopSelection,
   replyPermission,
   startRun,
-  subscribeToEvents,
+  subscribeToNotifications,
   updateSessionActiveSkills,
   loadPrimaryAgents,
   updateSessionAgent,
@@ -35,7 +35,7 @@ import type {
   DesktopSkillCatalogEntry,
   DesktopSessionSummary,
   DesktopRun,
-  DesktopServerEvent,
+  DesktopAppServerNotification,
   DesktopSessionSnapshot,
   DesktopWorkspaceSummary,
 } from "./types"
@@ -273,7 +273,7 @@ export function useDesktopApp() {
     }
   })
 
-  const handleEvent = useEffectEvent((event: DesktopServerEvent) => {
+  const handleNotification = useEffectEvent((event: DesktopAppServerNotification) => {
     const { activeWorkspaceRoot, activeSessionId } = selectionRef.current
 
     if (event.type === "heartbeat") {
@@ -445,9 +445,9 @@ export function useDesktopApp() {
 
     void refresh()
 
-    const unsubscribe = subscribeToEvents({
-      onEvent(event) {
-        handleEvent(event)
+    const unsubscribe = subscribeToNotifications({
+      onNotification(notification) {
+        handleNotification(notification)
       },
       onOpen() {
         setState((previous) => ({

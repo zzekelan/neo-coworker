@@ -27,7 +27,7 @@ import {
   createObservabilityRepository,
   createObservabilityRuntimeApi,
   createRuntime,
-  createServerEventBus,
+  createAppServerNotificationBus,
 } from "../../src/bootstrap"
 import { createWorkspaceSkillRuntime } from "../../src/skill"
 import {
@@ -552,11 +552,11 @@ describe("server HTTP API and SSE", () => {
       database,
       now,
     })
-    const events = createServerEventBus({ now })
+    const notifications = createAppServerNotificationBus({ now })
     const observed = createObservedRepository({
       repository,
       permissionRepository,
-      events,
+      notifications,
     })
 
     const parentSession = repository.sessions.create({
@@ -596,8 +596,8 @@ describe("server HTTP API and SSE", () => {
       },
     })
 
-    const subscription = events.subscribe()
-    const iterator = subscription.events[Symbol.asyncIterator]()
+    const subscription = notifications.subscribe()
+    const iterator = subscription.notifications[Symbol.asyncIterator]()
 
     observed.repository.runs.updateStatus({
       runId: created.run.id,
@@ -1320,9 +1320,9 @@ describe("server HTTP API and SSE", () => {
     await subscriber.close()
   })
 
-  test("disables Bun idle timeout for SSE subscriptions", async () => {
+  test("disables Bun idle timeout for notification subscriptions", async () => {
     const harness = await createHarness("server-sse-timeout", createTurnProvider([]))
-    const request = new Request("http://server.test/events", {
+    const request = new Request("http://server.test/notifications", {
       headers: {
         accept: "text/event-stream",
       },
@@ -1571,6 +1571,24 @@ describe("server HTTP API and SSE", () => {
         status: "approved",
       },
     ])
+  })
+
+  test("does not expose the legacy events subscription route", async () => {
+    const harness = await createHarness("server-legacy-events-route", createTurnProvider([]))
+    const response = await harness.server.fetch(
+      new Request("http://server.test/events", {
+        headers: {
+          accept: "text/event-stream",
+        },
+      }),
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "not_found",
+      },
+    })
   })
 
   test("permission reply against a detached run fails after server restart (no detached recovery)", async () => {
@@ -2265,7 +2283,7 @@ describe("server HTTP API and SSE", () => {
 
     const desktopTypesSource = readFileSync("src/desktop/src/types.ts", "utf8")
     expect(desktopTypesSource).toContain("type: \"context.usage.updated\"")
-    expect(desktopTypesSource).toContain("ContextUsageEvent")
+    expect(desktopTypesSource).toContain("ContextUsageNotification")
   })
 })
 
@@ -2478,7 +2496,7 @@ type Waiter = (value?: void | PromiseLike<void>) => void
 
 async function connectSse(server: { fetch(request: Request): Promise<Response> | Response }) {
   const response = await server.fetch(
-    new Request("http://server.test/events", {
+    new Request("http://server.test/notifications", {
       headers: {
         accept: "text/event-stream",
       },

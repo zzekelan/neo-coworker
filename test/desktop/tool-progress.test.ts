@@ -66,7 +66,8 @@ describe("Tool Progress UI (Source Analysis)", () => {
   })
 
 
-  test("should define ToolProgressEvent type", () => {
+  test("should define ToolProgressNotification type", () => {
+    expect(typesSource).toContain("ToolProgressNotification")
     expect(typesSource).toContain('type: "tool.progress"')
   })
 
@@ -76,7 +77,7 @@ describe("Tool Progress UI (Source Analysis)", () => {
   })
 
   test("should whitelist tool.progress in desktop SSE subscriptions", () => {
-    expect(apiSource).toContain("SERVER_EVENT_TYPES")
+    expect(apiSource).toContain("APP_SERVER_NOTIFICATION_TYPES")
     expect(apiSource).toContain('"tool.progress"')
   })
 })

@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test"
 
 import type {
-  ServerEvent,
-  ServerEventPayload,
+  AppServerNotification,
+  AppServerNotificationPayload,
   StoredMessage,
   StoredPart,
   TimelineEntry,
 } from "../../src/bootstrap"
 import { createCliChatRenderer } from "../../src/cli/chat-render"
-import { createCliRenderState, renderServerEvent } from "../../src/cli/cli-render"
+import { createCliRenderState, renderAppServerNotification } from "../../src/cli/cli-render"
 import type { CliIO } from "../../src/cli/cli-io"
 
 describe("cli compaction surfaces", () => {
@@ -20,8 +20,8 @@ describe("cli compaction surfaces", () => {
     })
 
     const output = [
-      renderServerEvent(state, createEvent({ type: "message.created", message })),
-      renderServerEvent(
+      renderAppServerNotification(state, createEvent({ type: "message.created", message })),
+      renderAppServerNotification(
         state,
         createEvent({
           type: "message.part.updated",
@@ -37,7 +37,7 @@ describe("cli compaction surfaces", () => {
           }),
         }),
       ),
-      renderServerEvent(
+      renderAppServerNotification(
         state,
         createEvent({
           type: "message.part.updated",
@@ -169,7 +169,7 @@ describe("cli compaction surfaces", () => {
       workspaceRoot: "/workspace",
     })
 
-    renderer.renderEvent(
+    renderer.renderNotification(
       createEvent({
         type: "message.created",
         message: createMessage({
@@ -178,7 +178,7 @@ describe("cli compaction surfaces", () => {
         }),
       }),
     )
-    renderer.renderEvent(
+    renderer.renderNotification(
       createEvent({
         type: "message.part.updated",
         part: createPart({
@@ -193,7 +193,7 @@ describe("cli compaction surfaces", () => {
         }),
       }),
     )
-    renderer.renderEvent(
+    renderer.renderNotification(
       createEvent({
         type: "message.part.updated",
         part: createPart({
@@ -204,7 +204,7 @@ describe("cli compaction surfaces", () => {
         }),
       }),
     )
-    renderer.renderEvent(
+    renderer.renderNotification(
       createEvent({
         type: "message.created",
         message: createMessage({
@@ -214,7 +214,7 @@ describe("cli compaction surfaces", () => {
         }),
       }),
     )
-    renderer.renderEvent(
+    renderer.renderNotification(
       createEvent({
         type: "message.part.updated",
         part: createPart({
@@ -244,7 +244,7 @@ function createIo(output: string[]): CliIO {
   }
 }
 
-function createEvent(payload: ServerEventPayload): ServerEvent {
+function createEvent(payload: AppServerNotificationPayload): AppServerNotification {
   return {
     ...payload,
     id: `event_${payload.type}_${Math.random().toString(16).slice(2)}`,

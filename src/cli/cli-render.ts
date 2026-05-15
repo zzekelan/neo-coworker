@@ -1,4 +1,4 @@
-import type { ServerEvent, StoredMessage, StoredRun } from "../bootstrap"
+import type { AppServerNotification, StoredMessage, StoredRun } from "../bootstrap"
 import { formatCompactionBoundaryLine, isCompactionBoundaryPart } from "./compaction-render"
 
 type StoredMessageRole = StoredMessage["role"]
@@ -21,7 +21,7 @@ export function createCliRenderState(): CliRenderState {
   }
 }
 
-export function renderServerEvent(state: CliRenderState, event: ServerEvent) {
+export function renderAppServerNotification(state: CliRenderState, event: AppServerNotification) {
   switch (event.type) {
     case "heartbeat":
     case "session.created":
@@ -74,7 +74,7 @@ function renderRunStatus(state: CliRenderState, run: StoredRun) {
 
 function renderAssistantPart(
   state: CliRenderState,
-  event: Extract<ServerEvent, { type: "message.part.updated" }>,
+  event: Extract<AppServerNotification, { type: "message.part.updated" }>,
 ) {
   const role = state.messageRoles.get(event.part.messageId)
   if (role !== "assistant" && role !== "compaction") {

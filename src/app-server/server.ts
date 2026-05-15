@@ -11,7 +11,7 @@ import {
   PermissionRequestNotPendingError,
   PermissionRequestRunStateError,
   RUN_TRIGGERS,
-  type ServerEvent,
+  type AppServerNotification,
   ServerShuttingDownError,
   SessionAlreadyCompactingError,
   SessionBusyError,
@@ -22,7 +22,7 @@ import {
   RunTraceNotFoundError,
   type SessionRepository as StorageRepository,
 } from "../bootstrap"
-import { serializeSseEvent } from "./events"
+import { serializeSseNotification } from "./notifications"
 
 export { PermissionRequestNotAwaitingActiveRuntimeError } from "../bootstrap"
 
@@ -154,7 +154,7 @@ export function createAgentServer(input: {
         })
       }
 
-      if (request.method === "GET" && path === "events") {
+      if (request.method === "GET" && path === "notifications") {
         activeServer?.timeout(request, 0)
         return createSseResponse(request)
       }
@@ -397,7 +397,7 @@ export function createAgentServer(input: {
     }
   }
 
-  function buildHeartbeatEvent(): ServerEvent {
+  function buildHeartbeatNotification(): AppServerNotification {
     nextHeartbeatId += 1
 
     return {
@@ -417,13 +417,13 @@ export function createAgentServer(input: {
           let closed = false
           let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
-          function send(event: ServerEvent) {
+          function send(notification: AppServerNotification) {
             if (closed) {
               return
             }
 
             try {
-              controller.enqueue(encoder.encode(serializeSseEvent(event)))
+              controller.enqueue(encoder.encode(serializeSseNotification(notification)))
             } catch {
               close()
             }
@@ -450,16 +450,16 @@ export function createAgentServer(input: {
           }
 
           heartbeatTimer = setInterval(() => {
-            send(buildHeartbeatEvent())
+            send(buildHeartbeatNotification())
           }, heartbeatIntervalMs)
 
           request.signal.addEventListener("abort", close)
-          send(buildHeartbeatEvent())
+          send(buildHeartbeatNotification())
 
           void (async () => {
             try {
-              for await (const event of subscription.events) {
-                send(event)
+              for await (const notification of subscription.notifications) {
+                send(notification)
               }
             } finally {
               close()

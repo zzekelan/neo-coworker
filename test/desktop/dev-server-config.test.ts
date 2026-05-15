@@ -10,11 +10,12 @@ describe("desktop dev server config", () => {
     const server = buildDesktopDevServerConfig({})
 
     expect(server.host).toBe(DEFAULT_DESKTOP_UI_HOST)
-    expect(server.proxy["^/events$"]).toMatchObject({
+    expect(server.proxy["^/notifications$"]).toMatchObject({
       target: DEFAULT_DESKTOP_APP_SERVER_ORIGIN,
       changeOrigin: false,
       ws: false,
     })
+    expect(server.proxy["^/events$"]).toBeUndefined()
     expect(server.proxy["^/runs(?:/.*)?$"]).toMatchObject({
       target: DEFAULT_DESKTOP_APP_SERVER_ORIGIN,
       changeOrigin: false,
