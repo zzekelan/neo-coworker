@@ -33,10 +33,10 @@ export function renderAppServerNotification(state: CliRenderState, event: AppSer
       return ""
     case "run.updated":
       return renderRunStatus(state, event.run)
-    case "message.created":
-      state.messageRoles.set(event.message.id, event.message.role)
-      return event.message.role === "assistant" ? "message.started assistant\n" : ""
-    case "message.part.updated":
+    case "timeline.entry.created":
+      state.messageRoles.set(event.entry.id, event.entry.role)
+      return event.entry.role === "assistant" ? "message.started assistant\n" : ""
+    case "timeline.part.updated":
       return renderAssistantPart(state, event)
     case "permission.requested":
       return `permission.requested ${event.permissionRequest.toolName} ${event.permissionRequest.reason}\n`
@@ -74,9 +74,9 @@ function renderRunStatus(state: CliRenderState, run: StoredRun) {
 
 function renderAssistantPart(
   state: CliRenderState,
-  event: Extract<AppServerNotification, { type: "message.part.updated" }>,
+  event: Extract<AppServerNotification, { type: "timeline.part.updated" }>,
 ) {
-  const role = state.messageRoles.get(event.part.messageId)
+  const role = state.messageRoles.get(event.part.entryId)
   if (role !== "assistant" && role !== "compaction") {
     return ""
   }

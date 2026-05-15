@@ -6,6 +6,7 @@ import type {
   StoredMessage,
   StoredPart,
   TimelineEntry,
+  TimelinePart,
 } from "../../src/bootstrap"
 import { createCliChatRenderer } from "../../src/cli/chat-render"
 import { createCliRenderState, renderAppServerNotification } from "../../src/cli/cli-render"
@@ -20,12 +21,12 @@ describe("cli compaction surfaces", () => {
     })
 
     const output = [
-      renderAppServerNotification(state, createEvent({ type: "message.created", message })),
+      renderAppServerNotification(state, createEvent({ type: "timeline.entry.created", entry: createEntry(message) })),
       renderAppServerNotification(
         state,
         createEvent({
-          type: "message.part.updated",
-          part: createPart({
+          type: "timeline.part.updated",
+          part: createTimelinePart(createPart({
             id: "part_boundary",
             messageId: message.id,
             kind: "compaction_boundary",
@@ -34,19 +35,19 @@ describe("cli compaction surfaces", () => {
               tokensAfter: 4200,
               compressionRatio: 0.65,
             },
-          }),
+          })),
         }),
       ),
       renderAppServerNotification(
         state,
         createEvent({
-          type: "message.part.updated",
-          part: createPart({
+          type: "timeline.part.updated",
+          part: createTimelinePart(createPart({
             id: "part_summary",
             messageId: message.id,
             kind: "text",
             text: "internal summary that should stay hidden",
-          }),
+          })),
         }),
       ),
     ].join("")
@@ -171,17 +172,17 @@ describe("cli compaction surfaces", () => {
 
     renderer.renderNotification(
       createEvent({
-        type: "message.created",
-        message: createMessage({
+        type: "timeline.entry.created",
+        entry: createEntry(createMessage({
           id: "message_compaction",
           role: "compaction",
-        }),
+        })),
       }),
     )
     renderer.renderNotification(
       createEvent({
-        type: "message.part.updated",
-        part: createPart({
+        type: "timeline.part.updated",
+        part: createTimelinePart(createPart({
           id: "part_boundary",
           messageId: "message_compaction",
           kind: "compaction_boundary",
@@ -190,39 +191,39 @@ describe("cli compaction surfaces", () => {
             tokensAfter: 3600,
             compressionRatio: 0.6,
           },
-        }),
+        })),
       }),
     )
     renderer.renderNotification(
       createEvent({
-        type: "message.part.updated",
-        part: createPart({
+        type: "timeline.part.updated",
+        part: createTimelinePart(createPart({
           id: "part_summary",
           messageId: "message_compaction",
           kind: "text",
           text: "summary should be hidden",
-        }),
+        })),
       }),
     )
     renderer.renderNotification(
       createEvent({
-        type: "message.created",
-        message: createMessage({
+        type: "timeline.entry.created",
+        entry: createEntry(createMessage({
           id: "message_failure",
           role: "compaction",
           sequence: 1,
-        }),
+        })),
       }),
     )
     renderer.renderNotification(
       createEvent({
-        type: "message.part.updated",
-        part: createPart({
+        type: "timeline.part.updated",
+        part: createTimelinePart(createPart({
           id: "part_failure",
           messageId: "message_failure",
           kind: "error",
           text: "Automatic compaction failed. Try again later.",
-        }),
+        })),
       }),
     )
 
@@ -267,6 +268,20 @@ function createMessage(input: {
   }
 }
 
+function createEntry(message: StoredMessage): TimelineEntry {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    agent: message.agent,
+    role: message.role,
+    producedByRunId: message.runId,
+    runSequence: message.sequence,
+    timelineSequence: message.sequence,
+    createdAt: message.createdAt,
+    parts: [],
+  }
+}
+
 function createTimelineMessage(
   input: {
     id: string
@@ -285,17 +300,7 @@ function createTimelineMessage(
     runSequence: message.sequence,
     timelineSequence: message.sequence,
     createdAt: message.createdAt,
-    parts: parts.map((part) => ({
-      id: part.id,
-      sessionId: part.sessionId,
-      entryId: part.messageId,
-      producedByRunId: part.runId,
-      kind: part.kind,
-      sequence: part.sequence,
-      text: part.text,
-      data: part.data,
-      createdAt: part.createdAt,
-    })),
+    parts: parts.map(createTimelinePart),
   }
 }
 
@@ -317,5 +322,19 @@ function createPart(input: {
     text: input.text ?? null,
     data: input.data ?? null,
     createdAt: 1,
+  }
+}
+
+function createTimelinePart(part: StoredPart): TimelinePart {
+  return {
+    id: part.id,
+    sessionId: part.sessionId,
+    entryId: part.messageId,
+    producedByRunId: part.runId,
+    kind: part.kind,
+    sequence: part.sequence,
+    text: part.text,
+    data: part.data,
+    createdAt: part.createdAt,
   }
 }

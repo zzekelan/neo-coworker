@@ -2,8 +2,8 @@ import {
   assertRunStatusTransition,
   createSessionRuntimeApi,
   SessionBusyError,
-  timelineEntryToTimelineMessage,
-  timelinePartToTimelinePart,
+  type TimelineEntry,
+  type TimelinePart,
   type RunTrigger,
   type SessionRepository as StorageRepository,
   type StoredMessage,
@@ -48,12 +48,12 @@ export type AppServerNotificationPayload =
       run: StoredRun
     }
   | {
-      type: "message.created"
-      message: StoredMessage
+      type: "timeline.entry.created"
+      entry: TimelineEntry
     }
   | {
-      type: "message.part.updated"
-      part: StoredPart
+      type: "timeline.part.updated"
+      part: TimelinePart
     }
   | {
       type: "permission.requested"
@@ -209,6 +209,34 @@ export function buildSessionSnapshot(
     activeRun,
     contextUsage: input.contextUsage ?? null,
     status: activeRun ? "busy" : "idle",
+  }
+}
+
+function timelineEntryFromStoredMessage(message: StoredMessage): TimelineEntry {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    producedByRunId: message.runId,
+    agent: message.agent,
+    role: message.role,
+    runSequence: message.sequence,
+    timelineSequence: message.sequence,
+    createdAt: message.createdAt,
+    parts: [],
+  }
+}
+
+function timelinePartFromStoredPart(part: StoredPart): TimelinePart {
+  return {
+    id: part.id,
+    sessionId: part.sessionId,
+    producedByRunId: part.runId,
+    entryId: part.messageId,
+    kind: part.kind,
+    sequence: part.sequence,
+    text: part.text,
+    data: part.data,
+    createdAt: part.createdAt,
   }
 }
 
@@ -406,8 +434,8 @@ export function createObservedRepository(input: {
       create(message) {
         const created = repository.messages.create(message)
         notifications.publish({
-          type: "message.created",
-          message: created,
+          type: "timeline.entry.created",
+          entry: timelineEntryFromStoredMessage(created),
         })
         return created
       },
@@ -417,16 +445,16 @@ export function createObservedRepository(input: {
       appendEntry(entry) {
         const created = repository.timeline.appendEntry(entry)
         notifications.publish({
-          type: "message.created",
-          message: timelineEntryToTimelineMessage(created),
+          type: "timeline.entry.created",
+          entry: created,
         })
         return created
       },
       appendPart(part) {
         const created = repository.timeline.appendPart(part)
         notifications.publish({
-          type: "message.part.updated",
-          part: timelinePartToTimelinePart(created),
+          type: "timeline.part.updated",
+          part: created,
         })
         return created
       },
@@ -436,16 +464,16 @@ export function createObservedRepository(input: {
       create(part) {
         const created = repository.parts.create(part)
         notifications.publish({
-          type: "message.part.updated",
-          part: created,
+          type: "timeline.part.updated",
+          part: timelinePartFromStoredPart(created),
         })
         return created
       },
       updateContent(update) {
         const updated = repository.parts.updateContent(update)
         notifications.publish({
-          type: "message.part.updated",
-          part: updated,
+          type: "timeline.part.updated",
+          part: timelinePartFromStoredPart(updated),
         })
         return updated
       },
@@ -454,8 +482,8 @@ export function createObservedRepository(input: {
       const created = repository.createQueuedRunWithInitiatingMessage(inputValue)
       publishRunCreated(created.run)
       notifications.publish({
-        type: "message.created",
-        message: created.message,
+        type: "timeline.entry.created",
+        entry: timelineEntryFromStoredMessage(created.message),
       })
       return created
     },
@@ -463,24 +491,24 @@ export function createObservedRepository(input: {
       const created = repository.createQueuedRunWithInitiatingMessageAndPart(inputValue)
       publishRunCreated(created.run)
       notifications.publish({
-        type: "message.created",
-        message: created.message,
+        type: "timeline.entry.created",
+        entry: timelineEntryFromStoredMessage(created.message),
       })
       notifications.publish({
-        type: "message.part.updated",
-        part: created.part,
+        type: "timeline.part.updated",
+        part: timelinePartFromStoredPart(created.part),
       })
       return created
     },
     createAssistantMessageWithFirstPart(inputValue) {
       const created = repository.createAssistantMessageWithFirstPart(inputValue)
       notifications.publish({
-        type: "message.created",
-        message: created.message,
+        type: "timeline.entry.created",
+        entry: timelineEntryFromStoredMessage(created.message),
       })
       notifications.publish({
-        type: "message.part.updated",
-        part: created.part,
+        type: "timeline.part.updated",
+        part: timelinePartFromStoredPart(created.part),
       })
       return created
     },

@@ -752,7 +752,7 @@ describe("server HTTP API and SSE", () => {
             status: "completed",
           },
           {
-            event: "message.part.updated",
+            event: "timeline.part.updated",
             id: expect.any(String),
             kind: "compaction_boundary",
           },
@@ -1098,7 +1098,7 @@ describe("server HTTP API and SSE", () => {
     expect(filteredA).toEqual(
       expect.arrayContaining([
         { event: "run.updated", id: runId, status: "running" },
-        { event: "message.part.updated", id: expect.any(String), kind: "text" },
+        { event: "timeline.part.updated", id: expect.any(String), kind: "text" },
         {
           event: "context.usage.updated",
           id: runId,
@@ -2639,14 +2639,14 @@ function simplifyRelevantEvents(events: SseEnvelope[], runId: string) {
   return events
     .filter((event) =>
       event.event === "run.updated" ||
-      event.event === "message.part.updated" ||
+      event.event === "timeline.part.updated" ||
       event.event === "context.usage.updated",
     )
     .filter((event) =>
       event.event === "run.updated"
         ? event.data.run.id === runId
-        : event.event === "message.part.updated"
-          ? event.data.part.runId === runId
+        : event.event === "timeline.part.updated"
+          ? event.data.part.producedByRunId === runId
           : event.data.runId === runId,
     )
     .map((event) => {

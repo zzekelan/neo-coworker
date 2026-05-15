@@ -91,6 +91,19 @@ export type DesktopPart = {
   createdAt: number
 }
 
+export type DesktopTimelinePart = Omit<DesktopPart, "runId" | "messageId"> & {
+  producedByRunId: string
+  entryId: string
+}
+
+export type DesktopTimelineEntry = Omit<DesktopMessage, "runId" | "sequence" | "parts"> & {
+  producedByRunId: string
+  runSequence: number
+  timelineSequence: number
+  agent?: string
+  parts: DesktopTimelinePart[]
+}
+
 export type DesktopPermissionRequest = {
   id: string
   sessionId: string
@@ -149,18 +162,18 @@ export type RunNotification = {
   run: DesktopRun
 }
 
-export type MessageNotification = {
+export type TimelineEntryNotification = {
   id: string
   time: number
-  type: "message.created"
-  message: Omit<DesktopMessage, "parts">
+  type: "timeline.entry.created"
+  entry: DesktopTimelineEntry
 }
 
-export type PartNotification = {
+export type TimelinePartNotification = {
   id: string
   time: number
-  type: "message.part.updated"
-  part: DesktopPart
+  type: "timeline.part.updated"
+  part: DesktopTimelinePart
 }
 
 export type PermissionNotification = {
@@ -205,8 +218,8 @@ export type DesktopAppServerNotification =
   | SessionNotification
   | SessionDeletedNotification
   | RunNotification
-  | MessageNotification
-  | PartNotification
+  | TimelineEntryNotification
+  | TimelinePartNotification
   | PermissionNotification
   | RuntimeErrorNotification
   | ContextUsageNotification

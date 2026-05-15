@@ -1476,10 +1476,10 @@ function isActiveRunEvent(event: AppServerNotification, runId: string) {
     case "run.created":
     case "run.updated":
       return event.run.id === runId
-    case "message.created":
-      return event.message.runId === runId
-    case "message.part.updated":
-      return event.part.runId === runId
+    case "timeline.entry.created":
+      return event.entry.producedByRunId === runId
+    case "timeline.part.updated":
+      return event.part.producedByRunId === runId
     case "permission.requested":
     case "permission.updated":
       return event.permissionRequest.runId === runId

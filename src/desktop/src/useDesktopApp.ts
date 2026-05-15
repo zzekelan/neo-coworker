@@ -352,18 +352,15 @@ export function useDesktopApp() {
       return
     }
 
-    if (event.type === "message.created" && event.message.sessionId === activeSessionId) {
+    if (event.type === "timeline.entry.created" && event.entry.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
-        timeline: upsertTimelineMessage(previous.timeline, {
-          ...event.message,
-          parts: [],
-        }),
+        timeline: upsertTimelineMessage(previous.timeline, event.entry),
       }))
       return
     }
 
-    if (event.type === "message.part.updated" && event.part.sessionId === activeSessionId) {
+    if (event.type === "timeline.part.updated" && event.part.sessionId === activeSessionId) {
       setState((previous) => ({
         ...previous,
         timeline: upsertTimelineMessagePart(previous.timeline, event.part),

@@ -5,6 +5,8 @@ import type {
   AppServerNotificationPayload,
   StoredMessage,
   StoredPart,
+  TimelineEntry,
+  TimelinePart,
 } from "../../src/bootstrap"
 import { createCliRenderState, renderAppServerNotification } from "../../src/cli/cli-render"
 
@@ -15,30 +17,30 @@ describe("cli reasoning render", () => {
 
     const first = renderAppServerNotification(
       state,
-      createEvent({ type: "message.created", message }),
+      createEvent({ type: "timeline.entry.created", entry: createEntry(message) }),
     )
     const second = renderAppServerNotification(
       state,
       createEvent({
-        type: "message.part.updated",
-        part: createPart({
+        type: "timeline.part.updated",
+        part: createTimelinePart(createPart({
           id: "part_reasoning",
           messageId: message.id,
           kind: "reasoning",
           text: "Let me think about it.",
-        }),
+        })),
       }),
     )
     const third = renderAppServerNotification(
       state,
       createEvent({
-        type: "message.part.updated",
-        part: createPart({
+        type: "timeline.part.updated",
+        part: createTimelinePart(createPart({
           id: "part_reasoning",
           messageId: message.id,
           kind: "reasoning",
           text: "Let me think about it. Step 1.",
-        }),
+        })),
       }),
     )
 
@@ -51,29 +53,29 @@ describe("cli reasoning render", () => {
     const state = createCliRenderState()
     const message = createMessage({ id: "message_assistant_2", role: "assistant" })
 
-    renderAppServerNotification(state, createEvent({ type: "message.created", message }))
+    renderAppServerNotification(state, createEvent({ type: "timeline.entry.created", entry: createEntry(message) }))
     renderAppServerNotification(
       state,
       createEvent({
-        type: "message.part.updated",
-        part: createPart({
+        type: "timeline.part.updated",
+        part: createTimelinePart(createPart({
           id: "part_reasoning_a",
           messageId: message.id,
           kind: "reasoning",
           text: "Considering options.",
-        }),
+        })),
       }),
     )
     const toolOutput = renderAppServerNotification(
       state,
       createEvent({
-        type: "message.part.updated",
-        part: createPart({
+        type: "timeline.part.updated",
+        part: createTimelinePart(createPart({
           id: "part_call_a",
           messageId: message.id,
           kind: "tool_call",
           data: { toolName: "read", inputText: '{"path":"a.md"}' },
-        }),
+        })),
       }),
     )
 
@@ -104,6 +106,19 @@ function createMessage(input: {
   }
 }
 
+function createEntry(message: StoredMessage): TimelineEntry {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    producedByRunId: message.runId,
+    role: message.role,
+    runSequence: message.sequence,
+    timelineSequence: message.sequence,
+    createdAt: message.createdAt,
+    parts: [],
+  }
+}
+
 function createPart(input: {
   id: string
   messageId: string
@@ -122,5 +137,19 @@ function createPart(input: {
     text: input.text ?? null,
     data: input.data ?? null,
     createdAt: 1,
+  }
+}
+
+function createTimelinePart(part: StoredPart): TimelinePart {
+  return {
+    id: part.id,
+    sessionId: part.sessionId,
+    producedByRunId: part.runId,
+    entryId: part.messageId,
+    kind: part.kind,
+    sequence: part.sequence,
+    text: part.text,
+    data: part.data,
+    createdAt: part.createdAt,
   }
 }

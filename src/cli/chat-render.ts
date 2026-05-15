@@ -167,7 +167,7 @@ export function createCliChatRenderer(input: {
   }
 
   function handleToolCall(
-    part: Extract<AppServerNotification, { type: "message.part.updated" }>["part"],
+    part: Extract<AppServerNotification, { type: "timeline.part.updated" }>["part"],
   ) {
     const toolName = getObjectStringValue(part.data, "toolName") ?? "unknown"
     const inputText = getObjectStringValue(part.data, "inputText") ?? ""
@@ -217,7 +217,7 @@ export function createCliChatRenderer(input: {
   }
 
   function handleToolResult(
-    part: Extract<AppServerNotification, { type: "message.part.updated" }>["part"],
+    part: Extract<AppServerNotification, { type: "timeline.part.updated" }>["part"],
   ) {
     const toolName = getObjectStringValue(part.data, "toolName") ?? "unknown"
 
@@ -638,15 +638,15 @@ export function createCliChatRenderer(input: {
         case "run.updated":
           renderRunStatus(event.run)
           return
-        case "message.created":
-          state.messageRoles.set(event.message.id, event.message.role)
+        case "timeline.entry.created":
+          state.messageRoles.set(event.entry.id, event.entry.role)
           return
         case "permission.requested":
           finalizeActivity()
           closeAssistantLine()
           return
-        case "message.part.updated": {
-          const role = state.messageRoles.get(event.part.messageId)
+        case "timeline.part.updated": {
+          const role = state.messageRoles.get(event.part.entryId)
           if (role !== "assistant" && role !== "compaction") {
             return
           }
