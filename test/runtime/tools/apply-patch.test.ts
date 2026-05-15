@@ -185,6 +185,60 @@ describe("apply_patch tool", () => {
     await expect(pending).rejects.toThrow("Permission denied")
   })
 
+  test("caps applied diff feedback at 16 KiB and keeps metadata summary-only", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+    const addedLines = Array.from({ length: 2500 }, (_value, index) => `+line-${index}`)
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Add File: huge.txt",
+          ...addedLines,
+          "+secret-line-that-should-only-live-in-tool-text-before-truncation",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(result.output).toContain("Applied patch to 1 file")
+    const diffPreview = result.output.split("\n\n").slice(1).join("\n\n")
+    expect(Buffer.byteLength(diffPreview, "utf8")).toBeLessThanOrEqual(16 * 1024)
+    expect(diffPreview).toContain("--- a/huge.txt")
+    expect(diffPreview).toContain("+line-0")
+    expect(diffPreview).toContain("[Diff preview truncated after 16384 bytes.]")
+    expect(diffPreview).not.toContain("secret-line-that-should-only-live-in-tool-text-before-truncation")
+    expect(result.metadata).toEqual({
+      files: [
+        {
+          path: "huge.txt",
+          operation: "add",
+          additions: 2501,
+          deletions: 0,
+        },
+      ],
+      fileCount: 1,
+      additions: 2501,
+      deletions: 0,
+    })
+    const serializedMetadata = JSON.stringify(result.metadata)
+    expect(serializedMetadata).not.toContain("*** Begin Patch")
+    expect(serializedMetadata).not.toContain("--- a/huge.txt")
+    expect(serializedMetadata).not.toContain("secret-line-that-should-only-live")
+  })
+
   test("rejects empty patches before permission and leaves the workspace unchanged", async () => {
     const workspaceRoot = await createTempWorkspace()
     const filePath = join(workspaceRoot, "notes.txt")

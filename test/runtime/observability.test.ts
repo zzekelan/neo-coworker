@@ -1529,6 +1529,81 @@ describe("runtime observability", () => {
     expect(persistedRunEventJson.join("\n")).not.toContain("inserted replacement text")
   })
 
+  test("records apply_patch completion telemetry without persisting diff or raw patch content", async () => {
+    const harness = await createHarness("trace-apply-patch-summary", false)
+    await Bun.write(join(harness.session.directory, "private.txt"), "original-secret\n")
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_apply_patch_summary",
+      messageId: "message_trace_apply_patch_summary",
+      prompt: "Patch private.txt without leaking contents into telemetry",
+    })
+
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            yield {
+              type: "tool.call",
+              callId: "call_apply_patch_summary",
+              name: "apply_patch",
+              inputText: JSON.stringify({
+                patchText: [
+                  "*** Begin Patch",
+                  "*** Update File: private.txt",
+                  "@@",
+                  "-original-secret",
+                  "+replacement-secret",
+                  "*** End Patch",
+                  "",
+                ].join("\n"),
+              }),
+            }
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Patch summary recorded." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      permissionPolicy: { apply_patch: "allow" },
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    await collectEvents(handle.events)
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    const completionEvent = trace?.events.find(
+      (event) => event.eventType === "tool.call.completed" &&
+        event.data.name === "apply_patch",
+    )
+    expect(completionEvent?.data).toMatchObject({
+      callId: "call_apply_patch_summary",
+      name: "apply_patch",
+      output: "Applied patch to 1 file: private.txt (update, +1/-1).",
+    })
+    const persistedRunEventJson = readPersistedRunEventJson({
+      databasePath: harness.databasePath,
+      runId: started.run.id,
+    }).join("\n")
+    expect(persistedRunEventJson).toContain("private.txt")
+    expect(persistedRunEventJson).toContain("+1/-1")
+    expect(persistedRunEventJson).not.toContain("*** Update File: private.txt")
+    expect(persistedRunEventJson).not.toContain("--- a/private.txt")
+    expect(persistedRunEventJson).not.toContain("+++ b/private.txt")
+    expect(persistedRunEventJson).not.toContain("original-secret")
+    expect(persistedRunEventJson).not.toContain("replacement-secret")
+  })
+
   test("records live edit anchor telemetry through the runtime path", async () => {
     const harness = await createHarness("trace-live-edit-anchor", true)
     const workspaceFile = join(harness.session.directory, "README.md")

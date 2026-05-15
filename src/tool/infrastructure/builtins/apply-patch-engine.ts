@@ -836,9 +836,21 @@ function createMoveDiff(input: {
 }
 
 function truncateDiffPreview(diff: string, limit: number) {
-  if (diff.length <= limit) {
+  const originalBytes = Buffer.byteLength(diff, "utf8")
+  if (originalBytes <= limit) {
     return diff
   }
 
-  return `${diff.slice(0, limit)}\n[Diff preview truncated after ${limit} bytes.]`
+  const notice = `\n[Diff preview truncated after ${limit} bytes.]`
+  const noticeBytes = Buffer.byteLength(notice, "utf8")
+  const bodyLimit = Math.max(0, limit - noticeBytes)
+  let body = Buffer.from(diff, "utf8").subarray(0, bodyLimit).toString("utf8")
+  let truncatedDiff = `${body}${notice}`
+
+  while (Buffer.byteLength(truncatedDiff, "utf8") > limit && body.length > 0) {
+    body = body.slice(0, -1)
+    truncatedDiff = `${body}${notice}`
+  }
+
+  return truncatedDiff
 }
