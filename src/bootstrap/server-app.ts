@@ -64,12 +64,6 @@ export type AppServerNotificationPayload =
       permissionRequest: StoredPermissionRequest
     }
   | {
-      type: "runtime.error"
-      sessionId: string
-      runId: string
-      error: string
-    }
-  | {
       type: "tool.progress"
       toolCallId: string
       message: string
@@ -371,15 +365,6 @@ export function createObservedRepository(input: {
       run,
     })
     publishSessionUpdated(run.sessionId, "run.updated")
-
-    if (run.status === "failed" && run.errorText) {
-      notifications.publish({
-        type: "runtime.error",
-        sessionId: run.sessionId,
-        runId: run.id,
-        error: run.errorText,
-      })
-    }
   }
 
   const observedRepository: StorageRepository = {

@@ -392,6 +392,10 @@ export function useDesktopApp() {
           : previous.sessionSnapshot,
         permissionRequests: terminal ? [] : previous.permissionRequests,
         contextUsage: terminal ? null : previous.contextUsage,
+        actionError:
+          event.run.status === "failed"
+            ? event.run.errorText ?? `run ${event.run.id} failed`
+            : previous.actionError,
         isSending: !terminal && event.run.status !== "waiting_permission",
       }))
 
@@ -412,14 +416,6 @@ export function useDesktopApp() {
         isSending: false,
       }))
       return
-    }
-
-    if (event.type === "runtime.error" && event.sessionId === activeSessionId) {
-      setState((previous) => ({
-        ...previous,
-        actionError: event.error,
-        isSending: false,
-      }))
     }
 
     if (event.type === "context.usage.updated" && event.sessionId === activeSessionId) {

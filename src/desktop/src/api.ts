@@ -21,7 +21,6 @@ const APP_SERVER_NOTIFICATION_TYPES = [
   "timeline.part.updated",
   "permission.requested",
   "permission.updated",
-  "runtime.error",
   "tool.progress",
   "context.usage.updated",
 ] as const

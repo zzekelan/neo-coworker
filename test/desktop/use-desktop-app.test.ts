@@ -89,6 +89,19 @@ describe("desktop app state flow", () => {
     expect(source).not.toContain('kind: "lifecycle"')
   })
 
+  test("derives failed run action errors from run update notifications", () => {
+    const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
+    const runBlock = source.slice(
+      source.indexOf("if ((event.type === \"run.created\""),
+      source.indexOf("if ((event.type === \"permission.requested\""),
+    )
+
+    expect(runBlock).toContain("actionError:")
+    expect(runBlock).toContain("event.run.status === \"failed\"")
+    expect(runBlock).toContain("event.run.errorText ?? `run ${event.run.id} failed`")
+    expect(source).not.toContain("event.type === \"runtime.error\"")
+  })
+
   test("intercepts /compact as a command instead of sending it as a prompt", () => {
     const source = readFileSync("src/desktop/src/useDesktopApp.ts", "utf8")
 

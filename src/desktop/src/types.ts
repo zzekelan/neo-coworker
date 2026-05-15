@@ -183,15 +183,6 @@ export type PermissionNotification = {
   permissionRequest: DesktopPermissionRequest
 }
 
-export type RuntimeErrorNotification = {
-  id: string
-  time: number
-  type: "runtime.error"
-  sessionId: string
-  runId: string
-  error: string
-}
-
 export type ToolProgressNotification = {
   id: string
   time: number
@@ -221,7 +212,6 @@ export type DesktopAppServerNotification =
   | TimelineEntryNotification
   | TimelinePartNotification
   | PermissionNotification
-  | RuntimeErrorNotification
   | ContextUsageNotification
   | ToolProgressNotification
 

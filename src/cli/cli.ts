@@ -1483,8 +1483,6 @@ function isActiveRunEvent(event: AppServerNotification, runId: string) {
     case "permission.requested":
     case "permission.updated":
       return event.permissionRequest.runId === runId
-    case "runtime.error":
-      return event.runId === runId
   }
 }
 

@@ -28,7 +28,6 @@ export function renderAppServerNotification(state: CliRenderState, event: AppSer
     case "session.updated":
     case "context.usage.updated":
     case "permission.updated":
-    case "runtime.error":
     case "run.created":
       return ""
     case "run.updated":

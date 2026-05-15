@@ -1194,6 +1194,64 @@ describe("server HTTP API and SSE", () => {
     await subscriber.close()
   })
 
+  test("failed runs recover from run state and do not emit standalone runtime error notifications", async () => {
+    const harness = await createHarness("server-failed-run-notifications", createTurnProvider([
+      async function* () {
+        yield { type: "text.delta", text: "Partial output before failure." }
+        throw new Error("provider failed through notification boundary")
+      },
+    ]))
+    const subscriber = await connectSse(harness.server)
+
+    try {
+      const createdSession = await requestJson(harness.server, "POST", "/sessions", {
+        directory: harness.workspaceRoot,
+      })
+      const sessionId = createdSession.body.data.session.id as string
+
+      const startedRun = await requestJson(
+        harness.server,
+        "POST",
+        `/sessions/${sessionId}/runs`,
+        {
+          prompt: "Fail through notifications",
+        },
+      )
+      const runId = startedRun.body.data.run.id as string
+
+      const failedUpdate = await subscriber.next(
+        (event) =>
+          event.event === "run.updated" &&
+          event.data.run.id === runId &&
+          event.data.run.status === "failed",
+      )
+      expect(failedUpdate.data.run).toMatchObject({
+        id: runId,
+        status: "failed",
+        errorText: "provider failed through notification boundary",
+      })
+
+      const recoveredRun = await requestJson(harness.server, "GET", `/runs/${runId}`)
+      expect(recoveredRun.status).toBe(200)
+      expect(recoveredRun.body.data.run).toMatchObject({
+        id: runId,
+        status: "failed",
+        errorText: "provider failed through notification boundary",
+      })
+
+      await expect(
+        subscriber.next(
+          (event) =>
+            event.event === "runtime.error" &&
+            event.data.runId === runId,
+          100,
+        ),
+      ).rejects.toThrow("Timed out waiting for SSE event")
+    } finally {
+      await subscriber.close()
+    }
+  })
+
   test("SSE forwards structured skill and subagent lifecycle events", async () => {
     const harness = await createHarness(
       "server-sse-lifecycle-events",
