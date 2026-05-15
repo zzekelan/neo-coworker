@@ -159,7 +159,7 @@ describe("desktop app state flow", () => {
 })
 
 describe("desktop api client", () => {
-  test("does not subscribe to structured lifecycle server events", () => {
+  test("does not subscribe to structured lifecycle notifications", () => {
     const apiSource = readFileSync("src/desktop/src/api.ts", "utf8")
     const typesSource = readFileSync("src/desktop/src/types.ts", "utf8")
 

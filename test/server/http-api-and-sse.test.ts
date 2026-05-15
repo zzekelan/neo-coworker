@@ -532,8 +532,8 @@ describe("server HTTP API and SSE", () => {
     )
   })
 
-  test("does not emit session.updated events for sub-sessions over the observed event bus", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "server-subsession-events-"))
+  test("does not emit session.updated notifications for sub-sessions over the notification bus", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "server-subsession-notifications-"))
     tempDirectories.push(directory)
 
     const workspaceRoot = join(directory, "workspace")
@@ -2467,7 +2467,7 @@ describe("server HTTP API and SSE", () => {
     await subscriberB.close()
   })
 
-  test("context.usage.updated event type is accepted by the server event bus contract", async () => {
+  test("context.usage.updated is accepted by the App Server Notification contract", async () => {
     const harness = await createHarness("server-context-usage-contract", createTurnProvider([
       async function* () {
         yield { type: "text.delta", text: "done" }
@@ -2490,7 +2490,7 @@ describe("server HTTP API and SSE", () => {
     const runId = startedRun.body.data.run.id as string
     await waitForRunStatus(harness.server, runId, "completed")
 
-    // Verify that contextUsage event type is part of the server event contract
+    // Verify that contextUsage is part of the App Server Notification contract
     // by checking the types file includes the discriminant.
     const { readFileSync } = await import("node:fs")
     const serverAppSource = readFileSync("src/bootstrap/server-app.ts", "utf8")
