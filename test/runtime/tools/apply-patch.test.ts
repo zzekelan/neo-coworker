@@ -137,6 +137,75 @@ describe("apply_patch tool", () => {
     expect(await readFile(filePath, "utf8")).toBe("alpha\nBETA\ngamma\n")
   })
 
+  test("replans after approval so file changes made during permission wait survive", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "alpha\nbeta\ngamma\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          "-beta",
+          "+BETA",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    await writeFile(filePath, "alpha\nbeta\ngamma\nomega\n", "utf8")
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBeFalsy()
+    expect(await readFile(filePath, "utf8")).toBe("alpha\nBETA\ngamma\nomega\n")
+  })
+
+  test("rejects post-approval stale update context without applying the old plan", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const filePath = join(workspaceRoot, "notes.txt")
+    await writeFile(filePath, "alpha\nbeta\ngamma\n", "utf8")
+    const permissionState = createPermissionState()
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: permissionState.requestPermission })],
+    })
+
+    const pending = registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: notes.txt",
+          "@@",
+          "-beta",
+          "+BETA",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    await waitForPermissionRequest(permissionState)
+    await writeFile(filePath, "alpha\nchanged\ngamma\n", "utf8")
+    permissionState.resolve("allow")
+    const result = await pending
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("Patch context not found")
+    expect(await readFile(filePath, "utf8")).toBe("alpha\nchanged\ngamma\n")
+  })
+
   test("requests structured patch approval details and a bounded active preview", async () => {
     const workspaceRoot = await createTempWorkspace()
     const permissionState = createPermissionState()

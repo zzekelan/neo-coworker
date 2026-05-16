@@ -13,7 +13,7 @@ import {
 } from "./apply-patch-engine"
 import {
   type AtomicUtf8FileWrite,
-  withSerializedFileMutation,
+  withSerializedFileMutations,
 } from "./mutating-file"
 
 const PATCH_APPROVAL_PREVIEW_LIMIT = 64 * 1024
@@ -79,38 +79,46 @@ export function createApplyPatchTool(input: {
 
       throwIfToolAborted(value.signal)
 
-      for (const change of plan.changes) {
-        await withSerializedFileMutation(change.absolutePath, async () => {
+      let committedPlan: PatchPlan
+      try {
+        committedPlan = await withSerializedFileMutations(getPatchLockPaths(plan), async () => {
           throwIfToolAborted(value.signal)
-          await applyPatchPlan({
-            ...plan,
-            changes: [change],
-            summaries: [plan.summaries.find((summary) => summary.path === change.path) ?? {
-              path: change.path,
-              operation: change.operation,
-              additions: change.additions,
-              deletions: change.deletions,
-            }],
-            totalAdditions: change.additions,
-            totalDeletions: change.deletions,
-            diff: change.diff,
-          }, {
+          const latestPlan = await planApplyPatch({
+            workspaceRoot: value.workspaceRoot,
+            patchText,
+          })
+          throwIfToolAborted(value.signal)
+          await applyPatchPlan(latestPlan, {
             atomicWrite: input.atomicWrite,
           })
+          return latestPlan
         })
+      } catch (error) {
+        return {
+          output: error instanceof Error ? error.message : String(error),
+          isError: true,
+        }
       }
 
       return {
-        output: formatPatchToolResult(plan),
+        output: formatPatchToolResult(committedPlan),
         metadata: {
-          files: plan.summaries,
-          fileCount: plan.changes.length,
-          additions: plan.totalAdditions,
-          deletions: plan.totalDeletions,
+          files: committedPlan.summaries,
+          fileCount: committedPlan.changes.length,
+          additions: committedPlan.totalAdditions,
+          deletions: committedPlan.totalDeletions,
         },
       }
     },
   }
+}
+
+function getPatchLockPaths(plan: PatchPlan) {
+  return plan.changes.flatMap((change) =>
+    change.previousAbsolutePath
+      ? [change.previousAbsolutePath, change.absolutePath]
+      : [change.absolutePath]
+  )
 }
 
 function buildPatchApprovalDetails(plan: PatchPlan) {
