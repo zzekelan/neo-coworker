@@ -424,30 +424,54 @@ async function planMoveFile(input: {
       throw error
     }
   })
+  const destinationOriginalText = await readFile(destination.absolutePath, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null
+    }
+
+    throw error
+  })
 
   const originalText = await readFile(source.absolutePath, "utf8")
   const updatedText = input.operation.hunks && input.operation.hunks.length > 0
     ? applyUpdateHunks(originalText, input.operation)
     : originalText
   const hunks = input.operation.hunks ?? []
-  const additions = hunks.reduce(
+  const hunkAdditions = hunks.reduce(
     (total, hunk) => total + hunk.lines.filter((line) => line.kind === "add").length,
     0,
   )
-  const deletions = hunks.reduce(
+  const hunkDeletions = hunks.reduce(
     (total, hunk) => total + hunk.lines.filter((line) => line.kind === "remove").length,
     0,
   )
-  const diff = updatedText === originalText
-    ? createMoveDiff({
+  const destinationReplacementCounts = destinationOriginalText === null
+    ? null
+    : countChangedTextLines({
+      originalText: destinationOriginalText,
+      updatedText,
+    })
+  const additions = destinationReplacementCounts?.additions ?? hunkAdditions
+  const deletions = destinationReplacementCounts?.deletions ?? hunkDeletions
+  let diff: string
+  if (destinationOriginalText !== null) {
+    diff = createUnifiedDiff({
+      path: destination.relativePath,
+      originalText: destinationOriginalText,
+      updatedText,
+    })
+  } else if (updatedText === originalText) {
+    diff = createMoveDiff({
       from: source.relativePath,
       to: destination.relativePath,
     })
-    : createUnifiedDiff({
+  } else {
+    diff = createUnifiedDiff({
       path: destination.relativePath,
       originalText,
       updatedText,
     })
+  }
 
   return {
     path: destination.relativePath,
@@ -519,6 +543,10 @@ async function planAddFile(input: {
     originalText,
     updatedText,
   })
+  const { additions, deletions } = countChangedTextLines({
+    originalText,
+    updatedText,
+  })
 
   return {
     path: relativePath,
@@ -526,8 +554,8 @@ async function planAddFile(input: {
     operation: "add",
     originalText,
     updatedText,
-    additions: addedLines.length,
-    deletions: 0,
+    additions,
+    deletions,
     diff,
   }
 }
@@ -853,6 +881,33 @@ function createUnifiedDiff(input: {
   originalText: string
   updatedText: string
 }) {
+  const { removedLines, addedLines } = getChangedTextLines(input)
+  const output = [
+    `--- a/${input.path}`,
+    `+++ b/${input.path}`,
+    "@@",
+    ...removedLines.map((line) => `-${line.content}`),
+    ...addedLines.map((line) => `+${line.content}`),
+  ]
+
+  return output.join("\n")
+}
+
+function countChangedTextLines(input: {
+  originalText: string
+  updatedText: string
+}) {
+  const { removedLines, addedLines } = getChangedTextLines(input)
+  return {
+    additions: addedLines.length,
+    deletions: removedLines.length,
+  }
+}
+
+function getChangedTextLines(input: {
+  originalText: string
+  updatedText: string
+}) {
   const originalLines = splitTextLines(input.originalText)
   const updatedLines = splitTextLines(input.updatedText)
   const commonPrefixLength = countCommonPrefix(originalLines, updatedLines)
@@ -868,15 +923,11 @@ function createUnifiedDiff(input: {
     commonPrefixLength,
     updatedLines.length - commonSuffixLength,
   )
-  const output = [
-    `--- a/${input.path}`,
-    `+++ b/${input.path}`,
-    "@@",
-    ...removedLines.map((line) => `-${line.content}`),
-    ...addedLines.map((line) => `+${line.content}`),
-  ]
 
-  return output.join("\n")
+  return {
+    removedLines,
+    addedLines,
+  }
 }
 
 function countCommonPrefix(left: TextLine[], right: TextLine[]) {

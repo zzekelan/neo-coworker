@@ -450,14 +450,39 @@ describe("apply_patch tool", () => {
       workspaceRoot,
     })
 
-    await waitForPermissionRequest(permissionState)
+    const request = await waitForPermissionRequest(permissionState)
+    expect(request.approvalDetails).toMatchObject({
+      kind: "patch",
+      additions: 1,
+      deletions: 1,
+      files: [
+        {
+          path: "notes.txt",
+          operation: "add",
+          additions: 1,
+          deletions: 1,
+        },
+      ],
+    })
     permissionState.resolve("allow")
     const result = await pending
 
     expect(result.isError).toBeFalsy()
-    expect(result.output).toContain("notes.txt (add, +1/-0)")
+    expect(result.output).toContain("notes.txt (add, +1/-1)")
     expect(result.output).toContain("-old")
     expect(result.output).toContain("+new")
+    expect(result.metadata).toMatchObject({
+      additions: 1,
+      deletions: 1,
+      files: [
+        {
+          path: "notes.txt",
+          operation: "add",
+          additions: 1,
+          deletions: 1,
+        },
+      ],
+    })
     expect(await readFile(join(workspaceRoot, "notes.txt"), "utf8")).toBe("new\n")
   })
 
@@ -619,13 +644,42 @@ describe("apply_patch tool", () => {
       workspaceRoot,
     })
 
-    await waitForPermissionRequest(permissionState)
+    const request = await waitForPermissionRequest(permissionState)
+    expect(request.approvalDetails).toMatchObject({
+      kind: "patch",
+      additions: 1,
+      deletions: 1,
+      files: [
+        {
+          path: "renamed.txt",
+          operation: "move",
+          additions: 1,
+          deletions: 1,
+        },
+      ],
+    })
+    const preview = request.preview as { text: string }
+    expect(preview.text).toContain("-destination")
+    expect(preview.text).toContain("+source")
     permissionState.resolve("allow")
     const result = await pending
 
     expect(result.isError).toBeFalsy()
-    expect(result.output).toContain("rename from old.txt")
-    expect(result.output).toContain("rename to renamed.txt")
+    expect(result.output).toContain("renamed.txt (move, +1/-1)")
+    expect(result.output).toContain("-destination")
+    expect(result.output).toContain("+source")
+    expect(result.metadata).toMatchObject({
+      additions: 1,
+      deletions: 1,
+      files: [
+        {
+          path: "renamed.txt",
+          operation: "move",
+          additions: 1,
+          deletions: 1,
+        },
+      ],
+    })
     await expect(access(sourcePath)).rejects.toThrow()
     expect(await readFile(destinationPath, "utf8")).toBe("source\n")
   })
