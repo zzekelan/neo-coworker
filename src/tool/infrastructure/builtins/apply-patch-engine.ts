@@ -1,5 +1,5 @@
 import { mkdir, readFile, realpath, rename, stat, unlink } from "node:fs/promises"
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
+import { dirname, isAbsolute, relative, resolve } from "node:path"
 import {
   assertWorkspacePathNotReserved,
 } from "../../domain"
@@ -542,7 +542,7 @@ async function resolvePatchWorkspacePath(input: {
     throw new Error(`Patch paths must be workspace-relative: ${input.patchPath}`)
   }
 
-  const root = resolve(input.workspaceRoot)
+  const root = await realpath(resolve(input.workspaceRoot))
   const candidate = resolve(root, normalizedPath)
   const relativePath = relative(root, candidate).replaceAll("\\", "/")
 
@@ -553,22 +553,104 @@ async function resolvePatchWorkspacePath(input: {
   assertWorkspacePathNotReserved(relativePath)
 
   if (input.mustExist) {
-    const [realRoot, realCandidate] = await Promise.all([
-      realpath(root),
-      realpath(candidate),
-    ])
+    const realCandidate = await realpath(candidate)
+    assertRealPathInsideWorkspace(root, realCandidate, input.patchPath)
+    assertWorkspacePathNotReserved(relative(root, realCandidate).replaceAll("\\", "/"))
+    return {
+      relativePath,
+      absolutePath: realCandidate,
+    }
+  }
 
-    if (realCandidate !== realRoot && !realCandidate.startsWith(`${realRoot}${sep}`)) {
-      throw new Error(`Patch path must stay inside workspace: ${input.patchPath}`)
+  const existingTarget = await realpath(candidate).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null
     }
 
-    assertWorkspacePathNotReserved(relative(realRoot, realCandidate).replaceAll("\\", "/"))
+    throw error
+  })
+
+  if (existingTarget) {
+    assertRealPathInsideWorkspace(root, existingTarget, input.patchPath)
+    assertWorkspacePathNotReserved(relative(root, existingTarget).replaceAll("\\", "/"))
+    return {
+      relativePath,
+      absolutePath: existingTarget,
+    }
+  }
+
+  return await resolveNewPatchWorkspacePath({
+    realRoot: root,
+    relativePath,
+    patchPath: input.patchPath,
+  })
+}
+
+async function resolveNewPatchWorkspacePath(input: {
+  realRoot: string
+  relativePath: string
+  patchPath: string
+}) {
+  const pathSegments = input.relativePath.split("/").filter(Boolean)
+  const fileName = pathSegments.at(-1)
+  if (!fileName) {
+    throw new Error(`Patch path must reference a file: ${input.patchPath}`)
+  }
+
+  const parentSegments = pathSegments.slice(0, -1)
+  let existingParentDir = input.realRoot
+  let firstMissingIndex = parentSegments.length
+
+  for (const [index, segment] of parentSegments.entries()) {
+    const candidate = resolve(existingParentDir, segment)
+
+    try {
+      const resolvedCandidate = await realpath(candidate)
+      assertRealPathInsideWorkspace(input.realRoot, resolvedCandidate, input.patchPath)
+      const relativeCandidate = relative(input.realRoot, resolvedCandidate).replaceAll("\\", "/")
+      if (relativeCandidate) {
+        assertWorkspacePathNotReserved(relativeCandidate)
+      }
+      existingParentDir = resolvedCandidate
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error
+      }
+
+      firstMissingIndex = index
+      break
+    }
+  }
+
+  for (const segment of parentSegments.slice(firstMissingIndex)) {
+    existingParentDir = resolve(existingParentDir, segment)
+  }
+
+  const relativeParent = relative(input.realRoot, existingParentDir).replaceAll("\\", "/")
+  if (relativeParent) {
+    assertWorkspacePathNotReserved(relativeParent)
+  }
+
+  const absolutePath = resolve(existingParentDir, fileName)
+  if (absolutePath === input.realRoot || absolutePath === existingParentDir || !isPathInside(existingParentDir, absolutePath)) {
+    throw new Error(`Patch path must reference a file: ${input.patchPath}`)
   }
 
   return {
-    relativePath,
-    absolutePath: candidate,
+    relativePath: input.relativePath,
+    absolutePath,
   }
+}
+
+function assertRealPathInsideWorkspace(realRoot: string, realPath: string, patchPath: string) {
+  if (!isPathInside(realRoot, realPath)) {
+    throw new Error(`Patch path must stay inside workspace: ${patchPath}`)
+  }
+}
+
+function isPathInside(root: string, path: string) {
+  const relativePath = relative(root, path)
+  return path === root || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
 }
 
 function applyUpdateHunks(originalText: string, operation: ParsedPatchOperation) {

@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -401,6 +401,33 @@ describe("apply_patch tool", () => {
     expect(await readFile(join(workspaceRoot, "notes.txt"), "utf8")).toBe("alpha\nbeta\n")
   })
 
+  test("rejects add file targets under workspace symlink parents", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const outsideRoot = await mkdtemp(join(tmpdir(), "apply-patch-outside-"))
+    await symlink(outsideRoot, join(workspaceRoot, "linked"), "dir")
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: async () => ({ decision: "allow" as const }) })],
+    })
+
+    const result = await registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Add File: linked/escape.txt",
+          "+outside",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("must stay inside workspace")
+    await expect(access(join(outsideRoot, "escape.txt"))).rejects.toThrow()
+  })
+
   test("add file patches may overwrite existing files", async () => {
     const workspaceRoot = await createTempWorkspace()
     await writeFile(join(workspaceRoot, "notes.txt"), "old\n", "utf8")
@@ -535,6 +562,36 @@ describe("apply_patch tool", () => {
     expect(result.output).toContain("renamed.txt (move, +0/-0)")
     await expect(access(sourcePath)).rejects.toThrow()
     expect(await readFile(destinationPath, "utf8")).toBe("same\n")
+  })
+
+  test("rejects move destinations under workspace symlink parents", async () => {
+    const workspaceRoot = await createTempWorkspace()
+    const outsideRoot = await mkdtemp(join(tmpdir(), "apply-patch-outside-"))
+    const sourcePath = join(workspaceRoot, "old.txt")
+    await writeFile(sourcePath, "same\n", "utf8")
+    await symlink(outsideRoot, join(workspaceRoot, "linked"), "dir")
+    const registry = createToolRuntimeApi({
+      tools: [createApplyPatchTool({ requestPermission: async () => ({ decision: "allow" as const }) })],
+    })
+
+    const result = await registry.execute({
+      toolName: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: old.txt",
+          "*** Move to: linked/renamed.txt",
+          "*** End Patch",
+          "",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("must stay inside workspace")
+    expect(await readFile(sourcePath, "utf8")).toBe("same\n")
+    await expect(access(join(outsideRoot, "renamed.txt"))).rejects.toThrow()
   })
 
   test("move patches may overwrite existing destination files", async () => {
