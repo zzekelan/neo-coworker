@@ -25,14 +25,13 @@ import {
   TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY,
 } from "../../src/orchestration"
 import { createRuntime } from "../../src/bootstrap"
-import { formatAnchorLine } from "../../src/tool/infrastructure/builtins/hash-anchor"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
 const README_READ_OUTPUT = [
-  "L1#f1469abc|# demo workspace",
-  "L2#e3b0c442|",
-  "L3#d806ab8e|This fixture exists for the read-only tool tests.",
+  "1: # demo workspace",
+  "2: ",
+  "3: This fixture exists for the read-only tool tests.",
 ].join("\n")
 
 afterEach(async () => {
@@ -115,6 +114,7 @@ describe("agent loop", () => {
             type: "tool_result",
             callId: "call_1",
             toolName: "read",
+            isError: undefined,
             output: README_READ_OUTPUT,
           },
         ],
@@ -529,6 +529,7 @@ describe("agent loop", () => {
           type: "tool_result",
           callId: "call_read",
           toolName: "read",
+          isError: undefined,
           output: README_READ_OUTPUT,
         },
       ],
@@ -617,6 +618,7 @@ describe("agent loop", () => {
           type: "tool_result",
           callId: "call_read",
           toolName: "read",
+          isError: undefined,
           output: README_READ_OUTPUT,
         },
       ],
@@ -646,14 +648,25 @@ describe("agent loop", () => {
     expect(harness.repository.runs.get(started.run.id).status).toBe("completed")
   })
 
-  test("uses a read-produced hash anchor in a follow-up edit call inside the same run", async () => {
-    const harness = await createHarness("hash-anchor-loop", false)
+  test("uses read output context in a follow-up apply_patch call inside the same run", async () => {
+    const harness = await createHarness("apply-patch-loop", false)
     const filePath = join(harness.workspaceRoot, "notes.txt")
     const expectedReadOutput = [
-      formatAnchorLine(1, "alpha"),
-      formatAnchorLine(2, "beta"),
-      formatAnchorLine(3, "gamma"),
+      "1: alpha",
+      "2: beta",
+      "3: gamma",
     ].join("\n")
+    const patchInput = JSON.stringify({
+      patchText: [
+        "*** Begin Patch",
+        "*** Update File: notes.txt",
+        "@@",
+        "-beta",
+        "+BETA",
+        "*** End Patch",
+        "",
+      ].join("\n"),
+    })
 
     await Bun.write(filePath, "alpha\nbeta\ngamma\n")
 
@@ -662,9 +675,9 @@ describe("agent loop", () => {
       permissionRepository: harness.permissionRepository,
       service: harness.service,
       sessionId: harness.session.id,
-      runId: "run_hash_anchor_loop",
-      messageId: "message_hash_anchor_loop",
-      prompt: "Read notes.txt and replace beta using the read anchor",
+      runId: "run_apply_patch_loop",
+      messageId: "message_apply_patch_loop",
+      prompt: "Read notes.txt and replace beta using apply_patch",
     })
     const requests: ProviderTurnRequest[] = []
     const runtime = createRuntime({
@@ -679,31 +692,24 @@ describe("agent loop", () => {
         },
         async function* (request) {
           const readOutput = readRequestText(request).find((text) => text === expectedReadOutput)
-          const betaAnchor = readOutput?.split("\n")[1]
 
           expect(readOutput).toBe(expectedReadOutput)
-          expect(betaAnchor).toBe(formatAnchorLine(2, "beta"))
 
           yield {
             type: "tool.call",
-            callId: "call_edit_anchor",
-            name: "edit",
-            inputText: JSON.stringify({
-              path: "notes.txt",
-              operation: "replace",
-              start: betaAnchor,
-              content: "BETA",
-            }),
+            callId: "call_apply_patch",
+            name: "apply_patch",
+            inputText: patchInput,
           }
         },
         async function* () {
-          yield { type: "text.delta", text: "Anchor-only edit complete." }
+          yield { type: "text.delta", text: "Patch edit complete." }
         },
       ]),
       repository: harness.repository,
       permissionRepository: harness.permissionRepository,
       permissionPolicy: {
-        edit: "allow",
+        apply_patch: "allow",
       },
       now: harness.now,
     })
@@ -736,6 +742,7 @@ describe("agent loop", () => {
             type: "tool_result",
             callId: "call_read_anchor",
             toolName: "read",
+            isError: undefined,
             output: expectedReadOutput,
           },
         ],
@@ -747,14 +754,9 @@ describe("agent loop", () => {
         parts: [
           {
             type: "tool_call",
-            callId: "call_edit_anchor",
-            toolName: "edit",
-            inputText: JSON.stringify({
-              path: "notes.txt",
-              operation: "replace",
-              start: formatAnchorLine(2, "beta"),
-              content: "BETA",
-            }),
+            callId: "call_apply_patch",
+            toolName: "apply_patch",
+            inputText: patchInput,
           },
         ],
       },
@@ -763,9 +765,10 @@ describe("agent loop", () => {
         parts: [
           {
             type: "tool_result",
-            callId: "call_edit_anchor",
-            toolName: "edit",
-            output: `Applied replace to notes.txt at line 2. Preview: ${formatAnchorLine(2, "BETA")}`,
+            callId: "call_apply_patch",
+            toolName: "apply_patch",
+            isError: undefined,
+            output: expect.stringContaining("Applied patch to 1 file: notes.txt (update, +1/-1)."),
           },
         ],
       },
@@ -774,7 +777,7 @@ describe("agent loop", () => {
     expect(activeRunMessages[1]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
     expect(activeRunMessages[2]?.parts.map((part) => part.kind)).toEqual(["tool_call", "tool_result"])
     expect(activeRunMessages[3]?.parts).toMatchObject([
-      { kind: "text", text: "Anchor-only edit complete." },
+      { kind: "text", text: "Patch edit complete." },
     ])
     expect(events.filter((event) => event.type === "tool.call.completed")).toHaveLength(2)
     expect(await readFile(filePath, "utf8")).toBe("alpha\nBETA\ngamma\n")

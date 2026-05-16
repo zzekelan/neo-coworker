@@ -30,9 +30,9 @@ import { createSkillRuntimeApi, type SkillStore } from "../../src/skill"
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
 const README_READ_OUTPUT = [
-  "L1#f1469abc|# demo workspace",
-  "L2#e3b0c442|",
-  "L3#d806ab8e|This fixture exists for the read-only tool tests.",
+  "1: # demo workspace",
+  "2: ",
+  "3: This fixture exists for the read-only tool tests.",
 ].join("\n")
 
 afterEach(async () => {
