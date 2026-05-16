@@ -42,6 +42,25 @@ export async function withSerializedFileMutation<T>(
   }
 }
 
+export async function withSerializedFileMutations<T>(
+  filePaths: string[],
+  mutation: () => Promise<T>,
+): Promise<T> {
+  const normalizedPaths = [...new Set(filePaths.map((filePath) => resolve(filePath)))]
+    .sort((left, right) => left.localeCompare(right))
+
+  async function lockNext(index: number): Promise<T> {
+    const filePath = normalizedPaths[index]
+    if (!filePath) {
+      return await mutation()
+    }
+
+    return await withSerializedFileMutation(filePath, () => lockNext(index + 1))
+  }
+
+  return await lockNext(0)
+}
+
 export async function writeUtf8FileAtomically(
   filePath: string,
   content: string,

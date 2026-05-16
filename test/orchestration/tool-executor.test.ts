@@ -248,6 +248,48 @@ describe("tool executor", () => {
     ])
   })
 
+  test("recovers retired edit calls by pointing at the allowed apply_patch surface", async () => {
+    const calls: ConcurrentToolCall[] = [
+      { callId: "call_edit", toolName: "edit", args: {} },
+    ]
+    const tools: ConcurrentToolDefinition[] = [
+      {
+        name: "read",
+        description: "Read files",
+        concurrency: "read-only",
+        execute: async () => ({ output: "unused" }),
+      },
+      {
+        name: "apply_patch",
+        description: "Apply patches",
+        concurrency: "mutating",
+        execute: async () => ({ output: "unused" }),
+      },
+      {
+        name: "write",
+        description: "Write files",
+        concurrency: "mutating",
+        execute: async () => ({ output: "unused" }),
+      },
+    ]
+
+    const results = await executeToolBatch(
+      classifyToolCalls(calls, tools),
+      tools,
+      "/workspace",
+      new AbortController().signal,
+    )
+
+    expect(results[0]?.isError).toBe(true)
+    expect(results[0]?.output).toContain("Tool 'edit' is not available")
+    expect(results[0]?.output).toContain("apply_patch")
+    expect(results[0]?.metadata?.[TOOL_UNKNOWN_ALLOWED_NAMES_METADATA_KEY]).toEqual([
+      "read",
+      "apply_patch",
+      "write",
+    ])
+  })
+
   test("keeps inconsistent executor configuration fatal", async () => {
     const calls: ConcurrentToolCall[] = [
       { callId: "call_read", toolName: "read", args: {} },

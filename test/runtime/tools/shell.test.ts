@@ -1,19 +1,31 @@
-import { mkdir, mkdtemp } from "node:fs/promises"
+import { access, mkdir, mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { createShellTool, createToolRuntimeApi } from "../../../src/tool"
 
-function makeRuntime() {
+function makeRuntime(input: { requestPermission?: () => { decision: "allow" } } = {}) {
   return createToolRuntimeApi({
     tools: [
       createShellTool({
         requestPermission() {
+          if (input.requestPermission) {
+            return input.requestPermission()
+          }
           return { decision: "allow" as const }
         },
       }),
     ],
   })
+}
+
+async function exists(path: string) {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
 }
 
 describe("shell tool — structured result metadata", () => {
@@ -182,6 +194,61 @@ describe("shell tool — workspace path safety", () => {
         workspaceRoot,
       }),
     ).rejects.toThrow("Path is reserved for agent runtime data")
+  })
+})
+
+describe("shell tool — apply_patch entrypoint guard", () => {
+  test("rejects direct apply_patch shell commands before permission", async () => {
+    let permissionRequests = 0
+    const runtime = makeRuntime({
+      requestPermission() {
+        permissionRequests += 1
+        return { decision: "allow" as const }
+      },
+    })
+
+    const result = await runtime.execute({
+      toolName: "shell",
+      args: { command: "apply_patch --help" },
+      workspaceRoot: process.cwd(),
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("Use the `apply_patch` tool")
+    expect(result.output).toContain("patchText")
+    expect(permissionRequests).toBe(0)
+  })
+
+  test("rejects heredoc-style apply_patch shell commands before permission", async () => {
+    let permissionRequests = 0
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "shell-apply-patch-guard-"))
+    const runtime = makeRuntime({
+      requestPermission() {
+        permissionRequests += 1
+        return { decision: "allow" as const }
+      },
+    })
+
+    const result = await runtime.execute({
+      toolName: "shell",
+      args: {
+        command: [
+          "apply_patch <<'PATCH'",
+          "*** Begin Patch",
+          "*** Add File: should-not-exist.txt",
+          "+blocked",
+          "*** End Patch",
+          "PATCH",
+        ].join("\n"),
+      },
+      workspaceRoot,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain("Use the `apply_patch` tool")
+    expect(result.output).toContain("patchText")
+    expect(permissionRequests).toBe(0)
+    expect(await exists(join(workspaceRoot, "should-not-exist.txt"))).toBe(false)
   })
 })
 

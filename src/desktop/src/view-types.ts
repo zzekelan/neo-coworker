@@ -90,6 +90,30 @@ export interface DesktopPermissionRequest {
   reason: string
   createdAt: string
   resolvedAt: string | null
+  approvalDetails: DesktopPatchApprovalDetails | null
+  preview?: DesktopPatchPreview
+}
+
+export interface DesktopPatchApprovalDetails {
+  kind: "patch"
+  fileCount: number
+  additions: number
+  deletions: number
+  files: Array<{
+    path: string
+    operation: "add" | "delete" | "move" | "update"
+    additions: number
+    deletions: number
+  }>
+}
+
+export interface DesktopPatchPreview {
+  kind: "patch"
+  text: string
+  truncated: boolean
+  limitBytes: number
+  originalBytes: number
+  displayedBytes: number
 }
 
 export interface DesktopContextUsage {

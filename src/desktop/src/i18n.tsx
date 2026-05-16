@@ -67,6 +67,9 @@ type DesktopText = {
     requestTool(toolName: string): string
     allow: string
     deny: string
+    patchPreviewMissingTitle: string
+    patchPreviewMissingBody: string
+    patchFilesChanged(files: number, additions: number, deletions: number): string
   }
   message: {
     result: string
@@ -291,6 +294,11 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       },
       allow: "Allow",
       deny: "Deny",
+      patchPreviewMissingTitle: "Patch preview unavailable",
+      patchPreviewMissingBody: "Only the durable file summary is available. Review the listed files carefully before approving.",
+      patchFilesChanged(files: number, additions: number, deletions: number) {
+        return `${files} file${files === 1 ? "" : "s"} changed, +${additions}/-${deletions}`
+      },
     },
     message: {
       result: "Result",
@@ -546,6 +554,11 @@ const DESKTOP_TEXT: Record<DesktopLanguage, DesktopText> = {
       },
       allow: "允许",
       deny: "拒绝",
+      patchPreviewMissingTitle: "Patch 预览不可用",
+      patchPreviewMissingBody: "当前只能看到持久化的文件摘要。批准前请仔细核对下面列出的文件。",
+      patchFilesChanged(files: number, additions: number, deletions: number) {
+        return `${files} 个文件变更，+${additions}/-${deletions}`
+      },
     },
     message: {
       result: "结果",

@@ -43,6 +43,10 @@ function expectHashAnchorError(fn: () => unknown, code: string) {
   }
 }
 
+function numberedLine(lineNumber: number, content: string) {
+  return `${lineNumber}: ${content}`
+}
+
 describe("read tool enhancements", () => {
   test("allows read-only access to materialized builtin skill reference paths", async () => {
     const workspaceRoot = await makeTmpWorkspace()
@@ -160,7 +164,7 @@ describe("read tool enhancements", () => {
     })
 
     expect(result.output.length).toBeLessThan(2 * 1024 * 1024)
-    expect(result.output).toStartWith(formatAnchorLine(1, visibleLine))
+    expect(result.output).toStartWith(numberedLine(1, visibleLine))
     expect(result.output.toLowerCase()).toMatch(/truncat/)
     expect(result.isError).toBeFalsy()
   })
@@ -202,7 +206,7 @@ describe("read tool enhancements", () => {
     ).rejects.toThrow("Path must stay inside workspace")
   })
 
-  test("full-file reads emit anchored lines with visible line numbers", async () => {
+  test("full-file reads emit ordinary line numbers without hash anchors", async () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()
 
@@ -215,13 +219,14 @@ describe("read tool enhancements", () => {
     })
 
     expect(result.output).toBe([
-      formatAnchorLine(1, "alpha"),
-      formatAnchorLine(2, "beta"),
-      formatAnchorLine(3, "gamma"),
+      numberedLine(1, "alpha"),
+      numberedLine(2, "beta"),
+      numberedLine(3, "gamma"),
     ].join("\n"))
+    expect(result.output).not.toContain("#")
   })
 
-  test("offset and limit reads preserve anchored line numbering", async () => {
+  test("offset and limit reads preserve ordinary line numbering", async () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()
 
@@ -234,12 +239,12 @@ describe("read tool enhancements", () => {
     })
 
     expect(result.output).toBe([
-      formatAnchorLine(2, "beta"),
-      formatAnchorLine(3, "gamma"),
+      numberedLine(2, "beta"),
+      numberedLine(3, "gamma"),
     ].join("\n"))
   })
 
-  test("blank lines remain anchorable in read output", async () => {
+  test("blank lines keep visible line numbers in read output", async () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()
 
@@ -252,9 +257,9 @@ describe("read tool enhancements", () => {
     })
 
     expect(result.output).toBe([
-      formatAnchorLine(1, "alpha"),
-      formatAnchorLine(2, ""),
-      formatAnchorLine(3, "beta"),
+      numberedLine(1, "alpha"),
+      numberedLine(2, ""),
+      numberedLine(3, "beta"),
     ].join("\n"))
   })
 
@@ -318,7 +323,7 @@ describe("read tool enhancements", () => {
     expect(formatAnchorLine(lines[0].lineNumber, lines[0].displayContent)).toBe("L1#8ed3f6ad|alpha")
   })
 
-  test("read uses anchored output for CRLF text and excludes first-line BOM from display and hash", async () => {
+  test("read uses ordinary numbered output for CRLF text and excludes first-line BOM from display", async () => {
     const registry = createRegistry()
     const workspaceRoot = await makeTmpWorkspace()
 
@@ -331,17 +336,19 @@ describe("read tool enhancements", () => {
     })
 
     expect(result.output).toBe([
-      formatAnchorLine(1, "alpha"),
-      formatAnchorLine(2, ""),
-      formatAnchorLine(3, "beta"),
+      numberedLine(1, "alpha"),
+      numberedLine(2, ""),
+      numberedLine(3, "beta"),
     ].join("\n"))
   })
 
-  test("read tool metadata documents the anchored output contract", () => {
+  test("read tool metadata documents ordinary numbered output and apply_patch mutation guidance", () => {
     const tool = createReadTool()
 
-    expect(tool.description).toContain("L{lineNumber}#{hash8}|{content}")
-    expect(tool.usageGuidance).toContain("L...#hash")
+    expect(tool.description).toContain("ordinary line numbers")
+    expect(tool.description).not.toContain("#{hash")
+    expect(tool.usageGuidance).toContain("apply_patch")
+    expect(tool.usageGuidance).not.toContain("L...#hash")
   })
 
   test("malformed anchor strings are rejected with exact error codes", () => {

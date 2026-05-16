@@ -1,9 +1,9 @@
 import type { RequestToolPermission, ToolDefinition } from "../../domain"
 import type { ToolObserverPort } from "../../application"
 import { createToolRuntimeApi } from "../../application/runtime-api"
+import { createApplyPatchTool } from "../builtins/apply-patch"
 import { createCodesearchTool } from "../builtins/codesearch"
 import { createDatetimeTool } from "../builtins/datetime"
-import { createEditTool } from "../builtins/edit"
 import { createGlobTool } from "../builtins/glob"
 import { createGrepTool } from "../builtins/grep"
 import { createReadTool, type CreateReadToolInput } from "../builtins/read"
@@ -49,7 +49,7 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
       }
     }
 
-    if (tool.name === "write" || tool.name === "edit" || tool.name === "shell") {
+    if (tool.name === "write" || tool.name === "edit" || tool.name === "apply_patch" || tool.name === "shell") {
       return {
         ...tool,
         concurrency: tool.concurrency ?? "mutating",
@@ -78,12 +78,8 @@ export function createBuiltinToolRuntime(input: CreateBuiltinToolRuntimeInput = 
       })),
       annotateDefaults(createDatetimeTool()),
       ...(input.memory ? createMemoryTools({ memory: input.memory }).map(annotateDefaults) : []),
+      annotateDefaults(createApplyPatchTool({ requestPermission })),
       annotateDefaults(createWriteTool({ requestPermission })),
-      annotateDefaults(createEditTool({
-        requestPermission,
-        observer: input.observer,
-        observerContext: input.observerContext,
-      })),
       annotateDefaults(createShellTool({ requestPermission })),
       ...(input.extraTools ?? []),
     ],

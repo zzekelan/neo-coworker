@@ -29,6 +29,14 @@ declare const Bun: {
 }
 
 const OUTPUT_SIZE_CAP = 524288
+const APPLY_PATCH_SHELL_REJECTION =
+  "Shell-based apply_patch invocations are not allowed. Use the `apply_patch` tool with JSON input instead, for example `{ \"patchText\": \"*** Begin Patch\\n...\\n*** End Patch\" }`."
+const APPLY_PATCH_COMMAND_PATTERN =
+  /(?:^|[\n;&|])\s*(?:\(\s*)?(?:(?:[A-Za-z_][A-Za-z0-9_]*=[^\s;&|()<>]+|env|command|builtin|exec|sudo)\s+)*(?:(?:\.{1,2}|[\w.-]+)?\/)*apply_patch(?=$|[\s<>&|;)])/m
+
+function isShellApplyPatchInvocation(command: string) {
+  return APPLY_PATCH_COMMAND_PATTERN.test(command)
+}
 
 const ShellArgsSchema = z
   .object({
@@ -37,7 +45,7 @@ const ShellArgsSchema = z
       .trim()
       .min(1, "Command must not be empty")
       .describe(
-        "Bash command to execute in the workspace. Supports pipes, redirects, multi-step chains, and any OS-level capability. Prefer dedicated tools (read, write, edit, glob, grep) for simple file operations since they are safer and more structured. Commands that modify files, install packages, or run builds require permission before execution.",
+        "Bash command to execute in the workspace. Supports pipes, redirects, multi-step chains, and any OS-level capability. Prefer dedicated tools (read, apply_patch, write, glob, grep) for simple file operations since they are safer and more structured. Shell-based apply_patch invocations are rejected; use the apply_patch tool with JSON patchText input instead. Commands that modify files, install packages, or run builds require permission before execution.",
       ),
     timeout: z
       .optional(z.number().int().min(1, "Timeout must be at least 1ms"))
@@ -130,6 +138,14 @@ export function createShellTool(input: { requestPermission: RequestToolPermissio
 
       throwIfToolAborted(signal)
       const { command, timeout, workdir, description } = ShellArgsSchema.parse(value.args)
+      if (isShellApplyPatchInvocation(command)) {
+        return {
+          output: APPLY_PATCH_SHELL_REJECTION,
+          isError: true,
+          metadata: { blockedReason: "shell_apply_patch_invocation" },
+        }
+      }
+
       const decision = await input.requestPermission({
         toolName: "shell",
         reason: `shell ${command}`,

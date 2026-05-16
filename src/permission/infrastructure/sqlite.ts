@@ -17,6 +17,7 @@ type PermissionRequestRow = {
   status: StoredPermissionRequest["status"]
   created_at: number
   resolved_at: number | null
+  approval_details_json: string | null
 }
 
 type IdPrefix = "permission"
@@ -39,9 +40,9 @@ export function createPermissionRepository(input: {
   }
 
   function getPermissionRequestRow(requestId: string) {
-    return database
-      .query(
-        "SELECT id, session_id, run_id, tool_name, reason, status, created_at, resolved_at FROM permission_request WHERE id = ?",
+      return database
+        .query(
+        "SELECT id, session_id, run_id, tool_name, reason, status, created_at, resolved_at, approval_details_json FROM permission_request WHERE id = ?",
       )
       .get(requestId) as PermissionRequestRow | null
   }
@@ -66,6 +67,8 @@ export function createPermissionRepository(input: {
         status: value.status ?? "pending",
         createdAt: value.createdAt ?? nextAutoCreatedAt(),
         resolvedAt: value.resolvedAt ?? null,
+        approvalDetails: value.approvalDetails ?? null,
+        preview: value.preview,
       }
 
       database
@@ -79,8 +82,9 @@ export function createPermissionRepository(input: {
               reason,
               status,
               created_at,
-              resolved_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              resolved_at,
+              approval_details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -92,6 +96,7 @@ export function createPermissionRepository(input: {
           record.status,
           record.createdAt,
           record.resolvedAt,
+          record.approvalDetails ? JSON.stringify(record.approvalDetails) : null,
         )
 
       return record
@@ -103,7 +108,7 @@ export function createPermissionRepository(input: {
       const rows = database
         .query(
           `
-            SELECT id, session_id, run_id, tool_name, reason, status, created_at, resolved_at
+            SELECT id, session_id, run_id, tool_name, reason, status, created_at, resolved_at, approval_details_json
             FROM permission_request
             WHERE run_id = ?
             ORDER BY created_at ASC, id ASC
@@ -155,5 +160,14 @@ function mapPermissionRequestRow(row: PermissionRequestRow): StoredPermissionReq
     status: row.status,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
+    approvalDetails: parseApprovalDetails(row.approval_details_json),
   }
+}
+
+function parseApprovalDetails(value: string | null) {
+  if (!value) {
+    return null
+  }
+
+  return JSON.parse(value) as StoredPermissionRequest["approvalDetails"]
 }

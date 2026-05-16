@@ -115,6 +115,8 @@ export type OrchestrationRuntimeEvent =
       requestId: string
       toolName: string
       reason: string
+      approvalDetails?: import("./ports/permission").OrchestrationPermissionApprovalDetails
+      preview?: import("./ports/permission").OrchestrationPermissionPreview
     }
   | {
       type: "tool.call.completed"

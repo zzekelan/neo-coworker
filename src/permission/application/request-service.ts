@@ -1,7 +1,7 @@
 import { observePermissionEvent } from "./observe"
 import type { PermissionObserverPort } from "./ports/permission-observer"
 import type { PermissionSessionPort } from "./ports/session"
-import type { PermissionRepository } from "./ports/repository"
+import type { CreatePermissionRequestInput, PermissionRepository } from "./ports/repository"
 
 export type CreatePermissionRequestServiceInput = {
   repository: PermissionRepository
@@ -22,6 +22,8 @@ export function createPermissionRequestService(input: CreatePermissionRequestSer
         toolName: string
         reason: string
         createdAt?: number
+        approvalDetails?: CreatePermissionRequestInput["approvalDetails"]
+        preview?: CreatePermissionRequestInput["preview"]
       }
     }) {
       const run = session.getRun(inputValue.runId)
@@ -32,6 +34,8 @@ export function createPermissionRequestService(input: CreatePermissionRequestSer
         toolName: inputValue.permissionRequest.toolName,
         reason: inputValue.permissionRequest.reason,
         createdAt: nextCreatedAt(inputValue.permissionRequest.createdAt),
+        approvalDetails: inputValue.permissionRequest.approvalDetails ?? null,
+        preview: inputValue.permissionRequest.preview,
         status: "pending",
         resolvedAt: null,
       })

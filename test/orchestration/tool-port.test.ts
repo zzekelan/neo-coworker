@@ -6,8 +6,8 @@ import { createBuiltinToolRuntime, createToolProvider } from "../../src/tool"
 describe("orchestration tool port", () => {
   test("lists the same builtin tools through the orchestration-facing port", () => {
     const permissions = createPermissionCoordinator({
+      apply_patch: "allow",
       write: "allow",
-      edit: "allow",
       shell: "allow",
     })
     const tools: OrchestrationToolPort = createToolProvider({
@@ -26,8 +26,8 @@ describe("orchestration tool port", () => {
       "websearch",
       "codesearch",
       "get_current_datetime",
+      "apply_patch",
       "write",
-      "edit",
       "shell",
     ])
   })

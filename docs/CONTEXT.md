@@ -100,6 +100,18 @@ _Avoid_: generic command Run, hidden summary Run as canonical compaction lifecyc
 A request for user approval before a risky action continues.
 _Avoid_: Timeline Entry, chat message
 
+**Apply Patch Tool**:
+The canonical tool surface for workspace file mutations expressed as an explicit patch.
+_Avoid_: Edit Tool, anchored edit, exact replacement edit
+
+**Patch Approval Details**:
+A user-facing summary of the file changes requested by an **Apply Patch Tool** call before approval.
+_Avoid_: permission metadata, raw tool args, telemetry
+
+**Patch Preview**:
+The full diff shown for a pending **Apply Patch Tool** approval while the active **Run** is still available.
+_Avoid_: durable approval state, telemetry, tool-call input
+
 ## Relationships
 
 - A **Session** owns exactly one **Session Timeline**.
@@ -133,6 +145,10 @@ _Avoid_: Timeline Entry, chat message
 - Runtime-only **Timeline Parts** may appear in **UI Projection** but are excluded from **Model Projection** unless required by provider protocol.
 - `waiting_permission` is **Run** lifecycle state, not timeline content.
 - A **Permission Request** is independent authoritative permission state, not a **Timeline Entry**.
+- An **Apply Patch Tool** call may create, update, delete, or move workspace files.
+- An **Apply Patch Tool** call may require a **Permission Request** before mutation continues.
+- A **Permission Request** for an **Apply Patch Tool** call may include **Patch Approval Details**.
+- **Patch Approval Details** may outlive the active **Run**, but a **Patch Preview** may expire after reload or reconnect.
 - The source of truth for an approval flow is the persisted **Permission Request** state, including pending, approved, denied, or cancelled status; `permission.requested` and `permission.updated` **App Server Notifications** are live update hints.
 - A client decision changes approval state only through the permission reply API, not by acknowledging or replaying an **App Server Notification**.
 - **Run** `waiting_permission` state is synchronized from pending **Permission Requests** and does not itself identify the requested tool, reason, or decision.
@@ -213,5 +229,7 @@ _Avoid_: Timeline Entry, chat message
 - Model output and run-level output can both look like streamed deltas — resolved: keep **Model Stream Events** provider-facing and have orchestration consume them before producing **Run Stream Items**.
 - "event" / "事件" was used to mean model output, run-loop signals, persisted telemetry, server notifications, desktop subscription messages, and runtime notices — resolved: avoid naked **Event** as a domain term; name the channel explicitly and keep **Session Timeline** separate from event-like runtime signals.
 - `kind="error"` suggests any error may be timeline content — resolved: canonical error-like timeline content is limited to **Tool Result Error** for tool-call protocol closure; provider failures belong to **Run** lifecycle state and compaction failures that affect users become **Compaction Notices**.
+- "edit" was used to mean both anchored single-file mutation and patch-based file mutation — resolved: use **Apply Patch Tool** as the canonical workspace file-mutation surface and avoid **Edit Tool** language.
+- Hash-prefixed read anchors were tied to the retired anchored edit workflow — resolved: file reads may show ordinary line numbers for orientation, but file mutation is expressed through **Apply Patch Tool** patches.
 - Generated compaction history can sound like an ordinary runtime event — resolved: use **Compaction Entry** as the canonical term and `compaction` as the persisted role for compaction-generated timeline entries.
 - `command` and `summarize` run triggers encode current compaction implementation details — resolved: use **Compaction Run** for user-requested compaction lifecycle, and treat compaction summary model calls as observability/model-call detail rather than canonical Runs.

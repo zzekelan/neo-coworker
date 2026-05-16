@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  createApplyPatchTool,
   createCodesearchTool,
   createEditTool,
   createGlobTool,
@@ -104,6 +105,7 @@ describe("tool contract compatibility", () => {
     const allow = async () => ({ decision: "allow" as const })
 
     const tools: ToolDefinition[] = [
+      createApplyPatchTool({ requestPermission: allow }),
       createWriteTool({ requestPermission: allow }),
       createEditTool({ requestPermission: allow }),
       createShellTool({ requestPermission: allow }),

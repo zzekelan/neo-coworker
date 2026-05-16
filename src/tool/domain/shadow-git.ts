@@ -12,7 +12,7 @@ export interface CheckpointStore {
   prune(workDir: string, keepLast: number): Promise<number>
 }
 
-export const CHECKPOINT_TRIGGERS = ["write", "edit", "patch", "shell"] as const
+export const CHECKPOINT_TRIGGERS = ["write", "edit", "apply_patch", "patch", "shell"] as const
 
 const SHELL_MUTATION_PATTERNS = [
   /(?:^|\s|&&|\|\||;|`)(?:rm\s|rmdir\s|mv\s|cp\s|mkdir\s|touch\s|truncate\s|dd\s|shred\s|install\s|ln\s)/,
@@ -23,7 +23,7 @@ const SHELL_MUTATION_PATTERNS = [
 const SHELL_OVERWRITE_REDIRECT = /(^|[^>])>(?!>)/
 
 export function shouldCheckpoint(toolName: string, args: Record<string, unknown>): boolean {
-  if (toolName === "write" || toolName === "edit" || toolName === "patch") {
+  if (toolName === "write" || toolName === "edit" || toolName === "apply_patch" || toolName === "patch") {
     return true
   }
 

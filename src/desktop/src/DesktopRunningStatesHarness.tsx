@@ -838,6 +838,7 @@ function createPermissionRequest(): DesktopPermissionRequest {
     reason: "Run a visual verification command that would normally require user approval.",
     createdAt: NOW,
     resolvedAt: null,
+    approvalDetails: null,
   }
 }
 

@@ -881,7 +881,11 @@ async function executePendingToolCalls(input: {
         type: "tool.call.completed",
         callId: result.callId,
         name: result.toolName,
-        output: toolFailureMessage,
+        output: buildToolCompletionTelemetryOutput({
+          ...result,
+          output: toolFailureMessage,
+          isError: true,
+        }),
         isError: true,
       })
       continue
@@ -907,7 +911,7 @@ async function executePendingToolCalls(input: {
       type: "tool.call.completed",
       callId: result.callId,
       name: result.toolName,
-      output: result.output,
+      output: buildToolCompletionTelemetryOutput(result),
       isError: result.isError,
       ...(isRecoverableUnknownTool
         ? {
@@ -1151,6 +1155,66 @@ function readString(value: Record<string, unknown> | null, key: string) {
 
 function readMetadataString(metadata: Record<string, unknown> | undefined, key: string) {
   return typeof metadata?.[key] === "string" ? metadata[key] : null
+}
+
+function buildToolCompletionTelemetryOutput(result: OrchestrationBatchExecutionResult) {
+  if (result.toolName !== "apply_patch") {
+    return result.output
+  }
+
+  if (result.isError) {
+    return "apply_patch failed before applying changes."
+  }
+
+  return summarizePatchMetadata(result.metadata) ?? "apply_patch completed."
+}
+
+function summarizePatchMetadata(metadata: Record<string, unknown> | undefined) {
+  const fileCount = readMetadataNumber(metadata, "fileCount")
+  const files = readPatchSummaryFiles(metadata)
+  if (fileCount === null) {
+    return null
+  }
+
+  const plural = fileCount === 1 ? "file" : "files"
+  const fileSummary = files.length > 0
+    ? `: ${files.map((file) => `${file.path} (${file.operation}, +${file.additions}/-${file.deletions})`).join(", ")}`
+    : ""
+
+  return `Applied patch to ${fileCount} ${plural}${fileSummary}.`
+}
+
+function readPatchSummaryFiles(metadata: Record<string, unknown> | undefined) {
+  const files = metadata?.files
+  if (!Array.isArray(files)) {
+    return []
+  }
+
+  return files.flatMap((file) => {
+    if (file == null || typeof file !== "object") {
+      return []
+    }
+
+    const record = file as Record<string, unknown>
+    const path = typeof record.path === "string" ? record.path : null
+    const operation = typeof record.operation === "string" ? record.operation : null
+    const additions = typeof record.additions === "number" ? record.additions : null
+    const deletions = typeof record.deletions === "number" ? record.deletions : null
+    if (!path || !operation || additions === null || deletions === null) {
+      return []
+    }
+
+    return [{
+      path,
+      operation,
+      additions,
+      deletions,
+    }]
+  })
+}
+
+function readMetadataNumber(metadata: Record<string, unknown> | undefined, key: string) {
+  return typeof metadata?.[key] === "number" ? metadata[key] : null
 }
 
 function readMetadataBoolean(metadata: Record<string, unknown> | undefined, key: string) {

@@ -61,6 +61,10 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
   }
 
   const risk = getRiskIndicator(request.toolName)
+  const isPatchRequest = request.toolName === "apply_patch"
+  const patchDetails = request.approvalDetails?.kind === "patch" ? request.approvalDetails : null
+  const patchPreviewText = request.preview?.kind === "patch" ? request.preview.text : null
+  const isPatchPreviewMissing = isPatchRequest && !request.preview
   const argsText =
     request.reason.length > 80
       ? request.reason.slice(0, 80) + "…"
@@ -113,10 +117,50 @@ export const PermissionRequest: React.FC<Props> = ({ request, onReply, autoFocus
 
       <div className={cn(
         "font-mono text-[13px] text-muted break-all",
-        isComposer ? "mb-5 leading-relaxed" : "mb-4",
+        patchDetails || patchPreviewText || isPatchPreviewMissing
+          ? "mb-3"
+          : isComposer
+            ? "mb-5 leading-relaxed"
+            : "mb-4",
       )}>
         {argsText}
       </div>
+
+      {patchDetails ? (
+        <div className="mb-3 space-y-1 text-[12px] text-muted">
+          <div className="font-medium text-ink">
+            {text.permission.patchFilesChanged(
+              patchDetails.fileCount,
+              patchDetails.additions,
+              patchDetails.deletions,
+            )}
+          </div>
+          <div className="space-y-0.5 font-mono">
+            {patchDetails.files.slice(0, 4).map((file) => (
+              <div key={`${file.operation}:${file.path}`} className="truncate">
+                {file.path} ({file.operation}, +{file.additions}/-{file.deletions})
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {patchPreviewText ? (
+        <pre className="mb-3 max-h-36 overflow-auto rounded-md border border-border bg-paper/70 p-2 font-mono text-[11px] leading-relaxed text-muted">
+          {patchPreviewText}
+        </pre>
+      ) : null}
+
+      {isPatchPreviewMissing ? (
+        <div className="mb-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
+          <div className="text-[12px] font-semibold text-danger">
+            {text.permission.patchPreviewMissingTitle}
+          </div>
+          <div className="mt-1 text-[12px] leading-relaxed text-ink">
+            {text.permission.patchPreviewMissingBody}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex items-center justify-end gap-2">
         <button

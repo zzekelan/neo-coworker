@@ -36,4 +36,17 @@ describe("desktop permission request", () => {
     expect(source).toContain("if (request.status !== \"pending\")")
     expect(source).toContain("return null")
   })
+
+  test("warns on missing patch preview while preserving approval actions", () => {
+    const source = readFileSync("src/desktop/src/components/PermissionRequest.tsx", "utf8")
+
+    expect(source).toContain("const isPatchRequest = request.toolName === \"apply_patch\"")
+    expect(source).toContain("const isPatchPreviewMissing = isPatchRequest && !request.preview")
+    expect(source).toContain("{isPatchPreviewMissing ? (")
+    expect(source).toContain("{text.permission.patchPreviewMissingTitle}")
+    expect(source).toContain("{text.permission.patchPreviewMissingBody}")
+    expect(source).toContain("request.approvalDetails?.kind === \"patch\"")
+    expect(source).toContain("onClick={() => void submitReply(\"deny\")}")
+    expect(source).toContain("onClick={() => void submitReply(\"allow\")}")
+  })
 })

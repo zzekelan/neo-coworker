@@ -3,9 +3,33 @@ import type { ToolExecutionInput, ToolExecutionResult } from "./result"
 
 export type ToolPermissionDecision = "allow" | "deny"
 
+export type ToolPermissionApprovalDetails = {
+  kind: "patch"
+  fileCount: number
+  additions: number
+  deletions: number
+  files: Array<{
+    path: string
+    operation: "add" | "delete" | "move" | "update"
+    additions: number
+    deletions: number
+  }>
+}
+
+export type ToolPermissionPreview = {
+  kind: "patch"
+  text: string
+  truncated: boolean
+  limitBytes: number
+  originalBytes: number
+  displayedBytes: number
+}
+
 export type ToolPermissionRequest = {
   toolName: string
   reason: string
+  approvalDetails?: ToolPermissionApprovalDetails
+  preview?: ToolPermissionPreview
 }
 
 export type ToolPermissionResponse = {

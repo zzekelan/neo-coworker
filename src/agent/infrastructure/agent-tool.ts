@@ -15,7 +15,7 @@ type AgentToolExecutionResult = {
 
 const MAX_SUB_AGENT_DEPTH = 1
 
-const WRITE_TOOLS = new Set(["write", "edit", "shell"])
+const WRITE_TOOLS = new Set(["apply_patch", "write", "edit", "shell"])
 
 const READ_ONLY_TOOLS = new Set([
   "read",

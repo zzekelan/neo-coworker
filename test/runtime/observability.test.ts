@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import type OpenAI from "openai"
-import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -29,8 +29,6 @@ import {
   type OrchestrationModelPort,
 } from "../../src/bootstrap"
 import { createBuiltinToolRuntime } from "../../src/tool"
-import { createPermissionCoordinator } from "../../src/permission"
-import { formatAnchorLine } from "../../src/tool/infrastructure/builtins/hash-anchor"
 
 const tempDirectories: string[] = []
 const openDatabases: Array<{ close: (throwOnError: boolean) => void }> = []
@@ -1529,27 +1527,128 @@ describe("runtime observability", () => {
     expect(persistedRunEventJson.join("\n")).not.toContain("inserted replacement text")
   })
 
-  test("records live edit anchor telemetry through the runtime path", async () => {
-    const harness = await createHarness("trace-live-edit-anchor", true)
-    const workspaceFile = join(harness.session.directory, "README.md")
-    const original = await readFile(workspaceFile, "utf8")
-    if (original.length === 0) {
-      throw new Error("Expected fixture README.md to exist in the workspace.")
-    }
-    const firstLine = original.split(/\r?\n/, 1)[0] ?? ""
-    const liveAnchor = formatAnchorLine(1, firstLine)
+  test("records apply_patch completion telemetry without persisting diff or raw patch content", async () => {
+    const harness = await createHarness("trace-apply-patch-summary", false)
+    await Bun.write(join(harness.session.directory, "private.txt"), "original-secret\n")
+    const started = startPromptRun({
+      repository: harness.repository,
+      service: harness.service,
+      sessionId: harness.session.id,
+      runId: "run_trace_apply_patch_summary",
+      messageId: "message_trace_apply_patch_summary",
+      prompt: "Patch private.txt without leaking contents into telemetry",
+    })
 
+    const runtime = createRuntime({
+      provider: createTurnProvider(
+        [
+          async function* () {
+            yield {
+              type: "tool.call",
+              callId: "call_apply_patch_summary",
+              name: "apply_patch",
+              inputText: JSON.stringify({
+                patchText: [
+                  "*** Begin Patch",
+                  "*** Update File: private.txt",
+                  "@@",
+                  "-original-secret",
+                  "+replacement-secret",
+                  "*** End Patch",
+                  "",
+                ].join("\n"),
+              }),
+            }
+          },
+          async function* () {
+            yield { type: "text.delta", text: "Patch summary recorded." }
+          },
+        ],
+        harness.observability.modelObserver,
+      ),
+      repository: harness.repository,
+      permissionRepository: harness.permissionRepository,
+      observability: harness.observability,
+      now: harness.now,
+    })
+
+    const handle = await runtime.run({
+      sessionId: harness.session.id,
+      runId: started.run.id,
+    })
+    let livePermissionRequest: unknown
+    await collectEvents(handle.events, {
+      onEvent(event) {
+        if (
+          typeof event !== "object" ||
+          event === null ||
+          !("type" in event) ||
+          event.type !== "permission.requested" ||
+          !("requestId" in event) ||
+          typeof event.requestId !== "string"
+        ) {
+          return
+        }
+
+        livePermissionRequest = event
+        handle.respondPermission({
+          requestId: event.requestId,
+          decision: "allow",
+        })
+      },
+    })
+
+    expect(livePermissionRequest).toMatchObject({
+      type: "permission.requested",
+      toolName: "apply_patch",
+      approvalDetails: {
+        kind: "patch",
+        fileCount: 1,
+        additions: 1,
+        deletions: 1,
+      },
+      preview: {
+        kind: "patch",
+        text: expect.stringContaining("original-secret"),
+      },
+    })
+
+    const trace = harness.observability.exportRunTrace(started.run.id)
+    const completionEvent = trace?.events.find(
+      (event) => event.eventType === "tool.call.completed" &&
+        event.data.name === "apply_patch",
+    )
+    expect(completionEvent?.data).toMatchObject({
+      callId: "call_apply_patch_summary",
+      name: "apply_patch",
+      output: "Applied patch to 1 file: private.txt (update, +1/-1).",
+    })
+    const persistedRunEventJson = readPersistedRunEventJson({
+      databasePath: harness.databasePath,
+      runId: started.run.id,
+    }).join("\n")
+    expect(persistedRunEventJson).toContain("private.txt")
+    expect(persistedRunEventJson).toContain("+1/-1")
+    expect(persistedRunEventJson).not.toContain("\"preview\"")
+    expect(persistedRunEventJson).not.toContain("*** Update File: private.txt")
+    expect(persistedRunEventJson).not.toContain("--- a/private.txt")
+    expect(persistedRunEventJson).not.toContain("+++ b/private.txt")
+    expect(persistedRunEventJson).not.toContain("original-secret")
+    expect(persistedRunEventJson).not.toContain("replacement-secret")
+  })
+
+  test("default runtime rejects retired edit calls without live anchor telemetry", async () => {
+    const harness = await createHarness("trace-live-edit-anchor", true)
     const started = startPromptRun({
       repository: harness.repository,
       service: harness.service,
       sessionId: harness.session.id,
       runId: "run_trace_live_edit_anchor",
       messageId: "message_trace_live_edit_anchor",
-      prompt: "Use edit and emit live anchor telemetry",
+      prompt: "Attempt retired edit tool",
     })
 
     const runtime = createBuiltinToolRuntime({
-      requestPermission: createPermissionCoordinator({ write: "allow", edit: "allow", shell: "allow" }).request,
       observer: harness.observability.toolObserver,
       observerContext: {
         sessionId: harness.session.id,
@@ -1557,41 +1656,19 @@ describe("runtime observability", () => {
       },
     })
 
-    const success = await runtime.execute({
+    await expect(runtime.execute({
       toolName: "edit",
-      args: {
-        path: "README.md",
-        operation: "replace",
-        start: liveAnchor,
-        content: `${firstLine} live`,
-      },
+      args: {},
       workspaceRoot: harness.session.directory,
-    })
-    expect(success.isError).toBeFalsy()
+    })).rejects.toThrow("Unknown tool: edit")
 
-    const failure = await runtime.execute({
-      toolName: "edit",
-      args: {
-        path: "README.md",
-        operation: "replace",
-        start: liveAnchor,
-        content: `${firstLine} stale`,
-      },
-      workspaceRoot: harness.session.directory,
-    })
-    expect(failure.isError).toBe(true)
+    const events = harness.observabilityRepository.runEvents.listByRun(started.run.id)
+    const eventTypes = readEventTypes(events)
+    expect(eventTypes).not.toContain("edit.anchor.success")
+    expect(eventTypes).not.toContain("edit.anchor.failure")
 
-    const trace = harness.observability.exportRunTrace(started.run.id)
-    expect(trace).not.toBeNull()
-    const eventTypes = readEventTypes(trace?.events ?? [])
-    expect(eventTypes).toContain("edit.anchor.success")
-    expect(eventTypes).toContain("edit.anchor.failure")
-
-    const toolEvents = (trace?.events ?? []).filter((event) => event.source === "tool")
-    expect(JSON.stringify(toolEvents)).not.toContain("oldText")
-    expect(JSON.stringify(toolEvents)).not.toContain("newText")
-    expect(JSON.stringify(toolEvents)).not.toContain("replaceAll")
-    expect(JSON.stringify(toolEvents)).not.toContain("# Neo Coworker")
+    const toolEvents = events.filter((event) => event.source === "tool")
+    expect(toolEvents).toEqual([])
   })
 
   test("records authoritative capability and context source telemetry without persisting reasoning payload text", async () => {

@@ -243,7 +243,7 @@ describe("orchestration prompt composer", () => {
     }
     const mutatingGuidance: ToolGuidanceEntry = {
       name: "shell",
-      guidance: "Prefer read/write/edit tools over shell for file operations.",
+      guidance: "Prefer read/apply_patch/write tools over shell for file operations.",
       isReadOnly: false,
     }
     const anotherReadOnly: ToolGuidanceEntry = {
@@ -280,7 +280,7 @@ describe("orchestration prompt composer", () => {
 
       expect(prompt).toContain("### Tool: read\nUse offset and limit to navigate large files.")
       expect(prompt).toContain(
-        "### Tool: shell\nPrefer read/write/edit tools over shell for file operations.",
+        "### Tool: shell\nPrefer read/apply_patch/write tools over shell for file operations.",
       )
     })
 
@@ -346,7 +346,7 @@ describe("orchestration prompt composer", () => {
           isReadOnly: false,
         },
         { name: "write", guidance: "Use write only for new files or full rewrites.", isReadOnly: false },
-        { name: "edit", guidance: "Prefer edit for targeted changes in existing files.", isReadOnly: false },
+        { name: "apply_patch", guidance: "Use apply_patch for targeted workspace file mutations.", isReadOnly: false },
       ]
       const fullPrompt = getStaticPrompt(guidances)
       const totalTokens = countTokens(fullPrompt)
@@ -485,7 +485,7 @@ describe("orchestration prompt composer", () => {
     expect(readIndex).toBeLessThan(shellIndex)
   })
 
-  test("runtime default prompt can inject anchor-only edit guidance", async () => {
+  test("runtime default prompt can inject apply_patch guidance without anchor language", async () => {
     const observedRequests: OrchestrationModelTurnRequest[] = []
     const session = createSessionPortStub()
     const model: OrchestrationModelPort = {
@@ -510,11 +510,11 @@ describe("orchestration prompt composer", () => {
       permission: createPermissionPortStub(),
       tools: createToolPortFactoryStub([
         {
-          name: "edit",
-          description: "Anchor-only edit tool",
+          name: "apply_patch",
+          description: "Patch mutation tool",
           concurrency: "mutating",
           usageGuidance:
-            "Read the file immediately before editing. Copy the anchor string from read output and preserve the `L{line}#{hash}` prefix exactly in `start` and optional `end`. Use `end` only for a multi-line `replace` range or when `append` should insert after a later line than `start`; `prepend` should use only `start`. Preserve `content` exactly, including indentation and newlines, and do not add line numbers or anchor prefixes inside `content`.",
+            "Use `apply_patch` for workspace file mutations. Provide a full patch envelope in `patchText`: `*** Begin Patch`, then operations such as `*** Add File: path` followed by `+line`, `*** Update File: path` with `@@` hunks, or `*** Delete File: path`, then `*** End Patch`. Do not use shell heredocs, unified diff headers (`---`/`+++`), or `create file:`.",
           isCompressible: false,
         },
       ]),
@@ -533,10 +533,15 @@ describe("orchestration prompt composer", () => {
 
     const finalRequest = observedRequests.at(-1)
     expect(finalRequest).toBeDefined()
-    expect(finalRequest?.systemPrompt).toContain("### Tool: edit")
-    expect(finalRequest?.systemPrompt).toContain("L{line}#{hash}")
-    expect(finalRequest?.systemPrompt).toContain("append` should insert after a later line than `start")
-    expect(finalRequest?.systemPrompt).toContain("Preserve `content` exactly")
+    expect(finalRequest?.systemPrompt).toContain("### Tool: apply_patch")
+    expect(finalRequest?.systemPrompt).toContain("patchText")
+    expect(finalRequest?.systemPrompt).toContain("*** Add File: path")
+    expect(finalRequest?.systemPrompt).toContain("+line")
+    expect(finalRequest?.systemPrompt).toContain("*** Update File: path")
+    expect(finalRequest?.systemPrompt).toContain("*** Delete File: path")
+    expect(finalRequest?.systemPrompt).toContain("Do not use shell heredocs")
+    expect(finalRequest?.systemPrompt).not.toContain("L{line}#{hash}")
+    expect(finalRequest?.systemPrompt).not.toContain("anchor string")
     expect(finalRequest?.systemPrompt).not.toContain("oldText")
     expect(finalRequest?.systemPrompt).not.toContain("newText")
     expect(finalRequest?.systemPrompt).not.toContain("replaceAll")
@@ -544,6 +549,7 @@ describe("orchestration prompt composer", () => {
 })
 
 const allowAllPermissionPolicy: OrchestrationPermissionPolicy = {
+  apply_patch: "allow",
   write: "allow",
   edit: "allow",
   shell: "allow",

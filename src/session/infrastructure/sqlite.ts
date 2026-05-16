@@ -550,6 +550,15 @@ const sessionMigrations = [
       `,
     ],
   },
+  {
+    version: 14,
+    statements: [
+      `
+        ALTER TABLE permission_request
+        ADD COLUMN approval_details_json TEXT
+      `,
+    ],
+  },
 ] as const
 
 export function getSessionDatabaseIdentity(database: SessionDatabase) {

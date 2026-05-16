@@ -30,7 +30,7 @@ const WriteArgsSchema = z.object({
     "Complete UTF-8 file contents to write. Pass the full desired file body, not a patch or partial replacement. The entire file is replaced atomically.",
   ),
 }).describe(
-  "Create or overwrite a UTF-8 file by absolute path. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates filesystem state.",
+  "Create or overwrite a UTF-8 file by absolute path. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `apply_patch` for targeted file mutations. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates filesystem state.",
 )
 
 function isConditionallyProtectedWritePath(relativePath: string): boolean {
@@ -168,12 +168,12 @@ export function createWriteTool(input: {
   return {
     name: "write",
     description:
-      "Create or overwrite a UTF-8 file by absolute path. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `edit` when you only need to change one exact span in an existing file. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates filesystem state.",
+      "Create or overwrite a UTF-8 file by absolute path. Use this when you need to write a full file from scratch or replace the entire contents in one step; prefer `apply_patch` for targeted file mutations. Parent directories are created automatically. Writes are performed atomically to prevent partial content on interruption. Normal overwrites are allowed, but protected files require a read-first confirmation before overwrite. This tool requires permission because it mutates filesystem state.",
     inputSchema: WriteArgsSchema,
     concurrency: "mutating",
     isCompressible: false,
     usageGuidance:
-      "Prefer `edit` for targeted changes. Use `write` for new files or full rewrites. Read protected files such as README.md, AGENTS.md, package.json, tsconfig.json, bun.lock, and .env* before overwriting them. Do not add emojis unless the user asks for them.",
+      "Prefer `apply_patch` for targeted changes. Use `write` for full-file writes. Read protected files such as README.md, AGENTS.md, package.json, tsconfig.json, bun.lock, and .env* before overwriting them. Do not add emojis unless the user asks for them.",
     async execute(value) {
       throwIfToolAborted(value.signal)
       const { path, content } = WriteArgsSchema.parse(value.args)

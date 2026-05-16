@@ -107,6 +107,50 @@ describe("permission service", () => {
     ])
   })
 
+  test("requestPermission persists patch approval details without active preview payloads", () => {
+    const harness = createHarness("request-patch-details", [20, 30, 40])
+    const approvalDetails = {
+      kind: "patch" as const,
+      fileCount: 1,
+      additions: 1,
+      deletions: 1,
+      files: [
+        {
+          path: "notes.txt",
+          operation: "update",
+          additions: 1,
+          deletions: 1,
+        },
+      ],
+    }
+
+    harness.request.requestPermission({
+      runId: harness.run.id,
+      permissionRequest: {
+        id: "permission_patch",
+        toolName: "apply_patch",
+        reason: "apply_patch notes.txt",
+        createdAt: 11,
+        approvalDetails,
+        preview: {
+          kind: "patch",
+          text: "--- a/notes.txt\n+++ b/notes.txt\n@@\n-old\n+new",
+          truncated: false,
+          limitBytes: 64 * 1024,
+          originalBytes: 43,
+          displayedBytes: 43,
+        },
+      },
+    })
+
+    const stored = harness.permissionRepository.requests.get("permission_patch")
+
+    expect(stored.approvalDetails).toEqual(approvalDetails)
+    expect("preview" in stored).toBe(false)
+    expect(JSON.stringify(stored)).not.toContain("*** Begin Patch")
+    expect(JSON.stringify(stored)).not.toContain("--- a/notes.txt")
+  })
+
   test("requestPermission preserves creation order for requests from the same runtime tick", () => {
     const harness = createHarness("request-same-tick-order", [20, 30, 40])
 
